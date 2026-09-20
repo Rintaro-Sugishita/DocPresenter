@@ -39,4 +39,5 @@ Word / Excel 形式での出力はスコープ外とする（[判断の根拠](d
 - [要件定義](design/requirements.md) — 二つの軸（人間可読性・機械可読性）と R1〜R9
 - [作図モデル設計案](design/diagram-model.md) — PPTX / draw.io / Mermaid の「いいとこ取り」
 - [レビューモデル設計案](design/review-model.md) — 顧客が PDF に注釈を書く体験のまま、構造を復元する
+- [編集 UI 設計案](design/editor-model.md) — ノートブック型のセル構成（UI はセル、ファイルは Markdown）
 - [サーバの位置づけ](design/server-architecture.md) — 同時編集とコメント収集をどう扱うか
