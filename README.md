@@ -28,6 +28,7 @@ Word / Excel 形式での出力はスコープ外とする（[判断の根拠](d
 | R7 | 複雑なテーブル（セル結合など） |
 | R8 | Web / VS Code 双方での編集 |
 | R9 | AI が正確に読めること（機械可読出力） |
+| R10 | Git を使わない参加者がレビューできること |
 
 詳細と設計制約は [要件定義](design/requirements.md) を参照。
 
@@ -37,3 +38,4 @@ Word / Excel 形式での出力はスコープ外とする（[判断の根拠](d
 - [Excel 脱却要求の整理と要件の充足性検証](docs/research/excel-migration-japan.md) — 日本市場の要求と、要件の過不足・スコープ判断
 - [要件定義](design/requirements.md) — 二つの軸（人間可読性・機械可読性）と R1〜R9
 - [作図モデル設計案](design/diagram-model.md) — PPTX / draw.io / Mermaid の「いいとこ取り」
+- [レビューモデル設計案](design/review-model.md) — 顧客が PDF に注釈を書く体験のまま、構造を復元する
