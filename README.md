@@ -15,6 +15,8 @@ Word / Excel 形式での出力はスコープ外とする（[判断の根拠](d
 
 ## 目指すもの
 
+ファイルの読者は**人間と AI の二人**であり、どちらも**ソースファイルそのもの**を読める状態を土台に置く。
+
 | # | 要件 |
 |---|---|
 | R1 | Markdown 記法による文章構築 |
@@ -25,9 +27,13 @@ Word / Excel 形式での出力はスコープ外とする（[判断の根拠](d
 | R6 | PPTX 化（編集可能な PowerPoint） |
 | R7 | 複雑なテーブル（セル結合など） |
 | R8 | Web / VS Code 双方での編集 |
+| R9 | AI が正確に読めること（機械可読出力） |
+
+詳細と設計制約は [要件定義](design/requirements.md) を参照。
 
 ## ドキュメント
 
 - [既存サービス調査](docs/research/existing-solutions.md) — 先行事例の棚卸しと、DocPresenter が埋めるべきギャップ
 - [Excel 脱却要求の整理と要件の充足性検証](docs/research/excel-migration-japan.md) — 日本市場の要求と、要件の過不足・スコープ判断
+- [要件定義](design/requirements.md) — 二つの軸（人間可読性・機械可読性）と R1〜R9
 - [作図モデル設計案](design/diagram-model.md) — PPTX / draw.io / Mermaid の「いいとこ取り」
