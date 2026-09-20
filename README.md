@@ -38,6 +38,7 @@ Word / Excel 形式での出力はスコープ外とする（[判断の根拠](d
 - [Excel 脱却要求の整理と要件の充足性検証](docs/research/excel-migration-japan.md) — 日本市場の要求と、要件の過不足・スコープ判断
 - [要件定義](design/requirements.md) — 二つの軸（人間可読性・機械可読性）と R1〜R9
 - [作図モデル設計案](design/diagram-model.md) — PPTX / draw.io / Mermaid の「いいとこ取り」
+- [表モデル設計案](design/table-model.md) — セル結合・罫線・セル内 Markdown
 - [レビューモデル設計案](design/review-model.md) — 顧客が PDF に注釈を書く体験のまま、構造を復元する
 - [編集 UI 設計案](design/editor-model.md) — Markdown に浮く埋め込みオブジェクト
 - [参照記法の比較](design/reference-syntax.md) — 埋め込みオブジェクトをどう書くか
