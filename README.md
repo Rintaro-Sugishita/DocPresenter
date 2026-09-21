@@ -33,6 +33,10 @@ Word / Excel 形式での出力はスコープ外とする（[判断の根拠](d
 
 詳細と設計制約は [要件定義](design/requirements.md) を参照。
 
+## 検証
+
+- [日本語テキストが選択可能な PDF を出せるか](prototype/pdf-text/FINDINGS.md) — 検証済み・問題なし
+
 ## ドキュメント
 
 - [既存サービス調査](docs/research/existing-solutions.md) — 先行事例の棚卸しと、DocPresenter が埋めるべきギャップ
