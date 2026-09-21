@@ -37,7 +37,8 @@ Word / Excel 形式での出力はスコープ外とする（[判断の根拠](d
 
 - [既存サービス調査](docs/research/existing-solutions.md) — 先行事例の棚卸しと、DocPresenter が埋めるべきギャップ
 - [Excel 脱却要求の整理と要件の充足性検証](docs/research/excel-migration-japan.md) — 日本市場の要求と、要件の過不足・スコープ判断
-- [要件定義](design/requirements.md) — 二つの軸（人間可読性・機械可読性）と R1〜R9
+- [要件定義](design/requirements.md) — 二つの軸（人間可読性・機械可読性）と R1〜R11
+- [未決事項の一覧](design/open-issues.md) — 各設計ドキュメントの未決事項を集約し、着手順に整理
 - [作図モデル設計案](design/diagram-model.md) — PPTX / draw.io / Mermaid の「いいとこ取り」
 - [表モデル設計案](design/table-model.md) — セル結合・罫線・セル内 Markdown
 - [レビューモデル設計案](design/review-model.md) — 顧客が PDF に注釈を書く体験のまま、構造を復元する
