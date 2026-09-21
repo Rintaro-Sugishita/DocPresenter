@@ -45,4 +45,5 @@ Word / Excel 形式での出力はスコープ外とする（[判断の根拠](d
 - [編集 UI 設計案](design/editor-model.md) — Markdown に浮く埋め込みオブジェクト
 - [参照記法の比較](design/reference-syntax.md) — 埋め込みオブジェクトをどう書くか
 - [出力モデル設計案](design/output-model.md) — ページとスライドの区切り
+- [PDF 生成エンジンの比較検討](design/pdf-engine.md) — ブラウザ組版と Typst
 - [サーバの位置づけ](design/server-architecture.md) — 同時編集とコメント収集をどう扱うか
