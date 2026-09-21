@@ -30,6 +30,7 @@ Word / Excel 形式での出力はスコープ外とする（[判断の根拠](d
 | R9 | AI が正確に読めること（機械可読出力） |
 | R10 | Git を使わない参加者がレビューできること |
 | R11 | 図表・章番号の自動採番と相互参照 |
+| R12 | 横断一覧とトレーサビリティの生成 |
 
 詳細と設計制約は [要件定義](design/requirements.md) を参照。
 
@@ -51,6 +52,7 @@ Word / Excel 形式での出力はスコープ外とする（[判断の根拠](d
 - [レビューモデル設計案](design/review-model.md) — 顧客が PDF に注釈を書く体験のまま、構造を復元する
 - [編集 UI 設計案](design/editor-model.md) — Markdown に浮く埋め込みオブジェクト
 - [参照記法の比較](design/reference-syntax.md) — 埋め込みオブジェクトをどう書くか
+- [横断一覧設計案](design/index-model.md) — インデックスと一覧生成
 - [出力モデル設計案](design/output-model.md) — ページとスライドの区切り
 - [テーマ設計案](design/theme.md) — フォントとページ設計
 - [PPTX 出力設計案](design/pptx-model.md) — スライド分割とレイアウト
