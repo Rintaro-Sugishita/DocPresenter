@@ -5,7 +5,6 @@ version: 1.2
 status: draft
 author: 設計チーム
 updated: 2026-09-21
-numbering: section        # 章番号込み（図 3.1 形式）
 ---
 
 # 認証機能 設計書
