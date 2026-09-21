@@ -37,6 +37,7 @@ Word / Excel 形式での出力はスコープ外とする（[判断の根拠](d
 
 - [日本語テキストが選択可能な PDF を出せるか](prototype/pdf-text/FINDINGS.md) — 検証済み・問題なし
 - [表ごとに用紙を横向きにできるか](prototype/paged-landscape/FINDINGS.md) — 検証済み・別パス方式で可能
+- [表のページ分割とヘッダ行の繰り返し](prototype/table-paging/FINDINGS.md) — 検証済み・自前分割で可能
 
 ## ドキュメント
 

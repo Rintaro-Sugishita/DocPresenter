@@ -1,0 +1,6 @@
+{
+  "name": "docpresenter-proto-table-paging",
+  "private": true,
+  "type": "module",
+  "description": "Paginates a merged-cell table ourselves, repeating the header row on every page."
+}
