@@ -53,6 +53,7 @@ Word / Excel 形式での出力はスコープ外とする（[判断の根拠](d
 - [編集 UI 設計案](design/editor-model.md) — Markdown に浮く埋め込みオブジェクト
 - [参照記法の比較](design/reference-syntax.md) — 埋め込みオブジェクトをどう書くか
 - [横断一覧設計案](design/index-model.md) — インデックスと一覧生成
+- [ビルド単位設計案](design/build-model.md) — 何を出力対象とし、何を集めるか
 - [出力モデル設計案](design/output-model.md) — ページとスライドの区切り
 - [テーマ設計案](design/theme.md) — フォントとページ設計
 - [PPTX 出力設計案](design/pptx-model.md) — スライド分割とレイアウト
