@@ -48,9 +48,9 @@ HTML を印刷用 CSS で組版し、ブラウザエンジンに PDF を吐か�
 
 | 面 | 手段 | PDF のバイト列を得られるか |
 |---|---|---|
-| デスクトップ（WPF ＋ WebView2） | `PrintToPdfStreamAsync` | **○** |
+| デスクトップ（WebView2） | `PrintToPdfStreamAsync` | **○** |
 | CLI / CI | headless Chrome | **○** |
-| **Web（ブラウザ上の Blazor WASM）** | `window.print()` のみ | **✗ 印刷ダイアログ経由のみ** |
+| **Web（ブラウザ）** | `window.print()` のみ | **✗ 印刷ダイアログ経由のみ** |
 
 最後の行が案 A の急所である。**Web 版だけ、プログラムから PDF を生成できない。**
 

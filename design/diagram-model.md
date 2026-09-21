@@ -133,13 +133,13 @@ ErCreator の強みは「多くの形式を話せること」だった。作図�
 
 ErCreator の [`mermaid-ermlx-spec.md`](../../ErCreator/design/mermaid-ermlx-spec.md) が確立した作法をそのまま踏襲する。すなわち **ラウンドトリップの基準記法を 1 つ決め、変換で失われる情報（ロス）を仕様書に明記する**。Mermaid にポート概念もピン留めも無い以上、Mermaid export は必ずロスを伴う。それを隠さず書く。
 
-## 7. ErCreator からの再利用
+## 7. ErCreator.Canvas は移植元として参照する
 
-`ErCreator.Canvas` は Razor クラスライブラリで、**Web(Blazor WASM) と デスクトップ(WPF / BlazorWebView) の双方から参照される単一ソース**として作られている。しかも既に以下が揃っている。
+当初は `ErCreator.Canvas`（Blazor の共有キャンバス）を**そのまま再利用する**前提で書いていたが、[実装スタックを TypeScript 単一言語に決めた](stack.md)ことにより、これは成立しない。
 
-`Canvas.Geometry` / `Canvas.Grid` / `Canvas.Pointer` / `Canvas.Selection` / `Canvas.History`（undo/redo） / `Canvas.Shapes` / `Canvas.Rendering` / `Canvas.Clipboard` / `Canvas.AutoSave`
+ただし価値が消えたわけではない。`Canvas.Geometry` / `Grid` / `Pointer` / `Selection` / `History`（undo/redo） / `Shapes` / `Rendering` / `Clipboard` には、**実際に動いている対話ロジック**がある。当たり判定・グリッド吸着・範囲選択・undo スタックといったアルゴリズムは言語に依存しないため、**参照実装として移植する**。
 
-要件 R8（Web と VS Code の両方で編集）は、この構造をそのまま引き継げば解ける。**VS Code 拡張は WebView に同じ Blazor キャンバスを載せる**ことで、Web・デスクトップ・VS Code の三面が単一実装で賄える。ErCreator と同じ `Model.Abstractions / Engine / Canvas / Web / Cli` のレイヤリングを踏襲する。
+白紙から設計するのとは負荷が違う。「何を作るか」が既に確定している状態から始められる。
 
 ## 8. 自動レイアウトエンジン
 
@@ -156,7 +156,7 @@ TALA は D2 のレイアウトエンジンで、長らく D2 の収益源だっ�
 ### 判断が必要な点
 
 1. **ライセンス** — MPL-2.0 はファイル単位のコピーレフト。ErCreator と同じく「無償・商用可だがソース非公開」の形態を取る場合、MPL ファイル**そのものを改変したときだけ**その改変の公開義務が生じる。改変せずリンク／プロセス分離で使う限り、自社コードの非公開は維持できる。**改変しない運用を前提に設計する**のが安全。
-2. **実行形態** — TALA は Go 実装のため、(a) Go→WASM にコンパイルして Blazor WASM から呼ぶ（D2 Playground が同方式でブラウザ実行している実績あり）、(b) デスクトップ / CLI ではネイティブバイナリを同梱、の 2 系統になる見込み。Web とデスクトップでレイアウト結果が一致することが**必須要件**（結果が違うとピン留めの意味が崩れる）なので、同一エンジン・同一バージョンを両面で使う。
+2. **実行形態** — TALA は Go 実装のため、(a) Go→WASM にコンパイルしてブラウザから呼ぶ（D2 Playground が同方式でブラウザ実行している実績あり）、(b) デスクトップ / CLI ではネイティブバイナリを同梱、の 2 系統になる見込み。Web とデスクトップでレイアウト結果が一致することが**必須要件**（結果が違うとピン留めの意味が崩れる）なので、同一エンジン・同一バージョンを両面で使う。
 3. **フォールバック** — TALA の保守が滞った場合に備え、レイアウトエンジンは差し替え可能なインタフェースの背後に置く。§3 の設計上、レイアウト結果はファイルに保存しない以上、エンジン差し替えは図の再計算だけで済む。
 
 ## 9. 図の種類とスコープ

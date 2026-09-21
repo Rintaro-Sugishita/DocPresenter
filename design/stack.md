@@ -7,7 +7,8 @@
 
 - **レンダリング系は TypeScript とする。** 素の JavaScript は書かない（`strict` 前提）。
 - **HTML 生成は TS 側に置く**（§1）。
-- 言語境界をどこに引くかは §3 で判断する。
+- **案 1（TypeScript 単一言語）に確定**（§3・§4）。C# は使わない。
+- `ErCreator.Canvas` は**再利用しない**。ただし**移植元の参照実装として扱う**（§4）。
 
 ## 1. なぜ HTML 生成が TS 側なのか
 
@@ -94,8 +95,24 @@ PPTX（OOXML）については、C# の OpenXML SDK の型安全性は失う。�
 
 ER 図（`.ermlx`）は YAML であり、TS で読める。[ErCreator への委譲](diagram-model.md)は**編集とモデルの権威を委ねる**という意味であって、DocPresenter 側で描画できないという意味ではない。
 
-## 5. 未確定事項
+## 5. パッケージ構成（案）
 
-- **デスクトップ配布形態** — Tauri / Electron / 当面は Web のみ。ErCreator の「自己完結の単一ファイル」に相当する体験をどう作るか
+境界が無いため、分割は関心事だけで決められる。
+
+```
+core/        中間モデル・パーサ（.md / .dgm / .table）・採番と相互参照の解決
+render/      HTML / SVG / PDF / PPTX / AI 向け構造化出力
+editor/      キャンバス・グリッド・当たり判定・undo（ErCreator.Canvas からの移植先）
+review/      コメントの移送（git diff）・ソースマップ・PDF 注釈の取り込み
+app-web/     ブラウザ版
+app-vscode/  VS Code 拡張（core / render / editor をそのまま参照）
+cli/         Node。Puppeteer で headless Chrome を駆動
+```
+
+`app-vscode` が `core` / `render` / `editor` を**そのまま参照できる**ことが、この構成の要点である。
+
+## 6. 未確定事項
+
+- **デスクトップ配布形態** — Tauri / Electron / 当面は Web のみ。ErCreator の「自己完結の単一ファイル」に相当する体験をどう作るか。なお [PDF パイプライン](pdf-engine.md)がブラウザエンジンを要求するため、デスクトップ版は何らかの WebView を内包することになる
 - **ErCreator との関係** — コードを共有しない以上、連携は `.ermlx` というファイル形式を介したものになる。それで十分か
-- TS のビルド構成（モノレポ、パッケージ分割の粒度）
+- パッケージ分割の粒度（§5 は案）と、ビルド構成

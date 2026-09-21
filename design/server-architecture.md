@@ -122,7 +122,7 @@ ErCreator が取っている「アカウント不要・インストール不要�
 
 ```
 [ コア ] サーバ無しで全機能が動く
-  - Web (Blazor WASM) / VS Code 拡張 / デスクトップ / CLI
+  - Web / VS Code 拡張 / デスクトップ / CLI（[TypeScript 単一実装](stack.md)）
   - 正本は Git 上のファイル
   - 出力: HTML / PDF / PPTX / 構造化コンテキスト
   - レビュー: Level 0（PDF 往復）・Level 1（HTML ＋ 書き出し）
