@@ -1,4 +1,7 @@
 node_modules/
 package-lock.json
 out-*.pdf
+noto-*.pdf
 ipag-ext.ttf
+NotoSansCJKjp-Regular.otf
+noto-sub.otf
