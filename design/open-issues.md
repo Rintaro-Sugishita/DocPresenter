@@ -103,7 +103,7 @@
 | D3 画面設計書を R2 で吸収できるか（オーバーレイで足りるかの検証待ち） | [要件定義](requirements.md) |
 | 文書の可搬性（`shared/` 参照の解決）、パラメータ化、文章の粒度 | [編集 UI](editor-model.md) |
 | MPE 互換の範囲の明示 | [参照記法](reference-syntax.md) |
-| ライセンス・配布形態（ErCreator と揃えるか） | — |
+| ライセンス（ErCreator と揃えるか）。**配布形態は決定済み**（[提供形態](platforms.md)） | — |
 
 ## 所見
 
