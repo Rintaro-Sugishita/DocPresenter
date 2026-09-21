@@ -1,0 +1,10 @@
+{
+  "name": "docpresenter-proto-paged-landscape",
+  "private": true,
+  "type": "module",
+  "description": "Checks whether Paged.js can mix portrait and landscape pages in one document.",
+  "dependencies": {
+    "pagedjs": "^0.4.3",
+    "playwright-core": "^1.63.0"
+  }
+}
