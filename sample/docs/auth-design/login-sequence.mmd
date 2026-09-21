@@ -1,0 +1,19 @@
+%% ログイン処理シーケンス
+%% シーケンス図は Mermaid に委譲する（位置を人が決める余地が無いため）。
+sequenceDiagram
+    autonumber
+    actor U as 利用者
+    participant W as Web フロント
+    participant A as 認証 API
+    participant D as 会員 DB
+    participant C as セッションキャッシュ
+
+    U ->> W: ログイン ID / パスワード
+    W ->> A: Authenticate(id, password)
+    A ->> D: 会員照会
+    D -->> A: 会員レコード
+    A ->> A: パスワード検証 (Argon2id)
+    A ->> C: アクセストークン登録 (TTL 24h)
+    C -->> A: OK
+    A -->> W: アクセストークン / リフレッシュトークン
+    W -->> U: マイページへリダイレクト

@@ -1,0 +1,22 @@
+# アクセストークンの状態遷移
+# kind: graph — ピン留めなし。完全に自動レイアウト。
+
+flow {
+  issued  ([発行])
+  active  [有効]
+  expired [期限切れ]:::disabled
+  revoked [失効]:::removed
+
+  issued  --> active
+  active  --> expired  "24 時間経過"
+  active  --> revoked  "ログアウト / 管理者操作"
+  expired --> issued   "リフレッシュトークンによる再発行"
+  revoked --> issued   "再ログイン"
+}
+
+layout {
+}
+
+style {
+  theme: default
+}

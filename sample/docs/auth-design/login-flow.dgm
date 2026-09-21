@@ -1,0 +1,34 @@
+# ログイン画面遷移
+# kind: graph — レイアウトは自動。ピン留めは L2 に必要な分だけ。
+
+flow {
+  start    ([開始])
+  login    [ログイン画面]
+  validate {入力チェック}
+  authapi  [認証 API 呼び出し]
+  lockchk  {連続失敗回数}
+  error    [エラー表示]
+  locked   [アカウントロック画面]:::pending
+  home     [マイページ]
+
+  start    --> login
+  login    --> validate  "ログイン押下"
+  validate --> error     "NG"
+  validate --> authapi   "OK"
+  authapi  --> home      "認証成功"
+  authapi  --> lockchk   "認証失敗"
+  lockchk  --> error     "5 回未満"
+  lockchk  --> locked    "5 回以上"
+  error    --> login
+}
+
+layout {
+  # 自動レイアウトの結果で気に入らなかった 2 つだけを固定する。
+  # 残り 6 要素は毎回 TALA が計算する。
+  home   @ (120, 560)
+  locked @ (560, 560)
+}
+
+style {
+  theme: default
+}

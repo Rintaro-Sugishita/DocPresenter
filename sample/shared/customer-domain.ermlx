@@ -1,0 +1,19 @@
+# ErCreator の ER モデル（.ermlx）。ER 図は ErCreator に委譲する。
+# ※ 本サンプルの内容は最小限の例示であり、実スキーマは ErCreator 側の仕様に従う。
+entities:
+  - name: customer
+    comment: 会員
+    columns:
+      - { name: customer_id, type: bigint,       pk: 1, comment: 会員 ID }
+      - { name: login_id,    type: varchar(64),  uk: 1, comment: ログイン ID }
+      - { name: password,    type: varchar(255),        comment: パスワードハッシュ }
+      - { name: failed_count,type: int,                 comment: 連続認証失敗回数 }
+      - { name: locked,      type: boolean,             comment: ロック状態 }
+  - name: access_token
+    comment: アクセストークン
+    columns:
+      - { name: token_id,    type: bigint,       pk: 1, comment: トークン ID }
+      - { name: customer_id, type: bigint,       fk: customer, comment: 会員 ID }
+      - { name: expires_at,  type: timestamp,           comment: 有効期限 }
+relations:
+  - { parent: customer, child: access_token, columns: [customer_id], cardinality: one-to-many }

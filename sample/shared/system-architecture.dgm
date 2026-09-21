@@ -1,0 +1,39 @@
+# 認証まわりのシステム構成
+# kind: free — 自由配置。L2 が全要素について埋まっている。
+
+free {
+  browser [利用者ブラウザ]
+  web     [Web フロント]
+  api     [認証 API]
+  db      [(会員 DB)]
+  cache   [(セッションキャッシュ)]
+  note1   >社内 NW からのみ接続可]
+
+  group dmz   "DMZ"           { web }
+  group intra "社内ネットワーク" { api; db; cache }
+
+  browser -> web   "HTTPS"
+  web     -> api   "gRPC"
+  api     -> db
+  api     -> cache
+  note1   -- api
+}
+
+layout {
+  browser @ ( 40, 120) 140x60
+  web     @ (240, 120) 140x60
+  api     @ (460, 120) 140x60
+  db      @ (680,  60) 140x60
+  cache   @ (680, 180) 140x60
+
+  dmz     @ (220,  80) 180x140  z:-1
+  intra   @ (440,  20) 400x240  z:-1
+
+  note1   @ (440, 300) 200x40
+}
+
+style {
+  theme: default
+  dmz   { line: dashed }
+  intra { line: dashed }
+}
