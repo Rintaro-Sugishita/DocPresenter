@@ -60,4 +60,5 @@ Word / Excel 形式での出力はスコープ外とする（[判断の根拠](d
 - [PDF 生成エンジンの比較検討](design/pdf-engine.md) — ブラウザ組版と Typst
 - [実装スタックと言語境界](design/stack.md) — TypeScript をどこまで広げるか
 - [提供形態](design/platforms.md) — デスクトップ・Web・CLI と改訂履歴
+- [ライセンス方針](design/licensing.md) — 本体は非オープンソース、中継サーバのみ公開
 - [サーバの位置づけ](design/server-architecture.md) — 同時編集とコメント収集をどう扱うか
