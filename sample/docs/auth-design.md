@@ -15,6 +15,8 @@ updated: 2026-09-21
 対象は ID・パスワードによるログイン、およびアクセストークンの発行・失効である。
 外部 IdP との連携は本書の対象外とし、別途「外部連携設計書」に定める。
 
+---
+
 ## システム構成 {#sec-architecture}
 
 認証に関わる構成要素を @fig-architecture に示す。
@@ -23,6 +25,8 @@ updated: 2026-09-21
 
 認証 API は社内ネットワークからのみ接続を受け付ける。Web フロントは DMZ に配置し、
 認証 API への呼び出しは gRPC で行う。セッションキャッシュには Redis を用いる。
+
+---
 
 ## ログイン機能 {#sec-login}
 
@@ -51,6 +55,8 @@ updated: 2026-09-21
 
 @import "auth-design/login-sequence.mmd" {#fig-login-sequence caption="ログイン処理シーケンス"}
 
+---
+
 ## トークン管理 {#sec-token}
 
 ### 状態遷移 {#sec-token-lifecycle}
@@ -65,6 +71,8 @@ updated: 2026-09-21
 認証に関係する会員ドメインのデータモデルを @fig-customer-domain に示す。
 
 @import "../shared/customer-domain.ermlx" {#fig-customer-domain caption="会員ドメイン ER 図"}
+
+---
 
 ## 用語 {#sec-glossary}
 

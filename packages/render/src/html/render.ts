@@ -3,8 +3,8 @@
 
 import MarkdownIt from 'markdown-it';
 import {
-  byteLength, describe, parseDiagram, parseTable,
-  type ByteSpan, type DocumentFile, type NumberedElement, type ResolvedDocument,
+  byteLength, describe, parseDiagram, parseTable, sheetsOf,
+  type Block, type ByteSpan, type DocumentFile, type NumberedElement, type ResolvedDocument,
 } from '@docpresenter/core';
 import { renderDiagram } from '../svg/render.js';
 import { renderOverlay } from './overlay.js';
@@ -38,36 +38,45 @@ export function renderDocument(
   const elementByBlock = new Map<unknown, NumberedElement>(
     resolved.elements.map(e => [e.block, e]),
   );
-  const parts: string[] = [];
+  // The document is emitted sheet by sheet: `---` is a boundary between
+  // sections, not an element inside one, so the page breaks where the author
+  // saw it break while writing.
+  return sheetsOf(document, resolved).map(sheet => {
+    const blocks = sheet.blocks
+      .map(block => renderBlock(block, elementByBlock, resolved, options))
+      .join('\n');
+    return `<section class="dp-sheet" data-sheet="${sheet.index}"`
+      + ` data-title="${escapeAttr(sheet.title)}"`
+      + ` data-span="${sheet.span.start},${sheet.span.end}">\n${blocks}\n</section>`;
+  }).join('\n');
+}
 
-  for (const block of document.blocks) {
-    const span = spanAttr(block.span);
-    switch (block.kind) {
-      case 'heading': {
-        const element = elementByBlock.get(block);
-        const number = element?.number;
-        const label = block.label ? ` id="${escapeAttr(block.label)}"` : '';
-        const prefix = number ? `<span class="dp-number">${number}</span> ` : '';
-        parts.push(
-          `<h${block.level}${label}${span}>${prefix}${inline(block.text, block.span.start, resolved)}</h${block.level}>`,
-        );
-        break;
-      }
-      case 'separator':
-        // A break, not a rule: HTML flows continuously, so nothing is drawn.
-        parts.push(`<div class="dp-break" role="separator" aria-hidden="true"${span}></div>`);
-        break;
-      case 'prose':
-        parts.push(`<div class="dp-prose"${span}>${markdown.render(substitute(block.text, block.span.start, resolved))}</div>`);
-        break;
-      case 'import':
-        parts.push(renderImport(
-          block.path, block.label, elementByBlock.get(block), block.span, block.attributes, options,
-        ));
-        break;
+function renderBlock(
+  block: Block,
+  elementByBlock: ReadonlyMap<unknown, NumberedElement>,
+  resolved: ResolvedDocument,
+  options: RenderOptions,
+): string {
+  const span = spanAttr(block.span);
+  switch (block.kind) {
+    case 'heading': {
+      const number = elementByBlock.get(block)?.number;
+      const label = block.label ? ` id="${escapeAttr(block.label)}"` : '';
+      const prefix = number ? `<span class="dp-number">${number}</span> ` : '';
+      return `<h${block.level}${label}${span}>`
+        + `${prefix}${inline(block.text, block.span.start, resolved)}</h${block.level}>`;
     }
+    case 'prose':
+      return `<div class="dp-prose"${span}>`
+        + `${markdown.render(substitute(block.text, block.span.start, resolved))}</div>`;
+    case 'import':
+      return renderImport(
+        block.path, block.label, elementByBlock.get(block), block.span, block.attributes, options,
+      );
+    case 'separator':
+      // Sheets are built from the separators, so one never reaches here.
+      return '';
   }
-  return parts.join('\n');
 }
 
 function renderImport(

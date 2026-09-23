@@ -37,18 +37,29 @@ code { font-family: var(--font-mono); font-size: 0.9em; background: var(--fill-t
 .dp-number { color: #5a6270; font-weight: 400; margin-right: 0.4em; }
 .dp-ref { color: #1f5fa8; text-decoration: none; border-bottom: 1px dotted currentColor; }
 
-/* A break, not a rule: shown only as a guide so the author can see where the
-   page will split when printed. */
-.dp-break {
+/* Sheets. A `---` is a boundary between sheets, never a rule: on screen the
+   boundary is shown as a guide so the author can see where the page will
+   split, and in print it actually splits. */
+.dp-sheet + .dp-sheet {
   border-top: 1px dashed #c3c8d0;
-  margin: 2.5em 0;
+  margin-top: 2.5em;
+  padding-top: 2.5em;
   position: relative;
 }
-.dp-break::after {
+.dp-sheet + .dp-sheet::after {
   content: "改ページ";
   position: absolute; right: 0; top: -0.75em;
   background: #fff; padding: 0 0.5em;
   font-size: 0.7em; color: #98a0ab; font-family: var(--font-heading);
+}
+.dp-sheet > :first-child { margin-top: 0; }
+
+@media print {
+  .dp-sheet + .dp-sheet {
+    break-before: page;
+    border-top: none; margin-top: 0; padding-top: 0;
+  }
+  .dp-sheet + .dp-sheet::after { content: none; }
 }
 
 .dp-figure { margin: 1.8em 0; }

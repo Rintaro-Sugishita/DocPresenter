@@ -46,10 +46,22 @@ describe('文書のレンダリング', () => {
     expect(sliced).toBe('@fig-a');
   });
 
-  it('--- は罫線ではなく区切り要素になる', () => {
+  it('--- は罫線ではなくシートの境界になる', () => {
     const html = render('前。\n\n---\n\n後。');
-    expect(html).toContain('class="dp-break"');
+    expect(html).toContain('<section class="dp-sheet" data-sheet="1"');
+    expect(html).toContain('<section class="dp-sheet" data-sheet="2"');
     expect(html).not.toContain('<hr');
+  });
+
+  it('シート名は最初の見出しから計算する', () => {
+    const html = render('# 題名\n\n---\n\n## 認証方式\n\n本文。');
+    expect(html).toContain('data-title="題名"');
+    expect(html).toContain('data-title="1 認証方式"');
+  });
+
+  it('見出しの無いシートには通し番号を付ける', () => {
+    const html = render('本文だけ。');
+    expect(html).toContain('data-title="シート 1"');
   });
 
   it('参照先が無ければ黙って消さず、見つからないと出す', () => {

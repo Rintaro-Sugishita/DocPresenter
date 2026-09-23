@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { DocumentParseError, isBuildRoot, parseDocument } from '../src/index.js';
+import {
+  DocumentParseError, isBuildRoot, parseDocument, resolveDocument, sheetsOf,
+} from '../src/index.js';
 import type { Heading, Import, Prose } from '../src/index.js';
 
 /** Slices the source by byte range the way a review anchor would. */
@@ -149,5 +151,33 @@ describe('サンプルの実ファイル', () => {
         r.document ? `@${r.document}:${r.label}` : `@${r.label}`,
       );
     }
+  });
+});
+
+describe('シート分割', () => {
+  it('--- で区切られた範囲が 1 シートになる', () => {
+    const doc = parseDocument('# 題名\n\n本文。\n\n---\n\n## 次\n\n本文。');
+    const sheets = sheetsOf(doc);
+    expect(sheets).toHaveLength(2);
+    expect(sheets[0]!.blocks).toHaveLength(2);
+    expect(sheets[1]!.title).toBe('次');
+  });
+
+  it('シート名は採番の結果を含む', () => {
+    const doc = parseDocument('# 題名\n\n---\n\n## 認証方式\n\n---\n\n## 画面');
+    const sheets = sheetsOf(doc, resolveDocument(doc));
+    expect(sheets.map(s => s.title)).toEqual(['題名', '1 認証方式', '2 画面']);
+  });
+
+  it('末尾の --- は空のシートを作らない', () => {
+    // 先頭の `---` は front matter の開始なので、ここでは扱わない。
+    expect(sheetsOf(parseDocument('本文。\n\n---\n'))).toHaveLength(1);
+  });
+
+  it('シートの範囲は区切り記号そのものを含まない', () => {
+    const source = '本文。\n\n---\n\n次。';
+    const sheets = sheetsOf(parseDocument(source));
+    expect(sliceBytes(source, sheets[0]!.span.start, sheets[0]!.span.end)).toBe('本文。');
+    expect(sliceBytes(source, sheets[1]!.span.start, sheets[1]!.span.end)).toBe('次。');
   });
 });
