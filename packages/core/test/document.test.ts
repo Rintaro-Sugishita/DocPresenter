@@ -169,9 +169,12 @@ describe('シート分割', () => {
     expect(sheets.map(s => s.title)).toEqual(['題名', '1 認証方式', '2 画面']);
   });
 
-  it('末尾の --- は空のシートを作らない', () => {
+  it('末尾の --- も 1 枚と数える', () => {
+    // 空のシートを捨てると、シートを足した直後にタブが消える。
     // 先頭の `---` は front matter の開始なので、ここでは扱わない。
-    expect(sheetsOf(parseDocument('本文。\n\n---\n'))).toHaveLength(1);
+    const sheets = sheetsOf(parseDocument('本文。\n\n---\n'));
+    expect(sheets).toHaveLength(2);
+    expect(sheets[1]!.title).toBe('シート 2');
   });
 
   it('シートの範囲は区切り記号そのものを含まない', () => {

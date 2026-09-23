@@ -6,6 +6,9 @@
     },
     {
       "path": "packages/render"
+    },
+    {
+      "path": "packages/editor"
     }
   ]
 }

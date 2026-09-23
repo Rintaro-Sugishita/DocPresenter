@@ -21,22 +21,24 @@ export interface Sheet {
  * "3. 認証方式" rather than "認証方式", which is what the reader will see.
  */
 export function sheetsOf(document: DocumentFile, resolved?: ResolvedDocument): readonly Sheet[] {
-  const groups: Block[][] = [[]];
+  // Every separator makes a boundary, including a trailing one: `at` is where
+  // an empty sheet sits. Trimming empty sheets away seems tidy until you press
+  // "add sheet" and nothing appears, or delete a sheet's last line and its tab
+  // vanishes. A stray `---` at the end of a file is better shown as an empty
+  // tab the author can delete than silently ignored.
+  const groups: { blocks: Block[]; at: number }[] = [{ blocks: [], at: 0 }];
   for (const block of document.blocks) {
-    if (block.kind === 'separator') groups.push([]);
-    else groups[groups.length - 1]!.push(block);
+    if (block.kind === 'separator') groups.push({ blocks: [], at: block.span.end });
+    else groups[groups.length - 1]!.blocks.push(block);
   }
 
-  // A separator at the very start or end does not make an empty sheet.
-  const filled = groups.filter(blocks => blocks.length > 0);
-  return filled.map((blocks, i) => ({
+  return groups.map(({ blocks, at }, i) => ({
     index: i + 1,
     title: titleOf(blocks, i + 1, resolved),
     blocks,
-    span: {
-      start: blocks[0]!.span.start,
-      end: blocks[blocks.length - 1]!.span.end,
-    },
+    span: blocks.length === 0
+      ? { start: at, end: at }
+      : { start: blocks[0]!.span.start, end: blocks[blocks.length - 1]!.span.end },
   }));
 }
 
