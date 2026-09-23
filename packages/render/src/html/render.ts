@@ -3,22 +3,34 @@
 
 import MarkdownIt from 'markdown-it';
 import {
-  byteLength, describe, parseTable,
+  byteLength, describe, parseDiagram, parseTable,
   type ByteSpan, type DocumentFile, type NumberedElement, type ResolvedDocument,
 } from '@docpresenter/core';
+import { renderDiagram } from '../svg/render.js';
+import { renderOverlay } from './overlay.js';
+import { joinPath } from './path.js';
 import { escapeAttr, escapeHtml, renderTable, selectRows } from './table.js';
 
 /** Reading referenced files is injected so this package stays platform-neutral. */
 export interface ResourceLoader {
-  /** Resolves a path written in a document, relative to that document. */
+  /** Reads a path written in a document, relative to that document. */
   read(path: string): string | undefined;
+  /**
+   * The address the output should point at for a binary such as an image.
+   * A referenced file resolves relative to the document, but the rendered page
+   * lives wherever the caller puts it, so only the caller knows the answer.
+   */
+  url?(path: string): string;
 }
 
 export interface RenderOptions {
   readonly loader: ResourceLoader;
 }
 
-const markdown = new MarkdownIt({ html: true, linkify: false, typographer: false });
+// `breaks: true`: a line break in the source is a line break in the output.
+// A design document is written in short lines on purpose, and silently joining
+// them would make the rendered text disagree with the file a reviewer reads.
+const markdown = new MarkdownIt({ html: true, linkify: false, typographer: false, breaks: true });
 
 export function renderDocument(
   document: DocumentFile, resolved: ResolvedDocument, options: RenderOptions,
@@ -66,7 +78,7 @@ function renderImport(
   const id = label ? ` id="${escapeAttr(label)}"` : '';
   const body = source === undefined
     ? `<p class="dp-missing">参照先が見つからない: ${escapeHtml(path)}</p>`
-    : renderResource(path, source, attributes);
+    : renderResource(path, source, attributes, options);
 
   const caption = element && element.number !== undefined
     ? `<figcaption class="dp-caption">`
@@ -83,8 +95,9 @@ function captionPrefix(element: NumberedElement): string {
 }
 
 function renderResource(
-  path: string, source: string, attributes: ReadonlyMap<string, string>,
+  path: string, source: string, attributes: ReadonlyMap<string, string>, options: RenderOptions,
 ): string {
+  const url = (target: string): string => options.loader.url?.(target) ?? target;
   if (path.toLowerCase().endsWith('.table')) {
     const table = parseTable(source);
     const rows = attributes.get('rows');
@@ -95,8 +108,15 @@ function renderResource(
     }
     return renderTable(selected);
   }
+  if (path.toLowerCase().endsWith('.dgm')) {
+    const diagram = parseDiagram(source);
+    if (diagram.mode !== 'overlay') return renderDiagram(diagram);
+    // The image is written relative to the diagram, not to the document.
+    const image = diagram.image === undefined ? undefined : url(joinPath(path, diagram.image));
+    return renderOverlay(diagram, image);
+  }
   if (/\.(png|jpe?g|gif|svg)$/i.test(path)) {
-    return `<img src="${escapeAttr(path)}" alt="">`;
+    return `<img src="${escapeAttr(url(path))}" alt="">`;
   }
   // Diagrams and delegated formats are not rendered yet; the source is shown so
   // nothing is silently dropped.

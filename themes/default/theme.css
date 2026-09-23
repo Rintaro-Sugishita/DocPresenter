@@ -84,3 +84,48 @@ code { font-family: var(--font-mono); font-size: 0.9em; background: var(--fill-t
 
 .dp-cell-block ul { margin: 0; padding-left: 1.2em; }
 .dp-cell-block p { margin: 0; }
+
+/* Diagrams ---------------------------------------------------------------- */
+.dp-diagram { max-width: 100%; height: auto; display: block; margin: 0 auto; font-family: var(--font-heading); }
+
+.dp-diagram .dp-node > rect,
+.dp-diagram .dp-node > ellipse,
+.dp-diagram .dp-node > polygon,
+.dp-diagram .dp-node > path {
+  fill: #fff; stroke: #3a4048; stroke-width: 1.4;
+}
+.dp-diagram .dp-label { font-size: 14px; fill: #1c1f24; }
+
+.dp-diagram .dp-shape-group > rect { fill: var(--fill-tint-1); stroke: #b6bcc5; }
+.dp-diagram .dp-group-label { font-size: 12px; fill: #6b7280; }
+
+.dp-diagram .dp-cylinder-lid, .dp-diagram .dp-note-fold { fill: none; stroke: #3a4048; stroke-width: 1.4; }
+
+.dp-diagram .dp-class-pending  > rect, .dp-diagram .dp-class-pending  > polygon { fill: var(--fill-pending); }
+.dp-diagram .dp-class-disabled > rect, .dp-diagram .dp-class-disabled > polygon { fill: var(--fill-disabled); }
+.dp-diagram .dp-class-removed  > rect, .dp-diagram .dp-class-removed  > polygon { fill: var(--fill-removed); }
+.dp-diagram .dp-class-changed  > rect, .dp-diagram .dp-class-changed  > polygon { fill: var(--fill-changed); }
+
+.dp-diagram .dp-edge polyline { stroke: #3a4048; stroke-width: 1.4; fill: none; stroke-linejoin: round; }
+.dp-diagram .dp-arrow { fill: #3a4048; stroke: none; }
+.dp-diagram .dp-line-dashed polyline { stroke-dasharray: 6 4; }
+.dp-diagram .dp-shape-group.dp-line-dashed > rect { stroke-dasharray: 6 4; }
+.dp-diagram .dp-edge-plate { fill: #fff; stroke: none; }
+.dp-diagram .dp-edge-label { font-size: 12px; fill: #3a4048; }
+
+/* Image overlays ---------------------------------------------------------- */
+.dp-overlay { position: relative; display: inline-block; line-height: 0; }
+.dp-overlay-image { display: block; max-width: none; }
+.dp-callout-leader { position: absolute; overflow: visible; }
+.dp-callout-leader line { stroke: #b3261e; stroke-width: 1.5; }
+.dp-callout {
+  position: absolute; transform: translate(-50%, -50%);
+  font-family: var(--font-heading); font-size: 12px; line-height: 1.6;
+  color: #b3261e; background: #fff; border: 1.5px solid #b3261e; border-radius: 50%;
+  width: 1.6em; height: 1.6em; text-align: center;
+}
+.dp-callouts {
+  font-family: var(--font-heading); font-size: 0.9em;
+  list-style: none; padding-left: 0; margin-top: 0.8em;
+}
+.dp-callouts .dp-callout-marker { color: #b3261e; margin-right: 0.4em; }

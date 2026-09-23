@@ -25,6 +25,12 @@ describe('文書のレンダリング', () => {
     expect(html).toContain('<span class="dp-number">1</span> 概要');
   });
 
+  it('本文の改行はそのまま改行になる', () => {
+    // 設計書は意図的に短い行で書く。行を勝手につなぐと、読む文と書いた文が食い違う。
+    const html = render('# T\n\n一行目\n二行目');
+    expect(html).toContain('一行目<br>\n二行目');
+  });
+
   it('参照が「図 N」のリンクになる', () => {
     const html = render('# T\n\n@import "a.dgm" {#fig-a}\n\n遷移を @fig-a に示す。');
     expect(html).toContain('href="#fig-a"');

@@ -18,6 +18,8 @@ const body = renderDocument(doc, resolved, {
     read(p) {
       try { return readFileSync(resolve(dirname(path), p), 'utf8'); } catch { return undefined; }
     },
+    // 出力先が sample/ の外なので、画像は絶対パスで指す。
+    url: p => resolve(dirname(path), p),
   },
 });
 
