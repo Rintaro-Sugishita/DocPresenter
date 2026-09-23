@@ -8,6 +8,11 @@ import {
   type Diagnostic, type ElementKind, type NumberedElement, type ResolvedDocument,
 } from './model.js';
 
+/** Attributes an import may carry. Anything else is a mistake worth reporting. */
+const KNOWN_ATTRIBUTES = new Set([
+  '#', 'alt', 'caption', 'page', 'rows', 'keep-together', 'slide', 'width', 'height',
+]);
+
 /** Extensions that decide the kind of an unlabelled import. */
 const FIGURE_EXTENSIONS = ['.dgm', '.mmd', '.ermlx', '.svg', '.png', '.jpg', '.jpeg', '.gif'];
 const TABLE_EXTENSIONS = ['.table', '.csv'];
@@ -82,6 +87,15 @@ export function resolveDocument(document: DocumentFile): ResolvedDocument {
     }
 
     if (block.kind !== 'import') return undefined;
+    for (const name of block.attributes.keys()) {
+      if (!KNOWN_ATTRIBUTES.has(name)) {
+        diagnostics.push({
+          severity: 'warning',
+          message: `未知の属性 '${name}' は無視される`,
+          span: block.span,
+        });
+      }
+    }
     const kind = kindOfImport(block, diagnostics);
     const caption = block.attributes.get('caption') ?? block.attributes.get('alt');
     if (kind === 'figure') return { kind, label: block.label, number: String(++figures), caption, block };

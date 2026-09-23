@@ -1,0 +1,86 @@
+/* Default theme. Style tokens emitted by the renderer as class names are
+   resolved here, so a document never contains a literal colour or width. */
+
+:root {
+  --font-heading: "Noto Sans CJK JP", sans-serif;
+  --font-body:    "Noto Serif CJK JP", serif;
+  --font-mono:    "Noto Sans Mono CJK JP", monospace;
+
+  --rule-thin:  1px solid #7a7f87;
+  --rule-thick: 2px solid #2d3138;
+
+  --fill-shade:    #eef0f3;
+  --fill-changed:  #fff4d6;
+  --fill-pending:  #e8f1fb;
+  --fill-disabled: #f0f0f0;
+  --fill-removed:  #fdecea;
+  --fill-tint-1:   #f7f8fa;
+  --fill-tint-2:   #f2f6f4;
+}
+
+body {
+  font-family: var(--font-body);
+  font-size: 10.5pt;
+  line-height: 1.9;
+  color: #1c1f24;
+  max-width: 48em;
+  margin: 3em auto;
+  padding: 0 1.5em;
+}
+
+h1, h2, h3, h4 { font-family: var(--font-heading); line-height: 1.5; margin: 2em 0 0.8em; }
+h1 { font-size: 1.7em; }
+h2 { font-size: 1.35em; border-bottom: var(--rule-thin); padding-bottom: 0.3em; }
+h3 { font-size: 1.1em; }
+code { font-family: var(--font-mono); font-size: 0.9em; background: var(--fill-tint-1); padding: 0 0.25em; }
+
+.dp-number { color: #5a6270; font-weight: 400; margin-right: 0.4em; }
+.dp-ref { color: #1f5fa8; text-decoration: none; border-bottom: 1px dotted currentColor; }
+
+/* A break, not a rule: shown only as a guide so the author can see where the
+   page will split when printed. */
+.dp-break {
+  border-top: 1px dashed #c3c8d0;
+  margin: 2.5em 0;
+  position: relative;
+}
+.dp-break::after {
+  content: "改ページ";
+  position: absolute; right: 0; top: -0.75em;
+  background: #fff; padding: 0 0.5em;
+  font-size: 0.7em; color: #98a0ab; font-family: var(--font-heading);
+}
+
+.dp-figure { margin: 1.8em 0; }
+.dp-caption { font-family: var(--font-heading); font-size: 0.9em; color: #3a4048; margin-top: 0.6em; }
+.dp-caption .dp-number { color: #1c1f24; font-weight: 600; }
+.dp-missing { color: #b3261e; font-family: var(--font-heading); }
+.dp-unrendered {
+  font-family: var(--font-mono); font-size: 0.8em; line-height: 1.6;
+  background: var(--fill-tint-1); border: var(--rule-thin); border-left-width: 3px;
+  padding: 0.8em 1em; overflow-x: auto; white-space: pre-wrap;
+}
+
+/* Tables ------------------------------------------------------------------ */
+.dp-table { border-collapse: collapse; width: 100%; font-size: 0.9em; font-family: var(--font-heading); }
+.dp-table th, .dp-table td { border: var(--rule-thin); padding: 0.35em 0.6em; vertical-align: top; }
+.dp-table thead th { background: var(--fill-shade); font-weight: 600; }
+
+.dp-align-left   { text-align: left; }
+.dp-align-center { text-align: center; }
+.dp-align-right  { text-align: right; }
+
+.dp-bottom-thick { border-bottom: var(--rule-thick); }
+.dp-right-thick  { border-right:  var(--rule-thick); }
+.dp-bottom-double { border-bottom: 3px double #2d3138; }
+
+.dp-fill-changed  { background: var(--fill-changed); }
+.dp-fill-pending  { background: var(--fill-pending); }
+.dp-fill-disabled { background: var(--fill-disabled); }
+.dp-fill-removed  { background: var(--fill-removed); }
+.dp-fill-shade    { background: var(--fill-shade); }
+.dp-fill-tint-1   { background: var(--fill-tint-1); }
+.dp-fill-tint-2   { background: var(--fill-tint-2); }
+
+.dp-cell-block ul { margin: 0; padding-left: 1.2em; }
+.dp-cell-block p { margin: 0; }

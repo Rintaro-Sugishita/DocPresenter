@@ -34,6 +34,16 @@ Word / Excel 形式での出力はスコープ外とする（[判断の根拠](d
 
 詳細と設計制約は [要件定義](design/requirements.md) を参照。
 
+## 実装状況
+
+| パッケージ | 内容 |
+|---|---|
+| `packages/core` | `.md` / `.table` のパーサとモデル、採番と参照解決、診断 |
+| `packages/render` | HTML レンダラ（ソースマップを `data-span` として埋め込む） |
+| `themes/default` | 既定テーマ（スタイルトークンを解決する CSS） |
+
+`node tools/render-sample.mjs` で [サンプル](sample/) を `out/auth-design.html` に描画できる。
+
 ## 検証
 
 - [日本語テキストが選択可能な PDF を出せるか](prototype/pdf-text/FINDINGS.md) — 検証済み・問題なし

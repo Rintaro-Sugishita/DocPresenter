@@ -1,0 +1,131 @@
+// Renders a document to HTML. Every element carries the byte range it came
+// from, so the DOM is itself the source map a review comment anchors through.
+
+import MarkdownIt from 'markdown-it';
+import {
+  byteLength, describe, parseTable,
+  type ByteSpan, type DocumentFile, type NumberedElement, type ResolvedDocument,
+} from '@docpresenter/core';
+import { escapeAttr, escapeHtml, renderTable, selectRows } from './table.js';
+
+/** Reading referenced files is injected so this package stays platform-neutral. */
+export interface ResourceLoader {
+  /** Resolves a path written in a document, relative to that document. */
+  read(path: string): string | undefined;
+}
+
+export interface RenderOptions {
+  readonly loader: ResourceLoader;
+}
+
+const markdown = new MarkdownIt({ html: true, linkify: false, typographer: false });
+
+export function renderDocument(
+  document: DocumentFile, resolved: ResolvedDocument, options: RenderOptions,
+): string {
+  const elementByBlock = new Map<unknown, NumberedElement>(
+    resolved.elements.map(e => [e.block, e]),
+  );
+  const parts: string[] = [];
+
+  for (const block of document.blocks) {
+    const span = spanAttr(block.span);
+    switch (block.kind) {
+      case 'heading': {
+        const element = elementByBlock.get(block);
+        const number = element?.number;
+        const label = block.label ? ` id="${escapeAttr(block.label)}"` : '';
+        const prefix = number ? `<span class="dp-number">${number}</span> ` : '';
+        parts.push(
+          `<h${block.level}${label}${span}>${prefix}${inline(block.text, block.span.start, resolved)}</h${block.level}>`,
+        );
+        break;
+      }
+      case 'separator':
+        // A break, not a rule: HTML flows continuously, so nothing is drawn.
+        parts.push(`<div class="dp-break" role="separator" aria-hidden="true"${span}></div>`);
+        break;
+      case 'prose':
+        parts.push(`<div class="dp-prose"${span}>${markdown.render(substitute(block.text, block.span.start, resolved))}</div>`);
+        break;
+      case 'import':
+        parts.push(renderImport(
+          block.path, block.label, elementByBlock.get(block), block.span, block.attributes, options,
+        ));
+        break;
+    }
+  }
+  return parts.join('\n');
+}
+
+function renderImport(
+  path: string, label: string | undefined, element: NumberedElement | undefined,
+  span: ByteSpan, attributes: ReadonlyMap<string, string>, options: RenderOptions,
+): string {
+  const source = options.loader.read(path);
+  const id = label ? ` id="${escapeAttr(label)}"` : '';
+  const body = source === undefined
+    ? `<p class="dp-missing">参照先が見つからない: ${escapeHtml(path)}</p>`
+    : renderResource(path, source, attributes);
+
+  const caption = element && element.number !== undefined
+    ? `<figcaption class="dp-caption">`
+      + `<span class="dp-number">${captionPrefix(element)}</span>`
+      + (element.caption ? ` ${escapeHtml(element.caption)}` : '')
+      + `</figcaption>`
+    : '';
+
+  return `<figure class="dp-figure" data-kind="${element?.kind ?? 'other'}"${id}${spanAttr(span)}>\n${body}\n${caption}\n</figure>`;
+}
+
+function captionPrefix(element: NumberedElement): string {
+  return describe(element);
+}
+
+function renderResource(
+  path: string, source: string, attributes: ReadonlyMap<string, string>,
+): string {
+  if (path.toLowerCase().endsWith('.table')) {
+    const table = parseTable(source);
+    const rows = attributes.get('rows');
+    if (rows === undefined) return renderTable(table);
+    const selected = selectRows(table, rows);
+    if (!selected) {
+      return `<p class="dp-missing">名前付き範囲が見つからない: ${escapeHtml(rows)}</p>`;
+    }
+    return renderTable(selected);
+  }
+  if (/\.(png|jpe?g|gif|svg)$/i.test(path)) {
+    return `<img src="${escapeAttr(path)}" alt="">`;
+  }
+  // Diagrams and delegated formats are not rendered yet; the source is shown so
+  // nothing is silently dropped.
+  return `<pre class="dp-unrendered" data-path="${escapeAttr(path)}">${escapeHtml(source.trim())}</pre>`;
+}
+
+const REFERENCE = /@(?:([A-Za-z0-9][\w.-]*):)?((?:fig|tbl|sec|req|des|tst)-[A-Za-z0-9_-]+)/g;
+
+/**
+ * Replaces `@label` with the text it resolves to. The byte range of the
+ * reference itself is carried through, so a comment on the rendered text maps
+ * back to the `@label` in the source rather than to the substituted number.
+ */
+function substitute(text: string, baseOffset: number, resolved: ResolvedDocument): string {
+  REFERENCE.lastIndex = 0;
+  return text.replace(REFERENCE, (whole, _document: string | undefined, label: string, index: number) => {
+    const target = resolved.byLabel.get(label);
+    if (!target || target.number === undefined) return whole;
+    const start = baseOffset + byteLength(text.slice(0, index));
+    const end = start + byteLength(whole);
+    return `<a class="dp-ref" href="#${escapeAttr(label)}" data-ref="${escapeAttr(label)}"`
+      + ` data-span="${start},${end}">${escapeHtml(describe(target))}</a>`;
+  });
+}
+
+function inline(text: string, baseOffset: number, resolved: ResolvedDocument): string {
+  return markdown.renderInline(substitute(text, baseOffset, resolved));
+}
+
+function spanAttr(span: ByteSpan): string {
+  return ` data-span="${span.start},${span.end}"`;
+}

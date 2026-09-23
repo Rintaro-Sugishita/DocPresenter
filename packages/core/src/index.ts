@@ -1,3 +1,4 @@
+export * from './bytes.js';
 export * from './table/model.js';
 export * from './table/parse.js';
 export * from './document/model.js';

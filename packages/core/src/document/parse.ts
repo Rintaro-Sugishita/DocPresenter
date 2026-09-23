@@ -2,6 +2,7 @@
 // @import directive, labels on headings, `@label` references and `---`.
 
 import { parse as parseYaml } from 'yaml';
+import { byteLength } from '../bytes.js';
 import type {
   Block, ByteSpan, DocumentFile, Frontmatter, Import, Reference,
 } from './model.js';
@@ -13,10 +14,6 @@ const HEADING = /^(#{1,6})\s+(.*?)(?:\s*\{#([A-Za-z0-9_-]+)\})?\s*$/;
 const IMPORT = /^@import\s+"([^"]+)"\s*(?:\{(.*)\})?\s*$/;
 /** Also accepted on read, though never written back. */
 const IMAGE_IMPORT = /^!\[([^\]]*)\]\(([^)]+)\)\s*(?:\{(.*)\})?\s*$/;
-
-/** Byte lengths use TextEncoder so that core stays platform-neutral. */
-const encoder = new TextEncoder();
-const byteLength = (text: string): number => encoder.encode(text).length;
 
 export class DocumentParseError extends Error {
   constructor(message: string, readonly line: number) {
