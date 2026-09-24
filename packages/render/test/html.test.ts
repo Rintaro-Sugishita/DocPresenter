@@ -159,3 +159,32 @@ describe('未知の属性', () => {
     expect(r.diagnostics.map(d => d.message)).toContain("未知の属性 'typo-attr' は無視される");
   });
 });
+
+describe('意味トークンの span', () => {
+  it('[…]{.pending} が class 付きの span になる', () => {
+    const html = render('# T\n\nここは[要確認]{.pending}です。');
+    expect(html).toContain('<span class="dp-text-pending">要確認</span>');
+  });
+
+  it('中身の markdown も解釈される', () => {
+    const html = render('# T\n\n[**強い**変更]{.changed}');
+    expect(html).toContain('<span class="dp-text-changed"><strong>強い</strong>変更</span>');
+  });
+
+  it('語彙にないクラスは span にしない', () => {
+    // 直値の色や任意のクラスを持ち込ませない。
+    const html = render('# T\n\n[赤]{.red} と [青]{color:#00f}');
+    expect(html).not.toContain('<span');
+    expect(html).toContain('{.red}');
+  });
+
+  it('通常のリンクを壊さない', () => {
+    const html = render('# T\n\n[本文](./a.md) を見よ。');
+    expect(html).toContain('<a href="./a.md">本文</a>');
+  });
+
+  it('見出しの中でも効く', () => {
+    const html = render('# T\n\n## [検討中]{.pending} の章');
+    expect(html).toContain('<span class="dp-text-pending">検討中</span>');
+  });
+});

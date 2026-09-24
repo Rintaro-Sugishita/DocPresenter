@@ -16,6 +16,14 @@
   --fill-removed:  #fdecea;
   --fill-tint-1:   #f7f8fa;
   --fill-tint-2:   #f2f6f4;
+
+  /* The same four meanings as a table's fills, as text colour. Chosen to stay
+     legible in greyscale print, and paired with a second signal so the meaning
+     does not rest on colour alone. */
+  --text-changed:  #8a5a00;
+  --text-pending:  #1f5fa8;
+  --text-disabled: #767c85;
+  --text-removed:  #b3261e;
 }
 
 body {
@@ -71,6 +79,12 @@ code { font-family: var(--font-mono); font-size: 0.9em; background: var(--fill-t
   background: var(--fill-tint-1); border: var(--rule-thin); border-left-width: 3px;
   padding: 0.8em 1em; overflow-x: auto; white-space: pre-wrap;
 }
+
+/* Meaning tokens in running text ------------------------------------------ */
+.dp-text-changed  { color: var(--text-changed); background: var(--fill-changed); }
+.dp-text-pending  { color: var(--text-pending); border-bottom: 1px dashed currentColor; }
+.dp-text-disabled { color: var(--text-disabled); }
+.dp-text-removed  { color: var(--text-removed); text-decoration: line-through; }
 
 /* Tables ------------------------------------------------------------------ */
 .dp-table { border-collapse: collapse; width: 100%; font-size: 0.9em; font-family: var(--font-heading); }

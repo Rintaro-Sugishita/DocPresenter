@@ -18,6 +18,46 @@ export const EDITOR_STYLE = `
 }
 .dp-editor-pane:not(.dp-continuous) .dp-sheet + .dp-sheet::after { content: none; }
 
+/* Editing a block shows the Markdown that produced it, in the document's own
+   type so the shape of what you are writing does not change under you. */
+.dp-editing { position: relative; }
+.dp-block-source {
+  display: block; width: 100%; box-sizing: border-box;
+  font: inherit; line-height: inherit; color: inherit;
+  background: #fffdf5; border: 1px solid #d8b96b; border-radius: 3px;
+  padding: 0.4em 0.6em; resize: none; overflow: hidden;
+}
+.dp-block-source:focus { outline: 2px solid #d8b96b; outline-offset: -1px; }
+
+.dp-format-bar {
+  position: absolute; top: -2.4em; right: 0; z-index: 2;
+  display: flex; align-items: stretch; gap: 1px;
+  background: #2d3138; border-radius: 4px; padding: 2px;
+  box-shadow: 0 2px 6px rgba(0,0,0,.25);
+  font-family: system-ui, sans-serif; font-size: 12px; line-height: 1;
+}
+.dp-format-bar button {
+  border: none; background: transparent; color: #e6e8eb; cursor: pointer;
+  padding: 0.45em 0.6em; border-radius: 3px; font-size: 12px;
+}
+.dp-format-bar button:hover { background: #454b54; }
+.dp-format-bar button[aria-pressed="true"] { background: #fff; color: #1c1f24; }
+.dp-format-bold { font-weight: 700; }
+.dp-format-italic { font-style: italic; }
+.dp-format-code { font-family: ui-monospace, monospace; }
+.dp-format-divider { width: 1px; background: #565c66; margin: 0.3em 0.25em; }
+/* Each token button shows a swatch of the colour the theme gives that meaning,
+   so the bar shows the vocabulary instead of only naming it. */
+.dp-format-token { display: inline-flex; align-items: center; gap: 0.4em; }
+.dp-format-token::before {
+  content: ""; width: 0.75em; height: 0.75em; border-radius: 2px;
+  background: currentColor; box-shadow: 0 0 0 1px rgba(255,255,255,.35);
+}
+.dp-token-changed::before  { color: var(--text-changed, #8a5a00); }
+.dp-token-pending::before  { color: var(--text-pending, #1f5fa8); }
+.dp-token-disabled::before { color: var(--text-disabled, #767c85); }
+.dp-token-removed::before  { color: var(--text-removed, #b3261e); }
+
 .dp-tabbar {
   display: flex; align-items: stretch; gap: 2px;
   border-top: 1px solid #c8ccd2; background: #e9ebef;

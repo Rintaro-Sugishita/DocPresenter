@@ -9,6 +9,7 @@ import {
 import { renderDiagram } from '../svg/render.js';
 import { renderOverlay } from './overlay.js';
 import { joinPath } from './path.js';
+import { bracketedSpan } from './span.js';
 import { escapeAttr, escapeHtml, renderTable, selectRows } from './table.js';
 
 /** Reading referenced files is injected so this package stays platform-neutral. */
@@ -30,7 +31,8 @@ export interface RenderOptions {
 // `breaks: true`: a line break in the source is a line break in the output.
 // A design document is written in short lines on purpose, and silently joining
 // them would make the rendered text disagree with the file a reviewer reads.
-const markdown = new MarkdownIt({ html: true, linkify: false, typographer: false, breaks: true });
+const markdown = new MarkdownIt({ html: true, linkify: false, typographer: false, breaks: true })
+  .use(bracketedSpan);
 
 export function renderDocument(
   document: DocumentFile, resolved: ResolvedDocument, options: RenderOptions,

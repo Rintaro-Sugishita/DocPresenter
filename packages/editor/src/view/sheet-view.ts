@@ -5,11 +5,13 @@
 // which are byte-range edits. That means what the screen shows and what the
 // file contains can never drift apart: there is only the file.
 
-import { parseDocument, sheetsOf, type Sheet } from '@docpresenter/core';
+import { parseDocument, sheetsOf, sliceBytes, type Sheet } from '@docpresenter/core';
 import type { Edit } from '../edit.js';
 import { applyEdit } from '../edit.js';
+import { toggleInline, type InlineMark } from '../inline.js';
 import { insertSheet, moveSheet, removeSheet, renameSheet, SheetEditError } from '../sheets.js';
 import { EDITOR_STYLE } from './style.js';
+import { createToolbar } from './toolbar.js';
 
 export interface SheetViewOptions {
   readonly root: HTMLElement;
@@ -37,8 +39,10 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
   let dragging: number | undefined;
   let sections: HTMLElement[] = [];
   let tabs: HTMLElement[] = [];
+  let editing: BlockEdit | undefined;
 
-  injectStyle(root.ownerDocument);
+  const owner = root.ownerDocument;
+  injectStyle(owner);
   root.classList.add('dp-editor');
   const pane = element('div', 'dp-editor-pane');
   const tabbar = element('div', 'dp-tabbar');
@@ -46,9 +50,107 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
   root.append(pane, tabbar);
 
   function element(tag: string, className: string): HTMLElement {
-    const node = root.ownerDocument.createElement(tag);
+    const node = owner.createElement(tag);
     node.className = className;
     return node;
+  }
+
+  // --- 本文の編集 --------------------------------------------------------
+  //
+  // A block is edited as what it is: the Markdown that produced it. Clicking
+  // opens the source of that block and nothing else, so the byte range written
+  // back is exactly the range that was opened.
+
+  interface BlockEdit {
+    readonly host: HTMLElement;
+    readonly original: string;
+    readonly span: { start: number; end: number };
+    readonly area: HTMLTextAreaElement;
+  }
+
+  const toolbar = createToolbar(owner, applyFormat);
+
+  function applyFormat(mark: InlineMark): void {
+    const current = editing;
+    if (!current) return;
+    const { area } = current;
+    const change = toggleInline(area.value, area.selectionStart, area.selectionEnd, mark);
+    area.setRangeText(change.text, change.start, change.end, 'preserve');
+    area.setSelectionRange(change.select.start, change.select.end);
+    area.focus();
+    resize(area);
+    toolbar.sync(area.value, area.selectionStart, area.selectionEnd);
+  }
+
+  function beginEdit(host: HTMLElement): void {
+    if (editing?.host === host) return;
+    endEdit(true);
+    const span = spanOf(host);
+    if (!span) return;
+
+    const area = owner.createElement('textarea');
+    area.className = 'dp-block-source';
+    area.value = sliceBytes(source, span.start, span.end);
+    area.spellcheck = false;
+
+    const edit: BlockEdit = { host, original: host.innerHTML, span, area };
+    host.classList.add('dp-editing');
+    host.replaceChildren(toolbar.element, area);
+    editing = edit;
+
+    resize(area);
+    area.focus();
+    area.setSelectionRange(area.value.length, area.value.length);
+    toolbar.sync(area.value, area.selectionStart, area.selectionEnd);
+
+    const update = (): void => {
+      resize(area);
+      toolbar.sync(area.value, area.selectionStart, area.selectionEnd);
+    };
+    area.addEventListener('input', update);
+    area.addEventListener('select', update);
+    area.addEventListener('keyup', update);
+    area.addEventListener('click', update);
+    area.addEventListener('blur', () => endEdit(true));
+    area.addEventListener('keydown', event => {
+      event.stopPropagation();
+      if (event.key === 'Escape') { event.preventDefault(); endEdit(false); }
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'b') {
+        event.preventDefault(); applyFormat('bold');
+      }
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'i') {
+        event.preventDefault(); applyFormat('italic');
+      }
+    });
+  }
+
+  /** Commits the open block, if any. `keep` false throws the changes away. */
+  function endEdit(keep: boolean): void {
+    const current = editing;
+    if (!current) return;
+    editing = undefined;
+    current.host.classList.remove('dp-editing');
+
+    const written = current.area.value;
+    const before = sliceBytes(source, current.span.start, current.span.end);
+    if (!keep || written === before) {
+      current.host.innerHTML = current.original;
+      return;
+    }
+    commit(() => ({
+      span: current.span, text: written, description: '本文を編集',
+    }), active);
+  }
+
+  function spanOf(host: HTMLElement): { start: number; end: number } | undefined {
+    const raw = host.dataset['span']?.split(',').map(Number);
+    if (!raw || raw.length !== 2 || raw.some(Number.isNaN)) return undefined;
+    return { start: raw[0]!, end: raw[1]! };
+  }
+
+  function resize(area: HTMLTextAreaElement): void {
+    area.style.height = 'auto';
+    area.style.height = `${area.scrollHeight}px`;
   }
 
   function sheets(): readonly Sheet[] {
@@ -75,7 +177,13 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
   function draw(): void {
     const page = element('div', 'dp-page');
     page.innerHTML = render(source);
+    page.addEventListener('click', event => {
+      const target = (event.target as HTMLElement | null)
+        ?.closest<HTMLElement>('.dp-prose, h1, h2, h3, h4, h5, h6');
+      if (target && page.contains(target)) beginEdit(target);
+    });
     pane.replaceChildren(page);
+    editing = undefined;
     sections = [...page.querySelectorAll<HTMLElement>('.dp-sheet')];
 
     drawTabs(sections.map((section, i) => ({
@@ -114,7 +222,7 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
       tab.dataset['index'] = String(index);
       if (label.empty) tab.dataset['empty'] = 'true';
       tab.draggable = true;
-      tab.append(root.ownerDocument.createTextNode(label.title));
+      tab.append(owner.createTextNode(label.title));
 
       tab.addEventListener('click', () => select(index));
       tab.addEventListener('dblclick', () => beginRename(tab, index, label.title));
@@ -208,11 +316,11 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
 
   // Ctrl+PageUp / PageDown move between sheets, as in a spreadsheet.
   const onKeyDown = (event: KeyboardEvent): void => {
-    if (!event.ctrlKey) return;
+    if (!event.ctrlKey || editing) return;
     if (event.key === 'PageDown') { event.preventDefault(); select(active + 1); }
     if (event.key === 'PageUp') { event.preventDefault(); select(active - 1); }
   };
-  root.ownerDocument.addEventListener('keydown', onKeyDown);
+  owner.addEventListener('keydown', onKeyDown);
 
   draw();
 
@@ -221,7 +329,7 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
     get active() { return active; },
     select,
     destroy() {
-      root.ownerDocument.removeEventListener('keydown', onKeyDown);
+      owner.removeEventListener('keydown', onKeyDown);
       root.replaceChildren();
       root.classList.remove('dp-editor');
     },
