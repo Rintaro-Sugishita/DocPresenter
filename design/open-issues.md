@@ -88,6 +88,7 @@
 | 同一要素を 1 文書内で複数回参照した場合の採番 | [参照記法](reference-syntax.md) |
 | 文書をまたぐ参照の記法 | [参照記法](reference-syntax.md) |
 | 文書メタデータと改訂履歴（Git との二重管理をどうするか） | [サンプル 穴 8](../sample/README.md) |
+| ZIP に `.review.yml` を含めるか（Level 1 のレビュー導線と同じ袋に入れるか） | [提供形態 §3.4](platforms.md) |
 
 ## C. 後回しでよいこと
 
@@ -102,6 +103,7 @@
 | D9 lint・表記ゆれ抑制 | [Excel 脱却要求の整理](../docs/research/excel-migration-japan.md) |
 | D3 画面設計書を R2 で吸収できるか（オーバーレイで足りるかの検証待ち） | [要件定義](requirements.md) |
 | 文書の可搬性（`shared/` 参照の解決）、パラメータ化、文章の粒度 | [編集 UI](editor-model.md) |
+| フォルダ直編集からレビューへ移る導線（コミットの無い状態で付けた指摘を最初のコミットに結び直せるか） | [提供形態 §3.3](platforms.md) |
 | MPE 互換の範囲の明示 | [参照記法](reference-syntax.md) |
 | ~~ライセンス~~ → **決定済み**（[ライセンス方針](licensing.md)）。残るのは **harfbuzzjs のライセンス確認**のみ | — |
 
