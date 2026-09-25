@@ -29,6 +29,18 @@ export const EDITOR_STYLE = `
 }
 .dp-block-source:focus { outline: 2px solid #d8b96b; outline-offset: -1px; }
 
+/* Where a new block begins. An empty sheet says so; a sheet with content
+   keeps it quiet until the pointer is over it. */
+.dp-append {
+  cursor: text; min-height: 1.8em; padding: 0.5em 0;
+  font-family: var(--font-heading, sans-serif); font-size: 0.85em;
+  color: transparent; position: relative;
+}
+.dp-append:hover { color: #a7aeb8; }
+.dp-append:hover:empty::before { content: "ここに本文を書く"; }
+.dp-sheet-empty .dp-append { color: #8b929c; min-height: 3em; }
+.dp-append.dp-editing, .dp-append:has(.dp-block-source) { color: inherit; font-size: inherit; }
+
 .dp-format-bar {
   position: absolute; top: -2.4em; right: 0; z-index: 2;
   display: flex; align-items: stretch; gap: 1px;
@@ -87,7 +99,7 @@ export const EDITOR_STYLE = `
 .dp-tab-close:hover { color: #b3261e; }
 .dp-tab-rename {
   font: inherit; font-weight: 600; border: 1px solid #1f5fa8; border-radius: 2px;
-  padding: 0.1em 0.3em; min-width: 6em;
+  padding: 0.1em 0.3em; width: 100%; min-width: 0; box-sizing: border-box;
 }
 .dp-tab-add { font-size: 15px; padding: 0.55em 0.8em; color: #5a6270; }
 .dp-tabbar-spacer { flex: 1; }

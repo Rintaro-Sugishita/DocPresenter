@@ -66,6 +66,10 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
     readonly original: string;
     readonly span: { start: number; end: number };
     readonly area: HTMLTextAreaElement;
+    /** Written before the text. A new block needs the blank line that separates it. */
+    readonly prefix: string;
+    /** A new block, so an empty box means "never mind" rather than "delete this". */
+    readonly fresh: boolean;
   }
 
   const toolbar = createToolbar(owner, applyFormat);
@@ -84,16 +88,35 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
 
   function beginEdit(host: HTMLElement): void {
     if (editing?.host === host) return;
-    endEdit(true);
     const span = spanOf(host);
     if (!span) return;
+    open(host, span, sliceBytes(source, span.start, span.end), '', false);
+  }
+
+  /**
+   * Starts a new block at the end of a sheet. An empty sheet, or the space
+   * after the last block, is the only place with nothing to click — without
+   * this there is no way to begin writing at all.
+   */
+  function beginAppend(host: HTMLElement): void {
+    if (editing?.host === host) return;
+    const at = spanOf(host)?.end;
+    if (at === undefined) return;
+    open(host, { start: at, end: at }, '', '\n\n', true);
+  }
+
+  function open(
+    host: HTMLElement, span: { start: number; end: number },
+    initial: string, prefix: string, fresh: boolean,
+  ): void {
+    endEdit(true);
 
     const area = owner.createElement('textarea');
     area.className = 'dp-block-source';
-    area.value = sliceBytes(source, span.start, span.end);
+    area.value = initial;
     area.spellcheck = false;
 
-    const edit: BlockEdit = { host, original: host.innerHTML, span, area };
+    const edit: BlockEdit = { host, original: host.innerHTML, span, area, prefix, fresh };
     host.classList.add('dp-editing');
     host.replaceChildren(toolbar.element, area);
     editing = edit;
@@ -131,15 +154,30 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
     editing = undefined;
     current.host.classList.remove('dp-editing');
 
-    const written = current.area.value;
+    const typed = current.area.value;
     const before = sliceBytes(source, current.span.start, current.span.end);
-    if (!keep || written === before) {
+    const abandoned = current.fresh ? typed.trim() === '' : typed === before;
+    if (!keep || abandoned) {
       current.host.innerHTML = current.original;
       return;
     }
     commit(() => ({
-      span: current.span, text: written, description: '本文を編集',
+      span: current.span,
+      text: current.prefix + typed,
+      description: current.fresh ? '本文を追加' : '本文を編集',
     }), active);
+  }
+
+  /** The place to start writing, at the end of a sheet. Editor chrome only. */
+  function addAppendTarget(section: HTMLElement): void {
+    const empty = section.childElementCount === 0;
+    section.classList.toggle('dp-sheet-empty', empty);
+    const append = element('div', 'dp-append');
+    // The sheet's own range ends where its last block ends, which is where a
+    // new block goes, so the target carries the same range.
+    append.dataset['span'] = section.dataset['span'] ?? '';
+    append.textContent = empty ? 'ここに本文を書く' : '';
+    section.append(append);
   }
 
   function spanOf(host: HTMLElement): { start: number; end: number } | undefined {
@@ -179,12 +217,15 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
     page.innerHTML = render(source);
     page.addEventListener('click', event => {
       const target = (event.target as HTMLElement | null)
-        ?.closest<HTMLElement>('.dp-prose, h1, h2, h3, h4, h5, h6');
-      if (target && page.contains(target)) beginEdit(target);
+        ?.closest<HTMLElement>('.dp-append, .dp-prose, h1, h2, h3, h4, h5, h6');
+      if (!target || !page.contains(target)) return;
+      if (target.classList.contains('dp-append')) beginAppend(target);
+      else beginEdit(target);
     });
     pane.replaceChildren(page);
     editing = undefined;
     sections = [...page.querySelectorAll<HTMLElement>('.dp-sheet')];
+    for (const section of sections) addAppendTarget(section);
 
     drawTabs(sections.map((section, i) => ({
       title: section.dataset['title'] ?? `シート ${i + 1}`,
@@ -285,6 +326,9 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
 
   /** Renaming edits the heading the name comes from; there is no other name. */
   function beginRename(tab: HTMLElement, index: number, title: string): void {
+    // The tab keeps the width it had. Letting the box size itself shifts every
+    // tab to its right while the name is being typed.
+    tab.style.width = `${tab.getBoundingClientRect().width}px`;
     const input = element('input', 'dp-tab-rename') as HTMLInputElement;
     input.value = title;
     tab.replaceChildren(input);
@@ -298,6 +342,7 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
       if (done) return;
       done = true;
       const name = input.value.trim();
+      tab.style.width = '';
       if (!accept || name === '' || name === title) { draw(); return; }
       commit(() => renameSheet(parseDocument(source), source, index, name), index);
     };
