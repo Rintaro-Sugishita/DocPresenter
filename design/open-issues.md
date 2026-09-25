@@ -103,6 +103,8 @@
 | D9 lint・表記ゆれ抑制 | [Excel 脱却要求の整理](../docs/research/excel-migration-japan.md) |
 | D3 画面設計書を R2 で吸収できるか（オーバーレイで足りるかの検証待ち） | [要件定義](requirements.md) |
 | 文書の可搬性（`shared/` 参照の解決）、パラメータ化、文章の粒度 | [編集 UI](editor-model.md) |
+| VS Code の設定キー名と、ワークスペース設定でキー割り当てを揃えるべきか | [設定モデル §5](settings-model.md) |
+| 表のグリッド編集・図形のドラッグ編集（いまはどちらもソースを開いて直す） | [表モデル](table-model.md) / [作図モデル](diagram-model.md) |
 | フォルダ直編集からレビューへ移る導線（コミットの無い状態で付けた指摘を最初のコミットに結び直せるか） | [提供形態 §3.3](platforms.md) |
 | MPE 互換の範囲の明示 | [参照記法](reference-syntax.md) |
 | ~~ライセンス~~ → **決定済み**（[ライセンス方針](licensing.md)）。残るのは **harfbuzzjs のライセンス確認**のみ | — |

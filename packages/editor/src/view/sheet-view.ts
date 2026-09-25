@@ -5,10 +5,11 @@
 // which are byte-range edits. That means what the screen shows and what the
 // file contains can never drift apart: there is only the file.
 
-import { parseDocument, sheetsOf, sliceBytes, type Sheet } from '@docpresenter/core';
+import { byteLength, parseDocument, sheetsOf, sliceBytes, type Sheet } from '@docpresenter/core';
 import type { Edit } from '../edit.js';
 import { applyEdit } from '../edit.js';
 import { toggleInline, type InlineMark } from '../inline.js';
+import { DEFAULT_SETTINGS, isCommit, type EditorSettings } from '../settings.js';
 import { insertSheet, moveSheet, removeSheet, renameSheet, SheetEditError } from '../sheets.js';
 import { EDITOR_STYLE } from './style.js';
 import { createToolbar } from './toolbar.js';
@@ -18,16 +19,30 @@ export interface SheetViewOptions {
   readonly source: string;
   /** Renders a document to HTML made of `<section class="dp-sheet">`. */
   readonly render: (source: string) => string;
-  /** Called after every edit, with the new source and the edit that made it. */
-  readonly onChange?: (source: string, edit: Edit) => void;
+  /**
+   * Reads a referenced file so its source can be opened. Without it a diagram
+   * or a table can be looked at but not edited.
+   */
+  readonly readResource?: (path: string) => string | undefined;
+  /**
+   * Called after every edit with the full new text of whatever was edited —
+   * the document when `edit.path` is absent, that referenced file otherwise.
+   * The host must store it before returning: the view redraws straight after,
+   * and reads referenced files back through `render`.
+   */
+  readonly onChange?: (edit: Edit, text: string) => void;
   /** Called when an operation is refused, so the app can say why. */
   readonly onError?: (message: string) => void;
+  /** Key bindings and the like. See settings.ts for why this is a value. */
+  readonly settings?: EditorSettings;
 }
 
 export interface SheetView {
   readonly source: string;
   readonly active: number;
   select(index: number): void;
+  /** Applies changed settings without losing the place. */
+  configure(settings: EditorSettings): void;
   destroy(): void;
 }
 
@@ -40,6 +55,7 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
   let sections: HTMLElement[] = [];
   let tabs: HTMLElement[] = [];
   let editing: BlockEdit | undefined;
+  let settings = options.settings ?? DEFAULT_SETTINGS;
 
   const owner = root.ownerDocument;
   injectStyle(owner);
@@ -70,6 +86,8 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
     readonly prefix: string;
     /** A new block, so an empty box means "never mind" rather than "delete this". */
     readonly fresh: boolean;
+    /** The referenced file being edited, or undefined for the document. */
+    readonly path: string | undefined;
   }
 
   const toolbar = createToolbar(owner, applyFormat);
@@ -90,7 +108,24 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
     if (editing?.host === host) return;
     const span = spanOf(host);
     if (!span) return;
-    open(host, span, sliceBytes(source, span.start, span.end), '', false);
+    open(host, span, sliceBytes(source, span.start, span.end), '', false, undefined);
+  }
+
+  /**
+   * Opens a diagram or a table — the whole of the file it lives in. A figure
+   * is one file, so its range is that file from end to end; the `@import` line
+   * that placed it belongs to the document and is edited from the caption.
+   */
+  function beginResourceEdit(figure: HTMLElement): void {
+    const body = figure.querySelector<HTMLElement>('.dp-figure-body');
+    const path = figure.dataset['path'];
+    if (!body || !path || editing?.host === body) return;
+    const text = options.readResource?.(path);
+    if (text === undefined) {
+      options.onError?.(`${path} を開けない`);
+      return;
+    }
+    open(body, { start: 0, end: byteLength(text) }, text, '', false, path);
   }
 
   /**
@@ -102,12 +137,12 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
     if (editing?.host === host) return;
     const at = spanOf(host)?.end;
     if (at === undefined) return;
-    open(host, { start: at, end: at }, '', '\n\n', true);
+    open(host, { start: at, end: at }, '', '\n\n', true, undefined);
   }
 
   function open(
     host: HTMLElement, span: { start: number; end: number },
-    initial: string, prefix: string, fresh: boolean,
+    initial: string, prefix: string, fresh: boolean, path: string | undefined,
   ): void {
     endEdit(true);
 
@@ -116,9 +151,12 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
     area.value = initial;
     area.spellcheck = false;
 
-    const edit: BlockEdit = { host, original: host.innerHTML, span, area, prefix, fresh };
+    const edit: BlockEdit = { host, original: host.innerHTML, span, area, prefix, fresh, path };
     host.classList.add('dp-editing');
-    host.replaceChildren(toolbar.element, area);
+    // The bar writes Markdown. A table's cells take inline Markdown but its
+    // meaning tokens are fills in the style section, and a diagram takes
+    // neither — so a bar over a referenced file would write the wrong thing.
+    host.replaceChildren(...(path === undefined ? [toolbar.element, area] : [area]));
     editing = edit;
 
     resize(area);
@@ -138,6 +176,16 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
     area.addEventListener('keydown', event => {
       event.stopPropagation();
       if (event.key === 'Escape') { event.preventDefault(); endEdit(false); }
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        if (isCommit(event, settings.commitKey)) { endEdit(true); return; }
+        // Every Enter that is not the commit inserts a line break, including
+        // the modified ones a text box would otherwise swallow.
+        area.setRangeText('\n', area.selectionStart, area.selectionEnd, 'end');
+        resize(area);
+        toolbar.sync(area.value, area.selectionStart, area.selectionEnd);
+        return;
+      }
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'b') {
         event.preventDefault(); applyFormat('bold');
       }
@@ -155,7 +203,10 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
     current.host.classList.remove('dp-editing');
 
     const typed = current.area.value;
-    const before = sliceBytes(source, current.span.start, current.span.end);
+    const whole = current.path === undefined
+      ? source
+      : options.readResource?.(current.path) ?? '';
+    const before = sliceBytes(whole, current.span.start, current.span.end);
     const abandoned = current.fresh ? typed.trim() === '' : typed === before;
     if (!keep || abandoned) {
       current.host.innerHTML = current.original;
@@ -164,8 +215,30 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
     commit(() => ({
       span: current.span,
       text: current.prefix + typed,
-      description: current.fresh ? '本文を追加' : '本文を編集',
+      path: current.path,
+      description: current.path !== undefined
+        ? `${current.path} を編集`
+        : current.fresh ? '本文を追加' : '本文を編集',
     }), active);
+  }
+
+  /** Edits one element's range while showing the box somewhere else. */
+  function beginEdit2(host: HTMLElement, ranged: HTMLElement): void {
+    if (editing?.host === host) return;
+    const span = spanOf(ranged);
+    if (!span) return;
+    open(host, span, sliceBytes(source, span.start, span.end), '', false, undefined);
+  }
+
+  /**
+   * A figure with no caption has nothing that stands for the `@import` line,
+   * so the editor shows the line itself. Editor chrome; never in the output.
+   */
+  function addImportTarget(figure: HTMLElement): void {
+    if (figure.querySelector('.dp-caption')) return;
+    const line = element('div', 'dp-import-line');
+    line.textContent = `@import "${figure.dataset['path'] ?? ''}"`;
+    figure.append(line);
   }
 
   /** The place to start writing, at the end of a sheet. Editor chrome only. */
@@ -196,7 +269,12 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
     return sheetsOf(document, undefined);
   }
 
-  /** Runs one operation, re-renders, and keeps the named sheet selected. */
+  /**
+   * Runs one operation, re-renders, and keeps the named sheet selected. An
+   * edit that the document parser then refuses is rolled back: editing raw
+   * Markdown makes an unparsable document reachable, and a broken editor is
+   * worse than a refused keystroke.
+   */
   function commit(make: () => Edit, select: number): void {
     let edit: Edit;
     try {
@@ -205,10 +283,26 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
       if (error instanceof SheetEditError) { options.onError?.(error.message); return; }
       throw error;
     }
-    source = applyEdit(source, edit);
-    active = Math.max(1, Math.min(select, sheets().length));
-    draw();
-    options.onChange?.(source, edit);
+
+    const previous = source;
+    const before = edit.path === undefined ? undefined : options.readResource?.(edit.path);
+    const written = applyEdit(
+      edit.path === undefined ? source : before ?? '', edit,
+    );
+    if (edit.path === undefined) source = written;
+    options.onChange?.(edit, written);
+
+    try {
+      active = Math.max(1, Math.min(select, sheets().length));
+      draw();
+    } catch (error) {
+      source = previous;
+      if (edit.path !== undefined && before !== undefined) {
+        options.onChange?.({ ...edit, description: '取り消し' }, before);
+      }
+      draw();
+      options.onError?.(error instanceof Error ? error.message : String(error));
+    }
   }
 
   /** Rebuilds everything. Only an edit needs this. */
@@ -216,9 +310,21 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
     const page = element('div', 'dp-page');
     page.innerHTML = render(source);
     page.addEventListener('click', event => {
-      const target = (event.target as HTMLElement | null)
-        ?.closest<HTMLElement>('.dp-append, .dp-prose, h1, h2, h3, h4, h5, h6');
+      const from = event.target as HTMLElement | null;
+      const target = from?.closest<HTMLElement>(
+        '.dp-block-source, .dp-caption, .dp-import-line, .dp-figure,'
+        + ' .dp-append, .dp-prose, h1, h2, h3, h4, h5, h6',
+      );
       if (!target || !page.contains(target)) return;
+      // Inside a figure, the drawing is the referenced file and the caption is
+      // the `@import` line that placed it. You edit what you pointed at.
+      if (target.classList.contains('dp-block-source')) return;
+      if (target.classList.contains('dp-caption') || target.classList.contains('dp-import-line')) {
+        const figure = target.closest<HTMLElement>('.dp-figure');
+        if (figure) beginEdit2(target, figure);
+        return;
+      }
+      if (target.classList.contains('dp-figure')) { beginResourceEdit(target); return; }
       if (target.classList.contains('dp-append')) beginAppend(target);
       else beginEdit(target);
     });
@@ -226,6 +332,7 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
     editing = undefined;
     sections = [...page.querySelectorAll<HTMLElement>('.dp-sheet')];
     for (const section of sections) addAppendTarget(section);
+    for (const figure of page.querySelectorAll<HTMLElement>('.dp-figure')) addImportTarget(figure);
 
     drawTabs(sections.map((section, i) => ({
       title: section.dataset['title'] ?? `シート ${i + 1}`,
@@ -373,6 +480,9 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
     get source() { return source; },
     get active() { return active; },
     select,
+    configure(next) {
+      settings = next;
+    },
     destroy() {
       owner.removeEventListener('keydown', onKeyDown);
       root.replaceChildren();

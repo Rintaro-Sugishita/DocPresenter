@@ -98,7 +98,9 @@ function renderImport(
       + `</figcaption>`
     : '';
 
-  return `<figure class="dp-figure" data-kind="${element?.kind ?? 'other'}"${id}${spanAttr(span)}>\n${body}\n${caption}\n</figure>`;
+  return `<figure class="dp-figure" data-kind="${element?.kind ?? 'other'}"`
+    + ` data-path="${escapeAttr(path)}"${id}${spanAttr(span)}>`
+    + `\n<div class="dp-figure-body">${body}</div>\n${caption}\n</figure>`;
 }
 
 function captionPrefix(element: NumberedElement): string {
@@ -109,6 +111,21 @@ function renderResource(
   path: string, source: string, attributes: ReadonlyMap<string, string>, options: RenderOptions,
 ): string {
   const url = (target: string): string => options.loader.url?.(target) ?? target;
+  try {
+    return renderKnown(path, source, attributes, url);
+  } catch (error) {
+    // A referenced file can now be edited in place, so a half-written one has
+    // to be shown as what it is rather than taking the whole page down.
+    const message = error instanceof Error ? error.message : String(error);
+    return `<p class="dp-broken">${escapeHtml(path)} を読めない: ${escapeHtml(message)}</p>`
+      + `<pre class="dp-unrendered">${escapeHtml(source.trim())}</pre>`;
+  }
+}
+
+function renderKnown(
+  path: string, source: string, attributes: ReadonlyMap<string, string>,
+  url: (target: string) => string,
+): string {
   if (path.toLowerCase().endsWith('.table')) {
     const table = parseTable(source);
     const rows = attributes.get('rows');

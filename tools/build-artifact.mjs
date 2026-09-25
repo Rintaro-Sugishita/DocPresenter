@@ -28,11 +28,11 @@ collect('sample');
 const entry = `
 import { parseDocument, resolveDocument } from '@docpresenter/core';
 import { renderDocument } from '@docpresenter/render';
-import { mountSheetView } from '@docpresenter/editor';
+import { COMMIT_KEYS, COMMIT_KEY_LABEL, DEFAULT_SETTINGS, mountSheetView } from '@docpresenter/editor';
 
 const FILES = ${JSON.stringify(text)};
 const IMAGES = ${JSON.stringify(images)};
-const clean = path => path.replace(/^\\.\\//, '');
+const clean = path => (path.startsWith('./') ? path.slice(2) : path);
 const loader = { read: p => FILES[clean(p)], url: p => IMAGES[clean(p)] ?? clean(p) };
 
 const render = source => {
@@ -41,19 +41,47 @@ const render = source => {
 };
 
 const status = document.getElementById('status');
+const say = (text, kind) => { status.textContent = text; status.dataset.kind = kind; };
+
+// 設定は「値」であって画面ではない。器（ここでは Web シェル）が持ち、
+// エディタは受け取るだけにする。VS Code では settings.json がこの役をする。
+const KEY = 'docpresenter.commitKey';
+const stored = (() => {
+  try { return localStorage.getItem(KEY); } catch { return null; }
+})();
+let settings = {
+  ...DEFAULT_SETTINGS,
+  commitKey: COMMIT_KEYS.includes(stored) ? stored : DEFAULT_SETTINGS.commitKey,
+};
+
 const view = mountSheetView({
   root: document.getElementById('editor'),
   source: ${JSON.stringify(readFileSync(DOC, 'utf8'))},
   render,
-  onChange: (source, edit) => {
-    status.textContent = edit.description
-      + '　' + edit.span.start + '〜' + edit.span.end + ' バイトを書き換え';
-    status.dataset.kind = 'ok';
-    document.getElementById('source').textContent = source;
+  settings,
+  readResource: p => FILES[clean(p)],
+  onChange: (edit, text) => {
+    if (edit.path === undefined) document.getElementById('source').textContent = text;
+    else FILES[clean(edit.path)] = text;
+    say(edit.description + '　' + edit.span.start + '〜' + edit.span.end + ' バイトを書き換え', 'ok');
   },
-  onError: message => { status.textContent = message; status.dataset.kind = 'refused'; },
+  onError: message => say(message, 'refused'),
 });
 document.getElementById('source').textContent = view.source;
+
+const select = document.getElementById('commit-key');
+for (const key of COMMIT_KEYS) {
+  const option = document.createElement('option');
+  option.value = key;
+  option.textContent = COMMIT_KEY_LABEL[key];
+  select.append(option);
+}
+select.value = settings.commitKey;
+select.addEventListener('change', () => {
+  settings = { ...settings, commitKey: select.value };
+  view.configure(settings);
+  try { localStorage.setItem(KEY, select.value); } catch { /* 使えなくても動く */ }
+});
 `;
 
 mkdirSync('out/artifact', { recursive: true });
@@ -123,8 +151,17 @@ body {
   font-size: 11px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase;
   color: var(--shell-quiet); margin: 0; padding: 0.9em 1.1em 0.6em;
 }
+.setting {
+  display: block; padding: 0 1.1em 0.9em; font-size: 12px; color: var(--shell-quiet);
+  border-bottom: 1px solid #e4e6ea;
+}
+.setting select {
+  display: block; width: 100%; margin-top: 0.4em; font: inherit; font-size: 12px;
+  padding: 0.3em; border: 1px solid var(--shell-line); border-radius: 3px; background: #fff;
+  color: var(--shell-ink);
+}
 #status {
-  padding: 0 1.1em 0.9em; font-size: 12px; color: var(--shell-quiet);
+  padding: 0.9em 1.1em; font-size: 12px; color: var(--shell-quiet);
   border-bottom: 1px solid #e4e6ea;
 }
 #status[data-kind="ok"] { color: var(--shell-accent); font-variant-numeric: tabular-nums; }
@@ -146,13 +183,16 @@ body {
   <header class="bar">
     <h1>DocPresenter シートエディタ</h1>
     <p>下端のタブでシートを切り替え・ドラッグで並べ替え・ダブルクリックで改名</p>
-    <p>本文をクリックすると Markdown が開き、書式バーで太字と意味トークンを付けられる</p>
+    <p>本文・図・表をクリックすると、それを作っている Markdown / .dgm / .table が開く</p>
     <p><kbd>Ctrl</kbd>+<kbd>PageDown</kbd> で次のシート</p>
   </header>
   <main class="work">
     <div id="editor"></div>
     <aside class="side">
       <h2>書き戻されるソース</h2>
+      <label class="setting" for="commit-key">編集を確定するキー
+        <select id="commit-key"></select>
+      </label>
       <div id="status">タブと書式バーの操作が、そのままバイト範囲の書き換えになる</div>
       <pre id="source"></pre>
     </aside>

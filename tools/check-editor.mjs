@@ -54,7 +54,8 @@ await page.dblclick('.dp-tab[data-index="6"]');
 await page.fill('.dp-tab-rename', '付録');
 await page.keyboard.press('Enter');
 await page.waitForTimeout(200);
-check('見出しの無いシートは改名できないと言う', (await status()).startsWith('⚠'), await status());
+check('見出しの無いシートは改名できないと言う',
+  await page.getAttribute('#status', 'data-kind') === 'refused', await status());
 
 await page.click('.dp-tab[data-index="2"]');
 await page.dblclick('.dp-tab[data-index="2"]');

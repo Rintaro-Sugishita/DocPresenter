@@ -11,6 +11,12 @@ export interface Edit {
   readonly text: string;
   /** What the author asked for, for the undo stack and the commit message. */
   readonly description: string;
+  /**
+   * The referenced file the range belongs to, relative to the document.
+   * Absent means the document itself. A diagram and a table live in their own
+   * files, so editing one is a byte range in that file, not in this one.
+   */
+  readonly path?: string | undefined;
 }
 
 export function applyEdit(source: string, edit: Edit): string {

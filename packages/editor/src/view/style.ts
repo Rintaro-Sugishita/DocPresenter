@@ -70,6 +70,26 @@ export const EDITOR_STYLE = `
 .dp-token-disabled::before { color: var(--text-disabled, #767c85); }
 .dp-token-removed::before  { color: var(--text-removed, #b3261e); }
 
+/* Figures. The drawing is a file of its own and the caption stands for the
+   import line that placed it, so each is hinted as its own target. */
+.dp-figure-body { position: relative; }
+.dp-editor-pane .dp-figure-body:hover,
+.dp-editor-pane .dp-caption:hover,
+.dp-editor-pane .dp-import-line:hover {
+  outline: 1px dashed #c3a45a; outline-offset: 4px; cursor: text;
+}
+.dp-import-line {
+  font-family: ui-monospace, monospace; font-size: 0.75em;
+  color: #a7aeb8; margin-top: 0.5em;
+}
+.dp-broken {
+  font-family: system-ui, sans-serif; font-size: 0.85em; color: #b3261e;
+  margin: 0 0 0.5em;
+}
+.dp-figure-body .dp-block-source {
+  font-family: ui-monospace, monospace; font-size: 12px; line-height: 1.6;
+}
+
 .dp-tabbar {
   display: flex; align-items: stretch; gap: 2px;
   border-top: 1px solid #c8ccd2; background: #e9ebef;
