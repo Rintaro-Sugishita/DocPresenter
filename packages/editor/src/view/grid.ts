@@ -64,7 +64,17 @@ const FILL_SWATCHES: readonly [string, string][] = [
   ['#fdf0d5', '黄'], ['#f0e8f7', '紫'], ['#eceef1', '灰'],
 ];
 
-export function createGrid(options: GridOptions): HTMLElement {
+export interface Grid {
+  readonly element: HTMLElement;
+  /**
+   * Writes back whatever cell is open. The view calls this before taking the
+   * grid off the page: removing a focused text box fires its blur, and a blur
+   * arriving after the grid is gone would put it back on screen.
+   */
+  flush(): void;
+}
+
+export function createGrid(options: GridOptions): Grid {
   const { owner, table } = options;
   const columns = table.columns.length;
 
@@ -93,7 +103,10 @@ export function createGrid(options: GridOptions): HTMLElement {
   root.addEventListener('paste', onPaste);
   wireInput();
   queueMicrotask(() => place(at));
-  return root;
+  return {
+    element: root,
+    flush() { if (editing) commit(at); },
+  };
 
   function element(tag: string, className: string): HTMLElement {
     const node = owner.createElement(tag);
@@ -165,6 +178,9 @@ export function createGrid(options: GridOptions): HTMLElement {
       if (editing) commit({ row, column });
       else place({ row, column });
     });
+    // On both the cell and the box: the box covers the cell, but a double
+    // click whose two halves land on different nodes is delivered to the cell
+    // they have in common.
     node.addEventListener('dblclick', () => startEditing(''));
     return node;
   }
@@ -179,6 +195,15 @@ export function createGrid(options: GridOptions): HTMLElement {
     const wanted = clamp(next);
     const owning = wanted.row < 0 ? undefined : cellAt(table, wanted.row, wanted.column);
     const resolved = owning ? { row: owning.row, column: owning.column } : wanted;
+
+    // Pressing the cell that is already selected must not move the text box.
+    // Taking it out and putting it back breaks the browser's count of
+    // consecutive clicks, and the double click never arrives.
+    if (resolved.row === at.row && resolved.column === at.column
+      && input.parentElement === nodes.get(key(at))) {
+      input.focus({ preventScroll: true });
+      return;
+    }
 
     nodes.get(key(at))?.classList.remove('dp-grid-at', 'dp-grid-editing');
     at = resolved;
@@ -244,7 +269,13 @@ export function createGrid(options: GridOptions): HTMLElement {
     input.addEventListener('select', () => {
       if (editing) toolbar.sync(input.value, input.selectionStart ?? 0, input.selectionEnd ?? 0);
     });
-    input.addEventListener('blur', () => { if (editing) commit(at); });
+    input.addEventListener('blur', () => {
+      // A blur caused by the box being taken off the page is not the author
+      // leaving the cell; whatever was open has already been written back.
+      if (editing && input.isConnected) commit(at);
+    });
+    // The box covers the cell, so a double click lands here and not on the td.
+    input.addEventListener('dblclick', () => startEditing(''));
 
     input.addEventListener('keydown', event => {
       event.stopPropagation();
@@ -464,11 +495,17 @@ export function createGrid(options: GridOptions): HTMLElement {
     };
     const here = (): GridPosition => ({ row: Math.max(0, at.row), column: at.column });
 
-    add('行＋', '選択している行の下に追加', () =>
-      options.apply(() => insertRow(table, Math.max(0, at.row) + 1), here()));
+    // Both directions, or the first row and the first column are unreachable.
+    add('行↑', '選択している行の上に追加', () =>
+      options.apply(() => insertRow(table, Math.max(0, at.row)), here()));
+    add('行↓', '選択している行の下に追加', () =>
+      options.apply(() => insertRow(table, Math.max(0, at.row) + 1),
+        { row: Math.max(0, at.row) + 1, column: at.column }));
     add('行−', '選択している行を削除', () =>
       options.apply(() => removeRow(table, Math.max(0, at.row)), here()));
-    add('列＋', '選択している列の右に追加', () =>
+    add('列←', '選択している列の左に追加', () =>
+      options.apply(() => insertColumn(table, at.column, ''), here()));
+    add('列→', '選択している列の右に追加', () =>
       options.apply(() => insertColumn(table, at.column + 1, ''), { row: at.row, column: at.column + 1 }));
     add('列−', '選択している列を削除', () =>
       options.apply(() => removeColumn(table, at.column), { row: at.row, column: Math.max(0, at.column - 1) }));
@@ -483,7 +520,9 @@ export function createGrid(options: GridOptions): HTMLElement {
     }
 
     bar.append(element('span', 'dp-grid-divider'));
-    add('整形', 'グリッドの桁を揃える（明示的に実行したときだけ）', () =>
+    // The source is what a reviewer reads in a diff, so keeping its columns
+    // lined up is worth a button. It changes nothing in the printed table.
+    add('ソース整形', 'ソースファイルの桁を揃える（見た目は変わらない）', () =>
       options.apply(() => formatTable(table), here()));
     add('ソース', '.table のソースを直接編集する', () => options.showSource());
     return bar;

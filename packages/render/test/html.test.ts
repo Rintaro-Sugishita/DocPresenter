@@ -265,3 +265,24 @@ describe('自由な色', () => {
     expect(html).toContain('<colgroup><col style="width:30%"><col></colgroup>');
   });
 });
+
+describe('セルの中の色', () => {
+  const cellWith = (body: string) => renderTable(parseTable(
+    ['| 用語 | 説明 |', '| --- | --- |', `| a | ${body} |`].join('\n')));
+
+  it('セルの一部にも色が付く', () => {
+    expect(cellWith('ここは[目立つ]{color=#c62828}とする'))
+      .toContain('<span style="color:#c62828">目立つ</span>');
+  });
+
+  it('色の中の markdown も効く', () => {
+    expect(cellWith('[**強い**]{color=#1f5fa8}'))
+      .toContain('<span style="color:#1f5fa8"><strong>強い</strong></span>');
+  });
+
+  it('色でない値は記法のまま残す', () => {
+    const html = cellWith('[x]{color=red}');
+    expect(html).not.toContain('<span');
+    expect(html).toContain('{color=red}');
+  });
+});

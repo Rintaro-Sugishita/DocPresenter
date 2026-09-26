@@ -14,7 +14,7 @@ import { toggleInline, type InlineMark } from '../inline.js';
 import { DEFAULT_SETTINGS, isCommit, type EditorSettings } from '../settings.js';
 import { insertSheet, moveSheet, removeSheet, renameSheet, SheetEditError } from '../sheets.js';
 import { TableEditError } from '../table.js';
-import { createGrid, type GridPosition } from './grid.js';
+import { createGrid, type Grid, type GridPosition } from './grid.js';
 import { EDITOR_STYLE } from './style.js';
 import { createToolbar } from './toolbar.js';
 
@@ -61,6 +61,7 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
   let editing: BlockEdit | undefined;
   /** The table whose grid is open, and where the selection sits in it. */
   let grid: { path: string; at: GridPosition } | undefined;
+  let mounted: Grid | undefined;
   let settings = options.settings ?? DEFAULT_SETTINGS;
 
   const owner = root.ownerDocument;
@@ -165,12 +166,15 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
       return;
     }
 
-    body.replaceChildren(createGrid({
+    mounted = createGrid({
       owner,
       table,
       at: current.at,
       apply: (make, next) => {
-        grid = { path: current.path, at: next };
+        // Only move the selection if the grid is still open. A write-back that
+        // arrives as the grid is closing must still be applied, but it must
+        // not bring the grid back.
+        if (grid?.path === current.path) grid = { path: current.path, at: next };
         commit(() => {
           try {
             return { ...make(), path: current.path };
@@ -188,7 +192,8 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
         const source = options.readResource?.(current.path) ?? '';
         open(body, { start: 0, end: byteLength(source) }, source, '', false, current.path);
       },
-    }));
+    });
+    body.replaceChildren(mounted.element);
   }
 
   /**
@@ -320,7 +325,11 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
 
     const hadGrid = grid !== undefined;
     if (hadGrid && !wanted.figure && wanted.path === undefined) {
+      // Write back the open cell before the grid leaves the page, so nothing
+      // typed is lost and no blur arrives after it is gone.
+      const open = mounted;
       grid = undefined;
+      open?.flush();
       draw();
       return;
     }
@@ -458,7 +467,9 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
       const figure = page.querySelector<HTMLElement>(`.dp-figure[data-path="${cssEscape(grid.path)}"]`);
       const body = figure?.querySelector<HTMLElement>('.dp-figure-body');
       if (body) mountGrid(body);
-      else grid = undefined;
+      else { grid = undefined; mounted = undefined; }
+    } else {
+      mounted = undefined;
     }
 
     drawTabs(sections.map((section, i) => ({
