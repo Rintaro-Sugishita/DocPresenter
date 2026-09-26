@@ -21,6 +21,15 @@ const openGrid = async () => {
 };
 const cell = (row, column) => `.dp-grid-table [data-row="${row}"][data-column="${column}"]`;
 const status = () => page.textContent('#status');
+/** 行・列の操作は右クリックのメニューに移った。 */
+const viaMenu = async (label, at) => {
+  await page.click(at, { button: 'right' });
+  await page.waitForSelector('.dp-menu button');
+  await page.click(`.dp-menu button:text("${label}")`);
+  await page.waitForSelector('.dp-grid-table');
+  await page.waitForTimeout(300);
+};
+
 
 await openGrid();
 check('表をクリックするとグリッドが出る（ソースではない）',
@@ -30,21 +39,17 @@ check('見出しも編集対象として並ぶ', (await page.textContent(cell(-1
 // 行の追加と削除
 const rowsNow = () => page.$$eval('.dp-grid-table tbody tr', rs => rs.length);
 const before = await rowsNow();
-await page.click('.dp-grid-bar button[title*="行の下に追加"]');
-await page.waitForTimeout(350);
+await viaMenu('行を下に追加', cell(0, 0));
 check('行を足せる', (await rowsNow()) === before + 1, `${before} → ${await rowsNow()}`);
-await page.click('.dp-grid-bar button[title*="行を削除"]');
-await page.waitForTimeout(350);
+await viaMenu('行を削除', cell(0, 0));
 check('行を消せる', (await rowsNow()) === before);
 
 // 列の追加
 const colsNow = () => page.$$eval('.dp-grid-table thead th', hs => hs.length);
 const cols = await colsNow();
-await page.click('.dp-grid-bar button[title*="列の右に追加"]');
-await page.waitForTimeout(350);
+await viaMenu('列を右に追加', cell(0, 0));
 check('列を足すと全行に入る', (await colsNow()) === cols + 1, `${cols} → ${await colsNow()}`);
-await page.click('.dp-grid-bar button[title*="列を削除"]');
-await page.waitForTimeout(350);
+await viaMenu('列を削除', cell(0, 1));
 check('列を消せる', (await colsNow()) === cols);
 
 // セル編集: 打ち始めると置き換わる

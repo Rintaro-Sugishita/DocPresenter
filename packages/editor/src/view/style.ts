@@ -126,6 +126,27 @@ export const EDITOR_STYLE = `
   border-radius: 3px; cursor: pointer; padding: 0 0.4em; font: inherit; font-size: 12px;
 }
 
+/* The context menu. It sits on the document, not inside the grid, so nothing
+   it opens over can clip it. */
+.dp-menu {
+  position: fixed; z-index: 20; min-width: 11em;
+  background: #fff; border: 1px solid #c8ccd2; border-radius: 4px;
+  box-shadow: 0 4px 14px rgba(0,0,0,.18); padding: 4px;
+  font-family: system-ui, sans-serif; font-size: 13px;
+}
+.dp-menu button {
+  display: block; width: 100%; text-align: left;
+  border: none; background: transparent; color: #3a4048; cursor: pointer;
+  padding: 0.4em 0.8em; border-radius: 3px; font: inherit;
+}
+.dp-menu button:hover, .dp-menu button:focus { background: #eceef1; outline: none; }
+.dp-menu button:disabled { color: #b6bcc5; cursor: default; background: transparent; }
+.dp-menu-rule { height: 1px; background: #e2e4e8; margin: 4px 2px; }
+
+/* The selected cell's text box takes the caret while a cell is open, so it
+   must show a text cursor rather than the grid's own. */
+.dp-grid-editing .dp-grid-input { cursor: text; user-select: text; }
+
 /* Dragging the edge of a header cell sets the column's width. */
 .dp-grid-resize {
   position: absolute; top: 0; right: -3px; width: 7px; height: 100%;

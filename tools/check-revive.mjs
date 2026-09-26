@@ -40,7 +40,10 @@ check('セルがまた編集できる', (await page.textContent(cell(0, 1))).inc
 // ボタンも生きている
 const rows = () => page.$$eval('.dp-grid-table tbody tr', r => r.length);
 const before = await rows();
-await page.click('.dp-grid-bar button[title*="行の下に追加"]');
+await page.click(cell(0, 0), { button: 'right' });
+await page.waitForSelector('.dp-menu button');
+await page.click('.dp-menu button:text("行を下に追加")');
+await page.waitForSelector('.dp-grid-table');
 await page.waitForTimeout(350);
 check('ボタンも生きている', (await rows()) === before + 1, `${before} → ${await rows()}`);
 

@@ -20,6 +20,7 @@ import {
   type StyleProperty,
 } from '../table.js';
 import { toggleInline, type InlineMark } from '../inline.js';
+import { createMenu, type MenuItem } from './menu.js';
 import { createToolbar, SWATCHES, type Toolbar } from './toolbar.js';
 
 export interface GridPosition {
@@ -96,6 +97,7 @@ export function createGrid(options: GridOptions): Grid {
   // there is no selection for it to act on.
   const toolbar: Toolbar = createToolbar(owner, applyInline);
   toolbar.element.hidden = true;
+  const menu = createMenu(owner);
 
   const root = owner.createElement('div');
   root.className = 'dp-grid';
@@ -177,6 +179,14 @@ export function createGrid(options: GridOptions): Grid {
       event.preventDefault();
       if (editing) commit({ row, column });
       else place({ row, column });
+    });
+    node.addEventListener('contextmenu', event => {
+      // While a cell is open the browser's own menu is the useful one: cut,
+      // copy, paste, and whatever the platform adds for text.
+      if (editing) return;
+      event.preventDefault();
+      place({ row, column });
+      menu.open(event.clientX, event.clientY, rowColumnMenu());
     });
     // On both the cell and the box: the box covers the cell, but a double
     // click whose two halves land on different nodes is delivered to the cell
@@ -276,6 +286,12 @@ export function createGrid(options: GridOptions): Grid {
     });
     // The box covers the cell, so a double click lands here and not on the td.
     input.addEventListener('dblclick', () => startEditing(''));
+    // While a cell is open the press belongs to the text: dragging selects,
+    // which is how anyone copies part of a cell or picks what to colour. The
+    // cell's own handler would cancel the default and end the edit.
+    input.addEventListener('mousedown', event => {
+      if (editing) event.stopPropagation();
+    });
 
     input.addEventListener('keydown', event => {
       event.stopPropagation();
@@ -483,6 +499,38 @@ export function createGrid(options: GridOptions): Grid {
     };
   }
 
+  /**
+   * Inserting and deleting rows and columns: six entries that are reached
+   * now and then. On the toolbar they crowded out the colours and the
+   * alignment, which are reached constantly, so they live on right-click.
+   */
+  function rowColumnMenu(): MenuItem[] {
+    const row = Math.max(0, at.row);
+    const here = (): GridPosition => ({ row, column: at.column });
+    return [
+      { label: '行を上に追加', run: () => options.apply(() => insertRow(table, row), here()) },
+      {
+        label: '行を下に追加',
+        run: () => options.apply(() => insertRow(table, row + 1), { row: row + 1, column: at.column }),
+      },
+      { label: '行を削除', run: () => options.apply(() => removeRow(table, row), here()) },
+      {
+        label: '列を左に追加', separated: true,
+        run: () => options.apply(() => insertColumn(table, at.column, ''), here()),
+      },
+      {
+        label: '列を右に追加',
+        run: () => options.apply(
+          () => insertColumn(table, at.column + 1, ''), { row: at.row, column: at.column + 1 }),
+      },
+      {
+        label: '列を削除',
+        run: () => options.apply(
+          () => removeColumn(table, at.column), { row: at.row, column: Math.max(0, at.column - 1) }),
+      },
+    ];
+  }
+
   function createBar(): HTMLElement {
     const bar = element('div', 'dp-grid-bar');
     const add = (label: string, title: string, run: () => void): void => {
@@ -495,22 +543,6 @@ export function createGrid(options: GridOptions): Grid {
     };
     const here = (): GridPosition => ({ row: Math.max(0, at.row), column: at.column });
 
-    // Both directions, or the first row and the first column are unreachable.
-    add('行↑', '選択している行の上に追加', () =>
-      options.apply(() => insertRow(table, Math.max(0, at.row)), here()));
-    add('行↓', '選択している行の下に追加', () =>
-      options.apply(() => insertRow(table, Math.max(0, at.row) + 1),
-        { row: Math.max(0, at.row) + 1, column: at.column }));
-    add('行−', '選択している行を削除', () =>
-      options.apply(() => removeRow(table, Math.max(0, at.row)), here()));
-    add('列←', '選択している列の左に追加', () =>
-      options.apply(() => insertColumn(table, at.column, ''), here()));
-    add('列→', '選択している列の右に追加', () =>
-      options.apply(() => insertColumn(table, at.column + 1, ''), { row: at.row, column: at.column + 1 }));
-    add('列−', '選択している列を削除', () =>
-      options.apply(() => removeColumn(table, at.column), { row: at.row, column: Math.max(0, at.column - 1) }));
-
-    bar.append(element('span', 'dp-grid-divider'));
     const aligns: [Align, string, string][] = [
       ['left', '左', '左寄せ'], ['center', '中', '中央'], ['right', '右', '右寄せ'],
     ];
