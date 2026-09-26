@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { parseTable } from '@docpresenter/core';
+import { cellAt, parseTable } from '@docpresenter/core';
 import { applyEdit } from '../src/index.js';
 import {
-  formatTable, insertColumn, insertRow, parseClipboardGrid, pasteGrid,
-  removeColumn, removeRow, setAlign, setCell, setStyle, styleAt, TableEditError,
+  formatTable, insertColumn, insertRow, mergeDown, mergeRight, parseClipboardGrid,
+  pasteGrid, removeColumn, removeRow, setAlign, setCell, setStyle, styleAt,
+  TableEditError, unmerge,
 } from '../src/index.js';
 
 const SOURCE = [
@@ -194,5 +195,71 @@ describe('スタイル', () => {
     const next = applyEdit(source, setStyle(parseTable(source), { kind: 'row', which: 'odd' }, 'fill', 'tint-1'));
     expect(next.split('\n').filter(l => l.startsWith('|'))).toEqual(
       source.split('\n').filter(l => l.startsWith('|')));
+  });
+});
+
+describe('セルの結合', () => {
+  const GRID = [
+    '| A | B | C |',
+    '| - | - | - |',
+    '| 1 | 2 | 3 |',
+    '| 4 | 5 | 6 |',
+    '| 7 | 8 | 9 |',
+  ].join('\n');
+  const span = (source: string, row: number, column: number) => {
+    const t = parseTable(source);
+    const c = cellAt(t, row, column)!;
+    return `${c.rowspan}x${c.colspan}`;
+  };
+
+  it('下のセルと結合する', () => {
+    const next = run(GRID, t => mergeDown(t, 0, 0));
+    expect(span(next, 0, 0)).toBe('2x1');
+    expect(next.split('\n')[3]).toContain('| ^ |');
+    expect(parseTable(next).rows[1]!.cells.map(c => c.text)).toEqual(['5', '6']);
+  });
+
+  it('右のセルと結合する', () => {
+    const next = run(GRID, t => mergeRight(t, 0, 0));
+    expect(span(next, 0, 0)).toBe('1x2');
+    expect(parseTable(next).rows[0]!.cells.map(c => c.text)).toEqual(['1', '3']);
+  });
+
+  it('横に結合したセルを下へ伸ばすと、下の行に印が 2 つ付く', () => {
+    const wide = run(GRID, t => mergeRight(t, 0, 0));
+    const next = run(wide, t => mergeDown(t, 0, 0));
+    expect(span(next, 0, 0)).toBe('2x2');
+    expect(next.split('\n')[3]).toMatch(/\|\s*\^\s*\|\s*\^\s*\|/);
+  });
+
+  it('縦に結合したセルを右へ伸ばすと、両方の行に印が付く', () => {
+    const tall = run(GRID, t => mergeDown(t, 0, 0));
+    const next = run(tall, t => mergeRight(t, 0, 0));
+    expect(span(next, 0, 0)).toBe('2x2');
+  });
+
+  it('解除すると元の位置が戻る', () => {
+    const merged = run(run(GRID, t => mergeRight(t, 0, 0)), t => mergeDown(t, 0, 0));
+    const next = run(merged, t => unmerge(t, 0, 0));
+    expect(span(next, 0, 0)).toBe('1x1');
+    expect(parseTable(next).rows[0]!.cells).toHaveLength(3);
+    expect(parseTable(next).rows[1]!.cells).toHaveLength(3);
+  });
+
+  it('本体の文字は解除しても残る', () => {
+    const merged = run(GRID, t => mergeDown(t, 0, 0));
+    expect(parseTable(run(merged, t => unmerge(t, 0, 0))).rows[0]!.cells[0]!.text).toBe('1');
+  });
+
+  it('行や列が無い側へは結合できない', () => {
+    expect(() => mergeDown(parseTable(GRID), 2, 0)).toThrow(TableEditError);
+    expect(() => mergeRight(parseTable(GRID), 0, 2)).toThrow(TableEditError);
+    expect(() => unmerge(parseTable(GRID), 0, 0)).toThrow(TableEditError);
+  });
+
+  it('グリッド以外には触らない', () => {
+    const next = run(SOURCE, t => mergeDown(t, 0, 0));
+    expect(next).toContain('# 用語集');
+    expect(next).toContain('header { bottom: thick }');
   });
 });

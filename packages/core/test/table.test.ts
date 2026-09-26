@@ -142,3 +142,33 @@ describe('矩形の結合（縦横の組み合わせ）', () => {
     expect(cellAt(t, 1, 1)?.text).toBe('X');
   });
 });
+
+describe('2 方向の結合', () => {
+  const shape = (source: string) => {
+    const table = parseTable(source);
+    const cell = cellAt(table, 0, 0)!;
+    return `${cell.rowspan}x${cell.colspan}`;
+  };
+
+  it('右へ広げてから下へ伸ばした形', () => {
+    expect(shape(['| A | B | C |', '| - | - | - |',
+      '| 1 | < | 3 |', '| ^ | ^ | 6 |'].join('\n'))).toBe('2x2');
+  });
+
+  it('下へ伸ばしてから右へ広げた形', () => {
+    // 同じ 2x2 でも印の置き方が違う。どちらも読めなければならない。
+    expect(shape(['| A | B | C |', '| - | - | - |',
+      '| 1 | < | 3 |', '| ^ | < | 6 |'].join('\n'))).toBe('2x2');
+  });
+
+  it('下の行の < は幅を二重に数えない', () => {
+    const table = parseTable(['| A | B | C |', '| - | - | - |',
+      '| 1 | < | 3 |', '| ^ | < | 6 |'].join('\n'));
+    expect(table.rows[1]!.cells.map(c => c.text)).toEqual(['6']);
+  });
+
+  it('左に何も無い < は読めないと言う', () => {
+    expect(() => parseTable(['| A | B |', '| - | - |', '| < | 2 |'].join('\n')))
+      .toThrow(TableParseError);
+  });
+});

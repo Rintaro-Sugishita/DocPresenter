@@ -188,10 +188,17 @@ function parseGrid(
         continue;
       }
       if (text === MERGE_LEFT) {
-        if (!lastStarted) throw new TableParseError(`'${MERGE_LEFT}' の左に結合できるセルがない（${c + 1} 列目）`, grid.line);
-        lastStarted.colspan++;
+        // The cell to the left may have started on this row, or it may be one
+        // spanning down from above — which is what a block merged downwards
+        // and then rightwards looks like.
+        const owner = lastStarted ?? spanningFromAbove[c - 1];
+        if (!owner) throw new TableParseError(`'${MERGE_LEFT}' の左に結合できるセルがない（${c + 1} 列目）`, grid.line);
+        // Only the row the cell starts on decides how wide it is; a later row
+        // merely records that the position is covered.
+        if (owner.row === r) owner.colspan++;
+        lastStarted = owner;
         // Keep the owner here so that a '^' below this column finds it.
-        spanningFromAbove[c] = lastStarted;
+        spanningFromAbove[c] = owner;
         continue;
       }
 

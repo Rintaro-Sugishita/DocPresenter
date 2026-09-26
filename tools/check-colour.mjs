@@ -25,7 +25,7 @@ const closeGrid = async () => {
 // --- 本文の文字色 ---------------------------------------------------------
 await page.click('.dp-prose p');
 await page.waitForTimeout(250);
-check('書式バーに色見本が並ぶ', (await page.$$('.dp-format-swatch')).length === 6);
+check('書式バーに色見本が並ぶ', (await page.$$('.dp-format-swatch')).length === 4);
 check('意味トークンのボタンは無い', (await page.$$('.dp-format-token')).length === 0);
 await page.$eval('.dp-block-source', el => {
   const at = el.value.indexOf('認証機能');
@@ -35,11 +35,11 @@ await page.$eval('.dp-block-source', el => {
 await page.click('.dp-format-swatch[title*="赤"]', { force: true });
 await page.waitForTimeout(150);
 check('選んだ色が記法として入る',
-  (await page.inputValue('.dp-block-source')).includes('[認証機能]{color=#c62828}'));
+  (await page.inputValue('.dp-block-source')).includes('[認証機能]{color=#ff0000}'));
 await page.click('.dp-tabbar-spacer');
 await page.waitForTimeout(300);
 check('描画は色の付いた span になる',
-  await page.isVisible('.dp-prose span[style*="color:#c62828"]'));
+  await page.isVisible('.dp-prose span[style*="color:#ff0000"]'));
 
 // --- 表の塗りと文字色 -----------------------------------------------------
 await page.click('.dp-tab[data-index="5"]');
@@ -47,7 +47,7 @@ await page.waitForTimeout(250);
 await openGrid();
 check('罫線の太線・二重線のボタンは無い',
   (await page.$$('.dp-grid-style button[title*="罫線"]')).length === 0);
-check('塗りと文字色の見本が並ぶ', (await page.$$('.dp-grid-swatch')).length === 12);
+check('塗りと文字色の見本が並ぶ', (await page.$$('.dp-grid-swatch')).length === 10);
 
 await page.click(cell(1, 1));
 await page.waitForTimeout(150);
@@ -64,7 +64,7 @@ await page.waitForSelector('.dp-grid-table');
 await page.waitForTimeout(250);
 await closeGrid();
 check('描画された表に塗りと文字色が乗る',
-  await page.isVisible('.dp-table td[style*="background:#fdf0d5"][style*="color:#1f5fa8"]'));
+  await page.isVisible('.dp-table td[style*="background:#fdf0d5"][style*="color:#0000ff"]'));
 await openGrid();
 
 // --- セル内の文字書式 -----------------------------------------------------
@@ -105,7 +105,7 @@ const source = await page.inputValue('.dp-block-source');
 check('列幅は割合で書かれる', /col:用語 \{[^}]*width: \d+(\.\d+)?%/.test(source),
   source.split('\n').filter(l => l.includes('width')).join(' / '));
 check('塗りと文字色は直値で書かれる',
-  /fill: #fdf0d5/.test(source) && /color: #1f5fa8/.test(source),
+  /fill: #fdf0d5/.test(source) && /color: #0000ff/.test(source),
   source.split('\n').filter(l => l.includes('#')).join(' / '));
 await page.keyboard.press('Escape');
 await page.waitForTimeout(300);

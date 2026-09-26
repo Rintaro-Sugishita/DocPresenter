@@ -46,13 +46,13 @@ await select('認証機能');
 await page.click('.dp-format-swatch[title*="青"]', { force: true });
 await page.waitForTimeout(100);
 check('選んだ色が付く',
-  (await page.inputValue('.dp-block-source')).includes('[認証機能]{color=#1f5fa8}'));
+  (await page.inputValue('.dp-block-source')).includes('[認証機能]{color=#0000ff}'));
 
 await page.click('.dp-format-swatch[title*="赤"]', { force: true });
 await page.waitForTimeout(100);
 const swapped = await page.inputValue('.dp-block-source');
 check('別の色で置き換わる（二重にならない）',
-  swapped.includes('[認証機能]{color=#c62828}') && !swapped.includes('#1f5fa8'));
+  swapped.includes('[認証機能]{color=#ff0000}') && !swapped.includes('#0000ff'));
 
 // Ctrl+B
 await select('設計');
@@ -65,12 +65,12 @@ await page.click('.dp-tabbar-spacer');
 await page.waitForTimeout(300);
 const written = await source();
 check('確定するとソースに書き戻る',
-  written.includes('[認証機能]{color=#c62828}') && written.includes('**設計**'));
+  written.includes('[認証機能]{color=#ff0000}') && written.includes('**設計**'));
 check('書き戻しは 1 段落分のバイト範囲',
   (await page.textContent('#status')).includes('本文を編集'),
   await page.textContent('#status'));
 check('描画された span に色が付く',
-  await page.isVisible('.dp-prose span[style*="color:#c62828"]'));
+  await page.isVisible('.dp-prose span[style*="color:#ff0000"]'));
 
 // Escape は捨てる
 await page.click('.dp-prose p');

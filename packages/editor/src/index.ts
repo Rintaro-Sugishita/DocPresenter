@@ -4,6 +4,7 @@ export * from './inline.js';
 export * from './settings.js';
 export * from './table.js';
 export * from './view/style.js';
+export * from './view/swatches.js';
 export * from './view/menu.js';
 export * from './view/grid.js';
 export * from './view/sheet-view.js';

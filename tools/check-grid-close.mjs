@@ -92,6 +92,6 @@ await page.waitForTimeout(400);
 await page.click('.dp-sheet:not([hidden]) .dp-prose p');
 await page.waitForTimeout(400);
 check('セルの一部に付けた色が描画される',
-  await page.isVisible('.dp-table td span[style*="color:#c62828"]'));
+  await page.isVisible('.dp-table td span[style*="color:#ff0000"]'));
 
 await browser.close();

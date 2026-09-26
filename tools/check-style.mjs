@@ -71,7 +71,7 @@ await page.waitForTimeout(150);
 await press('.dp-grid-swatch[title="文字色: 緑"]');
 await closeGrid();
 check('列の文字色が描画に効く',
-  await page.isVisible('.dp-sheet:not([hidden]) .dp-table td[style*="color:#2e7d32"]'));
+  await page.isVisible('.dp-sheet:not([hidden]) .dp-table td[style*="color:#00b400"]'));
 await openGrid();
 
 // 行は範囲セレクタで指す
@@ -81,7 +81,7 @@ await page.waitForTimeout(150);
 await press(fill('青'));
 await closeGrid();
 check('行の塗りが描画に効く（範囲セレクタ）',
-  await page.isVisible('.dp-sheet:not([hidden]) .dp-table tr[style*="background:#e3f0fb"]'));
+  await page.isVisible('.dp-sheet:not([hidden]) .dp-table tr[style*="background:#e0e8ff"]'));
 await openGrid();
 
 // ヘッダ
@@ -99,10 +99,10 @@ const source = await page.inputValue('.dp-block-source');
 check('セルは行と列の名前で指される（今は解除済みなので残っていない）',
   !source.includes('cell:リフレッシュトークン'), source.split('\n').filter(l => l.includes('cell:')).join(' / '));
 check('列の規則は既存の行に足されている',
-  /col:説明 \{[^}]*color: #2e7d32/.test(source),
+  /col:説明 \{[^}]*color: #00b400/.test(source),
   source.split('\n').filter(l => l.includes('col:')).join(' / '));
 check('行は範囲セレクタで書かれる',
-  /range:アカウントロック\.\.アカウントロック \{ fill: #e3f0fb \}/.test(source),
+  /range:アカウントロック\.\.アカウントロック \{ fill: #e0e8ff \}/.test(source),
   source.split('\n').filter(l => l.includes('range:')).join(' / '));
 check('ヘッダの規則も 1 行', /header \{[^}]*fill: #eceef1/.test(source),
   source.split('\n').filter(l => l.includes('header')).join(' / '));

@@ -6,7 +6,7 @@
 // all of them — that is the change, not a side effect of how it is stored.
 
 import {
-  delimiterField, displayWidth, formatGrid, formatRule, insertField, joinFields,
+  cellAt, delimiterField, displayWidth, formatGrid, formatRule, insertField, joinFields,
   removeField, replaceField, sameSelector, splitFields,
   type Align, type Selector, type TableFile,
 } from '@docpresenter/core';
@@ -150,6 +150,77 @@ function rewriteGrid(
     span: { start: lines[0]!.start, end: lines[lines.length - 1]!.end },
     text: lines.map((line, i) => rewrite(line.text, i)).join('\n'),
     description,
+  };
+}
+
+// --- セル結合 -----------------------------------------------------------
+//
+// The file says a merge by marking the cell that gives itself up: `^` for the
+// one above, `<` for the one to the left. So merging is writing those markers,
+// and unmerging is clearing them — no range selection needed, and the grid
+// shows the result because the parser reads the markers back as spans.
+
+const MERGE_UP = '^';
+const MERGE_LEFT = '<';
+
+/** Takes the row below into the cell at (row, column). */
+export function mergeDown(table: TableFile, row: number, column: number): Edit {
+  const owner = cellAt(table, row, column);
+  if (!owner) throw new TableEditError('結合するセルが無い');
+  const below = table.rows[owner.row + owner.rowspan];
+  if (!below) throw new TableEditError('これより下に行が無い');
+
+  // A cell that spans several columns is marked once per column below it.
+  let text = below.line.text;
+  for (let c = owner.column; c < owner.column + owner.colspan; c++) {
+    text = replaceField(text, c, MERGE_UP);
+  }
+  return { span: below.line.span, text, description: 'セルを結合' };
+}
+
+/** Takes the column to the right into the cell at (row, column). */
+export function mergeRight(table: TableFile, row: number, column: number): Edit {
+  const owner = cellAt(table, row, column);
+  if (!owner) throw new TableEditError('結合するセルが無い');
+  const next = owner.column + owner.colspan;
+  if (next >= table.columns.length) throw new TableEditError('これより右に列が無い');
+
+  // Every row the cell covers gives up its cell in that column.
+  const lines = [];
+  for (let r = owner.row; r < owner.row + owner.rowspan; r++) {
+    const line = table.rows[r]?.line;
+    if (!line) continue;
+    lines.push({ span: line.span, text: replaceField(line.text, next, MERGE_LEFT) });
+  }
+  if (lines.length === 0) throw new TableEditError('結合するセルが無い');
+  return {
+    span: { start: lines[0]!.span.start, end: lines[lines.length - 1]!.span.end },
+    text: lines.map(l => l.text).join('\n'),
+    description: 'セルを結合',
+  };
+}
+
+/** Clears the markers a merged cell holds, giving the positions back. */
+export function unmerge(table: TableFile, row: number, column: number): Edit {
+  const owner = cellAt(table, row, column);
+  if (!owner || (owner.rowspan === 1 && owner.colspan === 1)) {
+    throw new TableEditError('結合されていない');
+  }
+  const lines = [];
+  for (let r = owner.row; r < owner.row + owner.rowspan; r++) {
+    const line = table.rows[r]?.line;
+    if (!line) continue;
+    let text = line.text;
+    for (let c = owner.column; c < owner.column + owner.colspan; c++) {
+      if (r === owner.row && c === owner.column) continue;   // 本体は残す
+      text = replaceField(text, c, '');
+    }
+    lines.push({ span: line.span, text });
+  }
+  return {
+    span: { start: lines[0]!.span.start, end: lines[lines.length - 1]!.span.end },
+    text: lines.map(l => l.text).join('\n'),
+    description: '結合を解除',
   };
 }
 

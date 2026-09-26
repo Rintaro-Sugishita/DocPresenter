@@ -16,12 +16,14 @@ import {
 import type { Edit } from '../edit.js';
 import {
   formatTable, insertColumn, insertRow, parseClipboardGrid, pasteGrid,
-  removeColumn, removeRow, setAlign, setCell, setStyle, setWidth, styleAt,
+  mergeDown, mergeRight, removeColumn, removeRow, setAlign, setCell, setStyle,
+  setWidth, styleAt, unmerge,
   type StyleProperty,
 } from '../table.js';
 import { toggleInline, type InlineMark } from '../inline.js';
 import { createMenu, type MenuItem } from './menu.js';
-import { createToolbar, SWATCHES, type Toolbar } from './toolbar.js';
+import { createSwatchRow, FILL_SWATCHES, TEXT_SWATCHES } from './swatches.js';
+import { createToolbar, type Toolbar } from './toolbar.js';
 
 export interface GridPosition {
   /** -1 is the header row. */
@@ -57,12 +59,6 @@ const TARGETS: readonly { readonly id: string; readonly label: string }[] = [
   { id: 'header', label: 'ヘッダ' },
   { id: 'odd', label: '奇数行' },
   { id: 'even', label: '偶数行' },
-];
-
-/** Pale enough to read black text on, for filling a cell. */
-const FILL_SWATCHES: readonly [string, string][] = [
-  ['#fde8e8', '赤'], ['#e3f0fb', '青'], ['#e6f4e9', '緑'],
-  ['#fdf0d5', '黄'], ['#f0e8f7', '紫'], ['#eceef1', '灰'],
 ];
 
 export interface Grid {
@@ -206,16 +202,19 @@ export function createGrid(options: GridOptions): Grid {
     const owning = wanted.row < 0 ? undefined : cellAt(table, wanted.row, wanted.column);
     const resolved = owning ? { row: owning.row, column: owning.column } : wanted;
 
-    // Pressing the cell that is already selected must not move the text box.
-    // Taking it out and putting it back breaks the browser's count of
-    // consecutive clicks, and the double click never arrives.
-    if (resolved.row === at.row && resolved.column === at.column
-      && input.parentElement === nodes.get(key(at))) {
-      input.focus({ preventScroll: true });
-      return;
-    }
+    // Landing on the cell that is already selected must not move the text box:
+    // taking it out and putting it back breaks the browser's count of
+    // consecutive clicks, and the double click never arrives. Everything else
+    // still happens — leaving the cell in its editing state would keep the
+    // formatting bar on screen, and the rows below it would sit where they
+    // were rather than where they are.
+    const same = resolved.row === at.row && resolved.column === at.column
+      && input.parentElement === nodes.get(key(at));
 
-    nodes.get(key(at))?.classList.remove('dp-grid-at', 'dp-grid-editing');
+    const was = nodes.get(key(at));
+    was?.classList.remove('dp-grid-editing');
+    if (!same) was?.classList.remove('dp-grid-at');
+
     at = resolved;
     editing = false;
     input.value = '';
@@ -225,7 +224,7 @@ export function createGrid(options: GridOptions): Grid {
     const node = nodes.get(key(at));
     if (!node) return;
     node.classList.add('dp-grid-at');
-    node.append(input);
+    if (!same) node.append(input);
     input.focus({ preventScroll: true });
     options.move(at);
   }
@@ -380,8 +379,6 @@ export function createGrid(options: GridOptions): Grid {
     choose.addEventListener('change', () => { target = choose.value; paint(); });
     bar.append(choose);
 
-    const swatches: { property: StyleProperty; value: string; node: HTMLButtonElement }[] = [];
-
     const set = (property: StyleProperty, value: string | undefined): void => {
       const which = selector();
       if (!which) return;
@@ -391,52 +388,27 @@ export function createGrid(options: GridOptions): Grid {
       options.apply(() => setStyle(table, which, property, next), at);
     };
 
-    const group = (
-      property: StyleProperty, label: string, colours: readonly [string, string][],
-    ): void => {
+    const rows = ([
+      ['fill', '塗り', FILL_SWATCHES, '#ffe0e0'],
+      ['color', '文字色', TEXT_SWATCHES, '#ff0000'],
+    ] as const).map(([property, label, swatches, initial], index) => {
+      if (index > 0) bar.append(element('span', 'dp-grid-divider'));
       const name = element('span', 'dp-grid-label');
       name.textContent = label;
       bar.append(name);
-
-      for (const [colour, title] of colours) {
-        const node = owner.createElement('button');
-        node.type = 'button';
-        node.className = 'dp-grid-swatch';
-        node.title = `${label}: ${title}`;
-        node.style.setProperty('--swatch', colour);
-        node.addEventListener('mousedown', event => { event.preventDefault(); set(property, colour); });
-        swatches.push({ property, value: colour, node });
-        bar.append(node);
-      }
-
-      const picker = owner.createElement('input');
-      picker.type = 'color';
-      picker.className = 'dp-grid-picker';
-      picker.title = `${label}を選ぶ`;
-      picker.value = property === 'fill' ? '#fde8e8' : '#c62828';
-      picker.addEventListener('input', () => set(property, picker.value));
-      bar.append(picker);
-
-      const clear = owner.createElement('button');
-      clear.type = 'button';
-      clear.className = 'dp-grid-clear';
-      clear.textContent = '×';
-      clear.title = `${label}を外す`;
-      clear.addEventListener('mousedown', event => { event.preventDefault(); set(property, undefined); });
-      bar.append(clear);
-    };
-
-    group('fill', '塗り', FILL_SWATCHES);
-    bar.append(element('span', 'dp-grid-divider'));
-    group('color', '文字色', SWATCHES);
+      const row = createSwatchRow(owner, {
+        label, swatches, initial, className: 'dp-grid-swatch',
+        onPick: colour => set(property, colour),
+        onReset: () => set(property, undefined),
+      });
+      bar.append(...row.nodes);
+      return { property, row };
+    });
 
     function paint(): void {
       const which = selector();
-      for (const { property, value, node } of swatches) {
-        const on = which !== undefined
-          && (styleAt(table, which, property) ?? '').toLowerCase() === value.toLowerCase();
-        node.setAttribute('aria-pressed', String(on));
-        node.disabled = which === undefined;
+      for (const { property, row } of rows) {
+        row.sync(which && styleAt(table, which, property), which !== undefined);
       }
     }
     paint();
@@ -527,6 +499,37 @@ export function createGrid(options: GridOptions): Grid {
         label: '列を削除',
         run: () => options.apply(
           () => removeColumn(table, at.column), { row: at.row, column: Math.max(0, at.column - 1) }),
+      },
+      ...mergeItems(),
+    ];
+  }
+
+  /**
+   * Merging, from the cell that owns the merge. There is no range selection,
+   * and none is needed: the file says a merge by marking the cell that gives
+   * itself up, so "extend down" and "extend right" are the whole vocabulary.
+   */
+  function mergeItems(): MenuItem[] {
+    const owning = at.row < 0 ? undefined : cellAt(table, at.row, at.column);
+    const merged = owning !== undefined && (owning.rowspan > 1 || owning.colspan > 1);
+    const canDown = at.row >= 0 && owning !== undefined
+      && at.row + owning.rowspan < table.rows.length + 1
+      && table.rows[at.row + owning.rowspan] !== undefined;
+    const canRight = at.row >= 0 && owning !== undefined
+      && owning.column + owning.colspan < table.columns.length;
+
+    return [
+      {
+        label: '下のセルと結合', separated: true, disabled: !canDown,
+        run: () => options.apply(() => mergeDown(table, at.row, at.column), at),
+      },
+      {
+        label: '右のセルと結合', disabled: !canRight,
+        run: () => options.apply(() => mergeRight(table, at.row, at.column), at),
+      },
+      {
+        label: '結合を解除', disabled: !merged,
+        run: () => options.apply(() => unmerge(table, at.row, at.column), at),
       },
     ];
   }

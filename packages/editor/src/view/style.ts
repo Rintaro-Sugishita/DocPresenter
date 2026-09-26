@@ -127,14 +127,16 @@ export const EDITOR_STYLE = `
 }
 .dp-grid-bar .dp-grid-swatch[aria-pressed="true"] { box-shadow: 0 0 0 2px #1f5fa8; }
 .dp-grid-bar .dp-grid-swatch:disabled { opacity: 0.4; cursor: default; }
-.dp-grid-picker {
+.dp-grid-swatch-picker {
   width: 1.6em; height: 1.6em; padding: 0; border: 1px solid #aeb4bd;
   border-radius: 3px; background: none; cursor: pointer;
 }
-.dp-grid-clear {
+.dp-grid-swatch-reset {
   border: 1px solid #d3d7dd; background: #f7f8fa; color: #6b7280;
-  border-radius: 3px; cursor: pointer; padding: 0 0.4em; font: inherit; font-size: 12px;
+  border-radius: 3px; cursor: pointer; padding: 0.15em 0.5em; font: inherit; font-size: 12px;
 }
+.dp-grid-swatch-reset:hover { background: #eceef1; }
+.dp-grid-swatch-reset:disabled { opacity: .4; cursor: default; }
 
 /* The context menu. It sits on the document, not inside the grid, so nothing
    it opens over can clip it. */

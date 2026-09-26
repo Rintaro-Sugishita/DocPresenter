@@ -43,7 +43,7 @@ check('ドラッグしても編集は続いている', await page.isVisible('.dp
 await page.click('.dp-grid .dp-format-swatch[title*="赤"]', { force: true });
 await page.waitForTimeout(200);
 check('選んだ範囲に色が付く',
-  (await page.inputValue('.dp-grid-input')).includes('{color=#c62828}'),
+  (await page.inputValue('.dp-grid-input')).includes('{color=#ff0000}'),
   (await page.inputValue('.dp-grid-input')).slice(0, 40));
 await page.keyboard.press('Escape');
 await page.waitForTimeout(200);
@@ -52,9 +52,11 @@ await page.waitForTimeout(200);
 await page.click(cell(1, 0), { button: 'right' });
 await page.waitForTimeout(250);
 check('右クリックでメニューが出る', await page.isVisible('.dp-menu'));
-check('行と列の操作が並ぶ',
+check('行と列とセル結合の操作が並ぶ',
   (await page.$$eval('.dp-menu button', bs => bs.map(b => b.textContent))).join('/')
-    === '行を上に追加/行を下に追加/行を削除/列を左に追加/列を右に追加/列を削除');
+    === '行を上に追加/行を下に追加/行を削除/列を左に追加/列を右に追加/列を削除'
+      + '/下のセルと結合/右のセルと結合/結合を解除',
+  (await page.$$eval('.dp-menu button', bs => bs.map(b => b.textContent))).join('/'));
 
 const rows = () => page.$$eval('.dp-grid-table tbody tr', r => r.length);
 const before = await rows();
