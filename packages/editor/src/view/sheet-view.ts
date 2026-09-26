@@ -75,7 +75,7 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
   let tabs: HTMLElement[] = [];
   let editing: BlockEdit | undefined;
   /** The table whose grid is open, and where the selection sits in it. */
-  let grid: { path: string; at: GridPosition } | undefined;
+  let grid: { path: string; at: GridPosition; target: string } | undefined;
   let mounted: Grid | undefined;
   let settings = options.settings ?? DEFAULT_SETTINGS;
 
@@ -158,7 +158,7 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
     // for yet.
     if (path.toLowerCase().endsWith('.table')) {
       if (grid?.path === path) return;
-      grid = { path, at: { row: 0, column: 0 } };
+      grid = { path, at: { row: 0, column: 0 }, target: 'cell' };
       endEdit(true);
       mountGrid(body);
       return;
@@ -186,11 +186,14 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
       owner,
       table,
       at: current.at,
+      target: current.target,
       apply: (make, next) => {
         // Only move the selection if the grid is still open. A write-back that
         // arrives as the grid is closing must still be applied, but it must
         // not bring the grid back.
-        if (grid?.path === current.path) grid = { path: current.path, at: next };
+        // Spread the live state, not the one captured when the grid was
+        // built: the target may have been changed since.
+        if (grid?.path === current.path) grid = { ...grid, at: next };
         commit(() => {
           try {
             return { ...make(), path: current.path };
@@ -202,7 +205,8 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
       },
       // The grid moves its own selection; the host only remembers where it is,
       // so that a redraw after an edit can put it back.
-      move: next => { grid = { path: current.path, at: next }; },
+      move: next => { if (grid) grid = { ...grid, at: next }; },
+      onTarget: target => { if (grid) grid = { ...grid, target }; },
       showSource: () => {
         grid = undefined;
         const source = options.readResource?.(current.path) ?? '';

@@ -110,8 +110,12 @@ function renderCellText(table: TableFile, text: string): string {
   return inlineMarkdown(text);
 }
 
-/** A cell holds inline Markdown — the same inline Markdown as the prose. */
-function inlineMarkdown(text: string): string {
+/**
+ * A cell holds inline Markdown — the same inline Markdown as the prose.
+ * Exported because the grid editor shows what the cell will look like, not
+ * the notation that produces it; the notation appears when the cell is open.
+ */
+export function inlineMarkdown(text: string): string {
   return markdown.renderInline(text);
 }
 

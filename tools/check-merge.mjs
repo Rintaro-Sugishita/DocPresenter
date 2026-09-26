@@ -168,4 +168,60 @@ check('見出しだけ中央寄せにできる',
 check('本文セルの寄せは変わらない',
   !(await page.isVisible('.dp-sheet:not([hidden]) .dp-table td.dp-align-center')));
 
+
+
+// --- グリッドは「見た目」を出す -------------------------------------------
+await page.goto('file://' + process.cwd() + '/out/editor.html');
+await page.waitForTimeout(500);
+await page.click('.dp-tab[data-index="5"]');
+await page.waitForTimeout(250);
+await openGrid();
+
+await page.dblclick(cell(-1, 0));
+await page.waitForTimeout(250);
+await page.$eval('.dp-grid-input', el => {
+  el.setSelectionRange(0, 1);
+  el.dispatchEvent(new Event('select', { bubbles: true }));
+});
+await page.click('.dp-grid .dp-format-swatch[title*="赤"]', { force: true });
+await page.keyboard.press('Enter');
+await page.waitForSelector('.dp-grid-table');
+await page.waitForTimeout(350);
+check('グリッドの見出しにも色が出る',
+  await page.isVisible(`${cell(-1, 0)} span[style*="color:#ff0000"]`),
+  await page.$eval(cell(-1, 0), el => el.textContent));
+check('編集を開くと記法が見える', await (async () => {
+  await page.dblclick(cell(-1, 0));
+  await page.waitForTimeout(200);
+  const raw = await page.inputValue('.dp-grid-input');
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(200);
+  return raw.includes('{color=#ff0000}');
+})());
+
+// 寄せがグリッドに出る
+await page.click(cell(0, 1));
+await page.waitForTimeout(150);
+const before = await page.getAttribute(cell(0, 1), 'class');
+await page.click('.dp-grid-bar button[title*="中央"]');
+await page.waitForSelector('.dp-grid-table');
+await page.waitForTimeout(350);
+check('寄せがグリッドにも出る',
+  (await page.getAttribute(cell(0, 1), 'class')).includes('dp-align-center'),
+  `${before} → ${await page.getAttribute(cell(0, 1), 'class')}`);
+check('同じ列の別のセルは変わらない',
+  !(await page.getAttribute(cell(1, 1), 'class')).includes('dp-align-center'));
+
+
+
+// 「対象」の選択は操作のたびに戻らない
+await page.selectOption('.dp-grid-target', 'header');
+await page.waitForTimeout(150);
+await page.click('.dp-grid-swatch[title="塗り: 灰"]');
+await page.waitForSelector('.dp-grid-table');
+await page.waitForTimeout(350);
+check('「対象」の選択が操作のあとも残る',
+  (await page.inputValue('.dp-grid-target')) === 'header',
+  await page.inputValue('.dp-grid-target'));
+
 await browser.close();

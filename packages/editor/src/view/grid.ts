@@ -9,9 +9,12 @@
 // range edits in the `.table` file. The grid holds no copy of the data: after
 // each change the file is re-read and the grid is rebuilt from it.
 
-import { cellAt, type Align, type Cell, type Selector, type TableFile } from '@docpresenter/core';
 import {
-  cellClasses, cellRules, headerClasses, headerRules, inlineStyle, rowClasses,
+  cellAt, type Align, type Cell, type Selector, type StyleRule, type TableFile,
+} from '@docpresenter/core';
+import {
+  alignOf, cellClasses, cellRules, headerClasses, headerRules, inlineMarkdown,
+  inlineStyle, rowClasses,
 } from '@docpresenter/render';
 import type { Edit } from '../edit.js';
 import {
@@ -35,17 +38,17 @@ export interface GridOptions {
   readonly owner: Document;
   readonly table: TableFile;
   readonly at: GridPosition;
+  /** Which of TARGETS the style controls act on. Kept by the host so that it
+   *  survives the rebuild after every edit. */
+  readonly target: string;
   /** Runs one operation as an edit on the table's file. */
   readonly apply: (make: () => Edit, at: GridPosition) => void;
   /** Tells the host where the selection went, so a redraw can restore it. */
   readonly move: (at: GridPosition) => void;
+  readonly onTarget: (target: string) => void;
   /** Leaves the grid and shows the source instead. */
   readonly showSource: () => void;
 }
-
-const ALIGN_CLASS: Readonly<Record<Align, string>> = {
-  left: 'dp-align-left', center: 'dp-align-center', right: 'dp-align-right', default: '',
-};
 
 /**
  * The targets a style can be applied to, as the file's own selectors. A cell
@@ -85,7 +88,7 @@ export function createGrid(options: GridOptions): Grid {
   let dragging = false;
   let editing = false;
   let repaintStyle: () => void = () => {};
-  let target = 'cell';
+  let target = options.target;
   const nodes = new Map<string, HTMLElement>();
   const input = owner.createElement('input');
   input.className = 'dp-grid-input';
@@ -154,7 +157,7 @@ export function createGrid(options: GridOptions): Grid {
     const head = owner.createElement('thead');
     const headRow = owner.createElement('tr');
     table.columns.forEach((column, c) => {
-      const node = cellNode('th', column.header, -1, c, 1, 1, column.align, undefined);
+      const node = cellNode('th', column.header, -1, c, 1, 1, undefined);
       const width = table.style.find(r =>
         r.selector.kind === 'column' && r.selector.name === column.header,
       )?.declarations.get('width');
@@ -169,10 +172,7 @@ export function createGrid(options: GridOptions): Grid {
       const line = owner.createElement('tr');
       line.className = rowClasses(table, r).join(' ');
       for (const cell of row.cells) {
-        line.append(cellNode(
-          'td', cell.text, r, cell.column, cell.rowspan, cell.colspan,
-          table.columns[cell.column]?.align ?? 'default', cell,
-        ));
+        line.append(cellNode('td', cell.text, r, cell.column, cell.rowspan, cell.colspan, cell));
       }
       tbody.append(line);
     });
@@ -183,17 +183,25 @@ export function createGrid(options: GridOptions): Grid {
 
   function cellNode(
     tag: 'th' | 'td', text: string, row: number, column: number,
-    rowspan: number, colspan: number, align: Align, cell: Cell | undefined,
+    rowspan: number, colspan: number, cell: Cell | undefined,
   ): HTMLElement {
     // The grid wears the same style classes the printed table will, so a fill
     // or a rule can be seen the moment it is applied.
-    const rules = cell ? cellRules(table, cell, row) : headerRules(table);
+    const rules = cell
+      ? cellRules(table, cell, row)
+      : [...headerRules(table), ...columnRulesFor(column)];
     const styles = cell ? cellClasses(table, cell, row) : headerClasses(table);
-    const node = element(tag, ['dp-grid-cell', ALIGN_CLASS[align], ...styles].join(' '));
+    // The alignment a cell ends up with is decided by the renderer, from the
+    // delimiter row and any rule that overrides it. Reading only the column
+    // here would leave the grid unmoved by an alignment it had just been told
+    // to apply.
+    const node = element(tag, ['dp-grid-cell', alignOf(table, column, rules), ...styles].join(' '));
     const colours = inlineStyle(rules);
     if (colours !== '') node.setAttribute('style', colours);
     const label = element('span', 'dp-grid-text');
-    label.textContent = text;
+    // What the cell will look like, not the notation that produces it. The
+    // notation is in the text box, which is what opens when you edit.
+    label.innerHTML = inlineMarkdown(text);
     node.append(label);
     node.dataset['row'] = String(row);
     node.dataset['column'] = String(column);
@@ -230,6 +238,11 @@ export function createGrid(options: GridOptions): Grid {
     // they have in common.
     node.addEventListener('dblclick', () => startEditing(''));
     return node;
+  }
+
+  function columnRulesFor(column: number): readonly StyleRule[] {
+    const header = table.columns[column]?.header;
+    return table.style.filter(r => r.selector.kind === 'column' && r.selector.name === header);
   }
 
   function textOf(position: GridPosition): string {
@@ -419,7 +432,11 @@ export function createGrid(options: GridOptions): Grid {
       choose.append(node);
     }
     choose.value = target;
-    choose.addEventListener('change', () => { target = choose.value; paint(); });
+    choose.addEventListener('change', () => {
+      target = choose.value;
+      options.onTarget(target);
+      paint();
+    });
     bar.append(choose);
 
     const set = (property: StyleProperty, value: string | undefined): void => {
