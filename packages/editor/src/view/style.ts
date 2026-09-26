@@ -32,11 +32,14 @@ export const EDITOR_STYLE = `
 /* Where a new block begins. An empty sheet says so; a sheet with content
    keeps it quiet until the pointer is over it. */
 .dp-append {
-  cursor: text; min-height: 1.8em; padding: 0.5em 0;
+  cursor: text; min-height: 0.9em; padding: 0.15em 0;
   display: flex; align-items: center; gap: 0.5em;
   font-family: var(--font-heading, sans-serif); font-size: 0.85em;
   color: #a7aeb8; position: relative;
 }
+/* Between blocks it is a thin strip; it opens up under the pointer. */
+.dp-append:hover { min-height: 1.8em; }
+.dp-sheet > .dp-append:last-child { min-height: 1.8em; padding: 0.5em 0; }
 .dp-append-hint { flex: 0 0 auto; }
 .dp-append:hover .dp-append-hint:empty::before { content: "ここに本文を書く"; }
 .dp-sheet-empty .dp-append { color: #8b929c; min-height: 3em; }

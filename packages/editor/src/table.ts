@@ -307,7 +307,8 @@ export function unmerge(table: TableFile, row: number, column: number): Edit {
  * The properties a rule may carry. `fill` and `color` take a colour the author
  * picked; `width` takes a share of the table. The rest are a theme's tokens.
  */
-export type StyleProperty = 'fill' | 'color' | 'width' | 'bottom' | 'right' | 'top' | 'left';
+export type StyleProperty =
+  | 'fill' | 'color' | 'width' | 'align' | 'bottom' | 'right' | 'top' | 'left';
 
 /**
  * Sets one property on a selector. `undefined` removes it, and a rule with

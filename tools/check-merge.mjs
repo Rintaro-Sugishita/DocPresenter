@@ -131,4 +131,41 @@ check('進めれば 2x2 に結合される',
 check('左上の文字だけが残る',
   (await page.textContent(cell(0, 0))).includes('アクセストークン'));
 
+
+
+// --- 見出しの寄せと色 -----------------------------------------------------
+await page.goto('file://' + process.cwd() + '/out/editor.html');
+await page.waitForTimeout(500);
+await page.click('.dp-tab[data-index="5"]');
+await page.waitForTimeout(250);
+await openGrid();
+
+await page.dblclick(cell(-1, 1));
+await page.waitForTimeout(250);
+await page.$eval('.dp-grid-input', el => {
+  el.setSelectionRange(0, 2);
+  el.dispatchEvent(new Event('select', { bubbles: true }));
+});
+await page.click('.dp-grid .dp-format-swatch[title*="赤"]', { force: true });
+await page.keyboard.press('Enter');
+await page.waitForSelector('.dp-grid-table');
+await page.waitForTimeout(350);
+await page.click('.dp-sheet:not([hidden]) .dp-prose p');
+await page.waitForTimeout(400);
+check('見出しの一部にも色が付く',
+  await page.isVisible('.dp-sheet:not([hidden]) .dp-table th span[style*="color:#ff0000"]'));
+
+await openGrid();
+await page.selectOption('.dp-grid-target', 'header');
+await page.waitForTimeout(150);
+await page.click('.dp-grid-bar button[title*="中央"]');
+await page.waitForSelector('.dp-grid-table');
+await page.waitForTimeout(300);
+await page.click('.dp-sheet:not([hidden]) .dp-prose p');
+await page.waitForTimeout(400);
+check('見出しだけ中央寄せにできる',
+  await page.isVisible('.dp-sheet:not([hidden]) .dp-table th.dp-align-center'));
+check('本文セルの寄せは変わらない',
+  !(await page.isVisible('.dp-sheet:not([hidden]) .dp-table td.dp-align-center')));
+
 await browser.close();

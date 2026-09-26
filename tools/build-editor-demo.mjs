@@ -73,6 +73,11 @@ const view = mountSheetView({
   settings,
   readResource: p => FILES[clean(p)],
   createResource,
+  // すでにあるものの一覧。どのファイルが在るかは器が知っている。
+  listResources: () => Object.keys(FILES)
+    .filter(path => /\.(dgm|table|mmd|ermlx)$/i.test(path))
+    .sort((a, b) => Number(a.includes('shared')) - Number(b.includes('shared')) || a.localeCompare(b))
+    .map(path => ({ path, label: path })),
   onChange: (edit, text) => {
     if (edit.path === undefined) document.getElementById('source').textContent = text;
     else FILES[clean(edit.path)] = text;

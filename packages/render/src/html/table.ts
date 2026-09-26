@@ -31,7 +31,13 @@ const LENGTH = /^\d+(\.\d+)?(%|em|px|ch)$/;
 
 export function renderTable(table: TableFile): string {
   const head = table.columns
-    .map(c => `<th${styleAttrs(ALIGN_CLASS[c.align], headerRules(table))}>${escapeHtml(c.header)}</th>`)
+    .map((c, i) => {
+      const rules = [...headerRules(table), ...columnRules(table, c.header)];
+      // A header is a cell. It takes the same inline Markdown the others do —
+      // dropping it there would show the notation to the reader.
+      return `<th${styleAttrs(alignOf(table, i, rules), rules)}>`
+        + `${inlineMarkdown(c.header)}</th>`;
+    })
     .join('');
 
   const body = table.rows.map((row, r) => {
@@ -67,13 +73,31 @@ function columnGroup(table: TableFile): string {
 }
 
 function renderCell(table: TableFile, cell: Cell, row: number): string {
-  const column = table.columns[cell.column];
+  const rules = cellRules(table, cell, row);
   const attributes = [
     cell.rowspan > 1 ? ` rowspan="${cell.rowspan}"` : '',
     cell.colspan > 1 ? ` colspan="${cell.colspan}"` : '',
-    styleAttrs(column ? ALIGN_CLASS[column.align] : '', cellRules(table, cell, row)),
+    styleAttrs(alignOf(table, cell.column, rules), rules),
   ].join('');
   return `<td${attributes}>${renderCellText(table, cell.text)}</td>`;
+}
+
+function columnRules(table: TableFile, header: string | undefined): readonly StyleRule[] {
+  return table.style.filter(r => r.selector.kind === 'column' && r.selector.name === header);
+}
+
+/**
+ * The delimiter row sets one alignment for the whole column, which is all
+ * Markdown can say. A rule may override it for the header alone — the usual
+ * scientific table centres its headings over right-aligned figures — so the
+ * class is decided once here rather than left to two classes fighting.
+ */
+export function alignOf(table: TableFile, column: number, rules: readonly StyleRule[]): string {
+  for (const rule of rules) {
+    const align = rule.declarations.get('align');
+    if (align === 'left' || align === 'center' || align === 'right') return ALIGN_CLASS[align];
+  }
+  return ALIGN_CLASS[table.columns[column]?.align ?? 'default'];
 }
 
 /** Cells hold inline markdown; a block reference expands to its definition. */
@@ -179,6 +203,7 @@ function declarationClasses(rules: readonly StyleRule[]): string[] {
   for (const rule of rules) {
     for (const [property, value] of rule.declarations) {
       if (property === 'width') continue;   // a measurement, on the <col>
+      if (property === 'align') continue;   // decided in one place, by alignOf
       if (COLOUR.test(value)) continue;     // a colour, written as a declaration
       classes.push(`dp-${property}-${value}`);
     }

@@ -622,12 +622,24 @@ export function createGrid(options: GridOptions): Grid {
     };
     const here = (): GridPosition => ({ row: Math.max(0, at.row), column: at.column });
 
+    // Alignment follows the same target as the colours. Markdown can only
+    // give a column one alignment, but a rule may override it for the header —
+    // headings centred over right-aligned figures is the usual scientific
+    // table, and the vocabulary already allows it.
     const aligns: [Align, string, string][] = [
       ['left', '左', '左寄せ'], ['center', '中', '中央'], ['right', '右', '右寄せ'],
     ];
     for (const [align, label, title] of aligns) {
-      add(label, `${title}（列全体）`, () =>
-        options.apply(() => setAlign(table, at.column, align), here()));
+      add(label, `${title}（対象に合わせて）`, () => {
+        if (target === 'column') {
+          options.apply(() => setAlign(table, at.column, align), here());
+          return;
+        }
+        const which = selector();
+        if (!which) return;
+        const off = styleAt(table, which, 'align') === align;
+        options.apply(() => setStyle(table, which, 'align', off ? undefined : align), here());
+      });
     }
 
     bar.append(element('span', 'dp-grid-divider'));

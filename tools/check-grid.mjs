@@ -71,13 +71,17 @@ await page.waitForTimeout(200);
 check('矢印で移動する',
   await page.getAttribute(cell(0, 1), 'class').then(c => c.includes('dp-grid-at')));
 
-// 寄せ
+// 寄せ — 「対象」に従う。列を選べば区切り行に書かれ、列全体に効く。
 await page.click(cell(0, 1));
 await page.waitForTimeout(120);
+await page.selectOption('.dp-grid-target', 'column');
+await page.waitForTimeout(120);
 await page.click('.dp-grid-bar button[title*="右寄せ"]');
+await page.waitForSelector('.dp-grid-table');
 await page.waitForTimeout(350);
-check('寄せは列全体に効く',
-  await page.getAttribute(cell(0, 1), 'class').then(c => c.includes('dp-align-right')));
+check('列を対象にした寄せは列全体に効く',
+  await page.getAttribute(cell(0, 1), 'class').then(c => c.includes('dp-align-right'))
+  && await page.getAttribute(cell(1, 1), 'class').then(c => c.includes('dp-align-right')));
 
 // 整形は明示したときだけ
 await page.click('.dp-grid-bar button[title*="桁を揃える"]');

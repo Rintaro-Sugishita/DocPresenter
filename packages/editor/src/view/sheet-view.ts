@@ -15,6 +15,7 @@ import { DEFAULT_SETTINGS, isCommit, type EditorSettings } from '../settings.js'
 import { insertSheet, moveSheet, removeSheet, renameSheet, SheetEditError } from '../sheets.js';
 import { TableEditError } from '../table.js';
 import { createGrid, type Grid, type GridPosition } from './grid.js';
+import { createMenu } from './menu.js';
 import { EDITOR_STYLE } from './style.js';
 import { createToolbar } from './toolbar.js';
 
@@ -41,6 +42,11 @@ export interface SheetViewOptions {
    * not the editor's, so the host decides the folder and the starter content.
    */
   readonly createResource?: (kind: ResourceKind) => { path: string; text: string } | undefined;
+  /**
+   * The figures and tables that already exist, for referring to one rather
+   * than making another. Which files exist is the platform's business too.
+   */
+  readonly listResources?: () => readonly { path: string; label: string }[];
   /** Called when an operation is refused, so the app can say why. */
   readonly onError?: (message: string) => void;
   /** Key bindings and the like. See settings.ts for why this is a value. */
@@ -74,6 +80,7 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
   let settings = options.settings ?? DEFAULT_SETTINGS;
 
   const owner = root.ownerDocument;
+  const menu = createMenu(owner);
   injectStyle(owner);
   root.classList.add('dp-editor');
   const pane = element('div', 'dp-editor-pane');
@@ -394,35 +401,61 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
     figure.append(line);
   }
 
-  /** The place to start writing, at the end of a sheet. Editor chrome only. */
-  function addAppendTarget(section: HTMLElement): void {
-    const empty = section.childElementCount === 0;
-    section.classList.toggle('dp-sheet-empty', empty);
+  /**
+   * A place to add something after every block, not only at the end of the
+   * sheet. A figure usually belongs next to the paragraph that introduces it,
+   * and having to write it at the bottom and drag it up is not adding it
+   * there. Editor chrome; never in the output.
+   */
+  function addInsertTargets(section: HTMLElement): void {
+    const blocks = [...section.children].filter(
+      (node): node is HTMLElement => node instanceof HTMLElement && node.dataset['span'] !== undefined);
+    section.classList.toggle('dp-sheet-empty', blocks.length === 0);
+
+    if (blocks.length === 0) {
+      section.append(insertTarget(section.dataset['span'] ?? '', true));
+      return;
+    }
+    for (const block of blocks) {
+      block.after(insertTarget(block.dataset['span'] ?? '', false));
+    }
+  }
+
+  function insertTarget(span: string, empty: boolean): HTMLElement {
     const append = element('div', 'dp-append');
-    // The sheet's own range ends where its last block ends, which is where a
-    // new block goes, so the target carries the same range.
-    append.dataset['span'] = section.dataset['span'] ?? '';
+    // Whatever is added starts where the block before it ends.
+    append.dataset['span'] = span;
 
     const hint = element('span', 'dp-append-hint');
     hint.textContent = empty ? 'ここに本文を書く' : '';
     append.append(hint);
 
+    const button = (label: string, title: string, run: (event: MouseEvent) => void): void => {
+      const node = owner.createElement('button');
+      node.type = 'button';
+      node.className = 'dp-append-add';
+      node.textContent = label;
+      node.title = title;
+      node.addEventListener('mousedown', event => {
+        event.preventDefault();
+        event.stopPropagation();
+        run(event);
+      });
+      append.append(node);
+    };
+
     if (options.createResource) {
       for (const [kind, label] of [['table', '表'], ['diagram', '図']] as const) {
-        const button = owner.createElement('button');
-        button.type = 'button';
-        button.className = 'dp-append-add';
-        button.textContent = `＋ ${label}`;
-        button.title = `${label}を追加する`;
-        button.addEventListener('mousedown', event => {
-          event.preventDefault();
-          event.stopPropagation();
-          addResource(append, kind);
-        });
-        append.append(button);
+        button(`＋ ${label}`, `ここに新しい${label}を作る`, () => addResource(append, kind));
       }
     }
-    section.append(append);
+    if (options.listResources) {
+      // Most figures in a real document already exist somewhere — in the
+      // shared folder, or earlier in this one. Making a second copy of a
+      // shared diagram is the thing this prevents.
+      button('＋ 参照', 'すでにある図表を参照する', event => chooseResource(append, event));
+    }
+    return append;
   }
 
   /**
@@ -431,6 +464,32 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
    * left for the author to fill in — a placeholder caption is one more thing
    * to delete.
    */
+  /** Picks from what exists. The same `@import` line, pointing at a file that
+   *  is already there rather than one just made. */
+  function chooseResource(append: HTMLElement, event: MouseEvent): void {
+    const available = options.listResources?.() ?? [];
+    const at = spanOf(append)?.end;
+    if (at === undefined) return;
+    if (available.length === 0) {
+      options.onError?.('参照できる図表がまだ無い');
+      return;
+    }
+    menu.open(event.clientX, event.clientY, available.map((resource, index) => ({
+      label: resource.label,
+      separated: index > 0 && shared(resource.path) !== shared(available[index - 1]!.path),
+      run: () => commit(() => ({
+        span: { start: at, end: at },
+        text: `\n\n@import "${resource.path}"`,
+        description: `${resource.path} を参照`,
+      }), active),
+    })));
+  }
+
+  /** Shared resources are grouped apart; the path says which is which. */
+  function shared(path: string): boolean {
+    return path.includes('shared/');
+  }
+
   function addResource(append: HTMLElement, kind: ResourceKind): void {
     const at = spanOf(append)?.end;
     const made = options.createResource?.(kind);
@@ -510,7 +569,7 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
     pane.replaceChildren(page);
     editing = undefined;
     sections = [...page.querySelectorAll<HTMLElement>('.dp-sheet')];
-    for (const section of sections) addAppendTarget(section);
+    for (const section of sections) addInsertTargets(section);
     for (const figure of page.querySelectorAll<HTMLElement>('.dp-figure')) addImportTarget(figure);
     if (grid) {
       const figure = page.querySelector<HTMLElement>(`.dp-figure[data-path="${cssEscape(grid.path)}"]`);

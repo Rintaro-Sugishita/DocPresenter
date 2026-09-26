@@ -313,3 +313,39 @@ describe('入れ子の色', () => {
     }
   });
 });
+
+describe('見出しの扱い', () => {
+  const styled = (...rules: string[]) => parseTable([
+    '| 項目 | 値 |', '| --- | ---: |', '| a | 1.5 |', '',
+    'style {', ...rules, '}',
+  ].join('\n'));
+
+  it('見出しにも inline markdown が効く', () => {
+    const table = parseTable(['| 濃度 [**mol/L**] | 値 |', '| --- | --- |', '| a | 1 |'].join('\n'));
+    expect(renderTable(table)).toContain('<strong>mol/L</strong>');
+  });
+
+  it('見出しにも色が付く', () => {
+    const table = parseTable(
+      ['| [注目]{color=#ff0000} | 値 |', '| --- | --- |', '| a | 1 |'].join('\n'));
+    expect(renderTable(table)).toContain('<span style="color:#ff0000">注目</span>');
+  });
+
+  it('既定では見出しも列の寄せに従う', () => {
+    const html = renderTable(styled('  header { fill: #eceef1 }'));
+    expect(html).toMatch(/<th[^>]*dp-align-right[^>]*>値/);
+  });
+
+  it('見出しだけ別の寄せにできる', () => {
+    // 数値は右寄せ、見出しは中央。理科系の表でよくある組み合わせ。
+    const html = renderTable(styled('  header { align: center }'));
+    expect(html).toMatch(/<th[^>]*dp-align-center/);
+    expect(html).toMatch(/<td[^>]*dp-align-right/);
+  });
+
+  it('寄せは class を二つ出さない', () => {
+    const html = renderTable(styled('  header { align: center }'));
+    const th = /<th\s[^>]*>/.exec(html)![0];   // <thead> に引っかからないように
+    expect(th.match(/dp-align-/g)).toHaveLength(1);
+  });
+});

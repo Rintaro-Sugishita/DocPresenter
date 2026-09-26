@@ -13,16 +13,22 @@ const sheetFigures = () => page.$$eval('.dp-sheet:not([hidden]) .dp-figure', f =
 
 await page.click('.dp-tab[data-index="1"]');
 await page.waitForTimeout(300);
-check('シート末尾に「＋ 表」「＋ 図」がある',
-  (await page.$$eval('.dp-sheet:not([hidden]) .dp-append-add', b => b.map(x => x.textContent))).join('/')
-    === '＋ 表/＋ 図');
+check('ブロックごとに追加できる場所がある',
+  (await page.$$('.dp-sheet:not([hidden]) .dp-append')).length >= 3,
+  `${(await page.$$('.dp-sheet:not([hidden]) .dp-append')).length} 箇所`);
 
+// 最初のブロックの直後に入れる（末尾ではない位置）
 const before = await sheetFigures();
-await page.click('.dp-sheet:not([hidden]) .dp-append-add:text("表")');
+await page.click('.dp-sheet:not([hidden]) .dp-append:first-of-type .dp-append-add:text("表")');
 await page.waitForTimeout(500);
 check('表が 1 つ増える', (await sheetFigures()) === before + 1, `${before} → ${await sheetFigures()}`);
 check('本文に @import が書かれる',
   (await page.textContent('#source')).includes('@import "auth-design/table-1.table"'));
+check('末尾ではなく、押した場所に入る', await (async () => {
+  const src = await page.textContent('#source');
+  // 押したのは表題の直後なので、最初の見出しより前にある。
+  return src.indexOf('@import "auth-design/table-1.table"') < src.indexOf('## 概要');
+})());
 check('新しい表が描画される',
   await page.isVisible('.dp-sheet:not([hidden]) .dp-figure[data-path*="table-1.table"] table'));
 
@@ -49,5 +55,30 @@ check('図はそのままソースで開ける',
     await page.waitForTimeout(300);
     return (await page.inputValue('.dp-block-source')).includes('free {');
   })());
+
+
+
+// --- すでにある図表を参照する ---------------------------------------------
+await page.goto('file://' + process.cwd() + '/out/editor.html');
+await page.waitForTimeout(500);
+await page.click('.dp-tab[data-index="1"]');
+await page.waitForTimeout(300);
+check('「＋ 参照」がある',
+  await page.isVisible('.dp-sheet:not([hidden]) .dp-append-add:text("参照")'));
+
+await page.click('.dp-sheet:not([hidden]) .dp-append:first-of-type .dp-append-add:text("参照")');
+await page.waitForSelector('.dp-menu button');
+const listed = await page.$$eval('.dp-menu button', bs => bs.map(b => b.textContent));
+check('すでにある図表が並ぶ', listed.length >= 5, `${listed.length} 件: ${listed.slice(0, 3).join(' / ')}`);
+check('共有のものも選べる', listed.some(t => t.includes('shared/')), listed.at(-1));
+
+await page.click('.dp-menu button:text("system-architecture.dgm")');
+await page.waitForTimeout(500);
+check('参照した図が入る',
+  (await page.textContent('#source')).includes('@import "../shared/system-architecture.dgm"'));
+check('新しいファイルは作られない',
+  !(await page.textContent('#status')).includes('を作成'), await page.textContent('#status'));
+check('参照した図が描画される',
+  (await page.$$('.dp-sheet:not([hidden]) .dp-figure')).length === 1);
 
 await browser.close();
