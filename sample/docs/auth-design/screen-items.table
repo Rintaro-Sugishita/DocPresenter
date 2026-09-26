@@ -20,12 +20,10 @@
 
 style {
   theme: grid
-
-  header       { bottom: thick }
-  col:分類     { right: thick }
+  col:分類 { width: 18% }
   col:必須     { width: 4em }
   col:初期値   { width: 5em }
   col:説明     { width: 38% }
 
-  cell:表示/説明 { fill: changed }
+  cell:表示/説明 { fill: #fdf0d5 }
 }

@@ -23,22 +23,46 @@ export function selectRows(table: TableFile, rangeName: string): TableFile | und
   return { ...table, rows: table.rows.slice(from, to + 1) };
 }
 
+/** `#abc` or `#aabbcc`. Anything else is not a colour and is not emitted. */
+const COLOUR = /^#[0-9a-fA-F]{3}([0-9a-fA-F]{3})?$/;
+/** A length the layout can use, for column widths. */
+const LENGTH = /^\d+(\.\d+)?(%|em|px|ch)$/;
+
 export function renderTable(table: TableFile): string {
   const head = table.columns
-    .map(c => `<th${classAttr([ALIGN_CLASS[c.align], ...headerClasses(table)])}>${escapeHtml(c.header)}</th>`)
+    .map(c => `<th${styleAttrs(ALIGN_CLASS[c.align], headerRules(table))}>${escapeHtml(c.header)}</th>`)
     .join('');
 
   const body = table.rows.map((row, r) => {
     const cells = row.cells.map(cell => renderCell(table, cell, r)).join('');
-    return `<tr${classAttr(rowClasses(table, r))}>${cells}</tr>`;
+    return `<tr${styleAttrs('', rowRules(table, r))}>${cells}</tr>`;
   }).join('\n');
 
   return [
     `<table class="dp-table"${table.theme ? ` data-theme="${escapeAttr(table.theme)}"` : ''}>`,
+    columnGroup(table),
     `<thead><tr>${head}</tr></thead>`,
     `<tbody>\n${body}\n</tbody>`,
     '</table>',
-  ].join('\n');
+  ].filter(part => part !== '').join('\n');
+}
+
+/**
+ * Column widths are a measurement, not a token, so they are written as a real
+ * width on a `<col>`. A theme cannot decide how wide the "備考" column should
+ * be in one particular table.
+ */
+function columnGroup(table: TableFile): string {
+  const widths = table.columns.map(column => {
+    const rule = table.style.find(r =>
+      r.selector.kind === 'column' && r.selector.name === column.header);
+    const width = rule?.declarations.get('width');
+    return width !== undefined && LENGTH.test(width) ? width : undefined;
+  });
+  if (widths.every(width => width === undefined)) return '';
+  return `<colgroup>${widths
+    .map(width => width === undefined ? '<col>' : `<col style="width:${width}">`)
+    .join('')}</colgroup>`;
 }
 
 function renderCell(table: TableFile, cell: Cell, row: number): string {
@@ -46,10 +70,7 @@ function renderCell(table: TableFile, cell: Cell, row: number): string {
   const attributes = [
     cell.rowspan > 1 ? ` rowspan="${cell.rowspan}"` : '',
     cell.colspan > 1 ? ` colspan="${cell.colspan}"` : '',
-    classAttr([
-      column ? ALIGN_CLASS[column.align] : '',
-      ...cellClasses(table, cell, row),
-    ]),
+    styleAttrs(column ? ALIGN_CLASS[column.align] : '', cellRules(table, cell, row)),
   ].join('');
   return `<td${attributes}>${renderCellText(table, cell.text)}</td>`;
 }
@@ -78,13 +99,21 @@ function inlineMarkdown(text: string): string {
  * the same fills and rules while you are editing; one implementation keeps the
  * grid and the printed table from disagreeing.
  */
+export function headerRules(table: TableFile): readonly StyleRule[] {
+  return table.style.filter(r => r.selector.kind === 'header');
+}
+
 export function headerClasses(table: TableFile): string[] {
-  return declarationClasses(table.style.filter(r => r.selector.kind === 'header'));
+  return declarationClasses(headerRules(table));
 }
 
 export function rowClasses(table: TableFile, row: number): string[] {
+  return declarationClasses(rowRules(table, row));
+}
+
+export function rowRules(table: TableFile, row: number): readonly StyleRule[] {
   const odd = (row + 1) % 2 === 1;
-  return declarationClasses(table.style.filter(rule => {
+  return table.style.filter(rule => {
     const s = rule.selector;
     if (s.kind === 'row') return s.which === 'all' || (s.which === 'odd') === odd;
     // A range names its first and last row by the text of their leading cell,
@@ -95,7 +124,7 @@ export function rowClasses(table: TableFile, row: number): string[] {
       return range !== undefined && withinRange(table, row, range.from, range.to);
     }
     return false;
-  }));
+  });
 }
 
 function withinRange(table: TableFile, row: number, from: string, to: string): boolean {
@@ -106,14 +135,45 @@ function withinRange(table: TableFile, row: number, from: string, to: string): b
 }
 
 export function cellClasses(table: TableFile, cell: Cell, row: number): string[] {
+  return declarationClasses(cellRules(table, cell, row));
+}
+
+export function cellRules(table: TableFile, cell: Cell, row: number): readonly StyleRule[] {
   const columnName = table.columns[cell.column]?.header;
   const rowName = table.rows[row]?.cells[0]?.text;
-  return declarationClasses(table.style.filter(rule => {
+  return table.style.filter(rule => {
     const s = rule.selector;
     if (s.kind === 'column') return s.name === columnName;
     if (s.kind === 'cell') return s.column === columnName && s.row === rowName;
     return false;
-  }));
+  });
+}
+
+/**
+ * Class names for the theme's own tokens, and a real declaration for a colour
+ * the author picked. A colour is checked against the hex forms before it is
+ * emitted, so nothing else can reach the style attribute.
+ */
+function styleAttrs(align: string, rules: readonly StyleRule[]): string {
+  const inline = inlineStyle(rules);
+  const style = inline === '' ? '' : ` style="${escapeAttr(inline)}"`;
+  return `${classAttr([align, ...declarationClasses(rules)])}${style}`;
+}
+
+/**
+ * The colours an author picked, as CSS. Exported because the grid editor shows
+ * the same fills and text colours while you are editing.
+ */
+export function inlineStyle(rules: readonly StyleRule[]): string {
+  const parts: string[] = [];
+  for (const rule of rules) {
+    for (const [property, value] of rule.declarations) {
+      if (!COLOUR.test(value)) continue;
+      if (property === 'fill') parts.push(`background:${value}`);
+      if (property === 'color') parts.push(`color:${value}`);
+    }
+  }
+  return parts.join(';');
 }
 
 /** `fill: changed` becomes `dp-fill-changed`; the theme resolves the token. */
@@ -121,7 +181,8 @@ function declarationClasses(rules: readonly StyleRule[]): string[] {
   const classes: string[] = [];
   for (const rule of rules) {
     for (const [property, value] of rule.declarations) {
-      if (property === 'width') continue;   // a measurement, not a token
+      if (property === 'width') continue;   // a measurement, on the <col>
+      if (COLOUR.test(value)) continue;     // a colour, written as a declaration
       classes.push(`dp-${property}-${value}`);
     }
   }

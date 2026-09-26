@@ -67,6 +67,11 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
   injectStyle(owner);
   root.classList.add('dp-editor');
   const pane = element('div', 'dp-editor-pane');
+  // The listener lives on the pane, which survives a redraw; the page inside
+  // it does not. Routing is on mousedown so that the open editor is closed
+  // before the click is resolved — closing one can redraw the page, and a
+  // click resolved beforehand would land on a node that no longer exists.
+  pane.addEventListener('mousedown', onPointerDown);
   const tabbar = element('div', 'dp-tabbar');
   tabbar.setAttribute('role', 'tablist');
   root.append(pane, tabbar);
@@ -267,7 +272,12 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
     const before = sliceBytes(whole, current.span.start, current.span.end);
     const abandoned = current.fresh ? typed.trim() === '' : typed === before;
     if (!keep || abandoned) {
-      current.host.innerHTML = current.original;
+      // Putting the saved markup back is only safe for a block of prose. A
+      // figure's body may have held a live grid, and restoring its HTML would
+      // leave a picture of a grid with nothing wired to it — every button
+      // clickable and dead. Draw it again instead.
+      if (current.path === undefined) current.host.innerHTML = current.original;
+      else draw();
       return;
     }
     commit(() => ({
@@ -279,6 +289,72 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
         ? 'ソースを編集'
         : current.fresh ? '本文を追加' : '本文を編集',
     }), active);
+  }
+
+  const CLICKABLE = '.dp-grid, .dp-block-source, .dp-format-bar, .dp-caption,'
+    + ' .dp-import-line, .dp-figure, .dp-append, .dp-prose, h1, h2, h3, h4, h5, h6';
+
+  function onPointerDown(event: MouseEvent): void {
+    const target = (event.target as HTMLElement | null)?.closest<HTMLElement>(CLICKABLE);
+    if (!target || !pane.contains(target)) return;
+    // A press inside whatever is already open belongs to it.
+    if (target.classList.contains('dp-block-source')) return;
+    if (target.classList.contains('dp-format-bar')) return;
+    if (target.classList.contains('dp-grid')) return;
+
+    // We are about to open an editor and focus it. Left to itself the browser
+    // would then move focus to whatever was under the pointer — by that time a
+    // detached node — and the editor would blur and close on the way up.
+    event.preventDefault();
+
+    // Remember what was pressed before closing anything, then find it again:
+    // closing redraws, and the element pressed is replaced by an equal one.
+    const wanted = {
+      span: target.dataset['span'],
+      path: target.closest<HTMLElement>('.dp-figure')?.dataset['path'],
+      append: target.classList.contains('dp-append'),
+      caption: target.classList.contains('dp-caption')
+        || target.classList.contains('dp-import-line'),
+      figure: target.classList.contains('dp-figure'),
+    };
+
+    const hadGrid = grid !== undefined;
+    if (hadGrid && !wanted.figure && wanted.path === undefined) {
+      grid = undefined;
+      draw();
+      return;
+    }
+    endEdit(true);
+
+    const again = resolve(wanted);
+    if (!again) return;
+    if (wanted.caption) {
+      const figure = again.closest<HTMLElement>('.dp-figure');
+      if (figure) beginEdit2(again, figure);
+      return;
+    }
+    if (wanted.figure) { beginResourceEdit(again); return; }
+    if (wanted.append) beginAppend(again);
+    else beginEdit(again);
+  }
+
+  /** The same element in the page as it stands now. */
+  function resolve(wanted: {
+    span: string | undefined; path: string | undefined;
+    append: boolean; caption: boolean; figure: boolean;
+  }): HTMLElement | undefined {
+    if (wanted.figure && wanted.path !== undefined) {
+      return pane.querySelector<HTMLElement>(
+        `.dp-figure[data-path="${cssEscape(wanted.path)}"]`) ?? undefined;
+    }
+    if (wanted.caption && wanted.path !== undefined) {
+      const figure = pane.querySelector<HTMLElement>(
+        `.dp-figure[data-path="${cssEscape(wanted.path)}"]`);
+      return figure?.querySelector<HTMLElement>('.dp-caption, .dp-import-line') ?? undefined;
+    }
+    if (wanted.span === undefined) return undefined;
+    const matches = [...pane.querySelectorAll<HTMLElement>(`[data-span="${wanted.span}"]`)];
+    return matches.find(node => node.classList.contains('dp-append') === wanted.append);
   }
 
   /** Edits one element's range while showing the box somewhere else. */
@@ -373,35 +449,6 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
   function draw(): void {
     const page = element('div', 'dp-page');
     page.innerHTML = render(source);
-    page.addEventListener('click', event => {
-      const from = event.target as HTMLElement | null;
-      const target = from?.closest<HTMLElement>(
-        '.dp-grid, .dp-block-source, .dp-caption, .dp-import-line, .dp-figure,'
-        + ' .dp-append, .dp-prose, h1, h2, h3, h4, h5, h6',
-      );
-      if (!target || !page.contains(target)) return;
-      // Clicking away from an open grid closes it, and the table goes back to
-      // being drawn. One click closes, the next one edits.
-      if (grid && !target.closest('.dp-figure')) {
-        grid = undefined;
-        draw();
-        return;
-      }
-      // Inside a figure, the drawing is the referenced file and the caption is
-      // the `@import` line that placed it. You edit what you pointed at.
-      // A click inside an open editor belongs to that editor, not to the page.
-      if (target.classList.contains('dp-block-source')) return;
-      if (target.classList.contains('dp-grid')) return;
-      if (target.classList.contains('dp-caption') || target.classList.contains('dp-import-line')) {
-        const figure = target.closest<HTMLElement>('.dp-figure');
-        if (figure) beginEdit2(target, figure);
-        return;
-      }
-      if (target.classList.contains('dp-figure')) { beginResourceEdit(target); return; }
-      grid = undefined;
-      if (target.classList.contains('dp-append')) beginAppend(target);
-      else beginEdit(target);
-    });
     pane.replaceChildren(page);
     editing = undefined;
     sections = [...page.querySelectorAll<HTMLElement>('.dp-sheet')];

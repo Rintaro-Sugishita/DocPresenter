@@ -14,7 +14,7 @@ const check = (name, ok, detail = '') => {
 };
 const status = () => page.textContent('#status');
 const cell = (row, column) => `.dp-grid-table [data-row="${row}"][data-column="${column}"]`;
-const fill = token => `.dp-grid-style button[title="塗りつぶし: ${token}"]`;
+const fill = name => `.dp-grid-swatch[title="塗り: ${name}"]`;
 const openGrid = async () => {
   await page.click('.dp-sheet:not([hidden]) .dp-figure-body');
   await page.waitForSelector('.dp-grid-table');
@@ -40,56 +40,56 @@ check('スタイルの操作列が出る', await page.isVisible('.dp-grid-style'
 // このセル（既定の対象）
 await page.click(cell(1, 1));
 await page.waitForTimeout(150);
-await press(fill('changed'));
+await press(fill('黄'));
 check('1 回の操作としてソースに書かれる',
   (await status()).includes('スタイルを設定') && (await status()).includes('.table'), await status());
-check('付いているボタンが点灯する',
-  await page.getAttribute(fill('changed'), 'aria-pressed') === 'true');
+check('付いている色が点灯する',
+  await page.getAttribute(fill('黄'), 'aria-pressed') === 'true');
 
 check('グリッドの上でも塗りが見える',
-  await page.isVisible('.dp-grid-table td.dp-fill-changed'));
+  await page.isVisible('.dp-grid-table td[style*="#fdf0d5"]'));
 await closeGrid();
-check('描画された表のセルに class が付く',
-  await page.isVisible('.dp-sheet:not([hidden]) .dp-table td.dp-fill-changed'));
+check('描画された表のセルに色が乗る',
+  await page.isVisible('.dp-sheet:not([hidden]) .dp-table td[style*="background:#fdf0d5"]'));
 await openGrid();
 
 // 押し直すと外れる
 await page.click(cell(1, 1));
 await page.waitForTimeout(150);
-await press(fill('changed'));
+await press(fill('黄'));
 check('押し直すと外れる',
-  await page.getAttribute(fill('changed'), 'aria-pressed') === 'false');
+  await page.getAttribute(fill('黄'), 'aria-pressed') === 'false');
 await closeGrid();
 check('描画からも消える',
-  !(await page.isVisible('.dp-sheet:not([hidden]) .dp-table td.dp-fill-changed')));
+  !(await page.isVisible('.dp-sheet:not([hidden]) .dp-table td[style*="background:#fdf0d5"]')));
 await openGrid();
 
-// 列に罫線（既存の規則に足す）
+// 列に文字色（既存の規則に足す）
 await page.selectOption('.dp-grid-target', 'column');
 await page.click(cell(1, 1));
 await page.waitForTimeout(150);
-await press('.dp-grid-style button[title*="右の罫線"]');
+await press('.dp-grid-swatch[title="文字色: 緑"]');
 await closeGrid();
-check('列の罫線が描画に効く',
-  await page.isVisible('.dp-sheet:not([hidden]) .dp-table td.dp-right-thick'));
+check('列の文字色が描画に効く',
+  await page.isVisible('.dp-sheet:not([hidden]) .dp-table td[style*="color:#2e7d32"]'));
 await openGrid();
 
 // 行は範囲セレクタで指す
 await page.selectOption('.dp-grid-target', 'row');
 await page.click(cell(2, 0));
 await page.waitForTimeout(150);
-await press(fill('pending'));
+await press(fill('青'));
 await closeGrid();
 check('行の塗りが描画に効く（範囲セレクタ）',
-  await page.isVisible('.dp-sheet:not([hidden]) .dp-table tr.dp-fill-pending'));
+  await page.isVisible('.dp-sheet:not([hidden]) .dp-table tr[style*="background:#e3f0fb"]'));
 await openGrid();
 
 // ヘッダ
 await page.selectOption('.dp-grid-target', 'header');
-await press('.dp-grid-style button[title*="下の罫線を二重"]');
+await press(fill('灰'));
 await closeGrid();
-check('ヘッダの罫線が描画に効く',
-  await page.isVisible('.dp-sheet:not([hidden]) .dp-table th.dp-bottom-double'));
+check('ヘッダの塗りが描画に効く',
+  await page.isVisible('.dp-sheet:not([hidden]) .dp-table th[style*="background:#eceef1"]'));
 
 // 最後にソースを読んで、記法そのものを確かめる
 await openGrid();
@@ -99,12 +99,12 @@ const source = await page.inputValue('.dp-block-source');
 check('セルは行と列の名前で指される（今は解除済みなので残っていない）',
   !source.includes('cell:リフレッシュトークン'), source.split('\n').filter(l => l.includes('cell:')).join(' / '));
 check('列の規則は既存の行に足されている',
-  /col:説明 \{[^}]*right: thick/.test(source),
+  /col:説明 \{[^}]*color: #2e7d32/.test(source),
   source.split('\n').filter(l => l.includes('col:')).join(' / '));
 check('行は範囲セレクタで書かれる',
-  /range:アカウントロック\.\.アカウントロック \{ fill: pending \}/.test(source),
+  /range:アカウントロック\.\.アカウントロック \{ fill: #e3f0fb \}/.test(source),
   source.split('\n').filter(l => l.includes('range:')).join(' / '));
-check('ヘッダの規則も 1 行', /header \{[^}]*bottom: double/.test(source),
+check('ヘッダの規則も 1 行', /header \{[^}]*fill: #eceef1/.test(source),
   source.split('\n').filter(l => l.includes('header')).join(' / '));
 check('空の規則が残らない', !/\{\s*\}/.test(source));
 check('グリッドには触っていない', source.includes('| アクセストークン'));

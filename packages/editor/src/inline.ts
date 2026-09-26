@@ -1,25 +1,29 @@
-// Inline formatting: bold, italic, code and the meaning tokens.
+// Inline formatting: bold, italic, code and colour.
 //
 // These work on the text of one block, in string indices, because that is what
 // a text box hands you. The byte-range discipline applies where it matters —
 // the block is written back to the file as one byte-range replacement — and
 // forcing byte arithmetic in here as well would only obscure the logic.
 //
-// Colour is not offered. A design document is printed, read by people who see
-// colour differently, and read by machines; `#c00` says nothing to any of them.
-// The four meaning tokens the tables already use say what the colour meant.
+// Colour is the author's to choose. It was once restricted to four meanings,
+// on the argument that a colour cannot be read back by a machine or a
+// greyscale printer. What broke that argument is that the meanings were mostly
+// about what had changed — and marking that by hand is work nobody does when
+// the diff is in Git. Colour is what people reach for to make something stand
+// out, which is not a meaning to preserve; the changed and deleted parts are
+// marked from the diff instead.
 
-/** The meaning tokens, fixed. Same vocabulary as a table's fills. */
-export const TOKENS = ['changed', 'pending', 'disabled', 'removed'] as const;
-export type Token = (typeof TOKENS)[number];
+export type InlineMark = 'bold' | 'italic' | 'code' | { readonly color: string };
 
-export type InlineMark = 'bold' | 'italic' | 'code' | Token;
+/** `#abc` or `#aabbcc`. Nothing else is written into a document. */
+export const COLOUR = /^#[0-9a-fA-F]{3}([0-9a-fA-F]{3})?$/;
 
 export interface InlineState {
   readonly bold: boolean;
   readonly italic: boolean;
   readonly code: boolean;
-  readonly token: Token | undefined;
+  /** The colour the selection already carries, if any. */
+  readonly color: string | undefined;
 }
 
 export interface Replacement {
@@ -34,8 +38,8 @@ const WRAPPER: Readonly<Record<'bold' | 'italic' | 'code', string>> = {
   bold: '**', italic: '*', code: '`',
 };
 
-export function isToken(mark: InlineMark): mark is Token {
-  return (TOKENS as readonly string[]).includes(mark);
+export function isColour(mark: InlineMark): mark is { readonly color: string } {
+  return typeof mark === 'object';
 }
 
 /** What is already applied to the selection, for the toolbar's pressed state. */
@@ -45,7 +49,7 @@ export function inlineStateAt(text: string, start: number, end: number): InlineS
     bold: wrappedBy(text, trimmed, '**'),
     italic: wrappedBy(text, trimmed, '*') && !wrappedBy(text, trimmed, '**'),
     code: wrappedBy(text, trimmed, '`'),
-    token: tokenAround(text, trimmed),
+    color: colourAround(text, trimmed),
   };
 }
 
@@ -53,7 +57,9 @@ export function toggleInline(
   text: string, start: number, end: number, mark: InlineMark,
 ): Replacement {
   const span = trim(text, start, end);
-  return isToken(mark) ? toggleToken(text, span, mark) : toggleWrapper(text, span, mark);
+  return isColour(mark)
+    ? toggleColour(text, span, mark.color)
+    : toggleWrapper(text, span, mark);
 }
 
 function toggleWrapper(
@@ -81,30 +87,31 @@ function toggleWrapper(
 }
 
 /**
- * A token is written as a bracketed span, `[検討中]{.pending}` — Pandoc's
+ * A colour is written as a bracketed span, `[文字列]{color=#c62828}` — Pandoc's
  * notation, so the file still means something outside this product. Applying a
- * second token replaces the first: a run of text means one thing at a time.
+ * second colour replaces the first; a run of text has one colour.
  */
-function toggleToken(text: string, span: Span, token: Token): Replacement {
-  const existing = tokenAround(text, span);
+function toggleColour(text: string, span: Span, colour: string): Replacement {
+  const inner = text.slice(span.start, span.end);
+  const existing = colourAround(text, span);
+
   if (existing !== undefined) {
     const open = span.start - 1;
     const close = text.indexOf('}', span.end) + 1;
-    const inner = text.slice(span.start, span.end);
-    if (existing === token) {
+    if (existing.toLowerCase() === colour.toLowerCase()) {
       return {
         start: open, end: close, text: inner,
         select: { start: open, end: open + inner.length },
       };
     }
-    const written = `[${inner}]{.${token}}`;
+    const written = `[${inner}]{color=${colour}}`;
     return {
       start: open, end: close, text: written,
       select: { start: open + 1, end: open + 1 + inner.length },
     };
   }
-  const inner = text.slice(span.start, span.end);
-  const written = `[${inner}]{.${token}}`;
+
+  const written = `[${inner}]{color=${colour}}`;
   return {
     start: span.start, end: span.end, text: written,
     select: { start: span.start + 1, end: span.start + 1 + inner.length },
@@ -128,12 +135,9 @@ function wrappedBy(text: string, span: Span, marker: string): boolean {
     && text.slice(span.end, span.end + marker.length) === marker;
 }
 
-/** The token of a `[…]{.token}` the selection sits exactly inside. */
-function tokenAround(text: string, span: Span): Token | undefined {
+/** The colour of a `[…]{color=…}` the selection sits exactly inside. */
+function colourAround(text: string, span: Span): string | undefined {
   if (text[span.start - 1] !== '[') return undefined;
-  const after = /^\]\{\.([a-z0-9-]+)\}/.exec(text.slice(span.end));
-  const name = after?.[1];
-  return name !== undefined && (TOKENS as readonly string[]).includes(name)
-    ? (name as Token)
-    : undefined;
+  const after = /^\]\{color\s*=\s*(#[0-9a-fA-F]{3}(?:[0-9a-fA-F]{3})?)\}/.exec(text.slice(span.end));
+  return after?.[1];
 }

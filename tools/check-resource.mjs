@@ -95,9 +95,10 @@ await sheet(2);
 await page.waitForTimeout(250);
 await page.click('.dp-sheet:not([hidden]) .dp-figure-body');
 await page.waitForTimeout(250);
-check('図の編集中に書式バーは出さない', !(await page.isVisible('.dp-format-bar')));
+check('図の編集中に書式バーは出さない',
+  !(await page.isVisible('.dp-figure-body .dp-format-bar')));
 await page.click('.dp-sheet:not([hidden]) .dp-prose p');
 await page.waitForTimeout(250);
-check('本文の編集では書式バーが出る', await page.isVisible('.dp-format-bar'));
+check('本文の編集では書式バーが出る', await page.isVisible('.dp-prose .dp-format-bar'));
 
 await browser.close();

@@ -60,20 +60,20 @@ export const EDITOR_STYLE = `
 .dp-format-divider { width: 1px; background: #565c66; margin: 0.3em 0.25em; }
 /* Each token button shows a swatch of the colour the theme gives that meaning,
    so the bar shows the vocabulary instead of only naming it. */
-.dp-format-token, .dp-grid-fill { display: inline-flex; align-items: center; gap: 0.4em; }
-.dp-format-token::before, .dp-grid-fill::before {
-  content: ""; width: 0.75em; height: 0.75em; border-radius: 2px;
-  background: currentColor; box-shadow: 0 0 0 1px rgba(255,255,255,.35);
+/* Colour is picked, not named, so the buttons are the colours themselves. */
+/* The bar's own button rule sets a background, so the swatch has to outrank
+   it or every colour comes out blank. */
+.dp-format-bar .dp-format-swatch {
+  width: 1.5em; padding: 0; background: var(--swatch);
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,.35);
 }
-.dp-token-changed::before  { color: var(--text-changed, #8a5a00); }
-.dp-token-pending::before  { color: var(--text-pending, #1f5fa8); }
-.dp-token-disabled::before { color: var(--text-disabled, #767c85); }
-.dp-token-removed::before  { color: var(--text-removed, #b3261e); }
-.dp-token-shade::before    { color: var(--fill-shade, #eef0f3); }
-.dp-token-tint-1::before   { color: var(--fill-tint-1, #f7f8fa); }
-.dp-token-tint-2::before   { color: var(--fill-tint-2, #f2f6f4); }
-/* On the grid's light bar the swatch needs its own outline to be visible. */
-.dp-grid-fill::before { box-shadow: 0 0 0 1px #aeb4bd; }
+.dp-format-bar .dp-format-swatch[aria-pressed="true"] { box-shadow: 0 0 0 2px #fff; }
+/* The display rule above would otherwise beat the browser's rule for [hidden]. */
+.dp-format-bar[hidden] { display: none; }
+.dp-format-picker {
+  width: 1.7em; height: 1.7em; padding: 0; border: none; background: none;
+  cursor: pointer; align-self: center;
+}
 
 /* Figures. The drawing is a file of its own and the caption stands for the
    import line that placed it, so each is hinted as its own target. */
@@ -98,6 +98,8 @@ export const EDITOR_STYLE = `
 /* The grid editor. It is editor chrome, not the document: the printed table
    is styled by the theme, and this is the thing you type into. */
 .dp-grid { font-family: system-ui, sans-serif; font-size: 13px; }
+.dp-grid .dp-format-bar { position: static; margin-bottom: 0.5em; width: fit-content; }
+.dp-grid-table { table-layout: fixed; }
 .dp-grid-bar {
   display: flex; flex-wrap: wrap; align-items: stretch; gap: 1px; margin-bottom: 0.5em;
 }
@@ -107,7 +109,29 @@ export const EDITOR_STYLE = `
 }
 .dp-grid-bar button:hover { background: #eceef1; }
 .dp-grid-divider { width: 1px; background: #d3d7dd; margin: 0.2em 0.4em; }
-.dp-grid-style { margin-bottom: 0.7em; }
+.dp-grid-style { margin-bottom: 0.7em; align-items: center; gap: 2px; }
+.dp-grid-label { color: #6b7280; font-size: 11px; margin: 0 0.2em 0 0.5em; }
+.dp-grid-bar .dp-grid-swatch {
+  width: 1.4em; height: 1.4em; padding: 0; border-radius: 3px;
+  border: 1px solid #aeb4bd; background: var(--swatch); cursor: pointer;
+}
+.dp-grid-bar .dp-grid-swatch[aria-pressed="true"] { box-shadow: 0 0 0 2px #1f5fa8; }
+.dp-grid-bar .dp-grid-swatch:disabled { opacity: 0.4; cursor: default; }
+.dp-grid-picker {
+  width: 1.6em; height: 1.6em; padding: 0; border: 1px solid #aeb4bd;
+  border-radius: 3px; background: none; cursor: pointer;
+}
+.dp-grid-clear {
+  border: 1px solid #d3d7dd; background: #f7f8fa; color: #6b7280;
+  border-radius: 3px; cursor: pointer; padding: 0 0.4em; font: inherit; font-size: 12px;
+}
+
+/* Dragging the edge of a header cell sets the column's width. */
+.dp-grid-resize {
+  position: absolute; top: 0; right: -3px; width: 7px; height: 100%;
+  cursor: col-resize; z-index: 1;
+}
+.dp-grid-resize:hover { background: #1f5fa8; opacity: .25; }
 .dp-grid-target {
   font: inherit; font-size: 12px; padding: 0.25em 0.3em;
   border: 1px solid #d3d7dd; border-radius: 3px; background: #fff; color: #3a4048;

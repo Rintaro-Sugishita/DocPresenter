@@ -46,23 +46,31 @@ describe('太字・斜体・コード', () => {
   });
 });
 
-describe('意味トークン', () => {
+describe('文字色', () => {
+  const red = { color: '#c62828' };
+  const blue = { color: '#1f5fa8' };
+
   it('Pandoc 記法の span になる', () => {
-    expect(apply('ここは«要確認»です', 'pending')).toBe('ここは[«要確認»]{.pending}です');
+    expect(apply('ここは«目立たせたい»です', red))
+      .toBe('ここは[«目立たせたい»]{color=#c62828}です');
   });
 
-  it('同じトークンをもう一度押すと外れる', () => {
-    expect(apply('ここは[«要確認»]{.pending}です', 'pending')).toBe('ここは«要確認»です');
+  it('同じ色をもう一度押すと外れる', () => {
+    expect(apply('ここは[«赤»]{color=#c62828}です', red)).toBe('ここは«赤»です');
   });
 
-  it('別のトークンを押すと置き換わる。二重には付かない', () => {
-    expect(apply('ここは[«要確認»]{.pending}です', 'changed'))
-      .toBe('ここは[«要確認»]{.changed}です');
+  it('別の色を押すと置き換わる。二重には付かない', () => {
+    expect(apply('ここは[«色»]{color=#c62828}です', blue))
+      .toBe('ここは[«色»]{color=#1f5fa8}です');
   });
 
-  it('いま付いているトークンを答える', () => {
-    expect(stateOf('a[«b»]{.removed}c').token).toBe('removed');
-    expect(stateOf('a[«b»]{.unknown}c').token).toBeUndefined();
-    expect(stateOf('a«b»c').token).toBeUndefined();
+  it('いま付いている色を答える', () => {
+    expect(stateOf('a[«b»]{color=#f00}c').color).toBe('#f00');
+    expect(stateOf('a«b»c').color).toBeUndefined();
+  });
+
+  it('太字と重ねられる', () => {
+    expect(apply('ここは[«強い»]{color=#c62828}です', 'bold'))
+      .toBe('ここは[**«強い»**]{color=#c62828}です');
   });
 });

@@ -161,8 +161,11 @@ function rewriteGrid(
 // range by the names of its first and last row — so a rule keeps pointing at
 // the same thing when rows move.
 
-/** The properties a rule may carry. Values are tokens; never a literal. */
-export type StyleProperty = 'fill' | 'bottom' | 'right' | 'top' | 'left' | 'width';
+/**
+ * The properties a rule may carry. `fill` and `color` take a colour the author
+ * picked; `width` takes a share of the table. The rest are a theme's tokens.
+ */
+export type StyleProperty = 'fill' | 'color' | 'width' | 'bottom' | 'right' | 'top' | 'left';
 
 /**
  * Sets one property on a selector. `undefined` removes it, and a rule with
@@ -205,6 +208,14 @@ export function styleAt(
   return table.style
     .find(rule => sameSelector(rule.selector, selector))
     ?.declarations.get(property);
+}
+
+/** A column's width, as its own kind of change so the label reads right. */
+export function setWidth(table: TableFile, column: string, width: string): Edit {
+  return {
+    ...setStyle(table, { kind: 'column', name: column }, 'width', width),
+    description: '列幅を変更',
+  };
 }
 
 function addRule(

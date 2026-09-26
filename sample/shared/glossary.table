@@ -18,6 +18,5 @@ range {
 
 style {
   theme: grid
-  header  { bottom: thick }
-  col:用語 { width: 14em, right: thick }
+  col:用語 { width: 30% }
 }

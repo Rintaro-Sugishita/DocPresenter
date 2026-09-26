@@ -3,16 +3,11 @@
 // mirror-element trick needed to find one is a large amount of machinery for a
 // bar that is easier to hit when it stays in one place.
 //
-// There is no colour picker, deliberately. The buttons are the four meanings
-// the tables already use, so a colour in the prose and a fill in a table say
-// the same thing, the legend can be generated, and the theme stays in charge
-// of what each one looks like on screen, in print and in greyscale.
-//
-// A token button carries a swatch of its own colour rather than the document
-// class itself: the document class also brings a strike-through or an
-// underline, which belong in the prose and not on a button.
+// Colour is a swatch row plus a picker. The swatches are there so a team's
+// documents stay consistent without anyone having to remember a hex code; the
+// picker is there because the colours people want are their own.
 
-import { inlineStateAt, TOKENS, type InlineMark, type InlineState } from '../inline.js';
+import { inlineStateAt, type InlineMark, type InlineState } from '../inline.js';
 
 export interface Toolbar {
   readonly element: HTMLElement;
@@ -20,22 +15,15 @@ export interface Toolbar {
   sync(text: string, start: number, end: number): void;
 }
 
-interface Button {
-  readonly mark: InlineMark;
-  readonly label: string;
-  readonly title: string;
-  readonly className: string;
-}
-
-const BUTTONS: readonly Button[] = [
-  { mark: 'bold', label: 'B', title: '太字（Ctrl+B）', className: 'dp-format-bold' },
-  { mark: 'italic', label: 'I', title: '斜体（Ctrl+I）', className: 'dp-format-italic' },
-  { mark: 'code', label: '</>', title: 'コード', className: 'dp-format-code' },
+/** Offered as swatches. Legible on white, and distinct in greyscale print. */
+export const SWATCHES: readonly [string, string][] = [
+  ['#c62828', '赤'],
+  ['#1f5fa8', '青'],
+  ['#2e7d32', '緑'],
+  ['#8a5a00', '茶'],
+  ['#6a1b9a', '紫'],
+  ['#5a6270', '灰'],
 ];
-
-const TOKEN_LABEL: Readonly<Record<string, string>> = {
-  changed: '変更', pending: '要確認', disabled: '対象外', removed: '削除予定',
-};
 
 export function createToolbar(
   owner: Document, apply: (mark: InlineMark) => void,
@@ -44,9 +32,9 @@ export function createToolbar(
   bar.className = 'dp-format-bar';
   bar.setAttribute('role', 'toolbar');
 
-  const buttons = new Map<InlineMark, HTMLButtonElement>();
+  const buttons: { mark: InlineMark; node: HTMLElement }[] = [];
 
-  const add = (mark: InlineMark, label: string, title: string, className: string): void => {
+  const add = (mark: InlineMark, label: string, title: string, className: string): HTMLElement => {
     const button = owner.createElement('button');
     button.type = 'button';
     button.className = className;
@@ -59,32 +47,48 @@ export function createToolbar(
       event.preventDefault();
       apply(mark);
     });
-    buttons.set(mark, button);
+    buttons.push({ mark, node: button });
     bar.append(button);
+    return button;
   };
 
-  for (const button of BUTTONS) add(button.mark, button.label, button.title, button.className);
+  add('bold', 'B', '太字（Ctrl+B）', 'dp-format-bold');
+  add('italic', 'I', '斜体（Ctrl+I）', 'dp-format-italic');
+  add('code', '</>', 'コード', 'dp-format-code');
 
   const divider = owner.createElement('span');
   divider.className = 'dp-format-divider';
   bar.append(divider);
 
-  for (const token of TOKENS) {
-    add(token, TOKEN_LABEL[token] ?? token, `意味トークン: ${token}`, `dp-format-token dp-token-${token}`);
+  for (const [colour, name] of SWATCHES) {
+    const swatch = add({ color: colour }, '', `文字色: ${name}`, 'dp-format-swatch');
+    swatch.style.setProperty('--swatch', colour);
   }
+
+  // The picker keeps its own last value, so a colour used once is a click away.
+  const picker = owner.createElement('input');
+  picker.type = 'color';
+  picker.className = 'dp-format-picker';
+  picker.title = '文字色を選ぶ';
+  picker.value = '#c62828';
+  picker.addEventListener('mousedown', event => event.stopPropagation());
+  picker.addEventListener('input', () => apply({ color: picker.value }));
+  bar.append(picker);
 
   return {
     element: bar,
     sync(text, start, end) {
       const state = inlineStateAt(text, start, end);
-      for (const [mark, button] of buttons) {
-        button.setAttribute('aria-pressed', String(isOn(state, mark)));
+      for (const { mark, node } of buttons) {
+        node.setAttribute('aria-pressed', String(isOn(state, mark)));
       }
     },
   };
 }
 
 function isOn(state: InlineState, mark: InlineMark): boolean {
-  if (mark === 'bold' || mark === 'italic' || mark === 'code') return state[mark];
-  return state.token === mark;
+  if (typeof mark === 'object') {
+    return state.color !== undefined && state.color.toLowerCase() === mark.color.toLowerCase();
+  }
+  return state[mark];
 }

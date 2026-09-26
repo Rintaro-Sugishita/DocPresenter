@@ -228,3 +228,40 @@ describe('範囲セレクタ', () => {
     expect(rows[1]).not.toContain('dp-fill-shade');
   });
 });
+
+describe('自由な色', () => {
+  it('[…]{color=#c62828} が色付きの span になる', () => {
+    const html = render('# T\n\nここは[目立たせたい]{color=#c62828}。');
+    expect(html).toContain('<span style="color:#c62828">目立たせたい</span>');
+  });
+
+  it('3 桁でも書ける', () => {
+    expect(render('# T\n\n[赤]{color=#f00}')).toContain('style="color:#f00"');
+  });
+
+  it('色でない値は span にしない', () => {
+    // style 属性に任意の CSS が入り込む道を開けない。
+    const html = render('# T\n\n[x]{color=red} [y]{color=expression(1)}');
+    expect(html).not.toContain('<span');
+  });
+
+  it('表のセルにも色を直接書ける', () => {
+    const table = parseTable([
+      '| 用語 | 説明 |', '| --- | --- |', '| a | 1 |', '',
+      'style {', '  cell:a/説明 { fill: #ffe0b2, color: #7a4a00 }', '}',
+    ].join('\n'));
+    const html = renderTable(table);
+    expect(html).toContain('background:#ffe0b2');
+    expect(html).toContain('color:#7a4a00');
+    expect(html).not.toContain('dp-fill-#');
+  });
+
+  it('列幅は col に書く', () => {
+    const table = parseTable([
+      '| 用語 | 説明 |', '| --- | --- |', '| a | 1 |', '',
+      'style {', '  col:用語 { width: 30% }', '}',
+    ].join('\n'));
+    const html = renderTable(table);
+    expect(html).toContain('<colgroup><col style="width:30%"><col></colgroup>');
+  });
+});

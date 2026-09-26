@@ -184,7 +184,8 @@ body {
   <header class="bar">
     <h1>DocPresenter シートエディタ</h1>
     <p>下端のタブでシートを切り替え・ドラッグで並べ替え・ダブルクリックで改名</p>
-    <p>本文・図・表をクリックすると、それを作っている Markdown / .dgm / .table が開く</p>
+    <p>本文と図はソースが、表はグリッドが開く</p>
+    <p>色は見本かピッカーから自由に、列幅はヘッダの右端をドラッグ</p>
     <p><kbd>Ctrl</kbd>+<kbd>PageDown</kbd> で次のシート</p>
   </header>
   <main class="work">

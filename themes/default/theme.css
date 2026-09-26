@@ -89,7 +89,11 @@ code { font-family: var(--font-mono); font-size: 0.9em; background: var(--fill-t
 /* Tables ------------------------------------------------------------------ */
 .dp-table { border-collapse: collapse; width: 100%; font-size: 0.9em; font-family: var(--font-heading); }
 .dp-table th, .dp-table td { border: var(--rule-thin); padding: 0.35em 0.6em; vertical-align: top; }
-.dp-table thead th { background: var(--fill-shade); font-weight: 600; }
+.dp-table thead th {
+  background: var(--fill-shade); font-weight: 600;
+  /* ヘッダ下の罫線はテーマが引く。表ごとに指定させない。 */
+  border-bottom: var(--rule-thick);
+}
 
 .dp-align-left   { text-align: left; }
 .dp-align-center { text-align: center; }
