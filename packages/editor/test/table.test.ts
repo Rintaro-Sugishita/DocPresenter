@@ -1,0 +1,134 @@
+import { describe, expect, it } from 'vitest';
+import { parseTable } from '@docpresenter/core';
+import { applyEdit } from '../src/index.js';
+import {
+  formatTable, insertColumn, insertRow, parseClipboardGrid, pasteGrid,
+  removeColumn, removeRow, setAlign, setCell, TableEditError,
+} from '../src/index.js';
+
+const SOURCE = [
+  '# 用語集',
+  '',
+  '| 用語     | 説明           |',
+  '| -------- | -------------- |',
+  '| トークン | 認可に用いる   |',
+  '| 会員     | 登録済みの利用者 |',
+  '',
+  'style {',
+  '  header { bottom: thick }',
+  '}',
+].join('\n');
+
+const run = (source: string, make: (t: ReturnType<typeof parseTable>) => ReturnType<typeof setCell>) =>
+  applyEdit(source, make(parseTable(source)));
+
+const grid = (source: string) =>
+  source.split('\n').filter(line => line.startsWith('|'));
+
+describe('セルの編集', () => {
+  it('編集した行だけが変わる', () => {
+    const next = run(SOURCE, t => setCell(t, 0, 1, '認可に使う'));
+    expect(grid(next)[2]).toContain('認可に使う');
+    expect(grid(next)[3]).toBe('| 会員     | 登録済みの利用者 |');
+    expect(next).toContain('# 用語集');
+    expect(next).toContain('header { bottom: thick }');
+  });
+
+  it('短くなっても桁が崩れない', () => {
+    // 1 セル編集のたびに表全体を整形しない方針なので、幅は自分で保つ。
+    const next = run(SOURCE, t => setCell(t, 0, 0, 'トク'));
+    expect(grid(next)[2]).toBe('| トク     | 認可に用いる   |');
+  });
+
+  it('見出し行も編集できる', () => {
+    const next = run(SOURCE, t => setCell(t, -1, 1, '意味'));
+    expect(grid(next)[0]).toContain('意味');
+  });
+
+  it('縦棒は書けるようにエスケープする', () => {
+    const next = run(SOURCE, t => setCell(t, 0, 1, 'A | B'));
+    expect(next).toContain('A \\| B');
+    expect(parseTable(next).rows[0]!.cells[1]!.text).toBe('A | B');
+  });
+});
+
+describe('行と列', () => {
+  it('行を途中に足す', () => {
+    const next = run(SOURCE, t => insertRow(t, 1));
+    expect(parseTable(next).rows).toHaveLength(3);
+    expect(parseTable(next).rows[2]!.cells[0]!.text).toBe('会員');
+  });
+
+  it('行を末尾に足す', () => {
+    const next = run(SOURCE, t => insertRow(t, 2));
+    expect(parseTable(next).rows).toHaveLength(3);
+    expect(next).toContain('style {');
+  });
+
+  it('行を消す', () => {
+    const next = run(SOURCE, t => removeRow(t, 0));
+    expect(parseTable(next).rows).toHaveLength(1);
+    expect(grid(next)).toHaveLength(3);
+  });
+
+  it('最後の 1 行は消せない', () => {
+    const one = '| a |\n| - |\n| b |';
+    expect(() => removeRow(parseTable(one), 0)).toThrow(TableEditError);
+  });
+
+  it('列を足すと全行に入る', () => {
+    const next = run(SOURCE, t => insertColumn(t, 1, '区分'));
+    const table = parseTable(next);
+    expect(table.columns.map(c => c.header)).toEqual(['用語', '区分', '説明']);
+    expect(table.rows.every(r => r.cells.length === 3)).toBe(true);
+  });
+
+  it('列を消す', () => {
+    const next = run(SOURCE, t => removeColumn(t, 1));
+    expect(parseTable(next).columns.map(c => c.header)).toEqual(['用語']);
+  });
+
+  it('寄せは区切り行で決まる', () => {
+    const next = run(SOURCE, t => setAlign(t, 1, 'right'));
+    expect(parseTable(next).columns[1]!.align).toBe('right');
+    expect(parseTable(next).columns[0]!.align).toBe('default');
+  });
+});
+
+describe('貼り付け', () => {
+  it('Excel の TSV を読む', () => {
+    expect(parseClipboardGrid('a\tb\nc\td\n')).toEqual([['a', 'b'], ['c', 'd']]);
+  });
+
+  it('範囲に流し込む', () => {
+    const next = run(SOURCE, t => pasteGrid(t, 0, 0, [['A', 'B'], ['C', 'D']]));
+    const table = parseTable(next);
+    expect(table.rows.map(r => r.cells.map(c => c.text))).toEqual([['A', 'B'], ['C', 'D']]);
+  });
+
+  it('はみ出したら表を広げる', () => {
+    const next = run(SOURCE, t => pasteGrid(t, 1, 1, [['X', 'Y'], ['Z', 'W']]));
+    const table = parseTable(next);
+    expect(table.columns).toHaveLength(3);
+    expect(table.rows).toHaveLength(3);
+    expect(table.rows[2]!.cells[2]!.text).toBe('W');
+  });
+});
+
+describe('整形', () => {
+  it('明示して初めて桁が揃う', () => {
+    const ragged = '| a | 長い見出し |\n| --- | --- |\n| 会員 | x |';
+    const next = applyEdit(ragged, formatTable(parseTable(ragged)));
+    expect(next.split('\n')).toEqual([
+      '| a    | 長い見出し |',
+      '| ---- | ---------- |',
+      '| 会員 | x          |',
+    ]);
+  });
+
+  it('グリッド以外には触らない', () => {
+    const next = run(SOURCE, t => formatTable(t));
+    expect(next).toContain('# 用語集');
+    expect(next).toContain('header { bottom: thick }');
+  });
+});

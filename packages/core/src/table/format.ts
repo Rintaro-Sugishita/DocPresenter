@@ -1,0 +1,109 @@
+// Writing the grid back.
+//
+// Editing one cell rewrites one line and leaves the rest of the file alone.
+// The field keeps the width it had where it can, so a shorter or equal value
+// does not knock the source grid out of alignment; a longer one has to push,
+// and straightening that out is the explicit "format" command's job. Automatic
+// reformatting on every keystroke would turn a one-cell change into a diff
+// across the whole table.
+
+import type { Align, TableFile } from './model.js';
+
+/** Columns a character occupies in a monospaced grid. */
+export function displayWidth(text: string): number {
+  let width = 0;
+  for (const char of text) {
+    width += /[ᄀ-ᅟ⺀-〾ぁ-㏿㐀-䶿一-鿿ꀀ-꓏가-힣豈-﫿︰-﹏＀-｠￠-￦]/.test(char)
+      ? 2 : 1;
+  }
+  return width;
+}
+
+/** The fields of a grid line, padding included, `\|` kept as written. */
+export function splitFields(line: string): string[] {
+  const fields: string[] = [];
+  let current = '';
+  for (let i = 1; i < line.length; i++) {
+    const char = line[i]!;
+    if (char === '\\' && line[i + 1] === '|') { current += '\\|'; i++; continue; }
+    if (char === '|') { fields.push(current); current = ''; continue; }
+    current += char;
+  }
+  if (current.trim() !== '') fields.push(current);
+  return fields;
+}
+
+export function joinFields(fields: readonly string[]): string {
+  return `|${fields.join('|')}|`;
+}
+
+/** A literal pipe has to be escaped, and a cell is one line. */
+export function escapeCell(text: string): string {
+  return text.replace(/\|/g, '\\|').replace(/\r?\n/g, ' ');
+}
+
+/**
+ * Substitutes one field, keeping the line's width where the new value fits.
+ * A field shorter than the old one is padded back out; a longer one grows.
+ */
+export function replaceField(line: string, index: number, text: string): string {
+  const fields = splitFields(line);
+  while (fields.length <= index) fields.push(' ');
+  const was = fields[index]!;
+  const written = ` ${escapeCell(text.trim())} `;
+  const room = displayWidth(was) - displayWidth(written);
+  fields[index] = room > 0 ? written + ' '.repeat(room) : written;
+  return joinFields(fields);
+}
+
+export function insertField(line: string, index: number, text: string): string {
+  const fields = splitFields(line);
+  fields.splice(Math.min(index, fields.length), 0, ` ${escapeCell(text)} `);
+  return joinFields(fields);
+}
+
+export function removeField(line: string, index: number): string {
+  const fields = splitFields(line);
+  fields.splice(index, 1);
+  return joinFields(fields);
+}
+
+/** The `---` field for one column, at a given width. */
+export function delimiterField(align: Align, width: number): string {
+  const inner = Math.max(3, width);
+  switch (align) {
+    case 'left': return ` :${'-'.repeat(inner - 1)} `;
+    case 'right': return ` ${'-'.repeat(inner - 1)}: `;
+    case 'center': return ` :${'-'.repeat(inner - 2)}: `;
+    case 'default': return ` ${'-'.repeat(inner)} `;
+  }
+}
+
+/**
+ * The grid, with every column padded to its widest value — the explicit
+ * command, never run on its own. Only the grid lines are produced: the
+ * comments, blocks and style sections around them are not this command's
+ * business and are left exactly as the author wrote them.
+ */
+export function formatGrid(table: TableFile): string {
+  const lines = [table.header.text, table.delimiter.text, ...table.rows.map(r => r.line.text)];
+  const fields = lines.map(line => splitFields(line).map(f => f.trim()));
+  const count = Math.max(...fields.map(f => f.length));
+
+  const widths: number[] = [];
+  for (let c = 0; c < count; c++) {
+    // The delimiter row is generated, so its current width does not count.
+    const cells = fields.filter((_, i) => i !== 1).map(row => row[c] ?? '');
+    widths.push(Math.max(3, ...cells.map(displayWidth)));
+  }
+
+  return fields.map((row, i) => {
+    if (i === 1) {
+      return joinFields(widths.map((width, c) => delimiterField(table.columns[c]?.align ?? 'default', width)));
+    }
+    return joinFields(widths.map((width, c) => {
+      const text = row[c] ?? '';
+      return ` ${text}${' '.repeat(width - displayWidth(text))} `;
+    }));
+  }).join('\n');
+}

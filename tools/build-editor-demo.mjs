@@ -61,7 +61,8 @@ const view = mountSheetView({
   onChange: (edit, text) => {
     if (edit.path === undefined) document.getElementById('source').textContent = text;
     else FILES[clean(edit.path)] = text;
-    say(edit.description + '　' + edit.span.start + '〜' + edit.span.end + ' バイトを書き換え', 'ok');
+    const where = edit.path === undefined ? '' : edit.path + ' の ';
+    say(where + edit.description + '　' + edit.span.start + '〜' + edit.span.end + ' バイトを書き換え', 'ok');
   },
   onError: message => say(message, 'refused'),
 });

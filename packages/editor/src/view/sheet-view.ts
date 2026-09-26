@@ -5,12 +5,16 @@
 // which are byte-range edits. That means what the screen shows and what the
 // file contains can never drift apart: there is only the file.
 
-import { byteLength, parseDocument, sheetsOf, sliceBytes, type Sheet } from '@docpresenter/core';
+import {
+  byteLength, parseDocument, parseTable, sheetsOf, sliceBytes, type Sheet,
+} from '@docpresenter/core';
 import type { Edit } from '../edit.js';
 import { applyEdit } from '../edit.js';
 import { toggleInline, type InlineMark } from '../inline.js';
 import { DEFAULT_SETTINGS, isCommit, type EditorSettings } from '../settings.js';
 import { insertSheet, moveSheet, removeSheet, renameSheet, SheetEditError } from '../sheets.js';
+import { TableEditError } from '../table.js';
+import { createGrid, type GridPosition } from './grid.js';
 import { EDITOR_STYLE } from './style.js';
 import { createToolbar } from './toolbar.js';
 
@@ -55,6 +59,8 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
   let sections: HTMLElement[] = [];
   let tabs: HTMLElement[] = [];
   let editing: BlockEdit | undefined;
+  /** The table whose grid is open, and where the selection sits in it. */
+  let grid: { path: string; at: GridPosition } | undefined;
   let settings = options.settings ?? DEFAULT_SETTINGS;
 
   const owner = root.ownerDocument;
@@ -125,7 +131,59 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
       options.onError?.(`${path} を開けない`);
       return;
     }
+    // Nobody wants to write a table by hand, so a table opens as a grid. The
+    // source is still one click away, for the parts the grid has no gesture
+    // for yet.
+    if (path.toLowerCase().endsWith('.table')) {
+      if (grid?.path === path) return;
+      grid = { path, at: { row: 0, column: 0 } };
+      endEdit(true);
+      mountGrid(body);
+      return;
+    }
     open(body, { start: 0, end: byteLength(text) }, text, '', false, path);
+  }
+
+  /** Builds the grid from the file as it stands; the grid keeps no copy. */
+  function mountGrid(body: HTMLElement): void {
+    const current = grid;
+    if (!current) return;
+    const text = options.readResource?.(current.path);
+    if (text === undefined) return;
+
+    let table;
+    try {
+      table = parseTable(text);
+    } catch (error) {
+      options.onError?.(error instanceof Error ? error.message : String(error));
+      grid = undefined;
+      return;
+    }
+
+    body.replaceChildren(createGrid({
+      owner,
+      table,
+      at: current.at,
+      apply: (make, next) => {
+        grid = { path: current.path, at: next };
+        commit(() => {
+          try {
+            return { ...make(), path: current.path };
+          } catch (error) {
+            if (error instanceof TableEditError) throw new SheetEditError(error.message);
+            throw error;
+          }
+        }, active);
+      },
+      // The grid moves its own selection; the host only remembers where it is,
+      // so that a redraw after an edit can put it back.
+      move: next => { grid = { path: current.path, at: next }; },
+      showSource: () => {
+        grid = undefined;
+        const source = options.readResource?.(current.path) ?? '';
+        open(body, { start: 0, end: byteLength(source) }, source, '', false, current.path);
+      },
+    }));
   }
 
   /**
@@ -216,8 +274,9 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
       span: current.span,
       text: current.prefix + typed,
       path: current.path,
+      // The path is in the edit; naming it here too would say it twice.
       description: current.path !== undefined
-        ? `${current.path} を編集`
+        ? 'ソースを編集'
         : current.fresh ? '本文を追加' : '本文を編集',
     }), active);
   }
@@ -251,6 +310,11 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
     append.dataset['span'] = section.dataset['span'] ?? '';
     append.textContent = empty ? 'ここに本文を書く' : '';
     section.append(append);
+  }
+
+  /** Paths contain dots and slashes; an attribute selector needs them quoted. */
+  function cssEscape(value: string): string {
+    return value.replace(/["\\]/g, '\\$&');
   }
 
   function spanOf(host: HTMLElement): { start: number; end: number } | undefined {
@@ -312,19 +376,22 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
     page.addEventListener('click', event => {
       const from = event.target as HTMLElement | null;
       const target = from?.closest<HTMLElement>(
-        '.dp-block-source, .dp-caption, .dp-import-line, .dp-figure,'
+        '.dp-grid, .dp-block-source, .dp-caption, .dp-import-line, .dp-figure,'
         + ' .dp-append, .dp-prose, h1, h2, h3, h4, h5, h6',
       );
       if (!target || !page.contains(target)) return;
       // Inside a figure, the drawing is the referenced file and the caption is
       // the `@import` line that placed it. You edit what you pointed at.
+      // A click inside an open editor belongs to that editor, not to the page.
       if (target.classList.contains('dp-block-source')) return;
+      if (target.classList.contains('dp-grid')) return;
       if (target.classList.contains('dp-caption') || target.classList.contains('dp-import-line')) {
         const figure = target.closest<HTMLElement>('.dp-figure');
         if (figure) beginEdit2(target, figure);
         return;
       }
       if (target.classList.contains('dp-figure')) { beginResourceEdit(target); return; }
+      grid = undefined;
       if (target.classList.contains('dp-append')) beginAppend(target);
       else beginEdit(target);
     });
@@ -333,6 +400,12 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
     sections = [...page.querySelectorAll<HTMLElement>('.dp-sheet')];
     for (const section of sections) addAppendTarget(section);
     for (const figure of page.querySelectorAll<HTMLElement>('.dp-figure')) addImportTarget(figure);
+    if (grid) {
+      const figure = page.querySelector<HTMLElement>(`.dp-figure[data-path="${cssEscape(grid.path)}"]`);
+      const body = figure?.querySelector<HTMLElement>('.dp-figure-body');
+      if (body) mountGrid(body);
+      else grid = undefined;
+    }
 
     drawTabs(sections.map((section, i) => ({
       title: section.dataset['title'] ?? `シート ${i + 1}`,

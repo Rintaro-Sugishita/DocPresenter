@@ -2,7 +2,20 @@
 // stays readable from the text alone; ruling and fills live in the style layer
 // and are recorded only where they deviate from the theme.
 
+import type { ByteSpan } from '../document/model.js';
+
 export type Align = 'left' | 'center' | 'right' | 'default';
+
+/**
+ * One line of the grid, with the bytes it occupies. A cell is edited by
+ * rewriting its own line and nothing else: the escapes and the padding inside
+ * a line are easier to keep right by substituting one field than by tracking a
+ * byte range per cell, and one line is already a small enough edit.
+ */
+export interface GridLine {
+  readonly text: string;
+  readonly span: ByteSpan;
+}
 
 export interface Column {
   readonly header: string;
@@ -21,6 +34,7 @@ export interface Cell {
 /** Holds only the cells that start in this row; merged-away positions are absent. */
 export interface Row {
   readonly cells: Cell[];
+  readonly line: GridLine;
 }
 
 export type Selector =
@@ -46,6 +60,9 @@ export interface TableFile {
   readonly comments: readonly string[];
   readonly columns: readonly Column[];
   readonly rows: readonly Row[];
+  /** The header line and the `---` line below it, for editing in place. */
+  readonly header: GridLine;
+  readonly delimiter: GridLine;
   /** Block content referenced from a cell as `@1`. */
   readonly blocks: ReadonlyMap<string, string>;
   /** Theme name from `style { theme: ... }`, if given. */

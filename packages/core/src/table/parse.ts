@@ -2,7 +2,10 @@
 // markers, so the only departures from standard markdown are `^` and `<` and
 // the block references.
 
-import type { Align, Cell, Column, NamedRange, Row, Selector, StyleRule, TableFile } from './model.js';
+import { byteLength } from '../bytes.js';
+import type {
+  Align, Cell, Column, GridLine, NamedRange, Row, Selector, StyleRule, TableFile,
+} from './model.js';
 
 /** Merge with the cell above. */
 const MERGE_UP = '^';
@@ -18,13 +21,30 @@ export class TableParseError extends Error {
 
 export function parseTable(source: string): TableFile {
   const lines = source.split(/\r?\n/);
+
+  // Byte offset of the start of each line, built once so every grid line can
+  // carry the range it occupies.
+  const lineStart: number[] = [];
+  let at = 0;
+  for (const line of lines) {
+    lineStart.push(at);
+    at += byteLength(line) + 1;
+  }
+  /** The range of a line, trimmed of its leading and trailing spaces. */
+  const spanOfLine = (index: number): GridLine => {
+    const raw = lines[index] ?? '';
+    const lead = raw.length - raw.trimStart().length;
+    const text = raw.trim();
+    const start = lineStart[index]! + byteLength(raw.slice(0, lead));
+    return { text, span: { start, end: start + byteLength(text) } };
+  };
   const comments: string[] = [];
   const blocks = new Map<string, string>();
   const ranges = new Map<string, NamedRange>();
   const style: StyleRule[] = [];
   let theme: string | undefined;
 
-  const gridLines: { text: string; line: number }[] = [];
+  const gridLines: { text: string; line: number; grid: GridLine }[] = [];
   let i = 0;
 
   // Leading comments and blank lines.
@@ -38,7 +58,7 @@ export function parseTable(source: string): TableFile {
   for (; i < lines.length; i++) {
     const text = (lines[i] ?? '').trim();
     if (!text.startsWith('|')) break;
-    gridLines.push({ text, line: i + 1 });
+    gridLines.push({ text, line: i + 1, grid: spanOfLine(i) });
   }
   if (gridLines.length < 2) throw new TableParseError('表のグリッドが見つからない', i + 1);
 
@@ -82,7 +102,11 @@ export function parseTable(source: string): TableFile {
   }
 
   const { columns, rows } = parseGrid(gridLines);
-  return { comments, columns, rows, blocks, theme, style, ranges };
+  return {
+    comments, columns, rows, blocks, theme, style, ranges,
+    header: gridLines[0]!.grid,
+    delimiter: gridLines[1]!.grid,
+  };
 }
 
 function count(text: string, char: string): number {
@@ -114,7 +138,9 @@ function alignOf(spec: string): Align {
   return 'default';
 }
 
-function parseGrid(gridLines: { text: string; line: number }[]): { columns: Column[]; rows: Row[] } {
+function parseGrid(
+  gridLines: { text: string; line: number; grid: GridLine }[],
+): { columns: Column[]; rows: Row[] } {
   const headerCells = splitRow(gridLines[0]!.text);
   const delimiter = splitRow(gridLines[1]!.text);
   if (!delimiter.every(d => /^:?-+:?$/.test(d))) {
@@ -162,7 +188,7 @@ function parseGrid(gridLines: { text: string; line: number }[]): { columns: Colu
       lastStarted = cell;
       spanningFromAbove[c] = cell;
     }
-    rows.push({ cells });
+    rows.push({ cells, line: grid.grid });
   });
 
   // A cell stops spanning once its rowspan is exhausted.

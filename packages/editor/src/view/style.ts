@@ -90,6 +90,42 @@ export const EDITOR_STYLE = `
   font-family: ui-monospace, monospace; font-size: 12px; line-height: 1.6;
 }
 
+/* The grid editor. It is editor chrome, not the document: the printed table
+   is styled by the theme, and this is the thing you type into. */
+.dp-grid { font-family: system-ui, sans-serif; font-size: 13px; }
+.dp-grid-bar {
+  display: flex; flex-wrap: wrap; align-items: stretch; gap: 1px; margin-bottom: 0.5em;
+}
+.dp-grid-bar button {
+  border: 1px solid #d3d7dd; background: #f7f8fa; color: #3a4048; cursor: pointer;
+  padding: 0.3em 0.6em; border-radius: 3px; font: inherit; font-size: 12px;
+}
+.dp-grid-bar button:hover { background: #eceef1; }
+.dp-grid-divider { width: 1px; background: #d3d7dd; margin: 0.2em 0.4em; }
+
+.dp-grid-table { border-collapse: collapse; width: 100%; }
+.dp-grid-table th, .dp-grid-table td {
+  border: 1px solid #c8ccd2; padding: 0.3em 0.5em; vertical-align: top;
+  font-weight: 400; text-align: left; outline: none; position: relative;
+}
+.dp-grid-table th { background: #eef0f3; font-weight: 600; }
+.dp-grid-table .dp-align-left { text-align: left; }
+.dp-grid-table .dp-align-center { text-align: center; }
+.dp-grid-table .dp-align-right { text-align: right; }
+.dp-grid-table .dp-grid-at { box-shadow: inset 0 0 0 2px #1f5fa8; }
+
+/* The text box covers the selected cell. While navigating it is invisible and
+   the cell's own text shows through; typing into it flips the cell to editing,
+   which is the only way IME input can be caught from the first keystroke. */
+.dp-grid-input {
+  position: absolute; inset: 0; width: 100%; box-sizing: border-box;
+  font: inherit; text-align: inherit; border: none; outline: none;
+  padding: 0.3em 0.5em; margin: 0;
+  background: transparent; color: transparent; caret-color: transparent;
+}
+.dp-grid-editing .dp-grid-text { visibility: hidden; }
+.dp-grid-editing .dp-grid-input { background: #fff; color: inherit; caret-color: auto; }
+
 .dp-tabbar {
   display: flex; align-items: stretch; gap: 2px;
   border-top: 1px solid #c8ccd2; background: #e9ebef;

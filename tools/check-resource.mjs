@@ -32,7 +32,8 @@ await page.waitForTimeout(400);
 check('図が書き換えた内容で描き直される',
   (await page.textContent('.dp-sheet:not([hidden]) svg')).includes('Web フロント（新）'));
 check('書き戻し先はその図のファイル',
-  (await status()).includes('system-architecture.dgm を編集'), await status());
+  (await status()).includes('system-architecture.dgm') && (await status()).includes('ソースを編集'),
+  await status());
 check('本文のソースは変わらない',
   !(await page.textContent('#source')).includes('Web フロント（新）'));
 
@@ -54,14 +55,15 @@ check('キャプションをクリックすると @import 行が開く', line.st
 await page.keyboard.press('Escape');
 
 // --- 表 -----------------------------------------------------------------
+// 表はソースではなくグリッドで開く（check-grid.mjs で詳しく見る）。
 await sheet(5);
 await page.waitForTimeout(250);
 await page.click('.dp-sheet:not([hidden]) .dp-figure-body');
+await page.waitForTimeout(250);
+check('表はソースではなくグリッドで開く',
+  await page.isVisible('.dp-grid-table') && !(await page.isVisible('.dp-block-source')));
+await page.click('.dp-sheet:not([hidden]) .dp-prose p');
 await page.waitForTimeout(200);
-check('表をクリックすると .table のソースが開く',
-  (await page.inputValue('.dp-block-source')).includes('|'));
-await page.keyboard.press('Escape');
-await page.waitForTimeout(150);
 
 // --- 確定キー -------------------------------------------------------------
 await sheet(1);
