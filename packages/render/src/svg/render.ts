@@ -64,16 +64,42 @@ function renderNode(node: Node, box: Box, diagram: DiagramFile): string {
     ...styleClasses(diagram, node.id),
   ];
   const shape = shapeElement(node.shape, box);
-  const label = node.shape === 'group' ? groupLabel(box) : centredLabel(box);
-  return `<g class="${escapeAttr(classes.join(' '))}" data-node="${escapeAttr(node.id)}">`
-    + `${shape}${label}</g>`;
+  const text = node.shape === 'group'
+    ? groupLabel(box)
+    : label(box, diagram.style.get(node.id)?.get('align'));
+  const colours = styleColours(diagram, node.id);
+  const style = colours === '' ? '' : ` style="${escapeAttr(colours)}"`;
+  return `<g class="${escapeAttr(classes.join(' '))}" data-node="${escapeAttr(node.id)}"${style}>`
+    + `${shape}${text}</g>`;
 }
+
+/** `#abc` or `#aabbcc`. Anything else is not a colour and is not emitted. */
+const COLOUR = /^#[0-9a-fA-F]{3}([0-9a-fA-F]{3})?$/;
 
 /** `dmz { line: dashed }` becomes `dp-line-dashed`; the theme decides the rest. */
 function styleClasses(diagram: DiagramFile, id: string): string[] {
   const rule = diagram.style.get(id);
   if (!rule) return [];
-  return [...rule].map(([property, value]) => `dp-${property}-${value}`);
+  return [...rule]
+    .filter(([property, value]) => !COLOUR.test(value) && property !== 'align')
+    .map(([property, value]) => `dp-${property}-${value}`);
+}
+
+/**
+ * A colour the author picked, as CSS on the group. Drawn shapes inherit it, so
+ * one declaration covers the outline, the fill and the label alike.
+ */
+function styleColours(diagram: DiagramFile, id: string): string {
+  const rule = diagram.style.get(id);
+  if (!rule) return '';
+  const parts: string[] = [];
+  for (const [property, value] of rule) {
+    if (!COLOUR.test(value)) continue;
+    if (property === 'fill') parts.push(`--dp-fill:${value}`);
+    if (property === 'line') parts.push(`--dp-line:${value}`);
+    if (property === 'color') parts.push(`--dp-text:${value}`);
+  }
+  return parts.join(';');
 }
 
 function shapeElement(shape: ShapeKind, box: Box): string {
@@ -102,6 +128,9 @@ function shapeElement(shape: ShapeKind, box: Box): string {
         + `<path class="dp-cylinder-lid" d="M ${n(x)} ${n(y + ry)}`
         + ` A ${n(w / 2)} ${n(ry)} 0 0 0 ${n(x + w)} ${n(y + ry)}"/>`;
     }
+    case 'text':
+      // Nothing is drawn: the label is the shape.
+      return '';
     case 'note': {
       const fold = 14;
       return `<path d="M ${n(x)} ${n(y)} L ${n(x + w - fold)} ${n(y)} L ${n(x + w)} ${n(y + fold)}`
@@ -117,11 +146,21 @@ function rect(x: number, y: number, w: number, h: number, r: number): string {
   return `<rect x="${n(x)}" y="${n(y)}" width="${n(w)}" height="${n(h)}"${radius}/>`;
 }
 
-function centredLabel(box: Box): string {
+/**
+ * Centred unless the author said otherwise. A box in a flowchart is centred; a
+ * label on a screen mock-up is not, and a screen made of centred labels reads
+ * as nothing anyone would build.
+ */
+function label(box: Box, align: string | undefined): string {
+  const anchor = align === 'left' ? 'start' : align === 'right' ? 'end' : 'middle';
+  const inset = 8;
+  const x = anchor === 'start' ? box.x + inset
+    : anchor === 'end' ? box.x + box.width - inset
+    : box.x + box.width / 2;
   const top = box.y + box.height / 2 - ((box.lines.length - 1) * LINE_HEIGHT) / 2;
   const spans = box.lines.map((line, i) =>
-    `<tspan x="${n(box.x + box.width / 2)}" y="${n(top + i * LINE_HEIGHT)}">${escapeHtml(line)}</tspan>`);
-  return `<text class="dp-label" text-anchor="middle" dominant-baseline="central">${spans.join('')}</text>`;
+    `<tspan x="${n(x)}" y="${n(top + i * LINE_HEIGHT)}">${escapeHtml(line)}</tspan>`);
+  return `<text class="dp-label" text-anchor="${anchor}" dominant-baseline="central">${spans.join('')}</text>`;
 }
 
 /** A group is named in its top-left corner so the label never covers a shape. */

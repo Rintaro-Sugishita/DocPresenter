@@ -4,7 +4,7 @@
 
 export type ShapeKind =
   | 'rect' | 'round-rect' | 'stadium' | 'cylinder' | 'diamond'
-  | 'ellipse' | 'note' | 'group';
+  | 'ellipse' | 'note' | 'text' | 'group';
 
 export interface Node {
   readonly id: string;

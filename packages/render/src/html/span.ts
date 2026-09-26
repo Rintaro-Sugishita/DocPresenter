@@ -34,13 +34,21 @@ function rule(state: StateInline, silent: boolean): boolean {
   if (!matched) return false;
 
   if (!silent) {
+    // Tokenize the label in place, the way the link rule does. Parsing it
+    // separately and appending the result would hand the delimiter pass a
+    // token list assembled out of order, and emphasis inside a coloured run
+    // would come out as broken tags.
+    const start = state.pos;
+    const max = state.posMax;
     const open = state.push('dp_span_open', 'span', 1);
     if (colour) open.attrSet('style', `color:${colour[1]}`);
     else open.attrSet('class', `dp-text-${token}`);
-    state.md.inline.parse(
-      state.src.slice(state.pos + 1, close), state.md, state.env, state.tokens,
-    );
+
+    state.pos = start + 1;
+    state.posMax = close;
+    state.md.inline.tokenize(state);
     state.push('dp_span_close', 'span', -1);
+    state.posMax = max;
   }
   state.pos = close + 1 + matched[0].length;
   return true;

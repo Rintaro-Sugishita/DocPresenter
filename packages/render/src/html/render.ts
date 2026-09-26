@@ -1,15 +1,14 @@
 // Renders a document to HTML. Every element carries the byte range it came
 // from, so the DOM is itself the source map a review comment anchors through.
 
-import MarkdownIt from 'markdown-it';
 import {
   byteLength, describe, parseDiagram, parseTable, sheetsOf,
   type Block, type ByteSpan, type DocumentFile, type NumberedElement, type ResolvedDocument,
 } from '@docpresenter/core';
 import { renderDiagram } from '../svg/render.js';
 import { renderOverlay } from './overlay.js';
+import { markdown } from './markdown.js';
 import { joinPath } from './path.js';
-import { bracketedSpan } from './span.js';
 import { escapeAttr, escapeHtml, renderTable, selectRows } from './table.js';
 
 /** Reading referenced files is injected so this package stays platform-neutral. */
@@ -27,12 +26,6 @@ export interface ResourceLoader {
 export interface RenderOptions {
   readonly loader: ResourceLoader;
 }
-
-// `breaks: true`: a line break in the source is a line break in the output.
-// A design document is written in short lines on purpose, and silently joining
-// them would make the rendered text disagree with the file a reviewer reads.
-const markdown = new MarkdownIt({ html: true, linkify: false, typographer: false, breaks: true })
-  .use(bracketedSpan);
 
 export function renderDocument(
   document: DocumentFile, resolved: ResolvedDocument, options: RenderOptions,

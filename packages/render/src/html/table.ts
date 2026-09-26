@@ -3,6 +3,7 @@
 // a literal colour or width.
 
 import type { Align, Cell, StyleRule, TableFile } from '@docpresenter/core';
+import { markdown } from './markdown.js';
 
 const ALIGN_CLASS: Readonly<Record<Align, string>> = {
   left: 'dp-align-left', center: 'dp-align-center', right: 'dp-align-right', default: '',
@@ -25,8 +26,6 @@ export function selectRows(table: TableFile, rangeName: string): TableFile | und
 
 /** `#abc` or `#aabbcc`. Anything else is not a colour and is not emitted. */
 const COLOUR = /^#[0-9a-fA-F]{3}([0-9a-fA-F]{3})?$/;
-/** Kept so cells written against the withdrawn vocabulary still render. */
-const TEXT_TOKENS = new Set(['changed', 'pending', 'disabled', 'removed']);
 /** A length the layout can use, for column widths. */
 const LENGTH = /^\d+(\.\d+)?(%|em|px|ch)$/;
 
@@ -87,22 +86,9 @@ function renderCellText(table: TableFile, text: string): string {
   return inlineMarkdown(text);
 }
 
-/** Emphasis, inline code, colour and hard breaks — what a grid cell can hold. */
+/** A cell holds inline Markdown — the same inline Markdown as the prose. */
 function inlineMarkdown(text: string): string {
-  return escapeHtml(text)
-    // A cell takes the same bracketed span as the prose does. Without this the
-    // notation is shown to the reader instead of colouring anything.
-    .replace(
-      /\[([^\]]+)\]\{color\s*=\s*(#[0-9a-fA-F]{3}(?:[0-9a-fA-F]{3})?)\}/g,
-      (_, body: string, colour: string) => `<span style="color:${colour}">${body}</span>`)
-    .replace(
-      /\[([^\]]+)\]\{\.([a-z0-9-]+)\}/g,
-      (whole: string, body: string, token: string) =>
-        TEXT_TOKENS.has(token) ? `<span class="dp-text-${token}">${body}</span>` : whole)
-    .replace(/`([^`]+)`/g, '<code>$1</code>')
-    .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
-    .replace(/(?<!\*)\*([^*]+)\*(?!\*)/g, '<em>$1</em>')
-    .replace(/\n/g, '<br>');
+  return markdown.renderInline(text);
 }
 
 /**

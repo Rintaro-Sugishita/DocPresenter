@@ -286,3 +286,30 @@ describe('セルの中の色', () => {
     expect(html).toContain('{color=red}');
   });
 });
+
+describe('入れ子の色', () => {
+  const cellWith = (body: string) => renderTable(parseTable(
+    ['| 用語 | 説明 |', '| --- | --- |', `| a | ${body} |`].join('\n')));
+
+  it('色の中の色も解釈する（セル）', () => {
+    const html = cellWith('[外[内]{color=#c62828}側]{color=#1f5fa8}');
+    expect(html).toContain('<span style="color:#1f5fa8">外<span style="color:#c62828">内</span>側</span>');
+    expect(html).not.toContain('{color=');
+  });
+
+  it('色の中の色も解釈する（本文）', () => {
+    const html = render('# T\n\n[外[内]{color=#c62828}側]{color=#1f5fa8}');
+    expect(html).toContain('<span style="color:#1f5fa8">外<span style="color:#c62828">内</span>側</span>');
+  });
+
+  it('セルと本文で同じ結果になる', () => {
+    const body = '**強い**と`コード`と[色]{color=#2e7d32}';
+    const cell = cellWith(body);
+    const prose = render(`# T\n\n${body}`);
+    for (const part of ['<strong>強い</strong>', '<code>コード</code>',
+      '<span style="color:#2e7d32">色</span>']) {
+      expect(cell, `セル: ${part}`).toContain(part);
+      expect(prose, `本文: ${part}`).toContain(part);
+    }
+  });
+});

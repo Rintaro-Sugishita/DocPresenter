@@ -52,12 +52,27 @@ let settings = {
   commitKey: COMMIT_KEYS.includes(stored) ? stored : DEFAULT_SETTINGS.commitKey,
 };
 
+// 新しい図表のファイルは、文書と同じ名前のフォルダに置く（docs/<文書名>/ の約束）。
+const NL = String.fromCharCode(10);
+let made = 0;
+const STARTER = {
+  table: ['| 見出し 1 | 見出し 2 |', '| -------- | -------- |', '|          |          |', ''].join(NL),
+  diagram: ['free {', '  a [ここに図形]', '}', '', 'layout {', '  a @ (40, 40) 160x60', '}', ''].join(NL),
+};
+const createResource = kind => {
+  made += 1;
+  const path = 'auth-design/' + (kind === 'table' ? 'table-' : 'diagram-')
+    + made + (kind === 'table' ? '.table' : '.dgm');
+  return { path, text: STARTER[kind] };
+};
+
 const view = mountSheetView({
   root: document.getElementById('editor'),
   source: ${JSON.stringify(readFileSync(DOC, "utf8"))},
   render,
   settings,
   readResource: p => FILES[clean(p)],
+  createResource,
   onChange: (edit, text) => {
     if (edit.path === undefined) document.getElementById('source').textContent = text;
     else FILES[clean(edit.path)] = text;

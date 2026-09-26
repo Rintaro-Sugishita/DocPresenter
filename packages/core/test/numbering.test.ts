@@ -89,7 +89,7 @@ describe('サンプルの実ファイル', () => {
     // 図は 1..6、表は 1..2 の通し番号
     const figures = r.elements.filter(e => e.kind === 'figure');
     const tables = r.elements.filter(e => e.kind === 'table');
-    expect(figures.map(f => f.number)).toEqual(['1', '2', '3', '4', '5', '6']);
+    expect(figures.map(f => f.number)).toEqual(['1', '2', '3', '4', '5', '6', '7']);
     expect(tables.map(t => t.number)).toEqual(['1', '2']);
 
     // 企画時に手で「図 2」と書いていたものが、計算でも図 2 になる

@@ -43,7 +43,11 @@ updated: 2026-09-21
 
 ログイン画面の外観を @fig-login-screen に示す。
 
-@import "auth-design/login-screen-overlay.dgm" {#fig-login-screen caption="ログイン画面"}
+@import "auth-design/login-screen-overlay.dgm" {#fig-login-screen caption="ログイン画面（実装後の画面への注釈）"}
+
+設計時点の画面は作図で起こす。画像ではないので、項目の追加や文言の変更が差分に出る。
+
+@import "auth-design/login-screen.dgm" {#fig-login-design caption="ログイン画面（画面設計）"}
 
 画面項目の定義を @tbl-screen-items に示す。No は @fig-login-screen の丸番号に対応する。
 

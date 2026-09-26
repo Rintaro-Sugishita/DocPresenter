@@ -35,11 +35,20 @@ export interface SheetViewOptions {
    * and reads referenced files back through `render`.
    */
   readonly onChange?: (edit: Edit, text: string) => void;
+  /**
+   * Creates the file behind a new figure or table and returns the path to
+   * write into the `@import`. Where new files go is the platform's business,
+   * not the editor's, so the host decides the folder and the starter content.
+   */
+  readonly createResource?: (kind: ResourceKind) => { path: string; text: string } | undefined;
   /** Called when an operation is refused, so the app can say why. */
   readonly onError?: (message: string) => void;
   /** Key bindings and the like. See settings.ts for why this is a value. */
   readonly settings?: EditorSettings;
 }
+
+/** What can be added to a sheet, besides prose. */
+export type ResourceKind = 'table' | 'diagram';
 
 export interface SheetView {
   readonly source: string;
@@ -393,8 +402,48 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
     // The sheet's own range ends where its last block ends, which is where a
     // new block goes, so the target carries the same range.
     append.dataset['span'] = section.dataset['span'] ?? '';
-    append.textContent = empty ? 'ここに本文を書く' : '';
+
+    const hint = element('span', 'dp-append-hint');
+    hint.textContent = empty ? 'ここに本文を書く' : '';
+    append.append(hint);
+
+    if (options.createResource) {
+      for (const [kind, label] of [['table', '表'], ['diagram', '図']] as const) {
+        const button = owner.createElement('button');
+        button.type = 'button';
+        button.className = 'dp-append-add';
+        button.textContent = `＋ ${label}`;
+        button.title = `${label}を追加する`;
+        button.addEventListener('mousedown', event => {
+          event.preventDefault();
+          event.stopPropagation();
+          addResource(append, kind);
+        });
+        append.append(button);
+      }
+    }
     section.append(append);
+  }
+
+  /**
+   * Adds a figure or a table: the file is created by the host, and an
+   * `@import` line for it is written at the end of the sheet. The caption is
+   * left for the author to fill in — a placeholder caption is one more thing
+   * to delete.
+   */
+  function addResource(append: HTMLElement, kind: ResourceKind): void {
+    const at = spanOf(append)?.end;
+    const made = options.createResource?.(kind);
+    if (at === undefined || !made) return;
+    options.onChange?.(
+      { span: { start: 0, end: 0 }, text: made.text, path: made.path, description: `${made.path} を作成` },
+      made.text,
+    );
+    commit(() => ({
+      span: { start: at, end: at },
+      text: `\n\n@import "${made.path}"`,
+      description: kind === 'table' ? '表を追加' : '図を追加',
+    }), active);
   }
 
   /** Paths contain dots and slashes; an attribute selector needs them quoted. */

@@ -33,13 +33,23 @@ export const EDITOR_STYLE = `
    keeps it quiet until the pointer is over it. */
 .dp-append {
   cursor: text; min-height: 1.8em; padding: 0.5em 0;
+  display: flex; align-items: center; gap: 0.5em;
   font-family: var(--font-heading, sans-serif); font-size: 0.85em;
-  color: transparent; position: relative;
+  color: #a7aeb8; position: relative;
 }
-.dp-append:hover { color: #a7aeb8; }
-.dp-append:hover:empty::before { content: "ここに本文を書く"; }
+.dp-append-hint { flex: 0 0 auto; }
+.dp-append:hover .dp-append-hint:empty::before { content: "ここに本文を書く"; }
 .dp-sheet-empty .dp-append { color: #8b929c; min-height: 3em; }
+/* The buttons are quiet until the pointer is near; the sheet is for reading. */
+.dp-append-add {
+  border: 1px solid #d3d7dd; background: #fff; color: #6b7280; cursor: pointer;
+  border-radius: 3px; padding: 0.15em 0.6em; font: inherit; font-size: 0.95em;
+  opacity: 0; transition: opacity .12s;
+}
+.dp-append:hover .dp-append-add, .dp-sheet-empty .dp-append-add { opacity: 1; }
+.dp-append-add:hover { background: #eceef1; color: #3a4048; }
 .dp-append.dp-editing, .dp-append:has(.dp-block-source) { color: inherit; font-size: inherit; }
+.dp-append:has(.dp-block-source) .dp-append-add { display: none; }
 
 .dp-format-bar {
   position: absolute; top: -2.4em; right: 0; z-index: 2;
@@ -166,6 +176,9 @@ export const EDITOR_STYLE = `
 .dp-grid-table th, .dp-grid-table td {
   border: 1px solid #c8ccd2; padding: 0.3em 0.5em; vertical-align: top;
   font-weight: 400; text-align: left; outline: none; position: relative;
+  /* A row added with nothing in it would otherwise be a line too thin to aim
+     at. On a table cell, height is a minimum. */
+  height: 1.7em;
 }
 .dp-grid-table th { background: #eef0f3; font-weight: 600; }
 .dp-grid-table .dp-align-left { text-align: left; }

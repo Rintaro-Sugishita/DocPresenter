@@ -131,8 +131,9 @@ describe('サンプルの実ファイル', () => {
 
     const imports = doc.blocks.filter(b => b.kind === 'import') as Import[];
     expect(imports.map(i => i.label)).toEqual([
-      'fig-architecture', 'fig-login-flow', 'fig-login-screen', 'tbl-screen-items',
-      'fig-login-sequence', 'fig-token-lifecycle', 'fig-customer-domain', 'tbl-glossary',
+      'fig-architecture', 'fig-login-flow', 'fig-login-screen', 'fig-login-design',
+      'tbl-screen-items', 'fig-login-sequence', 'fig-token-lifecycle',
+      'fig-customer-domain', 'tbl-glossary',
     ]);
     // 委譲した図も同じ経路で読める
     expect(imports.map(i => i.path)).toContain('auth-design/login-sequence.mmd');

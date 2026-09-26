@@ -22,6 +22,10 @@ const SHAPES: readonly { open: string; close: string; shape: ShapeKind }[] = [
   { open: '[',  close: ']',  shape: 'rect' },
   { open: '{',  close: '}',  shape: 'diamond' },
   { open: '(',  close: ')',  shape: 'round-rect' },
+  // A label with no outline. Screen mock-ups are mostly text sitting on
+  // something else, so it needs a shape of its own rather than a borderless
+  // rectangle nobody can tell apart from a missing one.
+  { open: '"',  close: '"',  shape: 'text' },
 ];
 
 const NODE = /^([A-Za-z0-9_぀-鿿-]+)\s*(.+?)(?::::([\w-]+))?$/;
