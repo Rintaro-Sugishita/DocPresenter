@@ -163,6 +163,77 @@ function rewriteGrid(
 const MERGE_UP = '^';
 const MERGE_LEFT = '<';
 
+export interface CellRange {
+  readonly top: number;
+  readonly left: number;
+  readonly bottom: number;
+  readonly right: number;
+}
+
+/** Grows a rectangle until it contains every cell it touches whole. */
+export function wholeCells(table: TableFile, range: CellRange): CellRange {
+  let { top, left, bottom, right } = range;
+  for (let pass = 0; pass < 8; pass++) {
+    let grew = false;
+    for (let r = top; r <= bottom; r++) {
+      for (let c = left; c <= right; c++) {
+        const cell = cellAt(table, r, c);
+        if (!cell) continue;
+        if (cell.row < top) { top = cell.row; grew = true; }
+        if (cell.column < left) { left = cell.column; grew = true; }
+        if (cell.row + cell.rowspan - 1 > bottom) { bottom = cell.row + cell.rowspan - 1; grew = true; }
+        if (cell.column + cell.colspan - 1 > right) { right = cell.column + cell.colspan - 1; grew = true; }
+      }
+    }
+    if (!grew) break;
+  }
+  return { top, left, bottom, right };
+}
+
+/** The text that merging a range would throw away, top-left cell aside. */
+export function mergeLoses(table: TableFile, range: CellRange): string[] {
+  const { top, left, bottom, right } = wholeCells(table, range);
+  const lost: string[] = [];
+  for (let r = top; r <= bottom; r++) {
+    for (let c = left; c <= right; c++) {
+      if (r === top && c === left) continue;
+      const cell = cellAt(table, r, c);
+      if (cell && cell.row === r && cell.column === c && cell.text.trim() !== '') {
+        lost.push(cell.text.trim());
+      }
+    }
+  }
+  return lost;
+}
+
+/**
+ * Merges a rectangle into its top-left cell. The first row marks the columns
+ * to the right as given up, and every row below marks the whole width — which
+ * is the spelling the parser already read before any of this existed.
+ */
+export function mergeRange(table: TableFile, range: CellRange): Edit {
+  const { top, left, bottom, right } = wholeCells(table, range);
+  if (top === bottom && left === right) throw new TableEditError('結合する範囲が 1 セルしかない');
+  if (top < 0) throw new TableEditError('見出し行は結合できない');
+
+  const lines: { span: { start: number; end: number }; text: string }[] = [];
+  for (let r = top; r <= bottom; r++) {
+    const line = table.rows[r]?.line;
+    if (!line) throw new TableEditError('範囲が表の外に出ている');
+    let text = line.text;
+    for (let c = left; c <= right; c++) {
+      if (r === top && c === left) continue;
+      text = replaceField(text, c, r === top ? MERGE_LEFT : MERGE_UP);
+    }
+    lines.push({ span: line.span, text });
+  }
+  return {
+    span: { start: lines[0]!.span.start, end: lines[lines.length - 1]!.span.end },
+    text: lines.map(l => l.text).join('\n'),
+    description: 'セルを結合',
+  };
+}
+
 /** Takes the row below into the cell at (row, column). */
 export function mergeDown(table: TableFile, row: number, column: number): Edit {
   const owner = cellAt(table, row, column);

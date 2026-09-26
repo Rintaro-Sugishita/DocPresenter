@@ -55,7 +55,7 @@ check('右クリックでメニューが出る', await page.isVisible('.dp-menu'
 check('行と列とセル結合の操作が並ぶ',
   (await page.$$eval('.dp-menu button', bs => bs.map(b => b.textContent))).join('/')
     === '行を上に追加/行を下に追加/行を削除/列を左に追加/列を右に追加/列を削除'
-      + '/下のセルと結合/右のセルと結合/結合を解除',
+      + '/選択範囲を結合/下のセルと結合/右のセルと結合/結合を解除',
   (await page.$$eval('.dp-menu button', bs => bs.map(b => b.textContent))).join('/'));
 
 const rows = () => page.$$eval('.dp-grid-table tbody tr', r => r.length);

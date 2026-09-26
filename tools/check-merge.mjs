@@ -82,4 +82,53 @@ check('結合していなければ解除は押せない',
   await page.$eval('.dp-menu button:text("結合を解除")', b => b.disabled));
 await page.keyboard.press('Escape');
 
+
+
+// --- 範囲の結合 -----------------------------------------------------------
+await page.goto('file://' + process.cwd() + '/out/editor.html');
+await page.waitForTimeout(500);
+await page.click('.dp-tab[data-index="5"]');
+await page.waitForTimeout(250);
+await openGrid();
+
+// Shift+矢印で範囲を広げる
+await page.click(cell(0, 0));
+await page.waitForTimeout(150);
+await page.keyboard.press('Shift+ArrowDown');
+await page.keyboard.press('Shift+ArrowRight');
+await page.waitForTimeout(200);
+check('Shift+矢印で範囲が広がる',
+  (await page.$$('.dp-grid-picked')).length === 4,
+  `${(await page.$$('.dp-grid-picked')).length} セル`);
+
+// 中身があるので警告が出る
+await page.click(cell(0, 0), { button: 'right' });
+await page.waitForSelector('.dp-menu button');
+await page.click('.dp-menu button:text("選択範囲を結合")');
+await page.waitForSelector('.dp-menu button');
+await page.waitForTimeout(200);
+const warning = await page.$$eval('.dp-menu button', bs => bs.map(b => b.textContent));
+check('中身があると先に知らせる', warning[0].includes('文字が消えます'), warning.join(' / '));
+check('やめる選択肢がある', warning.some(t => t === 'やめる'));
+
+await page.click('.dp-menu button:text("やめる")');
+await page.waitForTimeout(300);
+check('やめれば結合されない',
+  await page.$eval(cell(0, 0), el => el.getAttribute('rowspan')) === null);
+
+// 進めれば結合される
+await page.click(cell(0, 0), { button: 'right' });
+await page.waitForSelector('.dp-menu button');
+await page.click('.dp-menu button:text("選択範囲を結合")');
+await page.waitForSelector('.dp-menu button');
+await page.click('.dp-menu button:text("だけを残して結合")');
+await page.waitForSelector('.dp-grid-table');
+await page.waitForTimeout(350);
+check('進めれば 2x2 に結合される',
+  (await page.$eval(cell(0, 0), el =>
+    `${el.getAttribute('rowspan')}x${el.getAttribute('colspan')}`)) === '2x2',
+  await page.$eval(cell(0, 0), el => `${el.getAttribute('rowspan')}x${el.getAttribute('colspan')}`));
+check('左上の文字だけが残る',
+  (await page.textContent(cell(0, 0))).includes('アクセストークン'));
+
 await browser.close();

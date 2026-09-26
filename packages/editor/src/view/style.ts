@@ -153,6 +153,8 @@ export const EDITOR_STYLE = `
 }
 .dp-menu button:hover, .dp-menu button:focus { background: #eceef1; outline: none; }
 .dp-menu button:disabled { color: #b6bcc5; cursor: default; background: transparent; }
+/* A disabled first item is the explanation above a choice, not a choice. */
+.dp-menu button:disabled:first-child { color: #6b7280; font-size: 0.92em; }
 .dp-menu-rule { height: 1px; background: #e2e4e8; margin: 4px 2px; }
 
 /* The selected cell's text box takes the caret while a cell is open, so it
@@ -191,6 +193,8 @@ export const EDITOR_STYLE = `
 .dp-grid-table .dp-bottom-thick { border-bottom: 2px solid #2d3138; }
 .dp-grid-table .dp-bottom-double { border-bottom: 3px double #2d3138; }
 .dp-grid-table .dp-right-thick { border-right: 2px solid #2d3138; }
+/* A picked rectangle. The cell the keyboard is on keeps its own outline. */
+.dp-grid-table .dp-grid-picked { background: rgba(31, 95, 168, .10); }
 .dp-grid-table .dp-grid-at { box-shadow: inset 0 0 0 2px #1f5fa8; }
 
 /* The text box covers the selected cell. While navigating it is invisible and

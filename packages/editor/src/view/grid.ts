@@ -16,9 +16,9 @@ import {
 import type { Edit } from '../edit.js';
 import {
   formatTable, insertColumn, insertRow, parseClipboardGrid, pasteGrid,
-  mergeDown, mergeRight, removeColumn, removeRow, setAlign, setCell, setStyle,
-  setWidth, styleAt, unmerge,
-  type StyleProperty,
+  mergeDown, mergeLoses, mergeRange, mergeRight, removeColumn, removeRow, setAlign,
+  setCell, setStyle, setWidth, styleAt, unmerge, wholeCells,
+  type CellRange, type StyleProperty,
 } from '../table.js';
 import { toggleInline, type InlineMark } from '../inline.js';
 import { createMenu, type MenuItem } from './menu.js';
@@ -80,6 +80,9 @@ export function createGrid(options: GridOptions): Grid {
   // somewhere to compose into from the very first keystroke, and a grid where
   // the first character of every Japanese word is swallowed is unusable.
   let at = options.at;
+  // Where a range selection started. Equal to `at` while one cell is picked.
+  let anchor = options.at;
+  let dragging = false;
   let editing = false;
   let repaintStyle: () => void = () => {};
   let target = 'cell';
@@ -99,6 +102,7 @@ export function createGrid(options: GridOptions): Grid {
   root.className = 'dp-grid';
   root.append(createBar(), createStyleBar(), toolbar.element, createTable());
   root.addEventListener('paste', onPaste);
+  owner.addEventListener('mouseup', () => { dragging = false; });
   wireInput();
   queueMicrotask(() => place(at));
   return {
@@ -114,6 +118,33 @@ export function createGrid(options: GridOptions): Grid {
 
   function key(position: GridPosition): string {
     return `${position.row},${position.column}`;
+  }
+
+  /** The rectangle currently picked, grown to hold every cell it touches. */
+  function range(): CellRange {
+    return wholeCells(table, {
+      top: Math.min(anchor.row, at.row),
+      left: Math.min(anchor.column, at.column),
+      bottom: Math.max(anchor.row, at.row),
+      right: Math.max(anchor.column, at.column),
+    });
+  }
+
+  /** True while exactly one cell is picked. A declaration, not a const: this
+   *  lives after the function's `return`, where only declarations exist. */
+  function single(): boolean {
+    return anchor.row === at.row && anchor.column === at.column;
+  }
+
+  /** Paints the picked rectangle. The selected cell keeps its own outline. */
+  function paintRange(): void {
+    const box = range();
+    for (const [id, node] of nodes) {
+      const [row, column] = id.split(',').map(Number) as [number, number];
+      const inside = !single() && row >= box.top && row <= box.bottom
+        && column >= box.left && column <= box.right;
+      node.classList.toggle('dp-grid-picked', inside);
+    }
   }
 
   function createTable(): HTMLElement {
@@ -173,15 +204,25 @@ export function createGrid(options: GridOptions): Grid {
     node.addEventListener('mousedown', event => {
       // The browser would otherwise move focus off the text box we rely on.
       event.preventDefault();
+      if (event.button !== 0) return;
       if (editing) commit({ row, column });
-      else place({ row, column });
+      else place({ row, column }, event.shiftKey);
+      // Dragging across cells picks a rectangle, as it does in a spreadsheet.
+      if (!event.shiftKey) dragging = true;
+    });
+    node.addEventListener('mouseenter', () => {
+      if (dragging && !editing) place({ row, column }, true);
     });
     node.addEventListener('contextmenu', event => {
       // While a cell is open the browser's own menu is the useful one: cut,
       // copy, paste, and whatever the platform adds for text.
       if (editing) return;
       event.preventDefault();
-      place({ row, column });
+      // Right-clicking inside a picked rectangle keeps it; outside, it moves.
+      const box = range();
+      const inside = row >= box.top && row <= box.bottom
+        && column >= box.left && column <= box.right;
+      if (!inside) place({ row, column });
       menu.open(event.clientX, event.clientY, rowColumnMenu());
     });
     // On both the cell and the box: the box covers the cell, but a double
@@ -197,7 +238,7 @@ export function createGrid(options: GridOptions): Grid {
   }
 
   /** Puts the selection, and the text box, on a cell. */
-  function place(next: GridPosition): void {
+  function place(next: GridPosition, extend = false): void {
     const wanted = clamp(next);
     const owning = wanted.row < 0 ? undefined : cellAt(table, wanted.row, wanted.column);
     const resolved = owning ? { row: owning.row, column: owning.column } : wanted;
@@ -216,10 +257,12 @@ export function createGrid(options: GridOptions): Grid {
     if (!same) was?.classList.remove('dp-grid-at');
 
     at = resolved;
+    if (!extend) anchor = resolved;
     editing = false;
     input.value = '';
     toolbar.element.hidden = true;
     repaintStyle();
+    paintRange();
 
     const node = nodes.get(key(at));
     if (!node) return;
@@ -296,10 +339,10 @@ export function createGrid(options: GridOptions): Grid {
       event.stopPropagation();
       // While composing, every key belongs to the IME.
       if (event.isComposing) return;
-      const step = (row: number, column: number): void => {
+      const step = (row: number, column: number, extend = false): void => {
         event.preventDefault();
         if (editing) commit({ row, column });
-        else place({ row, column });
+        else place({ row, column }, extend);
       };
 
       switch (event.key) {
@@ -316,16 +359,16 @@ export function createGrid(options: GridOptions): Grid {
           return step(at.row, at.column + (event.shiftKey ? -1 : 1));
         case 'ArrowUp':
           if (editing) return;
-          return step(at.row - 1, at.column);
+          return step(at.row - 1, at.column, event.shiftKey);
         case 'ArrowDown':
           if (editing) return;
-          return step(at.row + 1, at.column);
+          return step(at.row + 1, at.column, event.shiftKey);
         case 'ArrowLeft':
           if (editing) return;
-          return step(at.row, at.column - 1);
+          return step(at.row, at.column - 1, event.shiftKey);
         case 'ArrowRight':
           if (editing) return;
-          return step(at.row, at.column + 1);
+          return step(at.row, at.column + 1, event.shiftKey);
         case 'Delete':
         case 'Backspace': {
           if (editing) return;
@@ -476,6 +519,35 @@ export function createGrid(options: GridOptions): Grid {
    * now and then. On the toolbar they crowded out the colours and the
    * alignment, which are reached constantly, so they live on right-click.
    */
+  /**
+   * Merging a rectangle keeps only the top-left cell's text. Losing the rest
+   * silently is the kind of thing a spreadsheet asks about first, so this does
+   * too — in the same menu, where the pointer already is.
+   */
+  function mergeSelection(): void {
+    const box = range();
+    const lost = mergeLoses(table, box);
+    const apply = (): void => options.apply(
+      () => mergeRange(table, box), { row: box.top, column: box.left });
+    if (lost.length === 0) { apply(); return; }
+
+    const node = nodes.get(key({ row: box.top, column: box.left }));
+    const where = node?.getBoundingClientRect();
+    menu.open(where?.left ?? 0, (where?.bottom ?? 0) + 4, [
+      { label: `${lost.length} 個のセルの文字が消えます`, disabled: true, run: () => {} },
+      { label: `左上の「${keptText()}」だけを残して結合`, separated: true, run: apply },
+      { label: 'やめる', run: () => {} },
+    ]);
+  }
+
+  /** The text that survives the merge, short enough to read in a menu. */
+  function keptText(): string {
+    const box = range();
+    const text = (cellAt(table, box.top, box.left)?.text ?? '').trim();
+    if (text === '') return '空のセル';
+    return text.length > 12 ? `${text.slice(0, 12)}…` : text;
+  }
+
   function rowColumnMenu(): MenuItem[] {
     const row = Math.max(0, at.row);
     const here = (): GridPosition => ({ row, column: at.column });
@@ -520,11 +592,15 @@ export function createGrid(options: GridOptions): Grid {
 
     return [
       {
-        label: '下のセルと結合', separated: true, disabled: !canDown,
+        label: '選択範囲を結合', separated: true, disabled: single() || at.row < 0,
+        run: () => mergeSelection(),
+      },
+      {
+        label: '下のセルと結合', disabled: !canDown || !single(),
         run: () => options.apply(() => mergeDown(table, at.row, at.column), at),
       },
       {
-        label: '右のセルと結合', disabled: !canRight,
+        label: '右のセルと結合', disabled: !canRight || !single(),
         run: () => options.apply(() => mergeRight(table, at.row, at.column), at),
       },
       {

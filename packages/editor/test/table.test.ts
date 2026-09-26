@@ -4,7 +4,7 @@ import { applyEdit } from '../src/index.js';
 import {
   formatTable, insertColumn, insertRow, mergeDown, mergeRight, parseClipboardGrid,
   pasteGrid, removeColumn, removeRow, setAlign, setCell, setStyle, styleAt,
-  TableEditError, unmerge,
+  mergeLoses, mergeRange, TableEditError, unmerge,
 } from '../src/index.js';
 
 const SOURCE = [
@@ -261,5 +261,62 @@ describe('セルの結合', () => {
     const next = run(SOURCE, t => mergeDown(t, 0, 0));
     expect(next).toContain('# 用語集');
     expect(next).toContain('header { bottom: thick }');
+  });
+});
+
+describe('範囲の結合', () => {
+  const GRID = [
+    '| A | B | C |',
+    '| - | - | - |',
+    '| 1 | 2 | 3 |',
+    '| 4 | 5 | 6 |',
+    '| 7 | 8 | 9 |',
+  ].join('\n');
+  const shape = (source: string, row = 0, column = 0) => {
+    const c = cellAt(parseTable(source), row, column)!;
+    return `${c.rowspan}x${c.colspan}`;
+  };
+
+  it('矩形をまとめて結合する', () => {
+    const next = run(GRID, t => mergeRange(t, { top: 0, left: 0, bottom: 1, right: 1 }));
+    expect(shape(next)).toBe('2x2');
+    expect(parseTable(next).rows[0]!.cells.map(c => c.text)).toEqual(['1', '3']);
+    expect(parseTable(next).rows[1]!.cells.map(c => c.text)).toEqual(['6']);
+  });
+
+  it('3 行 3 列でも結合できる', () => {
+    const next = run(GRID, t => mergeRange(t, { top: 0, left: 0, bottom: 2, right: 2 }));
+    expect(shape(next)).toBe('3x3');
+    expect(parseTable(next).rows[1]!.cells).toHaveLength(0);
+  });
+
+  it('既にある結合をまたぐ範囲は、その結合を丸ごと含む', () => {
+    const merged = run(GRID, t => mergeRange(t, { top: 0, left: 0, bottom: 0, right: 1 }));
+    // (1,1) だけを指しても、2 列にまたがるセルごと取り込む
+    const next = run(merged, t => mergeRange(t, { top: 0, left: 1, bottom: 1, right: 1 }));
+    expect(shape(next)).toBe('2x2');
+  });
+
+  it('消える文字を先に数えられる', () => {
+    const table = parseTable(GRID);
+    expect(mergeLoses(table, { top: 0, left: 0, bottom: 1, right: 1 })).toEqual(['2', '4', '5']);
+  });
+
+  it('空のセルばかりなら何も消えない', () => {
+    const blank = ['| A | B |', '| - | - |', '| 1 |   |', '|   |   |'].join('\n');
+    expect(mergeLoses(parseTable(blank), { top: 0, left: 0, bottom: 1, right: 1 })).toEqual([]);
+  });
+
+  it('1 セルだけの範囲は結合しない', () => {
+    expect(() => mergeRange(parseTable(GRID), { top: 0, left: 0, bottom: 0, right: 0 }))
+      .toThrow(TableEditError);
+  });
+
+  it('結合したあと解除すると元の形に戻る', () => {
+    const merged = run(GRID, t => mergeRange(t, { top: 0, left: 0, bottom: 1, right: 1 }));
+    const next = run(merged, t => unmerge(t, 0, 0));
+    expect(shape(next)).toBe('1x1');
+    expect(parseTable(next).rows[0]!.cells).toHaveLength(3);
+    expect(parseTable(next).rows[1]!.cells).toHaveLength(3);
   });
 });
