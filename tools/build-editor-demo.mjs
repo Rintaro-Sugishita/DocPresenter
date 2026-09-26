@@ -88,6 +88,19 @@ const view = mountSheetView({
 });
 document.getElementById('source').textContent = view.source;
 
+const side = document.getElementById('side');
+const toggle = document.getElementById('toggle-source');
+const narrow = window.matchMedia('(max-width: 820px)');
+const applyWidth = () => { side.hidden = narrow.matches && toggle.getAttribute('aria-expanded') !== 'true'; };
+toggle.addEventListener('click', () => {
+  const open = toggle.getAttribute('aria-expanded') === 'true';
+  toggle.setAttribute('aria-expanded', String(!open));
+  toggle.textContent = open ? 'ソースを見る' : 'ソースを閉じる';
+  applyWidth();
+});
+narrow.addEventListener('change', applyWidth);
+applyWidth();
+
 const select = document.getElementById('commit-key');
 for (const key of COMMIT_KEYS) {
   const option = document.createElement('option');
@@ -128,10 +141,27 @@ writeFileSync('out/editor.html', `<!doctype html>
   .setting { display: block; padding: 0.8em 1em; border-bottom: 1px solid #e2e4e8; color: #5a6270; }
   .setting select { font: inherit; margin-top: 0.3em; width: 100%; }
   #source { flex: 1; overflow: auto; margin: 0; padding: 1em; font-size: 11px; line-height: 1.6; white-space: pre-wrap; }
+  /* 狭い画面では、ソースは呼ばれたときだけ出す。 */
+  #toggle-source { display: none; }
+  @media (max-width: 820px) {
+    body { grid-template-columns: 1fr; }
+    #toggle-source {
+      display: block; position: fixed; right: 8px; top: 8px; z-index: 40;
+      border: 1px solid #c8ccd2; background: #fff; border-radius: 4px;
+      padding: 0.3em 0.7em; font: inherit; font-size: 12px; cursor: pointer;
+    }
+    aside {
+      position: fixed; left: 0; right: 0; bottom: 0; z-index: 30; height: 60%;
+      border-left: none; border-top: 1px solid #c8ccd2;
+      box-shadow: 0 -4px 16px rgba(0,0,0,.18);
+    }
+    aside[hidden] { display: none; }
+  }
 </style>
 </head><body>
 <div id="editor"></div>
-<aside>
+<button type="button" id="toggle-source" aria-expanded="false">ソースを見る</button>
+<aside id="side">
   <h2>ソース（書き戻される内容）</h2>
   <label class="setting">確定キー <select id="commit-key"></select></label>
   <div id="status">タブの操作がそのままバイト範囲の書き換えになる</div>

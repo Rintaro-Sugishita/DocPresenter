@@ -90,6 +90,20 @@ const view = mountSheetView({
 });
 document.getElementById('source').textContent = view.source;
 
+// 狭い画面では、ソースは呼ばれたときだけ出す。
+const side = document.getElementById('side');
+const toggle = document.getElementById('toggle-source');
+const narrow = window.matchMedia('(max-width: 820px)');
+const applyWidth = () => { side.hidden = narrow.matches && toggle.getAttribute('aria-expanded') !== 'true'; };
+toggle.addEventListener('click', () => {
+  const open = toggle.getAttribute('aria-expanded') === 'true';
+  toggle.setAttribute('aria-expanded', String(!open));
+  toggle.textContent = open ? 'ソースを見る' : 'ソースを閉じる';
+  applyWidth();
+});
+narrow.addEventListener('change', applyWidth);
+applyWidth();
+
 const select = document.getElementById('commit-key');
 for (const key of COMMIT_KEYS) {
   const option = document.createElement('option');
@@ -193,10 +207,31 @@ body {
   white-space: pre-wrap; word-break: break-word; color: #454b54;
 }
 
+/* The source pane is there to show what the editing writes back. On a narrow
+   screen it would leave no room for the thing it is explaining, so it slides
+   up over the editor only when asked for. */
+.bar button {
+  display: none; margin-left: auto; align-self: center;
+  border: 1px solid var(--shell-line); background: #fff; color: var(--shell-ink);
+  border-radius: 4px; padding: 0.3em 0.7em; font: inherit; font-size: 12px; cursor: pointer;
+}
+
 @media (max-width: 820px) {
-  .work { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto; }
-  .side { border-left: none; border-top: 1px solid var(--shell-line); }
-  #source { max-height: 11em; }
+  .work { grid-template-columns: minmax(0, 1fr); }
+  /* One row: the name and the way to the source. The hints are for a desk. */
+  .bar { flex-wrap: nowrap; align-items: center; }
+  .bar h1 { flex: 1; }
+  .bar button { display: block; flex: 0 0 auto; }
+  .bar p { display: none; }
+  .side {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 30;
+    height: 60%; border-left: none; border-top: 1px solid var(--shell-line);
+    box-shadow: 0 -4px 16px rgba(0,0,0,.18);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  .side[hidden] { display: none; }
+  #source { font-size: 12px; }
+  .dp-editor-pane > .dp-page { padding: 1.5em 1.1em; }
 }
 </style>
 
@@ -207,10 +242,11 @@ body {
     <p>本文と図はソースが、表はグリッドが開く</p>
     <p>色は見本かピッカーから自由に、列幅はヘッダの右端をドラッグ</p>
     <p><kbd>Ctrl</kbd>+<kbd>PageDown</kbd> で次のシート</p>
+    <button type="button" id="toggle-source" aria-expanded="false">ソースを見る</button>
   </header>
   <main class="work">
     <div id="editor"></div>
-    <aside class="side">
+    <aside class="side" id="side">
       <h2>書き戻されるソース</h2>
       <label class="setting" for="commit-key">編集を確定するキー
         <select id="commit-key"></select>
