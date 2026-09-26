@@ -73,18 +73,39 @@ function inlineMarkdown(text: string): string {
     .replace(/\n/g, '<br>');
 }
 
-function headerClasses(table: TableFile): string[] {
+/**
+ * The style classes for one position. Exported because the grid editor shows
+ * the same fills and rules while you are editing; one implementation keeps the
+ * grid and the printed table from disagreeing.
+ */
+export function headerClasses(table: TableFile): string[] {
   return declarationClasses(table.style.filter(r => r.selector.kind === 'header'));
 }
 
-function rowClasses(table: TableFile, row: number): string[] {
+export function rowClasses(table: TableFile, row: number): string[] {
   const odd = (row + 1) % 2 === 1;
-  return declarationClasses(table.style.filter(r =>
-    r.selector.kind === 'row' &&
-    (r.selector.which === 'all' || (r.selector.which === 'odd') === odd)));
+  return declarationClasses(table.style.filter(rule => {
+    const s = rule.selector;
+    if (s.kind === 'row') return s.which === 'all' || (s.which === 'odd') === odd;
+    // A range names its first and last row by the text of their leading cell,
+    // the same way a named range does, so it survives the rows moving.
+    if (s.kind === 'range') return withinRange(table, row, s.from, s.to);
+    if (s.kind === 'namedRange') {
+      const range = table.ranges.get(s.name);
+      return range !== undefined && withinRange(table, row, range.from, range.to);
+    }
+    return false;
+  }));
 }
 
-function cellClasses(table: TableFile, cell: Cell, row: number): string[] {
+function withinRange(table: TableFile, row: number, from: string, to: string): boolean {
+  const keyOf = (r: number): string => table.rows[r]?.cells[0]?.text ?? '';
+  const first = table.rows.findIndex((_, r) => keyOf(r) === from);
+  const last = table.rows.findIndex((_, r) => keyOf(r) === to);
+  return first >= 0 && last >= first && first <= row && row <= last;
+}
+
+export function cellClasses(table: TableFile, cell: Cell, row: number): string[] {
   const columnName = table.columns[cell.column]?.header;
   const rowName = table.rows[row]?.cells[0]?.text;
   return declarationClasses(table.style.filter(rule => {

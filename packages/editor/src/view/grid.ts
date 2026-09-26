@@ -9,11 +9,13 @@
 // range edits in the `.table` file. The grid holds no copy of the data: after
 // each change the file is re-read and the grid is rebuilt from it.
 
-import { cellAt, type Align, type Cell, type TableFile } from '@docpresenter/core';
+import { cellAt, type Align, type Cell, type Selector, type TableFile } from '@docpresenter/core';
+import { cellClasses, headerClasses, rowClasses } from '@docpresenter/render';
 import type { Edit } from '../edit.js';
 import {
   formatTable, insertColumn, insertRow, parseClipboardGrid, pasteGrid,
-  removeColumn, removeRow, setAlign, setCell,
+  removeColumn, removeRow, setAlign, setCell, setStyle, styleAt,
+  type StyleProperty,
 } from '../table.js';
 
 export interface GridPosition {
@@ -38,6 +40,32 @@ const ALIGN_CLASS: Readonly<Record<Align, string>> = {
   left: 'dp-align-left', center: 'dp-align-center', right: 'dp-align-right', default: '',
 };
 
+/**
+ * The targets a style can be applied to, as the file's own selectors. A cell
+ * is named by its row and column and a single row by a range over itself, so a
+ * rule keeps pointing at the same thing when the rows move.
+ */
+const TARGETS: readonly { readonly id: string; readonly label: string }[] = [
+  { id: 'cell', label: 'このセル' },
+  { id: 'row', label: 'この行' },
+  { id: 'column', label: 'この列' },
+  { id: 'header', label: 'ヘッダ' },
+  { id: 'odd', label: '奇数行' },
+  { id: 'even', label: '偶数行' },
+];
+
+/** Meaning tokens first, then the ones that only group. Never a literal colour. */
+const FILLS: readonly [string, string][] = [
+  ['changed', '変更'], ['pending', '要確認'], ['disabled', '対象外'], ['removed', '削除予定'],
+  ['shade', '網掛け'], ['tint-1', '区分 1'], ['tint-2', '区分 2'],
+];
+
+const RULES: readonly [StyleProperty, string, string, string][] = [
+  ['bottom', 'thick', '下太', '下の罫線を太く'],
+  ['bottom', 'double', '下二重', '下の罫線を二重に'],
+  ['right', 'thick', '右太', '右の罫線を太く'],
+];
+
 export function createGrid(options: GridOptions): HTMLElement {
   const { owner, table } = options;
   const columns = table.columns.length;
@@ -48,6 +76,8 @@ export function createGrid(options: GridOptions): HTMLElement {
   // the first character of every Japanese word is swallowed is unusable.
   let at = options.at;
   let editing = false;
+  let repaintStyle: () => void = () => {};
+  let target = 'cell';
   const nodes = new Map<string, HTMLElement>();
   const input = owner.createElement('input');
   input.className = 'dp-grid-input';
@@ -55,7 +85,7 @@ export function createGrid(options: GridOptions): HTMLElement {
 
   const root = owner.createElement('div');
   root.className = 'dp-grid';
-  root.append(createBar(), createTable());
+  root.append(createBar(), createStyleBar(), createTable());
   root.addEventListener('paste', onPaste);
   wireInput();
   queueMicrotask(() => place(at));
@@ -78,17 +108,18 @@ export function createGrid(options: GridOptions): HTMLElement {
     const head = owner.createElement('thead');
     const headRow = owner.createElement('tr');
     table.columns.forEach((column, c) => {
-      headRow.append(cellNode('th', column.header, -1, c, 1, 1, column.align));
+      headRow.append(cellNode('th', column.header, -1, c, 1, 1, column.align, undefined));
     });
     head.append(headRow);
 
     const tbody = owner.createElement('tbody');
     table.rows.forEach((row, r) => {
       const line = owner.createElement('tr');
+      line.className = rowClasses(table, r).join(' ');
       for (const cell of row.cells) {
         line.append(cellNode(
           'td', cell.text, r, cell.column, cell.rowspan, cell.colspan,
-          table.columns[cell.column]?.align ?? 'default',
+          table.columns[cell.column]?.align ?? 'default', cell,
         ));
       }
       tbody.append(line);
@@ -100,9 +131,12 @@ export function createGrid(options: GridOptions): HTMLElement {
 
   function cellNode(
     tag: 'th' | 'td', text: string, row: number, column: number,
-    rowspan: number, colspan: number, align: Align,
+    rowspan: number, colspan: number, align: Align, cell: Cell | undefined,
   ): HTMLElement {
-    const node = element(tag, `dp-grid-cell ${ALIGN_CLASS[align]}`);
+    // The grid wears the same style classes the printed table will, so a fill
+    // or a rule can be seen the moment it is applied.
+    const styles = cell ? cellClasses(table, cell, row) : headerClasses(table);
+    const node = element(tag, ['dp-grid-cell', ALIGN_CLASS[align], ...styles].join(' '));
     const label = element('span', 'dp-grid-text');
     label.textContent = text;
     node.append(label);
@@ -137,6 +171,7 @@ export function createGrid(options: GridOptions): HTMLElement {
     at = resolved;
     editing = false;
     input.value = '';
+    repaintStyle();
 
     const node = nodes.get(key(at));
     if (!node) return;
@@ -224,6 +259,87 @@ export function createGrid(options: GridOptions): HTMLElement {
         default:
       }
     });
+  }
+
+  // --- スタイル ---------------------------------------------------------
+  //
+  // The buttons offer exactly the selectors the file already uses, so nothing
+  // new has to be invented for the UI: a cell is named by its row and column,
+  // a row by a range over itself, and both keep pointing at the same thing
+  // when the rows move.
+
+
+  /** The selector the buttons act on, from the target and the selected cell. */
+  function selector(): Selector | undefined {
+    const column = table.columns[at.column]?.header;
+    const rowKey = at.row < 0 ? undefined : table.rows[at.row]?.cells[0]?.text;
+    switch (target) {
+      case 'header': return { kind: 'header' };
+      case 'odd': return { kind: 'row', which: 'odd' };
+      case 'even': return { kind: 'row', which: 'even' };
+      case 'column': return column === undefined ? undefined : { kind: 'column', name: column };
+      case 'row': return rowKey === undefined ? undefined : { kind: 'range', from: rowKey, to: rowKey };
+      case 'cell':
+        return column === undefined || rowKey === undefined
+          ? undefined : { kind: 'cell', row: rowKey, column };
+      default: return undefined;
+    }
+  }
+
+  function createStyleBar(): HTMLElement {
+    const bar = element('div', 'dp-grid-bar dp-grid-style');
+
+    const choose = owner.createElement('select');
+    choose.className = 'dp-grid-target';
+    choose.title = 'スタイルを付ける対象';
+    for (const option of TARGETS) {
+      const node = owner.createElement('option');
+      node.value = option.id;
+      node.textContent = option.label;
+      choose.append(node);
+    }
+    choose.value = target;
+    choose.addEventListener('change', () => { target = choose.value; paint(); });
+    bar.append(choose);
+
+    const buttons: { property: StyleProperty; value: string; node: HTMLButtonElement }[] = [];
+    const add = (
+      property: StyleProperty, value: string, label: string, title: string, className: string,
+    ): void => {
+      const node = owner.createElement('button');
+      node.type = 'button';
+      node.className = className;
+      node.textContent = label;
+      node.title = title;
+      node.addEventListener('mousedown', event => {
+        event.preventDefault();
+        const which = selector();
+        if (!which) return;
+        // Pressing the one already applied takes it off.
+        const next = styleAt(table, which, property) === value ? undefined : value;
+        options.apply(() => setStyle(table, which, property, next), at);
+      });
+      buttons.push({ property, value, node });
+      bar.append(node);
+    };
+
+    for (const [token, label] of FILLS) {
+      add('fill', token, label, `塗りつぶし: ${token}`, `dp-grid-fill dp-token-${token}`);
+    }
+    bar.append(element('span', 'dp-grid-divider'));
+    for (const [property, value, label, title] of RULES) add(property, value, label, title, '');
+
+    function paint(): void {
+      const which = selector();
+      for (const { property, value, node } of buttons) {
+        const on = which !== undefined && styleAt(table, which, property) === value;
+        node.setAttribute('aria-pressed', String(on));
+        node.disabled = which === undefined;
+      }
+    }
+    paint();
+    repaintStyle = paint;
+    return bar;
   }
 
   function onPaste(event: ClipboardEvent): void {

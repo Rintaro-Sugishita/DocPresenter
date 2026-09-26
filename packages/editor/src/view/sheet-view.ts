@@ -380,6 +380,13 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
         + ' .dp-append, .dp-prose, h1, h2, h3, h4, h5, h6',
       );
       if (!target || !page.contains(target)) return;
+      // Clicking away from an open grid closes it, and the table goes back to
+      // being drawn. One click closes, the next one edits.
+      if (grid && !target.closest('.dp-figure')) {
+        grid = undefined;
+        draw();
+        return;
+      }
       // Inside a figure, the drawing is the referenced file and the caption is
       // the `@import` line that placed it. You edit what you pointed at.
       // A click inside an open editor belongs to that editor, not to the page.

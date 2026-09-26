@@ -60,8 +60,8 @@ export const EDITOR_STYLE = `
 .dp-format-divider { width: 1px; background: #565c66; margin: 0.3em 0.25em; }
 /* Each token button shows a swatch of the colour the theme gives that meaning,
    so the bar shows the vocabulary instead of only naming it. */
-.dp-format-token { display: inline-flex; align-items: center; gap: 0.4em; }
-.dp-format-token::before {
+.dp-format-token, .dp-grid-fill { display: inline-flex; align-items: center; gap: 0.4em; }
+.dp-format-token::before, .dp-grid-fill::before {
   content: ""; width: 0.75em; height: 0.75em; border-radius: 2px;
   background: currentColor; box-shadow: 0 0 0 1px rgba(255,255,255,.35);
 }
@@ -69,6 +69,11 @@ export const EDITOR_STYLE = `
 .dp-token-pending::before  { color: var(--text-pending, #1f5fa8); }
 .dp-token-disabled::before { color: var(--text-disabled, #767c85); }
 .dp-token-removed::before  { color: var(--text-removed, #b3261e); }
+.dp-token-shade::before    { color: var(--fill-shade, #eef0f3); }
+.dp-token-tint-1::before   { color: var(--fill-tint-1, #f7f8fa); }
+.dp-token-tint-2::before   { color: var(--fill-tint-2, #f2f6f4); }
+/* On the grid's light bar the swatch needs its own outline to be visible. */
+.dp-grid-fill::before { box-shadow: 0 0 0 1px #aeb4bd; }
 
 /* Figures. The drawing is a file of its own and the caption stands for the
    import line that placed it, so each is hinted as its own target. */
@@ -102,6 +107,15 @@ export const EDITOR_STYLE = `
 }
 .dp-grid-bar button:hover { background: #eceef1; }
 .dp-grid-divider { width: 1px; background: #d3d7dd; margin: 0.2em 0.4em; }
+.dp-grid-style { margin-bottom: 0.7em; }
+.dp-grid-target {
+  font: inherit; font-size: 12px; padding: 0.25em 0.3em;
+  border: 1px solid #d3d7dd; border-radius: 3px; background: #fff; color: #3a4048;
+}
+.dp-grid-bar button[aria-pressed="true"] {
+  background: #2d3138; color: #fff; border-color: #2d3138;
+}
+.dp-grid-bar button:disabled { opacity: 0.4; cursor: default; }
 
 .dp-grid-table { border-collapse: collapse; width: 100%; }
 .dp-grid-table th, .dp-grid-table td {
@@ -112,6 +126,11 @@ export const EDITOR_STYLE = `
 .dp-grid-table .dp-align-left { text-align: left; }
 .dp-grid-table .dp-align-center { text-align: center; }
 .dp-grid-table .dp-align-right { text-align: right; }
+/* The grid wears the document's own style classes, so the theme's tokens have
+   to reach it. The selection outline must still win over a fill. */
+.dp-grid-table .dp-bottom-thick { border-bottom: 2px solid #2d3138; }
+.dp-grid-table .dp-bottom-double { border-bottom: 3px double #2d3138; }
+.dp-grid-table .dp-right-thick { border-right: 2px solid #2d3138; }
 .dp-grid-table .dp-grid-at { box-shadow: inset 0 0 0 2px #1f5fa8; }
 
 /* The text box covers the selected cell. While navigating it is invisible and

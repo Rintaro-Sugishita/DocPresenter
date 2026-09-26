@@ -3,7 +3,7 @@ import { parseTable } from '@docpresenter/core';
 import { applyEdit } from '../src/index.js';
 import {
   formatTable, insertColumn, insertRow, parseClipboardGrid, pasteGrid,
-  removeColumn, removeRow, setAlign, setCell, TableEditError,
+  removeColumn, removeRow, setAlign, setCell, setStyle, styleAt, TableEditError,
 } from '../src/index.js';
 
 const SOURCE = [
@@ -130,5 +130,69 @@ describe('整形', () => {
     const next = run(SOURCE, t => formatTable(t));
     expect(next).toContain('# 用語集');
     expect(next).toContain('header { bottom: thick }');
+  });
+});
+
+describe('スタイル', () => {
+  const styled = (...rules: string[]) =>
+    [...SOURCE.split('\n').slice(0, 6), 'style {', ...rules, '}'].join('\n');
+
+  it('style 節が無ければ作る', () => {
+    const bare = SOURCE.split('\n').slice(0, 6).join('\n');
+    const next = applyEdit(bare, setStyle(parseTable(bare), { kind: 'header' }, 'bottom', 'thick'));
+    expect(next).toContain('style {\n  header { bottom: thick }\n}');
+    expect(parseTable(next).style).toHaveLength(1);
+  });
+
+  it('ある節には 1 行足すだけ', () => {
+    const source = styled('  header { bottom: thick }');
+    const next = applyEdit(source, setStyle(parseTable(source), { kind: 'column', name: '説明' }, 'fill', 'shade'));
+    expect(next).toContain('  header { bottom: thick }');
+    expect(next).toContain('  col:説明 { fill: shade }');
+    expect(parseTable(next).style).toHaveLength(2);
+  });
+
+  it('同じセレクタには足さずに書き換える', () => {
+    const source = styled('  col:説明 { fill: shade }');
+    const next = applyEdit(source, setStyle(parseTable(source), { kind: 'column', name: '説明' }, 'bottom', 'thick'));
+    const table = parseTable(next);
+    expect(table.style).toHaveLength(1);
+    expect([...table.style[0]!.declarations]).toEqual([['fill', 'shade'], ['bottom', 'thick']]);
+  });
+
+  it('解除すると宣言が消える', () => {
+    const source = styled('  col:説明 { fill: shade, bottom: thick }');
+    const next = applyEdit(source, setStyle(parseTable(source), { kind: 'column', name: '説明' }, 'fill', undefined));
+    expect(parseTable(next).style[0]!.declarations.has('fill')).toBe(false);
+    expect(parseTable(next).style[0]!.declarations.get('bottom')).toBe('thick');
+  });
+
+  it('空になった規則は行ごと消す', () => {
+    const source = styled('  header { bottom: thick }', '  col:説明 { fill: shade }');
+    const next = applyEdit(source, setStyle(parseTable(source), { kind: 'header' }, 'bottom', undefined));
+    expect(parseTable(next).style).toHaveLength(1);
+    expect(next).not.toContain('header {');
+    expect(next).not.toContain('{  }');
+  });
+
+  it('セルは行と列の名前で指す', () => {
+    const source = styled('  header { bottom: thick }');
+    const next = applyEdit(source, setStyle(
+      parseTable(source), { kind: 'cell', row: 'トークン', column: '説明' }, 'fill', 'changed'));
+    expect(next).toContain('cell:トークン/説明 { fill: changed }');
+  });
+
+  it('いま付いているトークンを答える', () => {
+    const source = styled('  col:説明 { fill: pending }');
+    const table = parseTable(source);
+    expect(styleAt(table, { kind: 'column', name: '説明' }, 'fill')).toBe('pending');
+    expect(styleAt(table, { kind: 'column', name: '用語' }, 'fill')).toBeUndefined();
+  });
+
+  it('グリッドには触らない', () => {
+    const source = styled('  header { bottom: thick }');
+    const next = applyEdit(source, setStyle(parseTable(source), { kind: 'row', which: 'odd' }, 'fill', 'tint-1'));
+    expect(next.split('\n').filter(l => l.startsWith('|'))).toEqual(
+      source.split('\n').filter(l => l.startsWith('|')));
   });
 });

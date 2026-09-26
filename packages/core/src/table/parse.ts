@@ -4,7 +4,7 @@
 
 import { byteLength } from '../bytes.js';
 import type {
-  Align, Cell, Column, GridLine, NamedRange, Row, Selector, StyleRule, TableFile,
+  Align, Cell, Column, GridLine, NamedRange, Row, Selector, StyleBlock, StyleRule, TableFile,
 } from './model.js';
 
 /** Merge with the cell above. */
@@ -43,6 +43,7 @@ export function parseTable(source: string): TableFile {
   const ranges = new Map<string, NamedRange>();
   const style: StyleRule[] = [];
   let theme: string | undefined;
+  let styleBlock: StyleBlock | undefined;
 
   const gridLines: { text: string; line: number; grid: GridLine }[] = [];
   let i = 0;
@@ -85,16 +86,27 @@ export function parseTable(source: string): TableFile {
     const section = /^(style|range)\s*\{$/.exec(text);
     if (section) {
       const kind = section[1];
-      const body: string[] = [];
+      const opened = i;
+      const body: GridLine[] = [];
       let depth = 1;
       while (++i < lines.length) {
         const inner = (lines[i] ?? '').trim();
         depth += count(inner, '{') - count(inner, '}');
         if (depth === 0) break;
-        body.push(inner);
+        body.push(spanOfLine(i));
       }
-      if (kind === 'style') theme = parseStyle(body, style) ?? theme;
-      else parseRanges(body, ranges);
+      if (kind === 'style') {
+        theme = parseStyle(body, style) ?? theme;
+        const open = spanOfLine(opened);
+        const close = spanOfLine(Math.min(i, lines.length - 1));
+        styleBlock = {
+          span: { start: open.span.start, end: close.span.end },
+          insertAt: (body[body.length - 1]?.span.end ?? open.span.end),
+          indent: indentOf(lines[opened + 1] ?? '  '),
+        };
+      } else {
+        parseRanges(body.map(line => line.text), ranges);
+      }
       continue;
     }
 
@@ -103,7 +115,7 @@ export function parseTable(source: string): TableFile {
 
   const { columns, rows } = parseGrid(gridLines);
   return {
-    comments, columns, rows, blocks, theme, style, ranges,
+    comments, columns, rows, blocks, theme, style, ranges, styleBlock,
     header: gridLines[0]!.grid,
     delimiter: gridLines[1]!.grid,
   };
@@ -203,10 +215,14 @@ function parseGrid(
   return { columns, rows };
 }
 
+function indentOf(line: string): string {
+  return /^\s*/.exec(line)?.[0] ?? '  ';
+}
+
 /** Returns the theme name when the block declares one. */
-function parseStyle(body: string[], out: StyleRule[]): string | undefined {
+function parseStyle(body: readonly GridLine[], out: StyleRule[]): string | undefined {
   let theme: string | undefined;
-  for (const line of body) {
+  for (const { text: line, span } of body) {
     const themeDecl = /^theme\s*:\s*(\S+)\s*$/.exec(line);
     if (themeDecl) { theme = themeDecl[1]!; continue; }
 
@@ -217,7 +233,7 @@ function parseStyle(body: string[], out: StyleRule[]): string | undefined {
       const kv = /^\s*([\w-]+)\s*:\s*(.+?)\s*$/.exec(part);
       if (kv) declarations.set(kv[1]!, kv[2]!);
     }
-    out.push({ selector: parseSelector(rule[1]!), declarations });
+    out.push({ selector: parseSelector(rule[1]!), declarations, span });
   }
   return theme;
 }

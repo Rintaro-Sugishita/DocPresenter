@@ -6,9 +6,9 @@
 // all of them — that is the change, not a side effect of how it is stored.
 
 import {
-  delimiterField, displayWidth, formatGrid, insertField, joinFields,
-  removeField, replaceField, splitFields,
-  type Align, type TableFile,
+  delimiterField, displayWidth, formatGrid, formatRule, insertField, joinFields,
+  removeField, replaceField, sameSelector, splitFields,
+  type Align, type Selector, type TableFile,
 } from '@docpresenter/core';
 import type { Edit } from './edit.js';
 
@@ -151,4 +151,88 @@ function rewriteGrid(
     text: lines.map((line, i) => rewrite(line.text, i)).join('\n'),
     description,
   };
+}
+
+// --- スタイル -----------------------------------------------------------
+//
+// Ruling and fills are recorded only where they deviate from the theme, so a
+// style change adds, rewrites or removes one rule line. The selectors are the
+// ones the file already uses — a cell by the names of its row and column, a
+// range by the names of its first and last row — so a rule keeps pointing at
+// the same thing when rows move.
+
+/** The properties a rule may carry. Values are tokens; never a literal. */
+export type StyleProperty = 'fill' | 'bottom' | 'right' | 'top' | 'left' | 'width';
+
+/**
+ * Sets one property on a selector. `undefined` removes it, and a rule with
+ * nothing left in it is removed rather than left as an empty pair of braces.
+ */
+export function setStyle(
+  table: TableFile, selector: Selector, property: StyleProperty, value: string | undefined,
+): Edit {
+  const existing = table.style.find(rule => sameSelector(rule.selector, selector));
+
+  if (!existing) {
+    if (value === undefined) {
+      return { span: table.header.span, text: table.header.text, description: '変更なし' };
+    }
+    return addRule(table, selector, new Map([[property, value]]));
+  }
+
+  const declarations = new Map(existing.declarations);
+  if (value === undefined) declarations.delete(property);
+  else declarations.set(property, value);
+
+  if (declarations.size === 0) {
+    return {
+      span: { start: existing.span.start, end: existing.span.end + 1 },
+      text: '',
+      description: 'スタイルを解除',
+    };
+  }
+  return {
+    span: existing.span,
+    text: formatRule(selector, declarations),
+    description: value === undefined ? 'スタイルを解除' : 'スタイルを設定',
+  };
+}
+
+/** What a selector currently carries, for showing the buttons as pressed. */
+export function styleAt(
+  table: TableFile, selector: Selector, property: StyleProperty,
+): string | undefined {
+  return table.style
+    .find(rule => sameSelector(rule.selector, selector))
+    ?.declarations.get(property);
+}
+
+function addRule(
+  table: TableFile, selector: Selector, declarations: ReadonlyMap<string, string>,
+): Edit {
+  const line = formatRule(selector, declarations);
+  if (table.styleBlock) {
+    const { insertAt, indent } = table.styleBlock;
+    return {
+      span: { start: insertAt, end: insertAt },
+      text: `\n${indent}${line}`,
+      description: 'スタイルを設定',
+    };
+  }
+  // No style block yet: start one after everything else in the file.
+  const end = lastByte(table);
+  return {
+    span: { start: end, end },
+    text: `\n\nstyle {\n  ${line}\n}`,
+    description: 'スタイルを設定',
+  };
+}
+
+function lastByte(table: TableFile): number {
+  return Math.max(
+    table.rows[table.rows.length - 1]?.line.span.end ?? 0,
+    table.delimiter.span.end,
+    ...table.style.map(rule => rule.span.end),
+    table.styleBlock?.span.end ?? 0,
+  );
 }

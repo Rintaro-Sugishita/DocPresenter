@@ -7,7 +7,7 @@
 // reformatting on every keystroke would turn a one-cell change into a diff
 // across the whole table.
 
-import type { Align, TableFile } from './model.js';
+import type { Align, Selector, TableFile } from './model.js';
 
 /** Columns a character occupies in a monospaced grid. */
 export function displayWidth(text: string): number {
@@ -106,4 +106,28 @@ export function formatGrid(table: TableFile): string {
       return ` ${text}${' '.repeat(width - displayWidth(text))} `;
     }));
   }).join('\n');
+}
+
+/** Writes a selector back in the form the parser reads. */
+export function formatSelector(selector: Selector): string {
+  switch (selector.kind) {
+    case 'header': return 'header';
+    case 'column': return `col:${selector.name}`;
+    case 'row': return `row:${selector.which}`;
+    case 'cell': return `cell:${selector.row}/${selector.column}`;
+    case 'range': return `range:${selector.from}..${selector.to}`;
+    case 'namedRange': return `range:${selector.name}`;
+  }
+}
+
+export function sameSelector(a: Selector, b: Selector): boolean {
+  return formatSelector(a) === formatSelector(b);
+}
+
+/** One rule line, without its indent. */
+export function formatRule(
+  selector: Selector, declarations: ReadonlyMap<string, string>,
+): string {
+  const body = [...declarations].map(([property, value]) => `${property}: ${value}`).join(', ');
+  return `${formatSelector(selector)} { ${body} }`;
 }

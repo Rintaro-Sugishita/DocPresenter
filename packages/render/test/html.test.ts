@@ -188,3 +188,43 @@ describe('意味トークンの span', () => {
     expect(html).toContain('<span class="dp-text-pending">検討中</span>');
   });
 });
+
+describe('範囲セレクタ', () => {
+  const table = (style: string) => parseTable([
+    '| 用語 | 説明 |',
+    '| --- | --- |',
+    '| a | 1 |',
+    '| b | 2 |',
+    '| c | 3 |',
+    '',
+    'style {',
+    style,
+    '}',
+  ].join('\n'));
+
+  it('範囲に塗りつぶしが効く', () => {
+    const html = renderTable(table('  range:a..b { fill: changed }'));
+    const rows = html.split('<tr').slice(2);
+    expect(rows[0]).toContain('dp-fill-changed');
+    expect(rows[1]).toContain('dp-fill-changed');
+    expect(rows[2]).not.toContain('dp-fill-changed');
+  });
+
+  it('1 行だけの範囲も指せる', () => {
+    const html = renderTable(table('  range:b..b { fill: pending }'));
+    const rows = html.split('<tr').slice(2);
+    expect(rows[0]).not.toContain('dp-fill-pending');
+    expect(rows[1]).toContain('dp-fill-pending');
+  });
+
+  it('名前付き範囲でも効く', () => {
+    const named = parseTable([
+      '| 用語 | 説明 |', '| --- | --- |', '| a | 1 |', '| b | 2 |', '',
+      'range {', '  前半: a..a', '}', '',
+      'style {', '  range:前半 { fill: shade }', '}',
+    ].join('\n'));
+    const rows = renderTable(named).split('<tr').slice(2);
+    expect(rows[0]).toContain('dp-fill-shade');
+    expect(rows[1]).not.toContain('dp-fill-shade');
+  });
+});

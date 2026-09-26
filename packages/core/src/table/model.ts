@@ -48,6 +48,18 @@ export type Selector =
 export interface StyleRule {
   readonly selector: Selector;
   readonly declarations: ReadonlyMap<string, string>;
+  /** The rule's own line, so one rule can be rewritten without the others. */
+  readonly span: ByteSpan;
+}
+
+/** Where rules live, so the editor can add one. */
+export interface StyleBlock {
+  /** The whole `style { … }` block. */
+  readonly span: ByteSpan;
+  /** Just before the closing brace: where a new rule goes. */
+  readonly insertAt: number;
+  /** The indent the existing rules use. */
+  readonly indent: string;
 }
 
 export interface NamedRange {
@@ -68,6 +80,8 @@ export interface TableFile {
   /** Theme name from `style { theme: ... }`, if given. */
   readonly theme: string | undefined;
   readonly style: readonly StyleRule[];
+  /** Absent when the file has no `style { … }` block yet. */
+  readonly styleBlock: StyleBlock | undefined;
   /** Named row ranges, used by partial references such as `{rows="認証関連"}`. */
   readonly ranges: ReadonlyMap<string, NamedRange>;
 }
