@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { cellAt, parseTable } from '@docpresenter/core';
 import { applyEdit } from '../src/index.js';
 import {
+  clearRange, copyRange,
   formatTable, insertColumn, insertRow, mergeDown, mergeRight, parseClipboardGrid,
   pasteGrid, removeColumn, removeRow, setAlign, setCell, setStyle, styleAt,
   mergeLoses, mergeRange, TableEditError, unmerge,
@@ -113,6 +114,48 @@ describe('貼り付け', () => {
     expect(table.columns).toHaveLength(3);
     expect(table.rows).toHaveLength(3);
     expect(table.rows[2]!.cells[2]!.text).toBe('W');
+  });
+});
+
+describe('コピーと切り取り', () => {
+  const MERGED = [
+    '| 区分   | 名前     | 説明       |',
+    '| ------ | -------- | ---------- |',
+    '| 認証   | トークン | 認可に用いる |',
+    '| ^      | 会員     | 登録済み   |',
+  ].join('\n');
+
+  it('範囲がタブ区切りで出る（表計算がそのまま読む形）', () => {
+    const table = parseTable(SOURCE);
+    expect(copyRange(table, { top: 0, left: 0, bottom: 1, right: 1 }))
+      .toBe('トークン\t認可に用いる\n会員\t登録済みの利用者');
+  });
+
+  it('見出し行も範囲に入る', () => {
+    const table = parseTable(SOURCE);
+    expect(copyRange(table, { top: -1, left: 0, bottom: 0, right: 1 }))
+      .toBe('用語\t説明\nトークン\t認可に用いる');
+  });
+
+  it('結合で覆われた位置は空にする（値の複製にしない）', () => {
+    const table = parseTable(MERGED);
+    expect(copyRange(table, { top: 0, left: 0, bottom: 1, right: 0 })).toBe('認証\n');
+  });
+
+  it('切り取りは範囲を空にし、ほかの行に触らない', () => {
+    const next = run(SOURCE, t => clearRange(t, { top: 0, left: 1, bottom: 0, right: 1 }));
+    const table = parseTable(next);
+    expect(table.rows[0]!.cells.map(c => c.text)).toEqual(['トークン', '']);
+    expect(table.rows[1]!.cells.map(c => c.text)).toEqual(['会員', '登録済みの利用者']);
+    expect(next.split('\n')[0]).toBe(SOURCE.split('\n')[0]);
+  });
+
+  it('結合の印は消さない（表の形まで壊さない）', () => {
+    const next = applyEdit(MERGED, clearRange(parseTable(MERGED), {
+      top: 0, left: 0, bottom: 1, right: 2,
+    }));
+    expect(next.split('\n')[3]).toContain('| ^');
+    expect(parseTable(next).rows[0]!.cells[0]!.rowspan).toBe(2);
   });
 });
 

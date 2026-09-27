@@ -142,6 +142,57 @@ export function parseClipboardGrid(text: string): string[][] {
   return text.replace(/\r\n?/g, '\n').replace(/\n$/, '').split('\n').map(line => line.split('\t'));
 }
 
+/**
+ * The picked rectangle as tab-separated text: what a spreadsheet expects on the
+ * clipboard, and what `parseClipboardGrid` reads back. A position covered by a
+ * merge is empty rather than a repeat of the cell that owns it — a repeat would
+ * paste as real duplicated values.
+ */
+export function copyRange(table: TableFile, range: CellRange): string {
+  const { top, left, bottom, right } = wholeCells(table, range);
+  const lines: string[] = [];
+  for (let r = top; r <= bottom; r++) {
+    const fields: string[] = [];
+    for (let c = left; c <= right; c++) {
+      if (r < 0) { fields.push(table.columns[c]?.header ?? ''); continue; }
+      const cell = cellAt(table, r, c);
+      fields.push(cell && cell.row === r && cell.column === c ? cell.text.trim() : '');
+    }
+    lines.push(fields.join('\t'));
+  }
+  return lines.join('\n');
+}
+
+/**
+ * Empties every cell in the range in one edit. The merge markers stay: they say
+ * what shape the grid is, not what is written in it, and clearing them would
+ * silently break the row apart.
+ */
+export function clearRange(table: TableFile, range: CellRange): Edit {
+  const { top, left, bottom, right } = wholeCells(table, range);
+  const lines = gridLines(table);
+  const first = top < 0 ? 0 : top + 2;
+  const last = Math.min(bottom + 2, lines.length - 1);
+  const written = lines.slice(first, last + 1).map((line, offset) => {
+    const index = first + offset;
+    // 0 is the header, 1 the delimiter, and the rest are rows.
+    const row = index === 0 ? -1 : index === 1 ? undefined : index - 2;
+    if (row === undefined) return line.text;
+    let text = line.text;
+    for (let c = left; c <= right; c++) {
+      const field = splitFields(text)[c]?.trim();
+      if (field === '^' || field === '<') continue;
+      text = replaceField(text, c, '');
+    }
+    return text;
+  });
+  return {
+    span: { start: lines[first]!.start, end: lines[last]!.end },
+    text: written.join('\n'),
+    description: '内容を消去',
+  };
+}
+
 function rewriteGrid(
   table: TableFile, rewrite: (text: string, index: number) => string, description: string,
 ): Edit {

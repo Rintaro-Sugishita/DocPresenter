@@ -20,7 +20,7 @@ import type { Edit } from '../edit.js';
 import {
   formatTable, insertColumn, insertRow, parseClipboardGrid, pasteGrid,
   mergeDown, mergeLoses, mergeRange, mergeRight, removeColumn, removeRow, setAlign,
-  setCell, setStyle, setWidth, styleAt, unmerge, wholeCells,
+  clearRange, copyRange, setCell, setStyle, setWidth, styleAt, unmerge, wholeCells,
   type CellRange, type StyleProperty,
 } from '../table.js';
 import { toggleInline, type InlineMark } from '../inline.js';
@@ -108,6 +108,8 @@ export function createGrid(options: GridOptions): Grid {
   root.className = 'dp-grid';
   root.append(createBar(), createStyleBar(), toolbar.element, createTable());
   root.addEventListener('paste', onPaste);
+  root.addEventListener('copy', onCopy);
+  root.addEventListener('cut', onCut);
   owner.addEventListener('mouseup', () => { dragging = false; });
   wireInput();
   queueMicrotask(() => place(at));
@@ -515,7 +517,28 @@ export function createGrid(options: GridOptions): Grid {
     });
   }
 
+  /**
+   * The picked rectangle leaves as tab-separated text, which is what a
+   * spreadsheet reads. While a cell is open the clipboard belongs to the text
+   * in it — that is how part of a cell gets copied — so nothing is intercepted.
+   */
+  function onCopy(event: ClipboardEvent): void {
+    if (editing || !event.clipboardData) return;
+    event.clipboardData.setData('text/plain', copyRange(table, range()));
+    event.preventDefault();
+  }
+
+  function onCut(event: ClipboardEvent): void {
+    if (editing || !event.clipboardData) return;
+    const picked = range();
+    event.clipboardData.setData('text/plain', copyRange(table, picked));
+    event.preventDefault();
+    options.apply(() => clearRange(table, picked), at);
+  }
+
   function onPaste(event: ClipboardEvent): void {
+    // While a cell is open, what arrives is text for that cell.
+    if (editing) return;
     const text = event.clipboardData?.getData('text/plain');
     if (!text || !/[\t\n]/.test(text)) return;
     event.preventDefault();
