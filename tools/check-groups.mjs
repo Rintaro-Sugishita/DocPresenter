@@ -43,7 +43,7 @@ const pinOf = (text, id) => {
     .split('\n').find(line => line.trim().startsWith(id + ' ')) ?? '';
 };
 const at = (text, id) => {
-  const found = /\((-?\d+), *(-?\d+)\)/.exec(pinOf(text, id));
+  const found = /\( *(-?\d+), *(-?\d+) *\)/.exec(pinOf(text, id));
   return found ? { x: Number(found[1]), y: Number(found[2]) } : undefined;
 };
 const scale = () => page.$eval('.dp-canvas-stage svg', svg =>
@@ -154,5 +154,53 @@ check('グループの行だけが消える', !released.includes('group1'),
   released.split('\n').filter(l => l.includes('group1')).join(' / '));
 check('中身は残る', released.includes('  db      [(会員 DB)]') && at(released, 'db') !== undefined,
   pinOf(released, 'db'));
+
+// --- 整列 -----------------------------------------------------------------
+await openSheet(2);
+await page.click(node('browser'));
+await page.waitForTimeout(150);
+check('1 つでは整列の列は出ない', await page.isHidden('.dp-sheet:not([hidden]) .dp-canvas-aligners'));
+await page.click(node('web'), { modifiers: ['Shift'] });
+await page.click(node('api'), { modifiers: ['Shift'] });
+await page.waitForTimeout(200);
+check('2 つ以上で整列の列が出る',
+  await page.isVisible('.dp-sheet:not([hidden]) .dp-canvas-aligners'));
+check('整列のボタンは絵で出る',
+  (await page.$$('.dp-canvas-aligners .dp-canvas-icon svg')).length === 8,
+  String((await page.$$('.dp-canvas-aligners .dp-canvas-icon svg')).length));
+
+// 上を揃える（重ならない向きで確かめる。左揃えだと 3 つが完全に重なる）
+await page.click('.dp-canvas-icon[title="上を揃える"]');
+await page.waitForTimeout(400);
+const lined = await source();
+const ys = ['browser', 'web', 'api'].map(id => at(lined, id).y);
+check('上が揃う', ys.every(y => y === ys[0]), ys.join(' / '));
+check('1 回の書き換えで揃う', (await page.textContent('#status')).includes('整列'),
+  await page.textContent('#status'));
+
+await page.click(node('browser'));
+await page.waitForTimeout(150);
+await page.click(node('web'), { modifiers: ['Shift'] });
+await page.click(node('api'), { modifiers: ['Shift'] });
+await page.waitForTimeout(200);
+await page.click('.dp-canvas-icon[title="横に等間隔で並べる"]');
+await page.waitForTimeout(400);
+const spread = await source();
+const xs = ['browser', 'web', 'api'].map(id => at(spread, id).x).sort((a, b) => a - b);
+check('横の間隔が等しくなる', Math.abs((xs[1] - xs[0]) - (xs[2] - xs[1])) <= 1, xs.join(' / '));
+
+await page.click(node('browser'));
+await page.waitForTimeout(150);
+await page.click(node('web'), { modifiers: ['Shift'] });
+await page.waitForTimeout(200);
+check('2 つでは等間隔は押せない',
+  await page.isDisabled('.dp-canvas-icon[title="横に等間隔で並べる"]'));
+
+// 図形の見本には絵が付く
+await page.click('.dp-sheet:not([hidden]) .dp-canvas-bar button:text("＋ 図形")');
+await page.waitForSelector('.dp-menu button');
+check('図形の見本は絵で選ぶ', (await page.$$('.dp-menu button svg')).length === 8,
+  String((await page.$$('.dp-menu button svg')).length));
+await page.keyboard.press('Escape');
 
 await browser.close();

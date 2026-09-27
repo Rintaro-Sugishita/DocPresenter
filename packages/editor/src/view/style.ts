@@ -158,6 +158,9 @@ export const EDITOR_STYLE = `
 .dp-menu button:disabled { color: #b6bcc5; cursor: default; background: transparent; }
 /* A disabled first item is the explanation above a choice, not a choice. */
 .dp-menu button:disabled:first-child { color: #6b7280; font-size: 0.92em; }
+.dp-menu-icon {
+  display: inline-flex; width: 18px; margin-right: 0.5em; color: #5a6270; vertical-align: -3px;
+}
 .dp-menu-rule { height: 1px; background: #e2e4e8; margin: 4px 2px; }
 
 /* The selected cell's text box takes the caret while a cell is open, so it
@@ -196,6 +199,17 @@ export const EDITOR_STYLE = `
   min-width: 14em; padding: 0.2em 0.4em; background: #f2f3f5; border-radius: 3px;
 }
 .dp-canvas-hint { color: #8b929c; font-size: 11px; margin-left: auto; }
+/* The alignment row. It appears with the selection that gives it a meaning. */
+.dp-canvas-aligners { display: inline-flex; gap: 1px; align-items: center; }
+/* A display rule beats the hidden attribute, so hidden has to be said again. */
+.dp-canvas-aligners[hidden] { display: none; }
+.dp-canvas-icon {
+  display: inline-flex; align-items: center; justify-content: center;
+  border: 1px solid #d3d7dd; background: #f7f8fa; color: #3a4048; cursor: pointer;
+  padding: 0.15em 0.25em; border-radius: 3px;
+}
+.dp-canvas-icon:hover { background: #eceef1; }
+.dp-canvas-icon:disabled { opacity: 0.35; cursor: default; }
 .dp-canvas-stage { outline: none; position: relative; }
 /* The text box sits over the shape being renamed: an IME needs somewhere to
    compose from, the same reason the grid keeps one over the selected cell. */

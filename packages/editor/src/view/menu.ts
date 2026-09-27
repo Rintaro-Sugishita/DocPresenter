@@ -4,6 +4,12 @@
 
 export interface MenuItem {
   readonly label: string;
+  /**
+   * A small picture of what the item does, as inline SVG. Written by the
+   * editor, never by a file: "四角" and "角丸" read alike in a list, and a
+   * shape is a thing you recognise by looking at it.
+   */
+  readonly icon?: string;
   readonly run: () => void;
   /** A rule above this item, to group what belongs together. */
   readonly separated?: boolean;
@@ -68,7 +74,13 @@ function buildMenu(owner: Document): Menu {
         const button = owner.createElement('button');
         button.type = 'button';
         button.setAttribute('role', 'menuitem');
-        button.textContent = item.label;
+        if (item.icon) {
+          const picture = owner.createElement('span');
+          picture.className = 'dp-menu-icon';
+          picture.innerHTML = item.icon;
+          button.append(picture);
+        }
+        button.append(owner.createTextNode(item.label));
         button.disabled = item.disabled ?? false;
         button.addEventListener('mousedown', event => {
           event.preventDefault();

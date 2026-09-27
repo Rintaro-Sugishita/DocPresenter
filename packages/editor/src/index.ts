@@ -8,6 +8,7 @@ export * from './view/style.js';
 export * from './view/swatches.js';
 export * from './view/menu.js';
 export * from './view/grid.js';
+export * from './view/shape-icon.js';
 export * from './view/canvas.js';
 export * from './view/overlay.js';
 export * from './view/sheet-view.js';

@@ -14,6 +14,7 @@ import {
   pinNodes, reconnect, removeNodes, setNodeShape, setNodeText, unpinNode,
 } from '../diagram.js';
 import { createMenu, type MenuItem } from './menu.js';
+import { alignIcon, shapeIcon } from './shape-icon.js';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 /** How far a shape's edge may be from another's to be pulled into line. */
@@ -89,6 +90,8 @@ export function createCanvas(options: CanvasOptions): Canvas {
   // a `let` reached early is an error rather than an empty box.
   let where: HTMLElement | undefined;
   let release: HTMLButtonElement | undefined;
+  let aligners: HTMLElement | undefined;
+  let spreaders: readonly HTMLButtonElement[] = [];
 
   const root = element('div', 'dp-canvas');
   const stage = element('div', 'dp-canvas-stage');
@@ -662,7 +665,8 @@ export function createCanvas(options: CanvasOptions): Canvas {
 
   function addItems(event: MouseEvent): MenuItem[] {
     return PALETTE.map(([shape, label]) => ({
-      label: `＋ ${label}`,
+      label,
+      icon: shapeIcon(shape),
       run: () => addShape(shape, event),
     }));
   }
@@ -715,6 +719,7 @@ export function createCanvas(options: CanvasOptions): Canvas {
     for (const [shape, label] of PALETTE) {
       items.push({
         label,
+        icon: shapeIcon(shape),
         separated: shape === PALETTE[0]![0],
         disabled: node?.shape === shape || node?.shape === 'group',
         run: () => options.apply(() => setNodeShape(file, id, shape), [id]),
@@ -877,6 +882,94 @@ export function createCanvas(options: CanvasOptions): Canvas {
     options.apply(() => pinNodes(file, source, pins), [...picked]);
   });
 
+  // --- 整列 --------------------------------------------------------------
+  //
+  // Lining shapes up by hand is what the snapping is for when there are two of
+  // them; with six it is a command. Each shape gets its own offset, and they
+  // all land in one write.
+
+  type Edge = 'left' | 'centre' | 'right' | 'top' | 'middle' | 'bottom';
+
+  function align(edge: Edge): void {
+    const boxes = picked
+      .map(id => [id, laid.boxes.get(id)] as const)
+      .filter((pair): pair is readonly [string, Box] => pair[1] !== undefined);
+    if (boxes.length < 2) return;
+
+    const lefts = boxes.map(([, box]) => box.x);
+    const rights = boxes.map(([, box]) => box.x + box.width);
+    const tops = boxes.map(([, box]) => box.y);
+    const bottoms = boxes.map(([, box]) => box.y + box.height);
+    const target = {
+      left: Math.min(...lefts),
+      right: Math.max(...rights),
+      centre: (Math.min(...lefts) + Math.max(...rights)) / 2,
+      top: Math.min(...tops),
+      bottom: Math.max(...bottoms),
+      middle: (Math.min(...tops) + Math.max(...bottoms)) / 2,
+    }[edge];
+
+    const deltas = new Map<string, { x: number; y: number }>();
+    for (const [id, box] of boxes) {
+      switch (edge) {
+        case 'left': deltas.set(id, { x: target - box.x, y: 0 }); break;
+        case 'right': deltas.set(id, { x: target - (box.x + box.width), y: 0 }); break;
+        case 'centre': deltas.set(id, { x: target - (box.x + box.width / 2), y: 0 }); break;
+        case 'top': deltas.set(id, { x: 0, y: target - box.y }); break;
+        case 'bottom': deltas.set(id, { x: 0, y: target - (box.y + box.height) }); break;
+        case 'middle': deltas.set(id, { x: 0, y: target - (box.y + box.height / 2) }); break;
+      }
+    }
+    shiftAll(deltas, '整列');
+  }
+
+  /** Spreads the picked shapes so the gaps between them are equal. */
+  function spread(axis: 'x' | 'y'): void {
+    const boxes = picked
+      .map(id => [id, laid.boxes.get(id)] as const)
+      .filter((pair): pair is readonly [string, Box] => pair[1] !== undefined)
+      .sort((a, b) => a[1][axis] - b[1][axis]);
+    if (boxes.length < 3) return;
+    const size = axis === 'x' ? 'width' : 'height';
+    const first = boxes[0]![1];
+    const last = boxes[boxes.length - 1]![1];
+    const room = (last[axis] + last[size]) - first[axis]
+      - boxes.reduce((total, [, box]) => total + box[size], 0);
+    const gap = room / (boxes.length - 1);
+
+    const deltas = new Map<string, { x: number; y: number }>();
+    let at = first[axis];
+    for (const [id, box] of boxes) {
+      deltas.set(id, axis === 'x' ? { x: at - box.x, y: 0 } : { x: 0, y: at - box.y });
+      at += box[size] + gap;
+    }
+    shiftAll(deltas, '等間隔に並べる');
+  }
+
+  /**
+   * Moves each shape by its own offset. A group moves what it holds, the same
+   * way dragging it does.
+   */
+  function shiftAll(deltas: ReadonlyMap<string, { x: number; y: number }>, what: string): void {
+    const pins = new Map<string, { x: number; y: number }>();
+    const add = (id: string, by: { x: number; y: number }): void => {
+      const node = file.nodes.find(n => n.id === id);
+      if (node?.shape === 'group') {
+        for (const child of groupMembers(file, id)) add(child, by);
+        if (!file.layout.has(id)) return;
+      }
+      const box = laid.boxes.get(id);
+      if (!box) return;
+      pins.set(id, {
+        x: round(box.x - laid.origin.x + by.x),
+        y: round(box.y - laid.origin.y + by.y),
+      });
+    };
+    for (const [id, by] of deltas) add(id, by);
+    if (pins.size === 0) return;
+    options.apply(() => ({ ...pinNodes(file, source, pins), description: what }), [...picked]);
+  }
+
   // --- 操作列 ------------------------------------------------------------
 
   function describe(): void {
@@ -890,6 +983,8 @@ export function createCanvas(options: CanvasOptions): Canvas {
         ? '自由配置の図では外せない（外すと置き場所が無くなる）'
         : '手で決めた位置を捨て、レイアウトエンジンに返す';
     }
+    if (aligners) aligners.hidden = picked.length < 2;
+    for (const button of spreaders) button.disabled = picked.length < 3;
     if (!where) return;
     if (connecting !== undefined) {
       where.textContent = `${connecting} から線を引く先を選ぶ`;
@@ -933,10 +1028,40 @@ export function createCanvas(options: CanvasOptions): Canvas {
       return button;
     };
 
+    // Lining up is a command once there are more than two shapes, so the row
+    // appears with the selection that makes it mean something.
+    aligners = element('span', 'dp-canvas-aligners');
+    const spread_: HTMLButtonElement[] = [];
+    const icon = (picture: string, title: string, run: () => void, keep = false): void => {
+      const button = owner.createElement('button');
+      button.type = 'button';
+      button.className = 'dp-canvas-icon';
+      button.innerHTML = picture;
+      button.title = title;
+      button.addEventListener('mousedown', event => {
+        event.preventDefault();
+        event.stopPropagation();
+        run();
+      });
+      aligners?.append(button);
+      if (keep) spread_.push(button);
+    };
+    icon(alignIcon('left'), '左を揃える', () => align('left'));
+    icon(alignIcon('centre'), '左右の中心を揃える', () => align('centre'));
+    icon(alignIcon('right'), '右を揃える', () => align('right'));
+    icon(alignIcon('top'), '上を揃える', () => align('top'));
+    icon(alignIcon('middle'), '上下の中心を揃える', () => align('middle'));
+    icon(alignIcon('bottom'), '下を揃える', () => align('bottom'));
+    icon(alignIcon('spread-x'), '横に等間隔で並べる', () => spread('x'), true);
+    icon(alignIcon('spread-y'), '縦に等間隔で並べる', () => spread('y'), true);
+    spreaders = spread_;
+    node.append(aligners);
+
     add('＋ 図形', 'この図に図形を足す', () => {
       const at = bar.getBoundingClientRect();
       menu.open(at.left + 8, at.bottom + 4, PALETTE.map(([shape, label]) => ({
-        label: `＋ ${label}`,
+        label,
+        icon: shapeIcon(shape),
         run: () => addShape(shape),
       })));
     });
