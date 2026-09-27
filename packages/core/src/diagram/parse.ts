@@ -4,8 +4,8 @@
 
 import { byteLength } from '../bytes.js';
 import type {
-  ArrowStyle, Callout, DiagramFile, DiagramMode, Edge, EdgeStyle, LayoutBlock, Node,
-  Placement, Section, ShapeKind,
+  ArrowStyle, Bend, Callout, DiagramFile, DiagramMode, Edge, EdgeStyle, LayoutBlock, Node,
+  Placement, Point, Section, ShapeKind,
 } from './model.js';
 
 /** One source line, trimmed, with the bytes it occupies. */
@@ -42,6 +42,10 @@ const NODE = /^([A-Za-z0-9_぀-鿿-]+)\s*(.+?)(?::::([\w-]+))?$/;
 const EDGE = /^([A-Za-z0-9_぀-鿿-]+)\s*(-->|->|--|-\.->)\s*([A-Za-z0-9_぀-鿿-]+)\s*(?:"([^"]*)")?\s*$/;
 const GROUP = /^group\s+([A-Za-z0-9_぀-鿿-]+)\s*(?:"([^"]*)")?\s*\{([^}]*)\}\s*$/;
 const PLACEMENT = /^([A-Za-z0-9_぀-鿿-]+)\s*@\s*\(\s*(-?\d+)\s*,\s*(-?\d+)\s*\)\s*(?:(\d+)x(\d+))?\s*(?:z\s*:\s*(-?\d+))?\s*$/;
+/** `a -> b @ (120, 200); (320, 200)` — the corners a connection turns through. */
+const BEND = /^([A-Za-z0-9_぀-鿿-]+)\s*-+>\s*([A-Za-z0-9_぀-鿿-]+)\s*@\s*(.+)$/;
+const POINT = /\(\s*(-?\d+)\s*,\s*(-?\d+)\s*\)/g;
+
 const CALLOUT = /^(\S+)\s*@\s*\(\s*(-?\d+)\s*,\s*(-?\d+)\s*\)\s*->\s*\(\s*(-?\d+)\s*,\s*(-?\d+)\s*\)\s*(?:"([^"]*)")?\s*$/;
 
 export function parseDiagram(source: string): DiagramFile {
@@ -64,6 +68,7 @@ export function parseDiagram(source: string): DiagramFile {
   const nodes: Node[] = [];
   const edges: Edge[] = [];
   const layout = new Map<string, Placement>();
+  const bends = new Map<string, Bend>();
   const style = new Map<string, ReadonlyMap<string, string>>();
   const callouts: Callout[] = [];
   let theme: string | undefined;
@@ -105,7 +110,7 @@ export function parseDiagram(source: string): DiagramFile {
       image = quoted[1]!;
       parseCallouts(inner, callouts);
     } else if (kind === 'layout') {
-      parseLayout(inner, layout);
+      parseLayout(inner, layout, bends);
       layoutBlock = blockOf(lines, raw, start, i, inner);
     } else {
       theme = parseStyle(inner.map(l => l.text), style) ?? theme;
@@ -114,7 +119,7 @@ export function parseDiagram(source: string): DiagramFile {
 
   if (!mode) throw new DiagramParseError('free / flow / overlay のいずれのセクションも無い', 1);
   return {
-    mode, comments, nodes, edges, body, layout, layoutBlock, theme, style, image, callouts,
+    mode, comments, nodes, edges, body, layout, bends, layoutBlock, theme, style, image, callouts,
   };
 }
 
@@ -212,10 +217,27 @@ function parseCallouts(body: readonly SourceLine[], out: Callout[]): void {
   });
 }
 
-function parseLayout(body: readonly SourceLine[], out: Map<string, Placement>): void {
+function parseLayout(
+  body: readonly SourceLine[], out: Map<string, Placement>, bends: Map<string, Bend>,
+): void {
   body.forEach(source => {
     const text = source.text;
     if (text === '' || text.startsWith('#')) return;
+
+    const bend = BEND.exec(text);
+    if (bend) {
+      const points: Point[] = [];
+      POINT.lastIndex = 0;
+      for (let found = POINT.exec(bend[3]!); found; found = POINT.exec(bend[3]!)) {
+        points.push({ x: Number(found[1]), y: Number(found[2]) });
+      }
+      if (points.length === 0) {
+        throw new DiagramParseError(`折れ点が読めない: ${text}`, source.number);
+      }
+      bends.set(`${bend[1]}->${bend[2]}`, { points, span: source.span });
+      return;
+    }
+
     const m = PLACEMENT.exec(text);
     if (!m) throw new DiagramParseError(`配置の記法が読めない: ${text}`, source.number);
     out.set(m[1]!, {

@@ -4,7 +4,7 @@
 // automatic layout that moved a shape someone had placed by hand would make
 // the pin meaningless.
 
-import { DEFAULT_SIZE, type DiagramFile, type Edge, type Node } from './model.js';
+import { DEFAULT_SIZE, type DiagramFile, type Edge, type Node, type Point } from './model.js';
 import { textWidth, wrapText } from './text.js';
 
 export interface Box {
@@ -17,10 +17,7 @@ export interface Box {
   readonly lines: readonly string[];
 }
 
-export interface Point {
-  readonly x: number;
-  readonly y: number;
-}
+export type { Point } from './model.js';
 
 /**
  * The centre-to-centre path of one connection, with any bends it needs to get
@@ -111,6 +108,11 @@ export function layOutDiagram(diagram: DiagramFile): LaidOutDiagram {
       if (!byId.has(end)) diagnostics.push(`接続先が見つからない: ${end}`);
     }
   }
+  for (const key of diagram.bends.keys()) {
+    if (!diagram.edges.some(edge => `${edge.from}->${edge.to}` === key)) {
+      diagnostics.push(`折れ点の線が見つからない: ${key}`);
+    }
+  }
 
   const routes = route(diagram, boxes, auto.rank);
   return normalize(boxes, routes, diagram, diagnostics);
@@ -164,6 +166,15 @@ function route(
     if (!from || !to) continue;
     const a = centre(from);
     const b = centre(to);
+
+    // Corners the author put in win over anything computed here, for the same
+    // reason a pinned shape does: the point of writing them down is that they
+    // are not decided again on the next render.
+    const bend = diagram.bends.get(`${edge.from}->${edge.to}`);
+    if (bend && bend.points.length > 0) {
+      routes.push({ edge, points: [a, ...bend.points, b], labelAt: undefined });
+      continue;
+    }
 
     const clear = (points: readonly Point[]): boolean => {
       for (let i = 0; i + 1 < points.length; i++) {

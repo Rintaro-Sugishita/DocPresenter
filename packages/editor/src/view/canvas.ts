@@ -10,8 +10,8 @@ import { layOutDiagram, type Box, type DiagramFile, type ShapeKind } from '@docp
 import { renderDiagram } from '@docpresenter/render';
 import type { Edit } from '../edit.js';
 import {
-  addNode, canUnpin, connectNodes, disconnectNodes, groupMembers, groupNodes, nextShapeId, pinNode,
-  pinNodes, reconnect, removeNodes, setNodeShape, setNodeText, unpinNode,
+  addNode, bendEdge, canUnpin, connectNodes, disconnectNodes, groupMembers, groupNodes,
+  nextShapeId, pinNode, pinNodes, reconnect, removeNodes, setNodeShape, setNodeText, unpinNode,
 } from '../diagram.js';
 import { createMenu, type MenuItem } from './menu.js';
 import { alignIcon, shapeIcon } from './shape-icon.js';
@@ -151,11 +151,26 @@ export function createCanvas(options: CanvasOptions): Canvas {
 
     const chosen = lineOf(line);
     if (chosen) {
+      const path = livePath(chosen.points);
       const mark = shape('polyline', 'dp-canvas-edge-picked');
-      mark.setAttribute('points', points(chosen.points));
+      mark.setAttribute('points', points(path));
       overlay.append(mark);
+
+      // A square for every corner the line turns through: drag one to move it,
+      // drop it back on the straight line to take it out.
+      for (let i = 1; i + 1 < path.length; i++) {
+        const corner = path[i]!;
+        const size = 7 / scale();
+        const handle = shape('rect', 'dp-canvas-bend');
+        handle.setAttribute('x', String(corner.x - size / 2));
+        handle.setAttribute('y', String(corner.y - size / 2));
+        handle.setAttribute('width', String(size));
+        handle.setAttribute('height', String(size));
+        handle.setAttribute('data-bend', String(i - 1));
+        overlay.append(handle);
+      }
       // The two ends are draggable: that is how a line is re-attached.
-      const ends = [chosen.points[0], chosen.points[chosen.points.length - 1]];
+      const ends = [path[0], path[path.length - 1]];
       ends.forEach((at, index) => {
         if (!at) return;
         const end = shape('circle', 'dp-canvas-end');
@@ -169,8 +184,7 @@ export function createCanvas(options: CanvasOptions): Canvas {
       });
       if (reaching) {
         const rubber = shape('line', 'dp-canvas-rubber');
-        const fixed = reaching.end === 'from'
-          ? chosen.points[chosen.points.length - 1]! : chosen.points[0]!;
+        const fixed = reaching.end === 'from' ? path[path.length - 1]! : path[0]!;
         rubber.setAttribute('x1', String(fixed.x));
         rubber.setAttribute('y1', String(fixed.y));
         rubber.setAttribute('x2', String(reaching.at.x));
@@ -212,6 +226,22 @@ export function createCanvas(options: CanvasOptions): Canvas {
     }
   }
 
+  /**
+   * The picked line as it is right now: the route it was laid out on, with the
+   * corner being dragged moved to where the pointer is, or a new corner put in
+   * where the line was grabbed.
+   */
+  function livePath(
+    laidPoints: readonly { x: number; y: number }[],
+  ): { x: number; y: number }[] {
+    const path = laidPoints.map(p => ({ x: p.x, y: p.y }));
+    if (!bending) return path;
+    const at = { x: bending.at.x, y: bending.at.y };
+    if (bending.fresh) path.splice(bending.index + 1, 0, at);
+    else path[bending.index + 1] = at;
+    return path;
+  }
+
   function points(list: readonly { x: number; y: number }[]): string {
     return list.map(p => `${p.x},${p.y}`).join(' ');
   }
@@ -234,6 +264,34 @@ export function createCanvas(options: CanvasOptions): Canvas {
       }
     }
     return best?.name;
+  }
+
+  /** Which segment of a path a point is nearest to, counted from zero. */
+  function segmentAt(path: readonly { x: number; y: number }[], at: { x: number; y: number }): number {
+    let best = 0;
+    let distance = Infinity;
+    for (let i = 0; i + 1 < path.length; i++) {
+      const found = toSegment(at, path[i]!, path[i + 1]!);
+      if (found < distance) { distance = found; best = i; }
+    }
+    return best;
+  }
+
+  /**
+   * Pulls a corner into line with the points on either side of it. A drawing of
+   * a system is drawn with right angles; the alternative is a line that misses
+   * being square by two pixels, which is worse than no corner at all.
+   */
+  function square(
+    at: { x: number; y: number },
+    before: { x: number; y: number }, after: { x: number; y: number },
+  ): { x: number; y: number } {
+    const near = SNAP;
+    const x = Math.abs(at.x - before.x) <= near ? before.x
+      : Math.abs(at.x - after.x) <= near ? after.x : round(at.x);
+    const y = Math.abs(at.y - before.y) <= near ? before.y
+      : Math.abs(at.y - after.y) <= near ? after.y : round(at.y);
+    return { x, y };
   }
 
   /** Distance from a point to a segment. */
@@ -323,6 +381,11 @@ export function createCanvas(options: CanvasOptions): Canvas {
   let band: { from: { x: number; y: number }; to: { x: number; y: number } } | undefined;
   /** An end of the picked line being dragged onto another shape. */
   let reaching: { end: 'from' | 'to'; at: { x: number; y: number } } | undefined;
+  /**
+   * A corner of the picked line being dragged. `index` counts the corners the
+   * file holds, so 0 is the first one after the shape the line leaves.
+   */
+  let bending: { index: number; at: { x: number; y: number }; fresh: boolean } | undefined;
 
   stage.addEventListener('pointerdown', event => {
     if (event.button !== 0) return;
@@ -344,10 +407,32 @@ export function createCanvas(options: CanvasOptions): Canvas {
       };
       return;
     }
+    const onBend = target?.closest('.dp-canvas-bend')?.getAttribute('data-bend');
+    if (onBend !== undefined && onBend !== null) {
+      event.stopPropagation();
+      stage.focus({ preventScroll: true });
+      bending = { index: Number(onBend), at: pointOn(event), fresh: false };
+      drag = {
+        kind: 'move', from: { x: event.clientX, y: event.clientY },
+        pointerId: event.pointerId, id: '', box: bandBox(), moved: false,
+        by: { x: 0, y: 0 }, size: undefined,
+      };
+      return;
+    }
     if (onLine !== undefined) {
       event.stopPropagation();
       stage.focus({ preventScroll: true });
-      pickLine(onLine);
+      // A line is picked first and bent second: a drag that both selected and
+      // bent would put a corner in every time someone reached for the line.
+      if (onLine !== line) { pickLine(onLine); return; }
+      const route = lineOf(onLine);
+      if (!route) return;
+      bending = { index: segmentAt(route.points, pointOn(event)), at: pointOn(event), fresh: true };
+      drag = {
+        kind: 'move', from: { x: event.clientX, y: event.clientY },
+        pointerId: event.pointerId, id: '', box: bandBox(), moved: false,
+        by: { x: 0, y: 0 }, size: undefined,
+      };
       return;
     }
 
@@ -445,6 +530,20 @@ export function createCanvas(options: CanvasOptions): Canvas {
       current.moved = true;
     }
 
+    if (bending) {
+      const route = lineOf(line);
+      if (route) {
+        const path = route.points;
+        const before = bending.fresh ? path[bending.index]! : path[bending.index]!;
+        const after = bending.fresh ? path[bending.index + 1]! : path[bending.index + 2]!;
+        bending = { ...bending, at: square(pointOn(event), before, after) };
+        // The drawn line follows too, so what is being made is what is seen.
+        const drawn = drawing.querySelector(`[data-edge="${cssEscape(line ?? '')}"] polyline`);
+        drawn?.setAttribute('points', points(livePath(path)));
+      }
+      paint();
+      return;
+    }
     if (reaching) {
       reaching = { end: reaching.end, at: pointIn(event) };
       paint();
@@ -486,6 +585,30 @@ export function createCanvas(options: CanvasOptions): Canvas {
     drag = undefined;
     drawing.classList.remove('dp-canvas-dragging');
     if (stage.hasPointerCapture(event.pointerId)) stage.releasePointerCapture(event.pointerId);
+
+    if (bending) {
+      const which = bending;
+      const route = lineOf(line);
+      bending = undefined;
+      if (!route || !current.moved) { paint(); return; }
+      const edge = route.edge;
+      const path = route.points.map(p => ({ x: p.x, y: p.y }));
+      if (which.fresh) path.splice(which.index + 1, 0, which.at);
+      else path[which.index + 1] = which.at;
+      // A corner dropped back onto the straight line between its neighbours is
+      // a corner nobody wants: the gesture that made it takes it away again.
+      const corners = path.slice(1, -1).filter((corner, i) => {
+        const before = path[i]!;
+        const after = path[i + 2]!;
+        return toSegment(corner, before, after) > 6 / scale();
+      });
+      options.apply(
+        () => bendEdge(file, source, edge.from, edge.to,
+          corners.map(p => ({ x: p.x - laid.origin.x, y: p.y - laid.origin.y }))),
+        [], nameOf(edge),
+      );
+      return;
+    }
 
     if (reaching) {
       const end = reaching.end;
@@ -1073,7 +1196,8 @@ export function createCanvas(options: CanvasOptions): Canvas {
     add('ソース', '.dgm のソースを直接編集する', () => options.showSource());
 
     const hint = element('span', 'dp-canvas-hint');
-    hint.textContent = 'ドラッグで移動 / 右下で大きさ / ダブルクリックで文字 / 右クリックで操作';
+    hint.textContent = 'ドラッグで移動 / 右下で大きさ / ダブルクリックで文字 / '
+      + '線はクリックで選び、もう一度引くと折れる / 右クリックで操作';
     node.append(hint);
     return node;
   }

@@ -20,6 +20,11 @@ export interface Node {
   readonly span: ByteSpan;
 }
 
+export interface Point {
+  readonly x: number;
+  readonly y: number;
+}
+
 export type EdgeStyle = 'solid' | 'dashed';
 export type ArrowStyle = 'none' | 'arrow';
 
@@ -56,6 +61,17 @@ export interface Section {
   readonly insertAt: number;
   /** The indent the existing lines use. */
   readonly indent: string;
+}
+
+/**
+ * The corners a connection is made to turn through. Geometry, so it lives in
+ * the layout layer beside the pins — the semantics section says what connects
+ * to what and nothing about the path it takes.
+ */
+export interface Bend {
+  readonly points: readonly Point[];
+  /** The bend's own line. */
+  readonly span: ByteSpan;
 }
 
 /** Where pins live, so dragging a shape that has none can add one. */
@@ -96,6 +112,8 @@ export interface DiagramFile {
   readonly body: Section | undefined;
   /** The layout layer: only what a human pinned. */
   readonly layout: ReadonlyMap<string, Placement>;
+  /** Corners a connection turns through, keyed `from->to`. */
+  readonly bends: ReadonlyMap<string, Bend>;
   /** Absent when the file has no `layout { … }` block yet. */
   readonly layoutBlock: LayoutBlock | undefined;
   readonly theme: string | undefined;

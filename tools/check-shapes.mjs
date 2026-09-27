@@ -47,7 +47,7 @@ await page.click('.dp-sheet:not([hidden]) .dp-canvas-bar button:text("＋ 図形
 await page.waitForSelector('.dp-menu button');
 check('図形の見本が並ぶ', (await page.$$('.dp-menu button')).length === 8,
   String((await page.$$('.dp-menu button')).length));
-await page.click(item('＋ ひし形'));
+await page.click(item('ひし形'));
 await page.waitForTimeout(400);
 check('図形が増える', (await shapes()) === before + 1, `${before} → ${await shapes()}`);
 check('1 回の操作としてソースに書かれる',
@@ -118,7 +118,7 @@ check('もとからあった行は無傷', removed.includes('  active  [有効]'
 await openSheet(3, 2);
 await page.click('.dp-sheet:not([hidden]) .dp-canvas-bar button:text("＋ 図形")');
 await page.waitForSelector('.dp-menu button');
-await page.click(item('＋ 四角'));
+await page.click(item('四角'));
 await page.waitForTimeout(400);
 const free = await source();
 check('自由配置では図形とピンが一度に入る',
@@ -180,7 +180,7 @@ check('両端に掴む点が出る', (await page.$$('.dp-canvas-end')).length ==
 // つなぎ替え先として、まだどの線も繋がっていない図形を 1 つ足す
 await page.click('.dp-sheet:not([hidden]) .dp-canvas-bar button:text("＋ 図形")');
 await page.waitForSelector('.dp-menu button');
-await page.click(item('＋ 四角'));
+await page.click(item('四角'));
 await page.waitForTimeout(400);
 await pressLine('active', 'expired');
 
@@ -212,5 +212,90 @@ const cut = await source();
 check('Delete で線が消える', !cut.includes('active  --> box1'),
   cut.split('\n').filter(l => l.includes('active  -->')).join(' / '));
 check('図形は残っている', cut.includes('  active  [有効]') && cut.includes('  revoked [失効]'));
+
+// --- 線を折る -------------------------------------------------------------
+await openSheet(2);
+const linePoint = async (key, t = 0.5) => page.$eval('.dp-canvas-stage svg', (svg, [name, at]) => {
+  const g = svg.querySelector(`[data-edge="${name}"] polyline`);
+  const pts = g.getAttribute('points').split(' ').map(p => p.split(',').map(Number));
+  const lengths = pts.slice(1).map((p, i) => Math.hypot(p[0] - pts[i][0], p[1] - pts[i][1]));
+  const want = lengths.reduce((a, b) => a + b, 0) * at;
+  let walked = 0;
+  let found = pts[0];
+  for (let i = 0; i < lengths.length; i++) {
+    if (walked + lengths[i] >= want) {
+      const k = (want - walked) / (lengths[i] || 1);
+      found = [pts[i][0] + (pts[i + 1][0] - pts[i][0]) * k, pts[i][1] + (pts[i + 1][1] - pts[i][1]) * k];
+      break;
+    }
+    walked += lengths[i];
+  }
+  const box = svg.getBoundingClientRect();
+  const scale = box.width / svg.viewBox.baseVal.width;
+  return { x: box.left + found[0] * scale, y: box.top + found[1] * scale, scale };
+}, [key, t]);
+
+let mid = await linePoint('browser->web');
+await page.mouse.click(mid.x, mid.y);
+await page.waitForTimeout(250);
+check('線を選んでも、まだ折れていない', (await page.$$('.dp-canvas-bend')).length === 0);
+
+// 選んだあとにもう一度引くと折れる
+await page.mouse.move(mid.x, mid.y);
+await page.mouse.down();
+await page.mouse.move(mid.x, mid.y + 60 * mid.scale, { steps: 8 });
+await page.mouse.up();
+await page.waitForTimeout(400);
+check('線をドラッグすると折れ点ができる', (await page.$$('.dp-canvas-bend')).length === 1,
+  String((await page.$$('.dp-canvas-bend')).length));
+const bent = await source();
+check('折れ点は layout に 1 行', /browser -> web @ \(\d+, \d+\)/.test(bent),
+  bent.split('\n').find(l => l.includes('-> web @')));
+check('意味のセクションは触られていない', bent.includes('  browser -> web   "HTTPS"'));
+
+// ソースを見ると選択は解ける。もう一度線を選び直す。
+mid = await linePoint('browser->web', 0.25);
+await page.mouse.click(mid.x, mid.y);
+await page.waitForTimeout(250);
+check('折れた線も選び直せる', (await page.$$('.dp-canvas-bend')).length === 1,
+  await page.textContent('.dp-sheet:not([hidden]) .dp-canvas-where'));
+
+// 直角に吸着する（browser の中心 x に寄せる）
+const corner = await page.locator('.dp-canvas-bend').boundingBox();
+const shapeBox = await page.locator(node('browser')).boundingBox();
+await page.mouse.move(corner.x + corner.width / 2, corner.y + corner.height / 2);
+await page.mouse.down();
+await page.mouse.move(shapeBox.x + shapeBox.width / 2 + 2, corner.y + corner.height / 2, { steps: 8 });
+await page.mouse.up();
+await page.waitForTimeout(400);
+const squared = await source();
+const bendX = Number(/browser -> web @ \((\d+),/.exec(squared)[1]);
+const browserPin = /browser @ \( *(\d+), *(\d+)\)/.exec(squared);
+check('角は隣の点と直角に吸着する',
+  bendX === Number(browserPin[1]) + 70, `折れ点 ${bendX} / 図形の中心 ${Number(browserPin[1]) + 70}`);
+
+// まっすぐに戻す: 折れ点を線の上に落とす
+mid = await linePoint('browser->web', 0.25);
+await page.mouse.click(mid.x, mid.y);
+await page.waitForTimeout(250);
+// まっすぐな線は 2 つの図形の中心を結ぶ。その真ん中に落とす。
+const centres = await Promise.all([node('browser'), node('web')].map(async selector => {
+  const box = await page.locator(selector).boundingBox();
+  return { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+}));
+const ends = {
+  x: (centres[0].x + centres[1].x) / 2,
+  y: (centres[0].y + centres[1].y) / 2,
+};
+const corner2 = await page.locator('.dp-canvas-bend').boundingBox();
+await page.mouse.move(corner2.x + corner2.width / 2, corner2.y + corner2.height / 2);
+await page.mouse.down();
+await page.mouse.move(ends.x, ends.y, { steps: 8 });
+await page.mouse.up();
+await page.waitForTimeout(400);
+const straight = await source();
+check('線の上に戻すと折れ点は消える', !straight.includes('-> web @'),
+  straight.split('\n').filter(l => l.includes('-> web')).join(' / '));
+check('折れ点の目印も消える', (await page.$$('.dp-canvas-bend')).length === 0);
 
 await browser.close();

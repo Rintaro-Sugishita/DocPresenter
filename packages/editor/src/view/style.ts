@@ -230,6 +230,8 @@ export const EDITOR_STYLE = `
   fill: none; stroke: #1f5fa8; stroke-width: 2.5; opacity: 0.45; pointer-events: none;
 }
 .dp-canvas-end { fill: #fff; stroke: #1f5fa8; stroke-width: 1.5; cursor: move; }
+/* A corner of a line. Square, so it is not mistaken for an end. */
+.dp-canvas-bend { fill: #fff; stroke: #1f5fa8; stroke-width: 1.5; cursor: move; }
 .dp-canvas-rubber { stroke: #1f5fa8; stroke-width: 1.5; stroke-dasharray: 4 3; pointer-events: none; }
 
 /* The rubber band: what a press on empty canvas draws to pick several shapes. */

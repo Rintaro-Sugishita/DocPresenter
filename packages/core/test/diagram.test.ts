@@ -118,3 +118,30 @@ describe('ラベルの折り返し', () => {
     expect(wrapText('access token', 70, 14)).toEqual(['access', 'token']);
   });
 });
+
+describe('折れ線', () => {
+  const SOURCE = [
+    'free {', '  a [A]', '  b [B]', '  a --> b', '}', '',
+    'layout {', '  a @ (0, 0)', '  b @ (300, 300)', '  a -> b @ (0, 300)', '}',
+  ].join('\n');
+
+  it('折れ点を読む', () => {
+    const d = parseDiagram(SOURCE);
+    expect(d.bends.get('a->b')?.points).toEqual([{ x: 0, y: 300 }]);
+    expect(d.layout.has('a')).toBe(true);
+  });
+
+  it('折れ点を通る経路になる', () => {
+    const laid = layOutDiagram(parseDiagram(SOURCE));
+    const route = laid.routes[0]!;
+    expect(route.points).toHaveLength(3);
+    expect(route.points[1]).toEqual({
+      x: 0 + laid.origin.x, y: 300 + laid.origin.y,
+    });
+  });
+
+  it('折れ点が無ければこれまで通り 2 点', () => {
+    const laid = layOutDiagram(parseDiagram(SOURCE.replace('  a -> b @ (0, 300)\n', '')));
+    expect(laid.routes[0]!.points).toHaveLength(2);
+  });
+});

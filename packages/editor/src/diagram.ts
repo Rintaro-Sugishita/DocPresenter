@@ -87,6 +87,45 @@ export function pinNodes(
   return splice(source, changes, anyNew ? '配置を固定' : '配置を変更');
 }
 
+/**
+ * Writes the corners a connection turns through. An empty list removes the
+ * line, which is how a bend is taken out again: the same gesture that made it
+ * puts the connection back on a straight path.
+ */
+export function bendEdge(
+  file: DiagramFile, source: string, from: string, to: string,
+  points: readonly { readonly x: number; readonly y: number }[],
+): Edit {
+  if (!file.edges.some(e => e.from === from && e.to === to)) {
+    throw new DiagramEditError(`${from} から ${to} への線が無い`);
+  }
+  const existing = file.bends.get(`${from}->${to}`);
+  const line = `${from} -> ${to} @ `
+    + points.map(p => `(${Math.round(p.x)}, ${Math.round(p.y)})`).join('; ');
+
+  if (points.length === 0) {
+    if (!existing) throw new DiagramEditError(`${from} から ${to} の線は折れていない`);
+    return splice(source, [whole(source, existing.span, '')], '折れ点を消す');
+  }
+  if (existing) {
+    return { span: existing.span, text: line, description: '折れ点を動かす' };
+  }
+  if (file.layoutBlock) {
+    const { insertAt, indent } = file.layoutBlock;
+    return {
+      span: { start: insertAt, end: insertAt },
+      text: `\n${indent}${line}`,
+      description: '線を折る',
+    };
+  }
+  const end = byteLength(source.replace(/\s+$/, ''));
+  return {
+    span: { start: end, end: byteLength(source) },
+    text: `\n\nlayout {\n  ${line}\n}\n`,
+    description: '線を折る',
+  };
+}
+
 /** Everything a group holds, including what the groups inside it hold. */
 export function groupMembers(file: DiagramFile, id: string): string[] {
   const seen = new Set<string>();
@@ -364,7 +403,10 @@ function removalOf(file: DiagramFile, source: string, ids: readonly string[]): C
     });
   }
   for (const edge of file.edges) {
-    if (going.has(edge.from) || going.has(edge.to)) changes.push(whole(source, edge.span, ''));
+    if (!going.has(edge.from) && !going.has(edge.to)) continue;
+    changes.push(whole(source, edge.span, ''));
+    const bend = file.bends.get(`${edge.from}->${edge.to}`);
+    if (bend) changes.push(whole(source, bend.span, ''));
   }
   return changes;
 }
@@ -431,7 +473,19 @@ export function reconnect(
     (_whole, _a, before: string, arrow: string, after: string) =>
       `${from}${before}${arrow}${after}${to}`,
   );
-  return { span: found.span, text: written, description: '線をつなぎ替え' };
+  const changes: Change[] = [{ span: found.span, text: written }];
+
+  // The corners belong to this line, so they follow it to its new name. They
+  // may want moving afterwards, but dropping them would be losing something
+  // the author put there by hand.
+  const bend = file.bends.get(`${found.from}->${found.to}`);
+  if (bend) {
+    changes.push({
+      span: bend.span,
+      text: `${from} -> ${to} @ ` + bend.points.map(p => `(${p.x}, ${p.y})`).join('; '),
+    });
+  }
+  return splice(source, changes, '線をつなぎ替え');
 }
 
 /** Removes one connection, named by its two ends. */
@@ -440,7 +494,12 @@ export function disconnectNodes(
 ): Edit {
   const edge = file.edges.find(e => e.from === from && e.to === to);
   if (!edge) throw new DiagramEditError(`${from} から ${to} への線が無い`);
-  return splice(source, [whole(source, edge.span, '')], '線を消す');
+  const changes: Change[] = [whole(source, edge.span, '')];
+  const bend = file.bends.get(`${from}->${to}`);
+  // The corners were corners of this line. With the line gone they name
+  // nothing, and a layout line naming nothing is a line nobody can read.
+  if (bend) changes.push(whole(source, bend.span, ''));
+  return splice(source, changes, '線を消す');
 }
 
 function find(file: DiagramFile, id: string): Node {

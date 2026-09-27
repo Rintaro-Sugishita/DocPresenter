@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { parseDiagram } from '@docpresenter/core';
 import {
-  addNode, applyEdit, canUnpin, connectNodes, DiagramEditError, disconnectNodes, groupMembers,
+  addNode, applyEdit, bendEdge, canUnpin, connectNodes, DiagramEditError, disconnectNodes, groupMembers,
   groupNodes, moveCallout, pinNode, pinNodes, reconnect, removeNode, removeNodes, setNodeShape,
   setNodeText, unpinNode,
 } from '../src/index.js';
@@ -327,5 +327,64 @@ describe('まとめて動かす・まとめる', () => {
     const file = parseDiagram(written);
     expect(file.nodes.map(n => n.id)).toEqual(['a', 'b', 'c']);
     expect(file.layout.get('a')).toMatchObject({ x: 10, y: 10 });
+  });
+});
+
+describe('線を折る', () => {
+  const SOURCE = [
+    'free {', '  a [A]', '  b [B]', '  a --> b', '}', '',
+    'layout {', '  a @ (0, 0)', '  b @ (300, 300)', '}',
+  ].join('\n');
+
+  it('折れ点は layout に 1 行', () => {
+    const written = run(SOURCE, f => bendEdge(f, SOURCE, 'a', 'b', [{ x: 0, y: 300 }]));
+    expect(layout(written)).toContain('  a -> b @ (0, 300)');
+    expect(parseDiagram(written).bends.get('a->b')?.points).toEqual([{ x: 0, y: 300 }]);
+  });
+
+  it('動かすのは同じ 1 行', () => {
+    const once = run(SOURCE, f => bendEdge(f, SOURCE, 'a', 'b', [{ x: 0, y: 300 }]));
+    const twice = applyEdit(once,
+      bendEdge(parseDiagram(once), once, 'a', 'b', [{ x: 20, y: 300 }, { x: 20, y: 320 }]));
+    expect(layout(twice)).toEqual([
+      'layout {', '  a @ (0, 0)', '  b @ (300, 300)', '  a -> b @ (20, 300); (20, 320)', '}',
+    ]);
+  });
+
+  it('空にすると行ごと消える（＝まっすぐに戻る）', () => {
+    const once = run(SOURCE, f => bendEdge(f, SOURCE, 'a', 'b', [{ x: 0, y: 300 }]));
+    const back = applyEdit(once, bendEdge(parseDiagram(once), once, 'a', 'b', []));
+    expect(back).toBe(SOURCE);
+  });
+
+  it('無い線は折れない', () => {
+    expect(() => bendEdge(parseDiagram(SOURCE), SOURCE, 'b', 'a', [{ x: 0, y: 0 }]))
+      .toThrow(DiagramEditError);
+  });
+});
+
+describe('折れ点の後始末', () => {
+  const SOURCE = [
+    'free {', '  a [A]', '  b [B]', '  c [C]', '  a --> b', '}', '',
+    'layout {', '  a @ (0, 0)', '  b @ (300, 300)', '  a -> b @ (0, 300)', '}',
+  ].join('\n');
+
+  it('線を消すと折れ点の行も消える', () => {
+    const written = applyEdit(SOURCE, disconnectNodes(parseDiagram(SOURCE), SOURCE, 'a', 'b'));
+    expect(written).not.toContain('->');
+    expect(parseDiagram(written).bends.size).toBe(0);
+  });
+
+  it('図形を消すと、その線の折れ点も消える', () => {
+    const written = applyEdit(SOURCE, removeNode(parseDiagram(SOURCE), SOURCE, 'b'));
+    expect(parseDiagram(written).bends.size).toBe(0);
+    expect(parseDiagram(written).edges).toHaveLength(0);
+  });
+
+  it('つなぎ替えると折れ点も新しい名前になる', () => {
+    const written = applyEdit(SOURCE,
+      reconnect(parseDiagram(SOURCE), SOURCE, { from: 'a', to: 'b' }, { to: 'c' }));
+    expect(parseDiagram(written).bends.get('a->c')?.points).toEqual([{ x: 0, y: 300 }]);
+    expect(parseDiagram(written).bends.has('a->b')).toBe(false);
   });
 });
