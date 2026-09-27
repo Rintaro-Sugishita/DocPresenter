@@ -4,8 +4,8 @@
 
 import { byteLength } from '../bytes.js';
 import type {
-  ArrowStyle, Callout, DiagramFile, DiagramMode, Edge, EdgeStyle, LayoutBlock, Node, Placement,
-  ShapeKind,
+  ArrowStyle, Callout, DiagramFile, DiagramMode, Edge, EdgeStyle, LayoutBlock, Node,
+  Placement, Section, ShapeKind,
 } from './model.js';
 
 /** One source line, trimmed, with the bytes it occupies. */
@@ -70,6 +70,7 @@ export function parseDiagram(source: string): DiagramFile {
   let mode: DiagramMode | undefined;
   let image: string | undefined;
   let layoutBlock: LayoutBlock | undefined;
+  let body: Section | undefined;
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i]!;
@@ -82,41 +83,52 @@ export function parseDiagram(source: string): DiagramFile {
 
     const kind = section[1]!;
     const header = (section[2] ?? '').trim();
-    const body: SourceLine[] = [];
+    const inner: SourceLine[] = [];
     let depth = 1;
     const start = i;
     while (++i < lines.length) {
-      const inner = lines[i]!;
-      depth += countChar(inner.text, '{') - countChar(inner.text, '}');
+      const line = lines[i]!;
+      depth += countChar(line.text, '{') - countChar(line.text, '}');
       if (depth === 0) break;
-      body.push(inner);
+      inner.push(line);
     }
     if (depth !== 0) throw new DiagramParseError(`'${kind}' が閉じられていない`, lines[start]!.number);
 
     if (kind === 'free' || kind === 'flow') {
       mode = kind;
-      parseBody(body, nodes, edges);
+      parseBody(inner, nodes, edges);
+      body = blockOf(lines, raw, start, i, inner);
     } else if (kind === 'overlay') {
       mode = kind;
       const quoted = /^"([^"]*)"$/.exec(header);
       if (!quoted) throw new DiagramParseError('overlay には画像のパスが要る', lines[start]!.number);
       image = quoted[1]!;
-      parseCallouts(body, callouts);
+      parseCallouts(inner, callouts);
     } else if (kind === 'layout') {
-      parseLayout(body, layout);
-      const close = lines[Math.min(i, lines.length - 1)]!;
-      layoutBlock = {
-        span: { start: lines[start]!.span.start, end: close.span.end },
-        insertAt: body[body.length - 1]?.span.end ?? lines[start]!.span.end,
-        indent: indentOf(raw[start + 1] ?? '  '),
-      };
+      parseLayout(inner, layout);
+      layoutBlock = blockOf(lines, raw, start, i, inner);
     } else {
-      theme = parseStyle(body.map(l => l.text), style) ?? theme;
+      theme = parseStyle(inner.map(l => l.text), style) ?? theme;
     }
   }
 
   if (!mode) throw new DiagramParseError('free / flow / overlay のいずれのセクションも無い', 1);
-  return { mode, comments, nodes, edges, layout, layoutBlock, theme, style, image, callouts };
+  return {
+    mode, comments, nodes, edges, body, layout, layoutBlock, theme, style, image, callouts,
+  };
+}
+
+/** A section's extent, and where a new line inside it would go. */
+function blockOf(
+  lines: readonly SourceLine[], raw: readonly string[],
+  open: number, close: number, inner: readonly SourceLine[],
+): Section {
+  const last = lines[Math.min(close, lines.length - 1)]!;
+  return {
+    span: { start: lines[open]!.span.start, end: last.span.end },
+    insertAt: inner[inner.length - 1]?.span.end ?? lines[open]!.span.end,
+    indent: indentOf(raw[open + 1] ?? '  '),
+  };
 }
 
 /** The indent of the first line inside a block, so a new line matches it. */
@@ -133,6 +145,7 @@ function countChar(text: string, char: string): number {
 
 function parseBody(body: readonly SourceLine[], nodes: Node[], edges: Edge[]): void {
   body.forEach(source => {
+    const span = source.span;
     const text = source.text;
     if (text === '' || text.startsWith('#')) return;
     const line = source.number;
@@ -145,6 +158,7 @@ function parseBody(body: readonly SourceLine[], nodes: Node[], edges: Edge[]): v
         shape: 'group',
         className: undefined,
         children: group[3]!.split(';').map(s => s.trim()).filter(s => s !== ''),
+        span,
       });
       return;
     }
@@ -154,7 +168,7 @@ function parseBody(body: readonly SourceLine[], nodes: Node[], edges: Edge[]): v
       const connector = edge[2]!;
       const line: EdgeStyle = connector.includes('.') ? 'dashed' : 'solid';
       const arrow: ArrowStyle = connector.endsWith('>') ? 'arrow' : 'none';
-      edges.push({ from: edge[1]!, to: edge[3]!, label: edge[4], line, arrow });
+      edges.push({ from: edge[1]!, to: edge[3]!, label: edge[4], line, arrow, span });
       return;
     }
 
@@ -162,7 +176,10 @@ function parseBody(body: readonly SourceLine[], nodes: Node[], edges: Edge[]): v
     if (node) {
       const shaped = readShape(node[2]!.trim());
       if (!shaped) throw new DiagramParseError(`図形の記法が読めない: ${text}`, line);
-      nodes.push({ id: node[1]!, text: shaped.text, shape: shaped.shape, className: node[3], children: [] });
+      nodes.push({
+        id: node[1]!, text: shaped.text, shape: shaped.shape, className: node[3],
+        children: [], span,
+      });
       return;
     }
 

@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { parseDiagram } from '@docpresenter/core';
-import { applyEdit, canUnpin, DiagramEditError, pinNode, unpinNode, moveCallout } from '../src/index.js';
+import {
+  addNode, applyEdit, canUnpin, connectNodes, DiagramEditError, disconnectNodes, moveCallout,
+  pinNode, removeNode, setNodeShape, setNodeText, unpinNode,
+} from '../src/index.js';
 
 const FLOW = [
   '# 流れ',
@@ -132,5 +135,96 @@ describe('注釈の移動', () => {
     );
     expect(written.split('\n')[2]).toBe('  ② @ (170, 200) -> (190, 206)  "パスワード"');
     expect(written.split('\n')[1]).toBe('  ① @ (168, 126) -> (188, 132)  "ログイン ID"');
+  });
+});
+
+describe('図形の追加と削除', () => {
+  const GROUPED = [
+    'free {',
+    '  a [A]',
+    '  b [B]',
+    '  group g "まとまり" { a; b }',
+    '',
+    '  a --> b',
+    '}',
+    '',
+    'layout {',
+    '  a @ (10, 10)',
+    '  b @ (10, 90)',
+    '}',
+  ].join('\n');
+
+  const body = (source: string) => {
+    const from = source.indexOf('free {');
+    return source.slice(from, source.indexOf('\n}', from)).split('\n');
+  };
+
+  it('自由配置では図形の行とピンの行が 1 回で入る', () => {
+    const written = run(GROUPED, f => addNode(f, GROUPED, {
+      shape: 'round-rect', text: '新しい図形', at: { x: 40, y: 200 },
+    }));
+    expect(body(written)).toContain('  box1 (新しい図形)');
+    expect(layout(written)).toContain('  box1 @ (40, 200)');
+    const file = parseDiagram(written);
+    expect(file.nodes.map(n => n.id)).toEqual(['a', 'b', 'g', 'box1']);
+  });
+
+  it('自動配置の図ではピンを書かない（エンジンが置く）', () => {
+    const written = run(FLOW, f => addNode(f, FLOW, { shape: 'rect', text: '次' }));
+    expect(layout(written)).toEqual(['layout {', '  done @ (320, 640)', '}']);
+    expect(parseDiagram(written).nodes.map(n => n.id)).toContain('box1');
+  });
+
+  it('名前は使われていないものを選ぶ', () => {
+    const once = run(FLOW, f => addNode(f, FLOW, { shape: 'rect', text: '一' }));
+    const twice = applyEdit(once, addNode(parseDiagram(once), once, { shape: 'rect', text: '二' }));
+    expect(parseDiagram(twice).nodes.map(n => n.id)).toEqual(
+      ['start', 'next', 'done', 'box1', 'box2']);
+  });
+
+  it('削除は図形・線・ピン・グループの参照をまとめて消す', () => {
+    const written = run(GROUPED, f => removeNode(f, GROUPED, 'b'));
+    const file = parseDiagram(written);
+    expect(file.nodes.map(n => n.id)).toEqual(['a', 'g']);
+    expect(file.edges).toHaveLength(0);
+    expect(file.layout.has('b')).toBe(false);
+    expect(file.nodes.find(n => n.id === 'g')!.children).toEqual(['a']);
+    // 触っていない行はそのまま
+    expect(written).toContain('  a [A]');
+    expect(layout(written)).toContain('  a @ (10, 10)');
+  });
+
+  it('文字と種類は同じ行の書き換え', () => {
+    const named = run(GROUPED, f => setNodeText(f, 'a', 'あたらしい名前'));
+    expect(body(named)).toContain('  a [あたらしい名前]');
+    const shaped = run(GROUPED, f => setNodeShape(f, 'a', 'diamond'));
+    expect(body(shaped)).toContain('  a {A}');
+  });
+
+  it('種類を変えてもスタイル指定は残る', () => {
+    const source = 'flow {\n  a [A]:::pending\n}';
+    const written = applyEdit(source, setNodeShape(parseDiagram(source), 'a', 'ellipse'));
+    expect(written).toContain('a ((A)):::pending');
+  });
+
+  it('グループの名前を変えてもグループのまま', () => {
+    const written = run(GROUPED, f => setNodeText(f, 'g', 'ひとまとまり'));
+    const group = parseDiagram(written).nodes.find(n => n.id === 'g')!;
+    expect(group.shape).toBe('group');
+    expect(group.text).toBe('ひとまとまり');
+    expect(group.children).toEqual(['a', 'b']);
+  });
+
+  it('線を引く・消す', () => {
+    const drawn = run(FLOW, f => connectNodes(f, FLOW, 'start', 'done'));
+    expect(parseDiagram(drawn).edges.map(e => `${e.from}->${e.to}`)).toContain('start->done');
+    const gone = applyEdit(drawn, disconnectNodes(parseDiagram(drawn), drawn, 'start', 'done'));
+    expect(parseDiagram(gone).edges.map(e => `${e.from}->${e.to}`)).not.toContain('start->done');
+    expect(gone).toBe(FLOW);
+  });
+
+  it('同じ線を二度は引かない', () => {
+    expect(() => connectNodes(parseDiagram(FLOW), FLOW, 'start', 'next')).toThrow(DiagramEditError);
+    expect(() => connectNodes(parseDiagram(FLOW), FLOW, 'start', 'start')).toThrow(DiagramEditError);
   });
 });

@@ -196,7 +196,14 @@ export const EDITOR_STYLE = `
   min-width: 14em; padding: 0.2em 0.4em; background: #f2f3f5; border-radius: 3px;
 }
 .dp-canvas-hint { color: #8b929c; font-size: 11px; margin-left: auto; }
-.dp-canvas-stage { outline: none; }
+.dp-canvas-stage { outline: none; position: relative; }
+/* The text box sits over the shape being renamed: an IME needs somewhere to
+   compose from, the same reason the grid keeps one over the selected cell. */
+.dp-canvas-text {
+  position: absolute; box-sizing: border-box; font: inherit; font-size: 13px;
+  text-align: center; border: 1.5px solid #1f5fa8; border-radius: 2px;
+  background: #fff; color: #1c1f24; padding: 0 0.3em; min-width: 4em;
+}
 .dp-canvas-stage:focus-visible { box-shadow: 0 0 0 2px #cfe0f5; }
 .dp-canvas-stage [data-node] { cursor: move; }
 .dp-canvas-outline {

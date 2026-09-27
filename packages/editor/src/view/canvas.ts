@@ -6,10 +6,14 @@
 // the layout section. Automatic layout keeps the rest, which is the whole point
 // of the three-layer model: the mouse is for the exceptions.
 
-import { layOutDiagram, type Box, type DiagramFile } from '@docpresenter/core';
+import { layOutDiagram, type Box, type DiagramFile, type ShapeKind } from '@docpresenter/core';
 import { renderDiagram } from '@docpresenter/render';
 import type { Edit } from '../edit.js';
-import { canUnpin, pinNode, unpinNode } from '../diagram.js';
+import {
+  addNode, canUnpin, connectNodes, nextShapeId, pinNode, removeNode, setNodeShape, setNodeText,
+  unpinNode,
+} from '../diagram.js';
+import { createMenu, type MenuItem } from './menu.js';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 /** How far a shape's edge may be from another's to be pulled into line. */
@@ -19,6 +23,23 @@ const GRID = 4;
 /** A press this short of a move is a selection, not a drag. */
 const THRESHOLD = 3;
 const MIN_SIZE = 16;
+
+/**
+ * The shapes on offer. Fewer than the notation has: a palette is a set of
+ * choices someone has to make every time, and the ones left out (`group`, and
+ * the stadium's near-twin) are either not a shape you draw or are one keystroke
+ * away in the source.
+ */
+const PALETTE: readonly (readonly [ShapeKind, string])[] = [
+  ['rect', '四角'],
+  ['round-rect', '角丸'],
+  ['stadium', '端丸'],
+  ['ellipse', '楕円'],
+  ['diamond', 'ひし形'],
+  ['cylinder', '円柱'],
+  ['note', '付箋'],
+  ['text', '文字だけ'],
+];
 
 export interface CanvasOptions {
   readonly owner: Document;
@@ -153,6 +174,7 @@ export function createCanvas(options: CanvasOptions): Canvas {
     readonly id: string;
     readonly kind: 'move' | 'resize';
     readonly from: { x: number; y: number };
+    readonly pointerId: number;
     readonly box: Box;
     moved: boolean;
     pin: { x: number; y: number; width?: number; height?: number };
@@ -165,12 +187,26 @@ export function createCanvas(options: CanvasOptions): Canvas {
     const onHandle = target?.closest('.dp-canvas-handle') != null && selected !== undefined;
     const id = onHandle ? selected : target?.closest('[data-node]')?.getAttribute('data-node');
 
-    // Keep the press: it belongs to the canvas, not to the page behind it.
-    event.preventDefault();
+    // The press belongs to the canvas, not to the page behind it — but the
+    // default is cancelled on the mouse event below rather than here:
+    // cancelling a pointerdown also cancels the click and the double click the
+    // browser would have made from it, and renaming a shape is a double click.
     event.stopPropagation();
-    stage.focus();
+    stage.focus({ preventScroll: true });
 
-    if (id === undefined || id === null) { pick(undefined); return; }
+    if (id === undefined || id === null) {
+      pick(undefined);
+      if (connecting !== undefined) { connecting = undefined; describe(); }
+      return;
+    }
+    // A connection is drawn by picking its two ends, so the second press is
+    // the line rather than a selection.
+    if (connecting !== undefined && connecting !== id) {
+      const from = connecting;
+      connecting = undefined;
+      options.apply(() => connectNodes(file, source, from, id), id);
+      return;
+    }
     pick(id);
 
     const box = boxOf(id);
@@ -179,10 +215,10 @@ export function createCanvas(options: CanvasOptions): Canvas {
     drag = {
       id, kind: onHandle ? 'resize' : 'move',
       from: { x: event.clientX, y: event.clientY },
+      pointerId: event.pointerId,
       box, moved: false,
       pin: { x: box.x - laid.origin.x, y: box.y - laid.origin.y },
     };
-    stage.setPointerCapture(event.pointerId);
   });
 
   /**
@@ -203,7 +239,13 @@ export function createCanvas(options: CanvasOptions): Canvas {
     const dx = (event.clientX - current.from.x) / factor;
     const dy = (event.clientY - current.from.y) / factor;
     if (!current.moved && Math.hypot(dx, dy) * factor < THRESHOLD) return;
-    current.moved = true;
+    if (!current.moved) {
+      // Captured only once the press has become a drag. Capturing on the press
+      // itself would retarget the click the browser makes from it, and a double
+      // click that lands on the canvas instead of the shape renames nothing.
+      stage.setPointerCapture(current.pointerId);
+      current.moved = true;
+    }
     drawing.classList.add('dp-canvas-dragging');
 
     const box = current.box;
@@ -239,6 +281,20 @@ export function createCanvas(options: CanvasOptions): Canvas {
   };
   stage.addEventListener('pointerup', finish);
   stage.addEventListener('pointercancel', finish);
+
+  // Keeps the browser from moving the focus or starting a text selection,
+  // while leaving click and double click to be made as usual.
+  stage.addEventListener('mousedown', event => {
+    event.preventDefault();
+    event.stopPropagation();
+  });
+
+  stage.addEventListener('dblclick', event => {
+    const id = (event.target as Element | null)?.closest('[data-node]')?.getAttribute('data-node');
+    if (id === null || id === undefined) return;
+    event.preventDefault();
+    beginText(id);
+  });
 
   /**
    * Pulls an edge, a centre or a midline into line with another shape's. This
@@ -287,6 +343,153 @@ export function createCanvas(options: CanvasOptions): Canvas {
     };
   }
 
+  // --- 図形の追加・削除・書き換え ----------------------------------------
+  //
+  // These are edits to the semantics layer, which is the layer a person writes
+  // by hand. They live in a context menu for the same reason the grid's row and
+  // column operations do: they are used now and then, and putting them in the
+  // bar would push out what is used constantly.
+
+  const menu = createMenu(owner);
+  /** While drawing a connection: the shape it starts from. */
+  let connecting: string | undefined;
+
+  stage.addEventListener('contextmenu', event => {
+    event.preventDefault();
+    event.stopPropagation();
+    const id = (event.target as Element | null)?.closest('[data-node]')?.getAttribute('data-node');
+    if (id === null || id === undefined) {
+      menu.open(event.clientX, event.clientY, addItems(event));
+      return;
+    }
+    pick(id);
+    menu.open(event.clientX, event.clientY, shapeItems(id));
+  });
+
+  /** Where a new shape goes: under the drawing, in the file's own numbers. */
+  function emptySpot(): { x: number; y: number } {
+    const boxes = [...laid.boxes.values()];
+    if (boxes.length === 0) return { x: 0, y: 0 };
+    return {
+      x: round(Math.min(...boxes.map(b => b.x)) - laid.origin.x),
+      y: round(Math.max(...boxes.map(b => b.y + b.height)) - laid.origin.y + 24),
+    };
+  }
+
+  function addItems(event: MouseEvent): MenuItem[] {
+    return PALETTE.map(([shape, label]) => ({
+      label: `＋ ${label}`,
+      run: () => addShape(shape, event),
+    }));
+  }
+
+  function addShape(shape: ShapeKind, event?: MouseEvent): void {
+    // A freely placed drawing has no engine to decide where a shape goes, so
+    // the new one is pinned: at the pointer if it came from the drawing, and
+    // under the drawing otherwise.
+    const at = file.mode === 'free'
+      ? (event ? pointIn(event) : emptySpot())
+      : undefined;
+    // Selected as soon as it exists, so the next gesture — dragging it, or
+    // typing over its text — lands on the shape just added.
+    options.apply(
+      () => addNode(file, source, { shape, text: '図形', at }),
+      nextShapeId(file, shape),
+    );
+  }
+
+  /** The point a press landed on, in the file's coordinates. */
+  function pointIn(event: MouseEvent): { x: number; y: number } {
+    const rect = drawing.getBoundingClientRect();
+    const factor = scale();
+    return {
+      x: round((event.clientX - rect.left) / factor - laid.origin.x),
+      y: round((event.clientY - rect.top) / factor - laid.origin.y),
+    };
+  }
+
+  function shapeItems(id: string): MenuItem[] {
+    const node = file.nodes.find(n => n.id === id);
+    const items: MenuItem[] = [
+      { label: '文字を変える', run: () => beginText(id) },
+      {
+        label: connecting === undefined ? '線を引く' : '線を引く（引き先を選ぶ）',
+        run: () => { connecting = id; describe(); },
+        disabled: node?.shape === 'group',
+      },
+    ];
+    for (const [shape, label] of PALETTE) {
+      items.push({
+        label,
+        separated: shape === PALETTE[0]![0],
+        disabled: node?.shape === shape || node?.shape === 'group',
+        run: () => options.apply(() => setNodeShape(file, id, shape), id),
+      });
+    }
+    items.push({
+      label: '自動配置に戻す',
+      separated: true,
+      disabled: !canUnpin(file, id),
+      run: () => options.apply(() => unpinNode(file, source, id), id),
+    });
+    items.push({
+      label: deleteLabel(id),
+      run: () => options.apply(() => removeNode(file, source, id), undefined),
+    });
+    return items;
+  }
+
+  /** Says what else goes with it. There is no undo, so it is said beforehand. */
+  function deleteLabel(id: string): string {
+    const lines = file.edges.filter(e => e.from === id || e.to === id).length;
+    return lines === 0 ? '削除' : `削除（線 ${lines} 本も消える）`;
+  }
+
+  /**
+   * Opens a text box over the shape. A box over the thing being renamed is not
+   * decoration: it is where the IME needs somewhere to compose from, the same
+   * reason the grid keeps one over the selected cell.
+   */
+  function beginText(id: string): void {
+    const node = file.nodes.find(n => n.id === id);
+    const box = boxOf(id);
+    if (!node || !box) return;
+    const rect = drawing.getBoundingClientRect();
+    const stageAt = stage.getBoundingClientRect();
+    const factor = scale();
+
+    const input = owner.createElement('input');
+    input.className = 'dp-canvas-text';
+    input.value = node.text;
+    input.spellcheck = false;
+    input.style.left = `${rect.left - stageAt.left + box.x * factor}px`;
+    input.style.top = `${rect.top - stageAt.top + box.y * factor}px`;
+    input.style.width = `${box.width * factor}px`;
+    input.style.height = `${box.height * factor}px`;
+    stage.append(input);
+    input.focus();
+    input.select();
+
+    let done = false;
+    const finish = (keep: boolean): void => {
+      if (done) return;
+      done = true;
+      const text = input.value;
+      input.remove();
+      stage.focus({ preventScroll: true });
+      if (!keep || text === node.text) return;
+      options.apply(() => setNodeText(file, id, text), id);
+    };
+    input.addEventListener('blur', () => finish(true));
+    input.addEventListener('keydown', event => {
+      // Every key here belongs to the text, including the ones the canvas uses.
+      event.stopPropagation();
+      if (event.isComposing) return;
+      if (event.key === 'Enter') { event.preventDefault(); finish(true); }
+      if (event.key === 'Escape') { event.preventDefault(); finish(false); }
+    });
+  }
+
   // --- キーボード --------------------------------------------------------
   //
   // Everything the mouse does, the keyboard does too. A shape nudged by 4 is
@@ -296,6 +499,7 @@ export function createCanvas(options: CanvasOptions): Canvas {
     const ids = [...laid.boxes.keys()];
     if (event.key === 'Escape') {
       event.preventDefault();
+      if (connecting !== undefined) { connecting = undefined; describe(); return; }
       options.close();
       return;
     }
@@ -305,6 +509,33 @@ export function createCanvas(options: CanvasOptions): Canvas {
       const index = selected === undefined ? -1 : ids.indexOf(selected);
       const step = event.shiftKey ? -1 : 1;
       pick(ids[(index + step + ids.length * 2) % ids.length]);
+      return;
+    }
+    if ((event.key === 'Delete' || event.key === 'Backspace') && selected !== undefined) {
+      event.preventDefault();
+      const id = selected;
+      // Nothing here can be undone, so a deletion that takes connections with
+      // it is confirmed where the shape is, the way the grid confirms a merge.
+      if (file.edges.some(e => e.from === id || e.to === id)) {
+        const box = boxOf(id);
+        const rect = drawing.getBoundingClientRect();
+        const factor = scale();
+        menu.open(
+          rect.left + ((box?.x ?? 0) + (box?.width ?? 0) / 2) * factor,
+          rect.top + ((box?.y ?? 0) + (box?.height ?? 0)) * factor,
+          [
+            { label: deleteLabel(id), run: () => options.apply(() => removeNode(file, source, id), undefined) },
+            { label: 'やめる', run: () => {} },
+          ],
+        );
+        return;
+      }
+      options.apply(() => removeNode(file, source, id), undefined);
+      return;
+    }
+    if (event.key === 'F2' && selected !== undefined) {
+      event.preventDefault();
+      beginText(selected);
       return;
     }
     const step: Record<string, [number, number]> = {
@@ -332,6 +563,10 @@ export function createCanvas(options: CanvasOptions): Canvas {
     // after: in a freely placed drawing there is no engine to hand it to.
     if (release) release.disabled = selected === undefined || !canUnpin(file, selected);
     if (!where) return;
+    if (connecting !== undefined) {
+      where.textContent = `${connecting} から線を引く先を選ぶ`;
+      return;
+    }
     const box = preview?.box ?? boxOf(selected);
     if (selected === undefined || !box) {
       where.textContent = '図形を選ぶ';
@@ -361,6 +596,13 @@ export function createCanvas(options: CanvasOptions): Canvas {
       return button;
     };
 
+    add('＋ 図形', 'この図に図形を足す', () => {
+      const at = bar.getBoundingClientRect();
+      menu.open(at.left + 8, at.bottom + 4, PALETTE.map(([shape, label]) => ({
+        label: `＋ ${label}`,
+        run: () => addShape(shape),
+      })));
+    });
     release = add('自動配置に戻す', '手で決めた位置を捨て、レイアウトエンジンに返す', () => {
       const id = selected;
       if (id === undefined) return;
@@ -369,7 +611,7 @@ export function createCanvas(options: CanvasOptions): Canvas {
     add('ソース', '.dgm のソースを直接編集する', () => options.showSource());
 
     const hint = element('span', 'dp-canvas-hint');
-    hint.textContent = 'ドラッグで移動 / 右下で大きさ / 矢印キーで微調整（Shift で 1）';
+    hint.textContent = 'ドラッグで移動 / 右下で大きさ / ダブルクリックで文字 / 右クリックで操作';
     node.append(hint);
     return node;
   }

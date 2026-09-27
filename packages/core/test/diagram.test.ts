@@ -13,11 +13,13 @@ describe('作図ファイルの解析', () => {
 
   it('接続の線種と矢印を読み分ける', () => {
     const d = parseDiagram('flow {\n a [A]\n b [B]\n a --> b "ラベル"\n a -- b\n a -.-> b\n}');
-    expect(d.edges).toEqual([
+    expect(d.edges.map(({ span, ...rest }) => rest)).toEqual([
       { from: 'a', to: 'b', label: 'ラベル', line: 'solid', arrow: 'arrow' },
       { from: 'a', to: 'b', label: undefined, line: 'solid', arrow: 'none' },
       { from: 'a', to: 'b', label: undefined, line: 'dashed', arrow: 'arrow' },
     ]);
+    // それぞれが自分の行を指している（1 本消すのに 1 行だけ触れる）。
+    expect(d.edges.map(e => e.span.start)).toEqual([...new Set(d.edges.map(e => e.span.start))]);
   });
 
   it('意味と配置が別の層に入る', () => {

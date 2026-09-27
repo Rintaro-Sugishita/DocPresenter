@@ -4,7 +4,9 @@
 // else. Un-pinning is just as important as pinning — a layer that only ever
 // grows is a layout nobody can hand back to the engine.
 
-import { byteLength, sliceBytes, type DiagramFile } from '@docpresenter/core';
+import {
+  byteLength, sliceBytes, type ByteSpan, type DiagramFile, type Node, type ShapeKind,
+} from '@docpresenter/core';
 import type { Edit } from './edit.js';
 
 export class DiagramEditError extends Error {
@@ -195,4 +197,217 @@ function padTo(text: string, width: number): string {
 /** Coordinates are whole numbers. Nobody drags a shape by half a pixel. */
 function round(value: number): number {
   return Math.round(value);
+}
+
+// --- 図形の追加・削除・書き換え ------------------------------------------
+//
+// These touch the semantics layer, which is the part a human writes. So the
+// rules are stricter than for a move: the line keeps the notation the author
+// would have typed, and nothing else in the file is rewritten to suit it.
+
+/** The brackets that say what a shape is, as the parser reads them back. */
+const BRACKETS: Readonly<Record<ShapeKind, readonly [string, string]>> = {
+  rect: ['[', ']'],
+  'round-rect': ['(', ')'],
+  stadium: ['([', '])'],
+  cylinder: ['[(', ')]'],
+  ellipse: ['((', '))'],
+  diamond: ['{', '}'],
+  note: ['>', ']'],
+  text: ['"', '"'],
+  group: ['[', ']'],
+};
+
+/** What a new shape of each kind is called, before anyone renames it. */
+const BASE: Readonly<Record<ShapeKind, string>> = {
+  rect: 'box', 'round-rect': 'box', stadium: 'pill', cylinder: 'store',
+  ellipse: 'oval', diamond: 'branch', note: 'note', text: 'label', group: 'group',
+};
+
+export interface NewShape {
+  readonly shape: ShapeKind;
+  readonly text: string;
+  /** Where to pin it. A freely placed drawing needs one; a flow does not. */
+  readonly at?: { readonly x: number; readonly y: number } | undefined;
+}
+
+/**
+ * Adds a shape: one line in the semantics section, and — when the drawing
+ * places by hand — one line in the layout section, since there is no engine to
+ * decide where it goes. Both land in the same edit, so one gesture is one
+ * change however many lines it took.
+ */
+export function addNode(file: DiagramFile, source: string, shape: NewShape): Edit {
+  if (!file.body) throw new DiagramEditError('図形を書くセクションが無い');
+  const id = nextShapeId(file, shape.shape);
+  const [open, close] = BRACKETS[shape.shape];
+  const changes: Change[] = [{
+    span: { start: file.body.insertAt, end: file.body.insertAt },
+    text: `\n${file.body.indent}${id} ${open}${shape.text}${close}`,
+  }];
+
+  if (shape.at) {
+    const line = formatPlacement(id, shape.at, undefined, idWidth(file));
+    if (file.layoutBlock) {
+      changes.push({
+        span: { start: file.layoutBlock.insertAt, end: file.layoutBlock.insertAt },
+        text: `\n${file.layoutBlock.indent}${line}`,
+      });
+    } else {
+      const end = byteLength(source.replace(/\s+$/, ''));
+      changes.push({
+        span: { start: end, end: byteLength(source) },
+        text: `\n\nlayout {\n  ${line}\n}\n`,
+      });
+    }
+  }
+  return splice(source, changes, '図形を追加');
+}
+
+/**
+ * Removes a shape and everything that referred to it: its pin, the connections
+ * at either end of it, and its name inside a group. A file left pointing at a
+ * shape that is gone renders as a warning, which is not what "delete" means.
+ */
+export function removeNode(file: DiagramFile, source: string, id: string): Edit {
+  const node = file.nodes.find(n => n.id === id);
+  if (!node) throw new DiagramEditError(`図形が見つからない: ${id}`);
+
+  const changes: Change[] = [whole(source, node.span, '')];
+  for (const edge of file.edges) {
+    if (edge.from === id || edge.to === id) changes.push(whole(source, edge.span, ''));
+  }
+  const pin = file.layout.get(id);
+  if (pin) changes.push(whole(source, pin.span, ''));
+  for (const group of file.nodes) {
+    if (group.shape !== 'group' || !group.children.includes(id)) continue;
+    changes.push({
+      span: group.span,
+      text: groupLine(group, group.children.filter(child => child !== id)),
+    });
+  }
+  return splice(source, changes, '図形を削除');
+}
+
+/**
+ * Rewrites what a shape says. The shape and the id are left alone — and a
+ * group is written as a group, not turned into a box with a list of names for
+ * a label.
+ */
+export function setNodeText(file: DiagramFile, id: string, text: string): Edit {
+  const node = find(file, id);
+  const line = node.shape === 'group'
+    ? groupLine({ ...node, text }, node.children)
+    : nodeLine(node, node.shape, text);
+  return { span: node.span, text: line, description: '文字を変更' };
+}
+
+/** Rewrites which shape it is, by changing the brackets around the text. */
+export function setNodeShape(file: DiagramFile, id: string, shape: ShapeKind): Edit {
+  const node = find(file, id);
+  if (node.shape === 'group') throw new DiagramEditError('グループの種類は変えられない');
+  return { span: node.span, text: nodeLine(node, shape, node.text), description: '図形の種類を変更' };
+}
+
+/** Draws a connection. One line at the end of the semantics section. */
+export function connectNodes(file: DiagramFile, source: string, from: string, to: string): Edit {
+  if (!file.body) throw new DiagramEditError('図形を書くセクションが無い');
+  find(file, from);
+  find(file, to);
+  if (from === to) throw new DiagramEditError('同じ図形どうしは繋げない');
+  if (file.edges.some(e => e.from === from && e.to === to)) {
+    throw new DiagramEditError(`${from} から ${to} へは既に繋がっている`);
+  }
+  return splice(source, [{
+    span: { start: file.body.insertAt, end: file.body.insertAt },
+    text: `\n${file.body.indent}${from} --> ${to}`,
+  }], '線を引く');
+}
+
+/** Removes one connection, named by its two ends. */
+export function disconnectNodes(
+  file: DiagramFile, source: string, from: string, to: string,
+): Edit {
+  const edge = file.edges.find(e => e.from === from && e.to === to);
+  if (!edge) throw new DiagramEditError(`${from} から ${to} への線が無い`);
+  return splice(source, [whole(source, edge.span, '')], '線を消す');
+}
+
+function find(file: DiagramFile, id: string): Node {
+  const node = file.nodes.find(n => n.id === id);
+  if (!node) throw new DiagramEditError(`図形が見つからない: ${id}`);
+  return node;
+}
+
+function nodeLine(node: Node, shape: ShapeKind, text: string): string {
+  const [open, close] = BRACKETS[shape];
+  const name = node.className === undefined ? '' : `:::${node.className}`;
+  return `${node.id} ${open}${text}${close}${name}`;
+}
+
+function groupLine(group: Node, children: readonly string[]): string {
+  return `group ${group.id} "${group.text}" { ${children.join('; ')} }`;
+}
+
+/**
+ * The name the next shape of this kind will get: a name nobody else is using,
+ * numbered so it stays readable in a diff. Exported so the caller can select
+ * what it just added — the same file and the same kind always give the same
+ * answer.
+ */
+export function nextShapeId(file: DiagramFile, shape: ShapeKind): string {
+  const base = BASE[shape];
+  const taken = new Set(file.nodes.map(n => n.id));
+  for (let n = 1; ; n++) {
+    const id = `${base}${n}`;
+    if (!taken.has(id)) return id;
+  }
+}
+
+function idWidth(file: DiagramFile): number {
+  let widest = 0;
+  for (const id of file.layout.keys()) widest = Math.max(widest, id.length);
+  return widest + 1;
+}
+
+/** One line with its indent and its newline, so removing it removes a line. */
+function whole(source: string, span: ByteSpan, text: string): Change {
+  const before = sliceBytes(source, 0, span.start);
+  const indent = /[ \t]*$/.exec(before)?.[0] ?? '';
+  return {
+    span: {
+      start: span.start - indent.length,
+      end: Math.min(span.end + 1, byteLength(source)),
+    },
+    text,
+  };
+}
+
+interface Change {
+  readonly span: ByteSpan;
+  readonly text: string;
+}
+
+/**
+ * Several line changes as one edit. The range covers only what is touched, and
+ * everything between the touched lines is carried over unchanged — so a diff
+ * still shows the lines that changed and nothing else, while the write-back
+ * stays a single byte range.
+ */
+function splice(source: string, changes: readonly Change[], description: string): Edit {
+  const sorted = [...changes].sort((a, b) => a.span.start - b.span.start);
+  const first = sorted[0];
+  if (!first) throw new DiagramEditError('変更が無い');
+  const start = first.span.start;
+  const end = Math.max(...sorted.map(c => c.span.end));
+
+  let text = '';
+  let at = start;
+  for (const change of sorted) {
+    if (change.span.start < at) throw new DiagramEditError('重なった変更');
+    text += sliceBytes(source, at, change.span.start) + change.text;
+    at = change.span.end;
+  }
+  text += sliceBytes(source, at, end);
+  return { span: { start, end }, text, description };
 }

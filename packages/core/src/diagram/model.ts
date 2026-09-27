@@ -16,6 +16,8 @@ export interface Node {
   readonly className: string | undefined;
   /** Ids contained by a group. */
   readonly children: readonly string[];
+  /** The shape's own line, so renaming one shape rewrites one line. */
+  readonly span: ByteSpan;
 }
 
 export type EdgeStyle = 'solid' | 'dashed';
@@ -27,6 +29,8 @@ export interface Edge {
   readonly label: string | undefined;
   readonly line: EdgeStyle;
   readonly arrow: ArrowStyle;
+  /** The connection's own line. */
+  readonly span: ByteSpan;
 }
 
 /** A position pinned by hand. Absent means the layout is computed. */
@@ -38,6 +42,20 @@ export interface Placement {
   readonly z: number | undefined;
   /** The pin's own line, so dragging one shape rewrites one line. */
   readonly span: ByteSpan;
+}
+
+/**
+ * A `{ … }` section, so the editor can add a line to it. The same shape serves
+ * the semantics section and the layout section; which one is meant is the name
+ * of the field holding it.
+ */
+export interface Section {
+  /** The whole block, from its opening line to its closing brace. */
+  readonly span: ByteSpan;
+  /** Just before the closing brace: where a new line goes. */
+  readonly insertAt: number;
+  /** The indent the existing lines use. */
+  readonly indent: string;
 }
 
 /** Where pins live, so dragging a shape that has none can add one. */
@@ -74,6 +92,8 @@ export interface DiagramFile {
   readonly comments: readonly string[];
   readonly nodes: readonly Node[];
   readonly edges: readonly Edge[];
+  /** The `free { … }` / `flow { … }` section, for adding a shape to it. */
+  readonly body: Section | undefined;
   /** The layout layer: only what a human pinned. */
   readonly layout: ReadonlyMap<string, Placement>;
   /** Absent when the file has no `layout { … }` block yet. */
