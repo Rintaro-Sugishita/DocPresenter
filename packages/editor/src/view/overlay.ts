@@ -21,9 +21,11 @@ export interface OverlayEditorOptions {
   readonly source: string;
   /** The figure's body, holding the rendered overlay. */
   readonly host: HTMLElement;
-  readonly selected: string | undefined;
-  readonly apply: (make: () => Edit, selected: string | undefined) => void;
-  readonly select: (marker: string | undefined) => void;
+  /** The callouts picked. An overlay only ever picks one, but the canvas and
+   *  the overlay are mounted through the same options. */
+  readonly selected: readonly string[];
+  readonly apply: (make: () => Edit, selected: readonly string[]) => void;
+  readonly select: (markers: readonly string[]) => void;
   readonly showSource: () => void;
   readonly close: () => void;
   readonly onError?: (message: string) => void;
@@ -39,7 +41,7 @@ export function createOverlayEditor(options: OverlayEditorOptions): OverlayEdito
   // Pressing inside belongs to this editor, not to the page behind it.
   host.classList.add('dp-canvas-host');
 
-  let selected = options.selected;
+  let selected = options.selected[0];
   let where: HTMLElement | undefined;
   const bar = createBar();
   host.prepend(bar);
@@ -82,7 +84,7 @@ export function createOverlayEditor(options: OverlayEditorOptions): OverlayEdito
 
   function pick(marker: string | undefined): void {
     selected = marker;
-    options.select(marker);
+    options.select(marker === undefined ? [] : [marker]);
     paint();
   }
 
@@ -140,7 +142,7 @@ export function createOverlayEditor(options: OverlayEditorOptions): OverlayEdito
     if (stage.hasPointerCapture(event.pointerId)) stage.releasePointerCapture(event.pointerId);
     if (!current.moved) return;
     const marker = current.callout.marker;
-    options.apply(() => moveCallout(file, source, marker, current.at), marker);
+    options.apply(() => moveCallout(file, source, marker, current.at), [marker]);
   };
   stage.addEventListener('pointerup', finish);
   stage.addEventListener('pointercancel', finish);
@@ -211,7 +213,7 @@ export function createOverlayEditor(options: OverlayEditorOptions): OverlayEdito
     options.apply(() => moveCallout(file, source, marker, {
       x: callout.x + move[0]! * by, y: callout.y + move[1]! * by,
       targetX: callout.targetX, targetY: callout.targetY,
-    }), marker);
+    }), [marker]);
   });
 
   function createBar(): HTMLElement {

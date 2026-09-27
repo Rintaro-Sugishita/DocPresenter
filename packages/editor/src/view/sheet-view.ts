@@ -80,8 +80,8 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
   /** The table whose grid is open, and where the selection sits in it. */
   let grid: { path: string; at: GridPosition; target: string } | undefined;
   let mounted: Grid | undefined;
-  /** The diagram open for direct manipulation, and the shape picked in it. */
-  let canvas: { path: string; selected: string | undefined } | undefined;
+  /** The diagram open for direct manipulation, and the shapes picked in it. */
+  let canvas: { path: string; selected: readonly string[] } | undefined;
   let settings = options.settings ?? DEFAULT_SETTINGS;
 
   const owner = root.ownerDocument;
@@ -187,7 +187,7 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
     if (path.toLowerCase().endsWith('.dgm')) {
       if (canvas?.path === path) return;
       const other = grid !== undefined || canvas !== undefined;
-      canvas = { path, selected: undefined };
+      canvas = { path, selected: [] };
       grid = undefined;
       endEdit(true);
       if (other) draw(); else mountCanvas(body);
@@ -278,7 +278,7 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
       file,
       source: text,
       selected: current.selected,
-      apply: (make: () => Edit, selected: string | undefined) => {
+      apply: (make: () => Edit, selected: readonly string[]) => {
         if (canvas?.path === current.path) canvas = { ...canvas, selected };
         commit(() => {
           try {
@@ -289,7 +289,7 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
           }
         }, active);
       },
-      select: (selected: string | undefined) => { if (canvas) canvas = { ...canvas, selected }; },
+      select: (selected: readonly string[]) => { if (canvas) canvas = { ...canvas, selected }; },
       close: (): void => { canvas = undefined; draw(); },
       showSource: (): void => {
         canvas = undefined;

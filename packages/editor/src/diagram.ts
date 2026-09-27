@@ -31,38 +31,75 @@ export interface Pin {
  * at the end of the layout block.
  */
 export function pinNode(file: DiagramFile, source: string, id: string, pin: Pin): Edit {
-  if (!file.nodes.some(node => node.id === id)) {
-    throw new DiagramEditError(`図形が見つからない: ${id}`);
-  }
-  const existing = file.layout.get(id);
-  if (existing) {
-    const like = sliceBytes(source, existing.span.start, existing.span.end);
-    // Moving a shape moves it. A size or a depth the author set stays set.
-    const merged: Pin = {
-      x: pin.x, y: pin.y,
-      width: pin.width ?? existing.width,
-      height: pin.height ?? existing.height,
-      z: pin.z ?? existing.z,
-    };
-    return { span: existing.span, text: formatPlacement(id, merged, like), description: '配置を変更' };
+  return pinNodes(file, source, new Map([[id, pin]]));
+}
+
+/**
+ * Pins several shapes at once — dragging a group moves everything inside it,
+ * and that has to reach the file as one change. Lines that exist are rewritten
+ * where they are; the rest are added together at the end of the layout block.
+ */
+export function pinNodes(
+  file: DiagramFile, source: string, pins: ReadonlyMap<string, Pin>,
+): Edit {
+  if (pins.size === 0) throw new DiagramEditError('動かす図形が無い');
+  const changes: Change[] = [];
+  const added: string[] = [];
+  let anyNew = false;
+
+  for (const [id, pin] of pins) {
+    if (!file.nodes.some(node => node.id === id)) {
+      throw new DiagramEditError(`図形が見つからない: ${id}`);
+    }
+    const existing = file.layout.get(id);
+    if (existing) {
+      const like = sliceBytes(source, existing.span.start, existing.span.end);
+      // Moving a shape moves it. A size or a depth the author set stays set.
+      const merged: Pin = {
+        x: pin.x, y: pin.y,
+        width: pin.width ?? existing.width,
+        height: pin.height ?? existing.height,
+        z: pin.z ?? existing.z,
+      };
+      changes.push({ span: existing.span, text: formatPlacement(id, merged, like) });
+      continue;
+    }
+    anyNew = true;
+    added.push(formatPlacement(id, pin, undefined, idWidth(file)));
   }
 
-  const line = formatPlacement(id, pin, undefined, width(file));
-  if (file.layoutBlock) {
-    const { insertAt, indent } = file.layoutBlock;
-    return {
-      span: { start: insertAt, end: insertAt },
-      text: `\n${indent}${line}`,
-      description: '配置を固定',
-    };
+  if (added.length > 0) {
+    if (file.layoutBlock) {
+      const { insertAt, indent } = file.layoutBlock;
+      changes.push({
+        span: { start: insertAt, end: insertAt },
+        text: added.map(line => `\n${indent}${line}`).join(''),
+      });
+    } else {
+      // No layout block yet: start one after everything else in the file.
+      const end = byteLength(source.replace(/\s+$/, ''));
+      changes.push({
+        span: { start: end, end: byteLength(source) },
+        text: `\n\nlayout {\n${added.map(line => `  ${line}\n`).join('')}}\n`,
+      });
+    }
   }
-  // No layout block yet: start one after everything else in the file.
-  const end = byteLength(source.replace(/\s+$/, ''));
-  return {
-    span: { start: end, end: byteLength(source) },
-    text: `\n\nlayout {\n  ${line}\n}\n`,
-    description: '配置を固定',
+  return splice(source, changes, anyNew ? '配置を固定' : '配置を変更');
+}
+
+/** Everything a group holds, including what the groups inside it hold. */
+export function groupMembers(file: DiagramFile, id: string): string[] {
+  const seen = new Set<string>();
+  const walk = (name: string): void => {
+    const node = file.nodes.find(n => n.id === name);
+    for (const child of node?.children ?? []) {
+      if (seen.has(child)) continue;
+      seen.add(child);
+      walk(child);
+    }
   };
+  walk(id);
+  return [...seen];
 }
 
 /**
@@ -264,29 +301,72 @@ export function addNode(file: DiagramFile, source: string, shape: NewShape): Edi
   return splice(source, changes, '図形を追加');
 }
 
+/** Removes several shapes as one change. */
+export function removeNodes(file: DiagramFile, source: string, ids: readonly string[]): Edit {
+  if (ids.length === 0) throw new DiagramEditError('消す図形が無い');
+  return splice(
+    source, removalOf(file, source, ids),
+    ids.length === 1 ? '図形を削除' : '図形をまとめて削除',
+  );
+}
+
+/**
+ * Makes a group of the shapes given. A group is a line in the semantics layer
+ * like any other shape, holding the names of what it contains — so grouping
+ * adds one line and moves nothing.
+ */
+export function groupNodes(
+  file: DiagramFile, source: string, ids: readonly string[], text: string,
+): Edit {
+  if (!file.body) throw new DiagramEditError('図形を書くセクションが無い');
+  if (ids.length < 2) throw new DiagramEditError('2 つ以上の図形を選ぶ');
+  for (const id of ids) find(file, id);
+  const id = nextShapeId(file, 'group');
+  return splice(source, [{
+    span: { start: file.body.insertAt, end: file.body.insertAt },
+    text: `\n${file.body.indent}group ${id} "${text}" { ${ids.join('; ')} }`,
+  }], 'グループにする');
+}
+
 /**
  * Removes a shape and everything that referred to it: its pin, the connections
  * at either end of it, and its name inside a group. A file left pointing at a
  * shape that is gone renders as a warning, which is not what "delete" means.
  */
 export function removeNode(file: DiagramFile, source: string, id: string): Edit {
-  const node = file.nodes.find(n => n.id === id);
-  if (!node) throw new DiagramEditError(`図形が見つからない: ${id}`);
+  return removeNodes(file, source, [id]);
+}
 
-  const changes: Change[] = [whole(source, node.span, '')];
-  for (const edge of file.edges) {
-    if (edge.from === id || edge.to === id) changes.push(whole(source, edge.span, ''));
+/**
+ * Every line that goes when these shapes go. The group lines are worked out
+ * over the whole set at once: a group holding two of them has to lose both
+ * names, and rewriting it once per name would put the other one back.
+ */
+function removalOf(file: DiagramFile, source: string, ids: readonly string[]): Change[] {
+  const going = new Set<string>();
+  for (const id of ids) {
+    if (!file.nodes.some(n => n.id === id)) throw new DiagramEditError(`図形が見つからない: ${id}`);
+    going.add(id);
   }
-  const pin = file.layout.get(id);
-  if (pin) changes.push(whole(source, pin.span, ''));
-  for (const group of file.nodes) {
-    if (group.shape !== 'group' || !group.children.includes(id)) continue;
+
+  const changes: Change[] = [];
+  for (const node of file.nodes) {
+    if (going.has(node.id)) {
+      changes.push(whole(source, node.span, ''));
+      const pin = file.layout.get(node.id);
+      if (pin) changes.push(whole(source, pin.span, ''));
+      continue;
+    }
+    if (node.shape !== 'group' || !node.children.some(child => going.has(child))) continue;
     changes.push({
-      span: group.span,
-      text: groupLine(group, group.children.filter(child => child !== id)),
+      span: node.span,
+      text: groupLine(node, node.children.filter(child => !going.has(child))),
     });
   }
-  return splice(source, changes, '図形を削除');
+  for (const edge of file.edges) {
+    if (going.has(edge.from) || going.has(edge.to)) changes.push(whole(source, edge.span, ''));
+  }
+  return changes;
 }
 
 /**

@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { parseDiagram } from '@docpresenter/core';
 import {
-  addNode, applyEdit, canUnpin, connectNodes, DiagramEditError, disconnectNodes, moveCallout,
-  pinNode, removeNode, setNodeShape, setNodeText, unpinNode,
+  addNode, applyEdit, canUnpin, connectNodes, DiagramEditError, disconnectNodes, groupMembers,
+  groupNodes, moveCallout, pinNode, pinNodes, removeNode, removeNodes, setNodeShape, setNodeText,
+  unpinNode,
 } from '../src/index.js';
 
 const FLOW = [
@@ -226,5 +227,83 @@ describe('図形の追加と削除', () => {
   it('同じ線を二度は引かない', () => {
     expect(() => connectNodes(parseDiagram(FLOW), FLOW, 'start', 'next')).toThrow(DiagramEditError);
     expect(() => connectNodes(parseDiagram(FLOW), FLOW, 'start', 'start')).toThrow(DiagramEditError);
+  });
+});
+
+describe('まとめて動かす・まとめる', () => {
+  const GROUPED = [
+    'free {',
+    '  a [A]',
+    '  b [B]',
+    '  c [C]',
+    '  group g "まとまり" { a; b }',
+    '}',
+    '',
+    'layout {',
+    '  a @ ( 10,  10)',
+    '  b @ ( 10,  90)',
+    '  g @ (  0,   0) 200x200  z:-1',
+    '}',
+  ].join('\n');
+
+  it('グループの中身を数える（入れ子も）', () => {
+    const nested = GROUPED.replace('  group g "まとまり" { a; b }',
+      '  group g "まとまり" { a; h }\n  group h "なか" { b; c }');
+    expect(groupMembers(parseDiagram(nested), 'g').sort()).toEqual(['a', 'b', 'c', 'h']);
+  });
+
+  it('複数のピンが 1 回の書き換えで動く', () => {
+    const file = parseDiagram(GROUPED);
+    const written = applyEdit(GROUPED, pinNodes(file, GROUPED, new Map([
+      ['a', { x: 40, y: 30 }],
+      ['b', { x: 40, y: 110 }],
+      ['g', { x: 30, y: 20 }],
+    ])));
+    expect(layout(written)).toEqual([
+      'layout {',
+      '  a @ ( 40,  30)',
+      '  b @ ( 40, 110)',
+      '  g @ ( 30,  20) 200x200  z:-1',
+      '}',
+    ]);
+  });
+
+  it('留まっていない図形が混ざっても 1 回で入る', () => {
+    const file = parseDiagram(GROUPED);
+    const written = applyEdit(GROUPED, pinNodes(file, GROUPED, new Map([
+      ['a', { x: 40, y: 30 }],
+      ['c', { x: 200, y: 200 }],
+    ])));
+    expect(layout(written)).toContain('  a @ ( 40,  30)');
+    expect(layout(written)).toContain('  c @ (200, 200)');
+  });
+
+  it('まとめて消しても、グループは両方の名前を失う', () => {
+    const written = applyEdit(GROUPED, removeNodes(parseDiagram(GROUPED), GROUPED, ['a', 'b']));
+    const file = parseDiagram(written);
+    expect(file.nodes.map(n => n.id)).toEqual(['c', 'g']);
+    expect(file.nodes.find(n => n.id === 'g')!.children).toEqual([]);
+    expect(file.layout.has('a')).toBe(false);
+    expect(file.layout.has('b')).toBe(false);
+  });
+
+  it('グループにするのは 1 行足すだけ（中身は動かない）', () => {
+    const source = 'free {\n  a [A]\n  b [B]\n}\n\nlayout {\n  a @ (10, 10)\n  b @ (10, 90)\n}';
+    const written = applyEdit(source, groupNodes(parseDiagram(source), source, ['a', 'b'], 'まとまり'));
+    expect(written).toContain('  group group1 "まとまり" { a; b }');
+    const file = parseDiagram(written);
+    expect(file.nodes.find(n => n.id === 'group1')!.children).toEqual(['a', 'b']);
+    expect(file.layout.get('a')).toMatchObject({ x: 10, y: 10 });
+  });
+
+  it('1 つではグループにしない', () => {
+    expect(() => groupNodes(parseDiagram(GROUPED), GROUPED, ['a'], 'x')).toThrow(DiagramEditError);
+  });
+
+  it('グループを消しても中身は残る（＝解除）', () => {
+    const written = applyEdit(GROUPED, removeNode(parseDiagram(GROUPED), GROUPED, 'g'));
+    const file = parseDiagram(written);
+    expect(file.nodes.map(n => n.id)).toEqual(['a', 'b', 'c']);
+    expect(file.layout.get('a')).toMatchObject({ x: 10, y: 10 });
   });
 });
