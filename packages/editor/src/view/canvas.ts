@@ -251,13 +251,22 @@ export function createCanvas(options: CanvasOptions): Canvas {
     const guides: { axis: 'x' | 'y'; at: number }[] = [];
 
     const axis = (
-      start: number, size: number, edgesOf: (box: Box) => number[], which: 'x' | 'y',
+      start: number, size: number, edgesOf: (box: Box) => [number, number, number],
+      which: 'x' | 'y',
     ): number => {
-      const mine = [start, start + size / 2, start + size];
+      const mine: [number, number, number] = [start, start + size / 2, start + size];
       let best: { at: number; delta: number } | undefined;
       for (const box of others) {
-        for (const edge of edgesOf(box)) {
-          for (const own of mine) {
+        const theirs = edgesOf(box);
+        // An edge lines up with an edge and a centre with a centre. Letting a
+        // left edge stick to the middle of a checkbox is a line nobody drew.
+        const pairs: [number, number[]][] = [
+          [mine[0], [theirs[0], theirs[2]]],
+          [mine[1], [theirs[1]]],
+          [mine[2], [theirs[0], theirs[2]]],
+        ];
+        for (const [own, candidates] of pairs) {
+          for (const edge of candidates) {
             const delta = edge - own;
             if (Math.abs(delta) <= SNAP && (!best || Math.abs(delta) < Math.abs(best.delta))) {
               best = { at: edge, delta };
