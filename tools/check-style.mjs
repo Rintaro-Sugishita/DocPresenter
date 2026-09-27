@@ -36,6 +36,10 @@ await page.click('.dp-tab[data-index="5"]');
 await page.waitForTimeout(250);
 await openGrid();
 check('スタイルの操作列が出る', await page.isVisible('.dp-grid-style'));
+// 縞はテーマの仕事。対象の一覧に出さない
+const targets = await page.$$eval('.dp-grid-target option', nodes => nodes.map(n => n.value));
+check('縞は「対象」に出ない', !targets.includes('odd') && !targets.includes('even'), targets.join(' / '));
+check('対象はセル・行・列・ヘッダの 4 つ', targets.length === 4, String(targets.length));
 
 // このセル（既定の対象）
 await page.click(cell(1, 1));
@@ -108,6 +112,7 @@ check('ヘッダの規則も 1 行', /header \{[^}]*fill: #eceef1/.test(source),
   source.split('\n').filter(l => l.includes('header')).join(' / '));
 check('空の規則が残らない', !/\{\s*\}/.test(source));
 check('グリッドには触っていない', source.includes('| アクセストークン'));
+
 
 await page.keyboard.press('Escape');
 await page.waitForTimeout(200);

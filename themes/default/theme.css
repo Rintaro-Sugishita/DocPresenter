@@ -17,6 +17,12 @@
   --fill-tint-1:   #f7f8fa;
   --fill-tint-2:   #f2f6f4;
 
+  /* Row striping is the theme's call, not each table's. Transparent here
+     because a design document's tables are short and the header rule already
+     separates head from body; a theme that wants zebra rows redefines this
+     one token. */
+  --stripe: transparent;
+
   /* The same four meanings as a table's fills, as text colour. Chosen to stay
      legible in greyscale print, and paired with a second signal so the meaning
      does not rest on colour alone. */
@@ -98,6 +104,8 @@ code { font-family: var(--font-mono); font-size: 0.9em; background: var(--fill-t
   /* ヘッダ下の罫線はテーマが引く。表ごとに指定させない。 */
   border-bottom: var(--rule-thick);
 }
+/* A cell's own fill sits on the <td> and so still wins over the stripe. */
+.dp-table tbody tr:nth-child(even) { background: var(--stripe); }
 
 .dp-align-left   { text-align: left; }
 .dp-align-center { text-align: center; }

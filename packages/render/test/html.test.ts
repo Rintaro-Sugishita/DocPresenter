@@ -217,6 +217,14 @@ describe('範囲セレクタ', () => {
     expect(rows[1]).toContain('dp-fill-pending');
   });
 
+  it('手で書いた縞は今も描画される（GUI から出さなくなっても捨てない）', () => {
+    const html = renderTable(table('  row:odd { fill: #f7f8fa }'));
+    const rows = html.split('<tr').slice(2);
+    expect(rows[0]).toContain('background:#f7f8fa');
+    expect(rows[1]).not.toContain('background:#f7f8fa');
+    expect(rows[2]).toContain('background:#f7f8fa');
+  });
+
   it('名前付き範囲でも効く', () => {
     const named = parseTable([
       '| 用語 | 説明 |', '| --- | --- |', '| a | 1 |', '| b | 2 |', '',

@@ -54,14 +54,16 @@ export interface GridOptions {
  * The targets a style can be applied to, as the file's own selectors. A cell
  * is named by its row and column and a single row by a range over itself, so a
  * rule keeps pointing at the same thing when the rows move.
+ *
+ * Row striping is not here. Zebra rows are a look, not a statement about this
+ * table, so the theme draws them - the same call as the rule under the header.
+ * A `row:odd` rule already in a file is still read and still rendered.
  */
 const TARGETS: readonly { readonly id: string; readonly label: string }[] = [
   { id: 'cell', label: 'このセル' },
   { id: 'row', label: 'この行' },
   { id: 'column', label: 'この列' },
   { id: 'header', label: 'ヘッダ' },
-  { id: 'odd', label: '奇数行' },
-  { id: 'even', label: '偶数行' },
 ];
 
 export interface Grid {
@@ -88,7 +90,8 @@ export function createGrid(options: GridOptions): Grid {
   let dragging = false;
   let editing = false;
   let repaintStyle: () => void = () => {};
-  let target = options.target;
+  // A target the host remembers from an older build may no longer exist.
+  let target = TARGETS.some(t => t.id === options.target) ? options.target : 'cell';
   const nodes = new Map<string, HTMLElement>();
   const input = owner.createElement('input');
   input.className = 'dp-grid-input';
@@ -408,8 +411,6 @@ export function createGrid(options: GridOptions): Grid {
     const rowKey = at.row < 0 ? undefined : table.rows[at.row]?.cells[0]?.text;
     switch (target) {
       case 'header': return { kind: 'header' };
-      case 'odd': return { kind: 'row', which: 'odd' };
-      case 'even': return { kind: 'row', which: 'even' };
       case 'column': return column === undefined ? undefined : { kind: 'column', name: column };
       case 'row': return rowKey === undefined ? undefined : { kind: 'range', from: rowKey, to: rowKey };
       case 'cell':
