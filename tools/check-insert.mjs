@@ -49,11 +49,12 @@ await page.click('.dp-sheet:not([hidden]) .dp-append-add:text("図")');
 await page.waitForTimeout(500);
 check('図も増える',
   await page.isVisible('.dp-sheet:not([hidden]) .dp-figure[data-path*=".dgm"] svg'));
-check('図はそのままソースで開ける',
+check('増えた図はそのまま動かせる形で開ける',
   await (async () => {
     await page.click('.dp-sheet:not([hidden]) .dp-figure[data-path*=".dgm"] .dp-figure-body');
     await page.waitForTimeout(300);
-    return (await page.inputValue('.dp-block-source')).includes('free {');
+    return await page.isVisible('.dp-canvas-stage svg')
+      && await page.isVisible('.dp-canvas-bar button:text("自動配置に戻す")');
   })());
 
 

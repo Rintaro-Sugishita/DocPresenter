@@ -23,7 +23,7 @@ describe('作図ファイルの解析', () => {
   it('意味と配置が別の層に入る', () => {
     const d = parseDiagram('free {\n a [A]\n}\nlayout {\n a @ (10, 20) 100x50 z:-1\n}');
     expect(d.nodes[0]?.text).toBe('A');
-    expect(d.layout.get('a')).toEqual({ x: 10, y: 20, width: 100, height: 50, z: -1 });
+    expect(d.layout.get('a')).toMatchObject({ x: 10, y: 20, width: 100, height: 50, z: -1 });
   });
 
   it('overlay は画像と注釈を読む', () => {

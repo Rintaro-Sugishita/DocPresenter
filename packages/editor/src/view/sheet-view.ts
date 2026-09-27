@@ -6,14 +6,17 @@
 // file contains can never drift apart: there is only the file.
 
 import {
-  byteLength, parseDocument, parseTable, sheetsOf, sliceBytes, type Sheet,
+  byteLength, parseDiagram, parseDocument, parseTable, sheetsOf, sliceBytes, type Sheet,
 } from '@docpresenter/core';
 import type { Edit } from '../edit.js';
 import { applyEdit } from '../edit.js';
 import { toggleInline, type InlineMark } from '../inline.js';
 import { DEFAULT_SETTINGS, isCommit, type EditorSettings } from '../settings.js';
 import { insertSheet, moveSheet, removeSheet, renameSheet, SheetEditError } from '../sheets.js';
+import { DiagramEditError } from '../diagram.js';
 import { TableEditError } from '../table.js';
+import { createCanvas } from './canvas.js';
+import { createOverlayEditor } from './overlay.js';
 import { createGrid, type Grid, type GridPosition } from './grid.js';
 import { createMenu } from './menu.js';
 import { EDITOR_STYLE } from './style.js';
@@ -77,6 +80,8 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
   /** The table whose grid is open, and where the selection sits in it. */
   let grid: { path: string; at: GridPosition; target: string } | undefined;
   let mounted: Grid | undefined;
+  /** The diagram open for direct manipulation, and the shape picked in it. */
+  let canvas: { path: string; selected: string | undefined } | undefined;
   let settings = options.settings ?? DEFAULT_SETTINGS;
 
   const owner = root.ownerDocument;
@@ -153,17 +158,53 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
       options.onError?.(`${path} を開けない`);
       return;
     }
+    // A file that will not parse has no grid and no drawing to open, and the
+    // only way out is the text itself. Leaving it unopenable would leave the
+    // author stuck with a figure they cannot fix.
+    if (!readable(path, text)) {
+      grid = undefined;
+      canvas = undefined;
+      open(body, { start: 0, end: byteLength(text) }, text, '', false, path);
+      return;
+    }
     // Nobody wants to write a table by hand, so a table opens as a grid. The
     // source is still one click away, for the parts the grid has no gesture
     // for yet.
     if (path.toLowerCase().endsWith('.table')) {
       if (grid?.path === path) return;
+      const other = grid !== undefined || canvas !== undefined;
       grid = { path, at: { row: 0, column: 0 }, target: 'cell' };
+      canvas = undefined;
       endEdit(true);
-      mountGrid(body);
+      // Leaving another figure's editor on the page would leave a second set
+      // of controls, on a sheet nobody is looking at. Redrawing puts every
+      // figure back as it is and mounts the one now open.
+      if (other) draw(); else mountGrid(body);
+      return;
+    }
+    // A diagram opens as the drawing itself. Dragging a shape is the gesture
+    // the layout layer was designed for; the source is still one click away.
+    if (path.toLowerCase().endsWith('.dgm')) {
+      if (canvas?.path === path) return;
+      const other = grid !== undefined || canvas !== undefined;
+      canvas = { path, selected: undefined };
+      grid = undefined;
+      endEdit(true);
+      if (other) draw(); else mountCanvas(body);
       return;
     }
     open(body, { start: 0, end: byteLength(text) }, text, '', false, path);
+  }
+
+  /** Whether the file behind a figure can be shown as what it is. */
+  function readable(path: string, text: string): boolean {
+    try {
+      if (path.toLowerCase().endsWith('.table')) parseTable(text);
+      else if (path.toLowerCase().endsWith('.dgm')) parseDiagram(text);
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   /** Builds the grid from the file as it stands; the grid keeps no copy. */
@@ -214,6 +255,63 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
       },
     });
     body.replaceChildren(mounted.element);
+  }
+
+  /** Builds the canvas from the file as it stands; it keeps no copy either. */
+  function mountCanvas(body: HTMLElement): void {
+    const current = canvas;
+    if (!current) return;
+    const text = options.readResource?.(current.path);
+    if (text === undefined) return;
+
+    let file;
+    try {
+      file = parseDiagram(text);
+    } catch (error) {
+      options.onError?.(error instanceof Error ? error.message : String(error));
+      canvas = undefined;
+      return;
+    }
+
+    const shared = {
+      owner,
+      file,
+      source: text,
+      selected: current.selected,
+      apply: (make: () => Edit, selected: string | undefined) => {
+        if (canvas?.path === current.path) canvas = { ...canvas, selected };
+        commit(() => {
+          try {
+            return { ...make(), path: current.path };
+          } catch (error) {
+            if (error instanceof DiagramEditError) throw new SheetEditError(error.message);
+            throw error;
+          }
+        }, active);
+      },
+      select: (selected: string | undefined) => { if (canvas) canvas = { ...canvas, selected }; },
+      close: (): void => { canvas = undefined; draw(); },
+      showSource: (): void => {
+        canvas = undefined;
+        const source = options.readResource?.(current.path) ?? '';
+        open(body, { start: 0, end: byteLength(source) }, source, '', false, current.path);
+      },
+      onError: (message: string) => options.onError?.(message),
+    };
+
+    // An overlay is a picture with callouts on it, already on the page at the
+    // image's own scale. It is taken over where it stands rather than drawn
+    // again: re-rendering it here would mean resolving the image's path, which
+    // is the platform's business and not the editor's.
+    if (file.mode === 'overlay') {
+      createOverlayEditor({ ...shared, host: body }).focus();
+      return;
+    }
+
+    const mountedCanvas = createCanvas(shared);
+    body.replaceChildren(mountedCanvas.element);
+    // Only now is it on the page, so only now can it take the keyboard.
+    mountedCanvas.focus();
   }
 
   /**
@@ -316,7 +414,7 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
     }), active);
   }
 
-  const CLICKABLE = '.dp-grid, .dp-block-source, .dp-format-bar, .dp-caption,'
+  const CLICKABLE = '.dp-grid, .dp-canvas, .dp-canvas-host, .dp-block-source, .dp-format-bar, .dp-caption,'
     + ' .dp-import-line, .dp-figure, .dp-append, .dp-prose, h1, h2, h3, h4, h5, h6';
 
   function onPointerDown(event: MouseEvent): void {
@@ -326,6 +424,10 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
     if (target.classList.contains('dp-block-source')) return;
     if (target.classList.contains('dp-format-bar')) return;
     if (target.classList.contains('dp-grid')) return;
+    // A press inside the open canvas is the canvas's own gesture. It reaches
+    // here only when the browser sent no pointer event, so it is left alone.
+    if (target.classList.contains('dp-canvas')) return;
+    if (target.classList.contains('dp-canvas-host')) return;
 
     // We are about to open an editor and focus it. Left to itself the browser
     // would then move focus to whatever was under the pointer — by that time a
@@ -343,6 +445,11 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
       figure: target.classList.contains('dp-figure'),
     };
 
+    if (canvas !== undefined && !wanted.figure && wanted.path === undefined) {
+      canvas = undefined;
+      draw();
+      return;
+    }
     const hadGrid = grid !== undefined;
     if (hadGrid && !wanted.figure && wanted.path === undefined) {
       // Write back the open cell before the grid leaves the page, so nothing
@@ -582,6 +689,12 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
       else { grid = undefined; mounted = undefined; }
     } else {
       mounted = undefined;
+    }
+    if (canvas) {
+      const figure = page.querySelector<HTMLElement>(`.dp-figure[data-path="${cssEscape(canvas.path)}"]`);
+      const body = figure?.querySelector<HTMLElement>('.dp-figure-body');
+      if (body) mountCanvas(body);
+      else canvas = undefined;
     }
 
     drawTabs(sections.map((section, i) => ({

@@ -20,8 +20,12 @@ await sheet(2);
 await page.waitForTimeout(200);
 await page.click('.dp-sheet:not([hidden]) .dp-figure-body');
 await page.waitForTimeout(200);
+// 図はドラッグできる図そのものとして開く。ソースはそこから 1 手で出す。
+check('図をクリックすると図そのものが開く', await page.isVisible('.dp-canvas-stage svg'));
+await page.click('.dp-canvas-bar button:text("ソース")');
+await page.waitForTimeout(200);
 const opened = await page.inputValue('.dp-block-source');
-check('図をクリックすると .dgm のソースが開く', opened.includes('free {'), opened.slice(0, 12));
+check('ソースは .dgm の中身', opened.includes('free {'), opened.slice(0, 12));
 check('開くのはファイル全体', opened.trimEnd().endsWith('}'));
 
 await page.$eval('.dp-block-source', el => {
@@ -40,12 +44,24 @@ check('本文のソースは変わらない',
 // 壊れた図はページごと落とさず、その場に出す
 await page.click('.dp-sheet:not([hidden]) .dp-figure-body');
 await page.waitForTimeout(200);
+await page.click('.dp-canvas-bar button:text("ソース")');
+await page.waitForTimeout(200);
 await page.$eval('.dp-block-source', el => { el.value = 'free {\n  a ?? b\n}'; });
 await page.click('.dp-tabbar-spacer');
 await page.waitForTimeout(400);
 check('壊れた図はその場で理由を出す', await page.isVisible('.dp-broken'),
   (await page.textContent('.dp-broken').catch(() => '')) ?? '');
 check('ほかのシートは無事', (await page.$$('.dp-sheet')).length === 5);
+
+// 読めない図は図として開けない。直せるように、ソースで開く。
+await page.click('.dp-sheet:not([hidden]) .dp-figure-body');
+await page.waitForTimeout(300);
+check('読めない図はソースで開いて直せる',
+  (await page.inputValue('.dp-block-source')).includes('a ?? b'));
+await page.$eval('.dp-block-source', el => { el.value = 'free {\n  a [A]\n}'; });
+await page.click('.dp-tabbar-spacer');
+await page.waitForTimeout(400);
+check('直せば図として戻る', await page.isVisible('.dp-sheet:not([hidden]) .dp-diagram'));
 
 // --- キャプション（= @import 行）------------------------------------------
 await page.click('.dp-sheet:not([hidden]) .dp-caption');
@@ -97,6 +113,9 @@ await page.click('.dp-sheet:not([hidden]) .dp-figure-body');
 await page.waitForTimeout(250);
 check('図の編集中に書式バーは出さない',
   !(await page.isVisible('.dp-figure-body .dp-format-bar')));
+// 1 度目は図の編集を閉じるだけ（表のグリッドと同じ作法）。
+await page.click('.dp-sheet:not([hidden]) .dp-prose p');
+await page.waitForTimeout(250);
 await page.click('.dp-sheet:not([hidden]) .dp-prose p');
 await page.waitForTimeout(250);
 check('本文の編集では書式バーが出る', await page.isVisible('.dp-prose .dp-format-bar'));

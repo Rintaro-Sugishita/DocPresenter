@@ -43,6 +43,12 @@ export interface LaidOutDiagram {
   /** Ids from back to front: groups before the shapes they contain. */
   readonly order: readonly string[];
   readonly diagnostics: readonly string[];
+  /**
+   * The shift applied to fit the drawing on the canvas. A box on screen sits at
+   * its own coordinate plus this, so an editor subtracts it to turn a position
+   * the pointer landed on back into a pin the file can hold.
+   */
+  readonly origin: Point;
 }
 
 const PAD = 16;          // margin around the drawing
@@ -466,5 +472,6 @@ function normalize(
   return {
     boxes: shifted, routes: shiftedRoutes,
     width: Math.ceil(width), height: Math.ceil(height), order, diagnostics,
+    origin: { x: -minX + PAD, y: -minY + PAD },
   };
 }

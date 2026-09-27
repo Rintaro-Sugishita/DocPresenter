@@ -2,9 +2,19 @@
 // so someone who writes Mermaid can write this, and the layout and style
 // sections stay separate so that moving a shape never touches the semantics.
 
+import { byteLength } from '../bytes.js';
 import type {
-  ArrowStyle, Callout, DiagramFile, DiagramMode, Edge, EdgeStyle, Node, Placement, ShapeKind,
+  ArrowStyle, Callout, DiagramFile, DiagramMode, Edge, EdgeStyle, LayoutBlock, Node, Placement,
+  ShapeKind,
 } from './model.js';
+
+/** One source line, trimmed, with the bytes it occupies. */
+interface SourceLine {
+  readonly text: string;
+  readonly span: { readonly start: number; readonly end: number };
+  /** 1-based, for error messages. */
+  readonly number: number;
+}
 
 export class DiagramParseError extends Error {
   constructor(message: string, readonly line: number) {
@@ -35,7 +45,21 @@ const PLACEMENT = /^([A-Za-z0-9_぀-鿿-]+)\s*@\s*\(\s*(-?\d+)\s*,\s*(-?\d+)\s*\
 const CALLOUT = /^(\S+)\s*@\s*\(\s*(-?\d+)\s*,\s*(-?\d+)\s*\)\s*->\s*\(\s*(-?\d+)\s*,\s*(-?\d+)\s*\)\s*(?:"([^"]*)")?\s*$/;
 
 export function parseDiagram(source: string): DiagramFile {
-  const lines = source.split(/\r?\n/);
+  const raw = source.split(/\r?\n/);
+
+  // Byte offset of the start of each line, built once so every pin can carry
+  // the range it occupies: dragging a shape rewrites that range and nothing
+  // else.
+  const lines: SourceLine[] = [];
+  let at = 0;
+  raw.forEach((line, index) => {
+    const lead = line.length - line.trimStart().length;
+    const start = at + byteLength(line.slice(0, lead));
+    const text = line.trim();
+    lines.push({ text, span: { start, end: start + byteLength(text) }, number: index + 1 });
+    at += byteLength(line) + 1;
+  });
+
   const comments: string[] = [];
   const nodes: Node[] = [];
   const edges: Edge[] = [];
@@ -45,46 +69,60 @@ export function parseDiagram(source: string): DiagramFile {
   let theme: string | undefined;
   let mode: DiagramMode | undefined;
   let image: string | undefined;
+  let layoutBlock: LayoutBlock | undefined;
 
   for (let i = 0; i < lines.length; i++) {
-    const text = (lines[i] ?? '').trim();
+    const line = lines[i]!;
+    const text = line.text;
     if (text === '') continue;
     if (text.startsWith('#')) { comments.push(text.replace(/^#\s?/, '')); continue; }
 
     const section = /^(free|flow|overlay|layout|style)\b([^{]*)\{$/.exec(text);
-    if (!section) throw new DiagramParseError(`解釈できない行: ${text}`, i + 1);
+    if (!section) throw new DiagramParseError(`解釈できない行: ${text}`, line.number);
 
     const kind = section[1]!;
     const header = (section[2] ?? '').trim();
-    const body: string[] = [];
+    const body: SourceLine[] = [];
     let depth = 1;
     const start = i;
     while (++i < lines.length) {
-      const inner = (lines[i] ?? '').trim();
-      depth += countChar(inner, '{') - countChar(inner, '}');
+      const inner = lines[i]!;
+      depth += countChar(inner.text, '{') - countChar(inner.text, '}');
       if (depth === 0) break;
       body.push(inner);
     }
-    if (depth !== 0) throw new DiagramParseError(`'${kind}' が閉じられていない`, start + 1);
+    if (depth !== 0) throw new DiagramParseError(`'${kind}' が閉じられていない`, lines[start]!.number);
 
     if (kind === 'free' || kind === 'flow') {
       mode = kind;
-      parseBody(body, start + 2, nodes, edges);
+      parseBody(body, nodes, edges);
     } else if (kind === 'overlay') {
       mode = kind;
       const quoted = /^"([^"]*)"$/.exec(header);
-      if (!quoted) throw new DiagramParseError('overlay には画像のパスが要る', start + 1);
+      if (!quoted) throw new DiagramParseError('overlay には画像のパスが要る', lines[start]!.number);
       image = quoted[1]!;
-      parseCallouts(body, start + 2, callouts);
+      parseCallouts(body, callouts);
     } else if (kind === 'layout') {
-      parseLayout(body, start + 2, layout);
+      parseLayout(body, layout);
+      const close = lines[Math.min(i, lines.length - 1)]!;
+      layoutBlock = {
+        span: { start: lines[start]!.span.start, end: close.span.end },
+        insertAt: body[body.length - 1]?.span.end ?? lines[start]!.span.end,
+        indent: indentOf(raw[start + 1] ?? '  '),
+      };
     } else {
-      theme = parseStyle(body, style) ?? theme;
+      theme = parseStyle(body.map(l => l.text), style) ?? theme;
     }
   }
 
   if (!mode) throw new DiagramParseError('free / flow / overlay のいずれのセクションも無い', 1);
-  return { mode, comments, nodes, edges, layout, theme, style, image, callouts };
+  return { mode, comments, nodes, edges, layout, layoutBlock, theme, style, image, callouts };
+}
+
+/** The indent of the first line inside a block, so a new line matches it. */
+function indentOf(line: string): string {
+  const found = /^\s*/.exec(line)?.[0] ?? '';
+  return found === '' ? '  ' : found;
 }
 
 function countChar(text: string, char: string): number {
@@ -93,10 +131,11 @@ function countChar(text: string, char: string): number {
   return n;
 }
 
-function parseBody(body: string[], baseLine: number, nodes: Node[], edges: Edge[]): void {
-  body.forEach((text, offset) => {
+function parseBody(body: readonly SourceLine[], nodes: Node[], edges: Edge[]): void {
+  body.forEach(source => {
+    const text = source.text;
     if (text === '' || text.startsWith('#')) return;
-    const line = baseLine + offset;
+    const line = source.number;
 
     const group = GROUP.exec(text);
     if (group) {
@@ -140,30 +179,34 @@ function readShape(text: string): { text: string; shape: ShapeKind } | undefined
   return undefined;
 }
 
-function parseCallouts(body: string[], baseLine: number, out: Callout[]): void {
-  body.forEach((text, offset) => {
+function parseCallouts(body: readonly SourceLine[], out: Callout[]): void {
+  body.forEach(source => {
+    const text = source.text;
     if (text === '' || text.startsWith('#')) return;
     const m = CALLOUT.exec(text);
-    if (!m) throw new DiagramParseError(`注釈の記法が読めない: ${text}`, baseLine + offset);
+    if (!m) throw new DiagramParseError(`注釈の記法が読めない: ${text}`, source.number);
     out.push({
       marker: m[1]!,
       x: Number(m[2]), y: Number(m[3]),
       targetX: Number(m[4]), targetY: Number(m[5]),
       text: m[6] ?? '',
+      span: source.span,
     });
   });
 }
 
-function parseLayout(body: string[], baseLine: number, out: Map<string, Placement>): void {
-  body.forEach((text, offset) => {
+function parseLayout(body: readonly SourceLine[], out: Map<string, Placement>): void {
+  body.forEach(source => {
+    const text = source.text;
     if (text === '' || text.startsWith('#')) return;
     const m = PLACEMENT.exec(text);
-    if (!m) throw new DiagramParseError(`配置の記法が読めない: ${text}`, baseLine + offset);
+    if (!m) throw new DiagramParseError(`配置の記法が読めない: ${text}`, source.number);
     out.set(m[1]!, {
       x: Number(m[2]), y: Number(m[3]),
       width: m[4] ? Number(m[4]) : undefined,
       height: m[5] ? Number(m[5]) : undefined,
       z: m[6] ? Number(m[6]) : undefined,
+      span: source.span,
     });
   });
 }

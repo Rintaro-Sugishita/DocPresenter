@@ -179,6 +179,44 @@ export const EDITOR_STYLE = `
 }
 .dp-grid-bar button:disabled { opacity: 0.4; cursor: default; }
 
+/* The canvas: direct manipulation of a diagram. Everything here is editor
+   chrome drawn over the real drawing, never part of the output. */
+.dp-canvas { font-family: system-ui, sans-serif; font-size: 13px; }
+.dp-canvas-bar {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin-bottom: 0.5em;
+}
+.dp-canvas-bar button {
+  border: 1px solid #d3d7dd; background: #f7f8fa; color: #3a4048; cursor: pointer;
+  padding: 0.3em 0.6em; border-radius: 3px; font: inherit; font-size: 12px;
+}
+.dp-canvas-bar button:hover { background: #eceef1; }
+.dp-canvas-where {
+  color: #3a4048; font-size: 12px; font-variant-numeric: tabular-nums;
+  min-width: 14em; padding: 0.2em 0.4em; background: #f2f3f5; border-radius: 3px;
+}
+.dp-canvas-hint { color: #8b929c; font-size: 11px; margin-left: auto; }
+.dp-canvas-stage { outline: none; }
+.dp-canvas-stage:focus-visible { box-shadow: 0 0 0 2px #cfe0f5; }
+.dp-canvas-stage [data-node] { cursor: move; }
+.dp-canvas-outline {
+  fill: none; stroke: #1f5fa8; stroke-width: 1.5; stroke-dasharray: 4 3; pointer-events: none;
+}
+.dp-canvas-handle { fill: #fff; stroke: #1f5fa8; stroke-width: 1.5; cursor: nwse-resize; }
+/* Pink and dashed, so a guide never reads as part of the drawing. */
+.dp-canvas-guide { stroke: #e0439b; stroke-width: 1; stroke-dasharray: 3 3; pointer-events: none; }
+/* Connections are re-routed when the shape lands, so they fade while it moves
+   rather than trailing behind it. */
+.dp-canvas-dragging .dp-edge { opacity: 0.25; }
+.dp-overlay-editing { outline: none; }
+.dp-overlay-editing .dp-callout { cursor: move; }
+.dp-overlay-editing .dp-callout.dp-picked { box-shadow: 0 0 0 2px #1f5fa8; }
+/* The end of the leader line, so what a callout points at can be moved too. */
+.dp-callout-handle {
+  position: absolute; transform: translate(-50%, -50%);
+  width: 9px; height: 9px; border-radius: 50%;
+  background: #fff; border: 1.5px solid #1f5fa8; cursor: move;
+}
+
 .dp-grid-table { border-collapse: collapse; width: 100%; }
 .dp-grid-table th, .dp-grid-table td {
   border: 1px solid #c8ccd2; padding: 0.3em 0.5em; vertical-align: top;

@@ -74,7 +74,8 @@ describe('画像注釈のレンダリング', () => {
       readFileSync('sample/docs/auth-design/login-screen-overlay.dgm', 'utf8'));
     const html = renderOverlay(diagram);
     expect(html).toContain('src="../assets/login-screen.png"');
-    expect(html).toContain('class="dp-callout" style="left:168px;top:126px"');
+    // The marker carries its own name, so an editor can find the pair it draws.
+    expect(html).toContain('class="dp-callout" data-callout="①" style="left:168px;top:126px"');
     expect(html).toContain('<ol class="dp-callouts">');
     expect(html).toContain('ログイン状態を保持');
   });

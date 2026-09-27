@@ -2,6 +2,8 @@
 // same model with its layout computed, so both share these types: the
 // difference is only how much of the layout layer is filled in.
 
+import type { ByteSpan } from '../document/model.js';
+
 export type ShapeKind =
   | 'rect' | 'round-rect' | 'stadium' | 'cylinder' | 'diamond'
   | 'ellipse' | 'note' | 'text' | 'group';
@@ -34,6 +36,18 @@ export interface Placement {
   readonly width: number | undefined;
   readonly height: number | undefined;
   readonly z: number | undefined;
+  /** The pin's own line, so dragging one shape rewrites one line. */
+  readonly span: ByteSpan;
+}
+
+/** Where pins live, so dragging a shape that has none can add one. */
+export interface LayoutBlock {
+  /** The whole `layout { … }` block. */
+  readonly span: ByteSpan;
+  /** Just before the closing brace: where a new pin goes. */
+  readonly insertAt: number;
+  /** The indent the existing pins use. */
+  readonly indent: string;
 }
 
 export type DiagramMode = 'free' | 'flow' | 'overlay';
@@ -51,6 +65,8 @@ export interface Callout {
   readonly targetX: number;
   readonly targetY: number;
   readonly text: string;
+  /** The callout's own line, for moving one marker. */
+  readonly span: ByteSpan;
 }
 
 export interface DiagramFile {
@@ -60,6 +76,8 @@ export interface DiagramFile {
   readonly edges: readonly Edge[];
   /** The layout layer: only what a human pinned. */
   readonly layout: ReadonlyMap<string, Placement>;
+  /** Absent when the file has no `layout { … }` block yet. */
+  readonly layoutBlock: LayoutBlock | undefined;
   readonly theme: string | undefined;
   readonly style: ReadonlyMap<string, ReadonlyMap<string, string>>;
   /** Overlay only: the image the callouts annotate. */

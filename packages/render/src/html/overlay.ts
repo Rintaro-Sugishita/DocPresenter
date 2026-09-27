@@ -35,13 +35,16 @@ function renderMarker(callout: Callout): string {
   const top = Math.min(callout.y, callout.targetY);
   const width = Math.max(1, Math.abs(callout.targetX - callout.x));
   const height = Math.max(1, Math.abs(callout.targetY - callout.y));
-  const leader = `<svg class="dp-callout-leader" style="left:${left}px;top:${top}px"`
+  // The marker's own name identifies it, so an editor can find the pair on the
+  // page without counting them.
+  const named = ` data-callout="${escapeAttr(callout.marker)}"`;
+  const leader = `<svg class="dp-callout-leader"${named} style="left:${left}px;top:${top}px"`
     + ` width="${width}" height="${height}" viewBox="0 0 ${width} ${height}"`
     + ` xmlns="http://www.w3.org/2000/svg" aria-hidden="true">`
     + `<line x1="${callout.x - left}" y1="${callout.y - top}"`
     + ` x2="${callout.targetX - left}" y2="${callout.targetY - top}"/></svg>`;
 
   return leader
-    + `<span class="dp-callout" style="left:${callout.x}px;top:${callout.y}px"`
+    + `<span class="dp-callout"${named} style="left:${callout.x}px;top:${callout.y}px"`
     + ` title="${escapeAttr(callout.text)}">${escapeHtml(callout.marker)}</span>`;
 }
