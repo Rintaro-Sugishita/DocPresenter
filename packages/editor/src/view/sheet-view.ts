@@ -81,7 +81,12 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
   let grid: { path: string; at: GridPosition; target: string } | undefined;
   let mounted: Grid | undefined;
   /** The diagram open for direct manipulation, and the shapes picked in it. */
-  let canvas: { path: string; selected: readonly string[] } | undefined;
+  let canvas: {
+    path: string;
+    selected: readonly string[];
+    /** The connection picked, as `from->to`; shapes and a line never both. */
+    edge: string | undefined;
+  } | undefined;
   let settings = options.settings ?? DEFAULT_SETTINGS;
 
   const owner = root.ownerDocument;
@@ -187,7 +192,7 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
     if (path.toLowerCase().endsWith('.dgm')) {
       if (canvas?.path === path) return;
       const other = grid !== undefined || canvas !== undefined;
-      canvas = { path, selected: [] };
+      canvas = { path, selected: [], edge: undefined };
       grid = undefined;
       endEdit(true);
       if (other) draw(); else mountCanvas(body);
@@ -278,8 +283,9 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
       file,
       source: text,
       selected: current.selected,
-      apply: (make: () => Edit, selected: readonly string[]) => {
-        if (canvas?.path === current.path) canvas = { ...canvas, selected };
+      selectedEdge: current.edge,
+      apply: (make: () => Edit, selected: readonly string[], edge?: string | undefined) => {
+        if (canvas?.path === current.path) canvas = { ...canvas, selected, edge };
         commit(() => {
           try {
             return { ...make(), path: current.path };
@@ -289,7 +295,9 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
           }
         }, active);
       },
-      select: (selected: readonly string[]) => { if (canvas) canvas = { ...canvas, selected }; },
+      select: (selected: readonly string[], edge?: string | undefined) => {
+        if (canvas) canvas = { ...canvas, selected, edge };
+      },
       close: (): void => { canvas = undefined; draw(); },
       showSource: (): void => {
         canvas = undefined;

@@ -404,6 +404,36 @@ export function connectNodes(file: DiagramFile, source: string, from: string, to
   }], '線を引く');
 }
 
+/**
+ * Moves one end of a connection to another shape. The line is rewritten from
+ * its own text, so the connector, the label and the spacing the author chose
+ * all survive a re-attachment.
+ */
+export function reconnect(
+  file: DiagramFile, source: string, edge: { from: string; to: string },
+  ends: { readonly from?: string; readonly to?: string },
+): Edit {
+  const found = file.edges.find(e => e.from === edge.from && e.to === edge.to);
+  if (!found) throw new DiagramEditError(`${edge.from} から ${edge.to} への線が無い`);
+  const from = ends.from ?? found.from;
+  const to = ends.to ?? found.to;
+  if (from === to) throw new DiagramEditError('同じ図形どうしは繋げない');
+  find(file, from);
+  find(file, to);
+  if (from !== found.from || to !== found.to) {
+    if (file.edges.some(e => e.from === from && e.to === to)) {
+      throw new DiagramEditError(`${from} から ${to} へは既に繋がっている`);
+    }
+  }
+  const line = sliceBytes(source, found.span.start, found.span.end);
+  const written = line.replace(
+    /^(\S+)(\s*)(-->|->|--|-\.->)(\s*)(\S+)/,
+    (_whole, _a, before: string, arrow: string, after: string) =>
+      `${from}${before}${arrow}${after}${to}`,
+  );
+  return { span: found.span, text: written, description: '線をつなぎ替え' };
+}
+
 /** Removes one connection, named by its two ends. */
 export function disconnectNodes(
   file: DiagramFile, source: string, from: string, to: string,

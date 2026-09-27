@@ -66,7 +66,7 @@ function renderNode(node: Node, box: Box, diagram: DiagramFile): string {
   const shape = shapeElement(node.shape, box);
   const text = node.shape === 'group'
     ? groupLabel(box)
-    : label(box, diagram.style.get(node.id)?.get('align'));
+    : label(box, diagram.style.get(node.id)?.get('align'), node.shape);
   const colours = styleColours(diagram, node.id);
   const style = colours === '' ? '' : ` style="${escapeAttr(colours)}"`;
   return `<g class="${escapeAttr(classes.join(' '))}" data-node="${escapeAttr(node.id)}"${style}>`
@@ -120,7 +120,7 @@ function shapeElement(shape: ShapeKind, box: Box): string {
         [x + w / 2, y], [x + w, y + h / 2], [x + w / 2, y + h], [x, y + h / 2],
       ].map(([px, py]) => `${n(px!)},${n(py!)}`).join(' ')}"/>`;
     case 'cylinder': {
-      const ry = Math.min(12, h / 4);
+      const ry = cylinderRadius(h);
       return `<path d="M ${n(x)} ${n(y + ry)}`
         + ` A ${n(w / 2)} ${n(ry)} 0 0 1 ${n(x + w)} ${n(y + ry)}`
         + ` L ${n(x + w)} ${n(y + h - ry)}`
@@ -151,16 +151,25 @@ function rect(x: number, y: number, w: number, h: number, r: number): string {
  * label on a screen mock-up is not, and a screen made of centred labels reads
  * as nothing anyone would build.
  */
-function label(box: Box, align: string | undefined): string {
+function label(box: Box, align: string | undefined, shape: ShapeKind): string {
   const anchor = align === 'left' ? 'start' : align === 'right' ? 'end' : 'middle';
   const inset = 8;
   const x = anchor === 'start' ? box.x + inset
     : anchor === 'end' ? box.x + box.width - inset
     : box.x + box.width / 2;
-  const top = box.y + box.height / 2 - ((box.lines.length - 1) * LINE_HEIGHT) / 2;
+  // A cylinder's lid takes the top of the box, so the middle of the box is not
+  // the middle of the space the text has. Centring there runs the text into
+  // the curve.
+  const lid = shape === 'cylinder' ? cylinderRadius(box.height) : 0;
+  const top = box.y + (box.height + lid) / 2 - ((box.lines.length - 1) * LINE_HEIGHT) / 2;
   const spans = box.lines.map((line, i) =>
     `<tspan x="${n(x)}" y="${n(top + i * LINE_HEIGHT)}">${escapeHtml(line)}</tspan>`);
   return `<text class="dp-label" text-anchor="${anchor}" dominant-baseline="central">${spans.join('')}</text>`;
+}
+
+/** How deep the lid of a cylinder is. The body and the text both need it. */
+function cylinderRadius(height: number): number {
+  return Math.min(12, height / 4);
 }
 
 /** A group is named in its top-left corner so the label never covers a shape. */

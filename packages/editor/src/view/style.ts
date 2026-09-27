@@ -212,6 +212,12 @@ export const EDITOR_STYLE = `
 .dp-canvas-handle { fill: #fff; stroke: #1f5fa8; stroke-width: 1.5; cursor: nwse-resize; }
 /* Pink and dashed, so a guide never reads as part of the drawing. */
 .dp-canvas-guide { stroke: #e0439b; stroke-width: 1; stroke-dasharray: 3 3; pointer-events: none; }
+.dp-canvas-edge-picked {
+  fill: none; stroke: #1f5fa8; stroke-width: 2.5; opacity: 0.45; pointer-events: none;
+}
+.dp-canvas-end { fill: #fff; stroke: #1f5fa8; stroke-width: 1.5; cursor: move; }
+.dp-canvas-rubber { stroke: #1f5fa8; stroke-width: 1.5; stroke-dasharray: 4 3; pointer-events: none; }
+
 /* The rubber band: what a press on empty canvas draws to pick several shapes. */
 .dp-canvas-band {
   fill: rgba(31, 95, 168, 0.08); stroke: #1f5fa8; stroke-width: 1;

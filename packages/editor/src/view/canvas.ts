@@ -10,8 +10,8 @@ import { layOutDiagram, type Box, type DiagramFile, type ShapeKind } from '@docp
 import { renderDiagram } from '@docpresenter/render';
 import type { Edit } from '../edit.js';
 import {
-  addNode, canUnpin, connectNodes, groupMembers, groupNodes, nextShapeId, pinNode, pinNodes,
-  removeNodes, setNodeShape, setNodeText, unpinNode,
+  addNode, canUnpin, connectNodes, disconnectNodes, groupMembers, groupNodes, nextShapeId, pinNode,
+  pinNodes, reconnect, removeNodes, setNodeShape, setNodeText, unpinNode,
 } from '../diagram.js';
 import { createMenu, type MenuItem } from './menu.js';
 
@@ -48,10 +48,14 @@ export interface CanvasOptions {
   readonly source: string;
   /** The shapes picked, in the order they were picked. */
   readonly selected: readonly string[];
+  /** The connection picked, as `from->to`. A line or shapes, never both. */
+  readonly selectedEdge: string | undefined;
   /** Runs one edit; the caller re-renders and mounts the canvas again. */
-  readonly apply: (make: () => Edit, selected: readonly string[]) => void;
+  readonly apply: (
+    make: () => Edit, selected: readonly string[], edge?: string | undefined,
+  ) => void;
   /** Remembers the selection without writing anything. */
-  readonly select: (ids: readonly string[]) => void;
+  readonly select: (ids: readonly string[], edge?: string | undefined) => void;
   readonly showSource: () => void;
   readonly close: () => void;
   readonly onError?: (message: string) => void;
@@ -74,6 +78,12 @@ export function createCanvas(options: CanvasOptions): Canvas {
   // shapes at once both need to know what was picked, in what order.
   let picked = options.selected.filter(id => laid.boxes.has(id));
   const primary = (): string | undefined => picked[picked.length - 1];
+  const nameOf = (edge: { from: string; to: string }): string => `${edge.from}->${edge.to}`;
+  /** The connection picked, if it is a connection that is picked. */
+  let line = laid.routes.some(r => nameOf(r.edge) === options.selectedEdge)
+    ? options.selectedEdge : undefined;
+  const lineOf = (name: string | undefined) =>
+    laid.routes.find(r => nameOf(r.edge) === name);
 
   // Declared up here because the bar is built before the code below runs, and
   // a `let` reached early is an error rather than an empty box.
@@ -136,6 +146,36 @@ export function createCanvas(options: CanvasOptions): Canvas {
       overlay.append(rect);
     }
 
+    const chosen = lineOf(line);
+    if (chosen) {
+      const mark = shape('polyline', 'dp-canvas-edge-picked');
+      mark.setAttribute('points', points(chosen.points));
+      overlay.append(mark);
+      // The two ends are draggable: that is how a line is re-attached.
+      const ends = [chosen.points[0], chosen.points[chosen.points.length - 1]];
+      ends.forEach((at, index) => {
+        if (!at) return;
+        const end = shape('circle', 'dp-canvas-end');
+        end.setAttribute('cx', String(reaching && index === (reaching.end === 'from' ? 0 : 1)
+          ? reaching.at.x : at.x));
+        end.setAttribute('cy', String(reaching && index === (reaching.end === 'from' ? 0 : 1)
+          ? reaching.at.y : at.y));
+        end.setAttribute('r', String(5 / scale()));
+        end.setAttribute('data-end', index === 0 ? 'from' : 'to');
+        overlay.append(end);
+      });
+      if (reaching) {
+        const rubber = shape('line', 'dp-canvas-rubber');
+        const fixed = reaching.end === 'from'
+          ? chosen.points[chosen.points.length - 1]! : chosen.points[0]!;
+        rubber.setAttribute('x1', String(fixed.x));
+        rubber.setAttribute('y1', String(fixed.y));
+        rubber.setAttribute('x2', String(reaching.at.x));
+        rubber.setAttribute('y2', String(reaching.at.y));
+        overlay.append(rubber);
+      }
+    }
+
     for (const id of picked) {
       const box = id === primary() ? preview?.box ?? boxOf(id) : shifted(id);
       if (!box) continue;
@@ -169,6 +209,48 @@ export function createCanvas(options: CanvasOptions): Canvas {
     }
   }
 
+  function points(list: readonly { x: number; y: number }[]): string {
+    return list.map(p => `${p.x},${p.y}`).join(' ');
+  }
+
+  /**
+   * The connection under a point, if one is near enough. Lines are found by
+   * distance rather than by a wide invisible shape over them: an invisible
+   * shape would have to sit above the drawing, and would then take the presses
+   * meant for whatever it crosses.
+   */
+  function lineAt(at: { x: number; y: number }): string | undefined {
+    const near = 6 / scale();
+    let best: { name: string; distance: number } | undefined;
+    for (const route of laid.routes) {
+      for (let i = 0; i + 1 < route.points.length; i++) {
+        const distance = toSegment(at, route.points[i]!, route.points[i + 1]!);
+        if (distance <= near && (!best || distance < best.distance)) {
+          best = { name: nameOf(route.edge), distance };
+        }
+      }
+    }
+    return best?.name;
+  }
+
+  /** Distance from a point to a segment. */
+  function toSegment(
+    p: { x: number; y: number }, a: { x: number; y: number }, b: { x: number; y: number },
+  ): number {
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    const length = dx * dx + dy * dy;
+    const t = length === 0 ? 0 : Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / length));
+    return Math.hypot(p.x - (a.x + dx * t), p.y - (a.y + dy * t));
+  }
+
+  /** Where a press landed, in the coordinates the laid-out boxes use. */
+  function pointOn(event: MouseEvent): { x: number; y: number } {
+    const rect = drawing.getBoundingClientRect();
+    const factor = scale();
+    return { x: (event.clientX - rect.left) / factor, y: (event.clientY - rect.top) / factor };
+  }
+
   function place(node: SVGElement, box: Box): void {
     node.setAttribute('x', String(box.x));
     node.setAttribute('y', String(box.y));
@@ -194,9 +276,20 @@ export function createCanvas(options: CanvasOptions): Canvas {
   }
 
   function pick(ids: readonly string[]): void {
-    if (ids.length === picked.length && ids.every((id, i) => picked[i] === id)) return;
+    if (line === undefined && ids.length === picked.length
+      && ids.every((id, i) => picked[i] === id)) return;
     picked = [...ids];
-    options.select(picked);
+    line = undefined;
+    options.select(picked, undefined);
+    describe();
+    paint();
+  }
+
+  /** Picking a line unpicks the shapes: an operation acts on one or the other. */
+  function pickLine(name: string | undefined): void {
+    line = name;
+    picked = [];
+    options.select([], name);
     describe();
     paint();
   }
@@ -225,12 +318,35 @@ export function createCanvas(options: CanvasOptions): Canvas {
   let moving = new Set<string>();
   /** The rubber band, in the drawing's coordinates. */
   let band: { from: { x: number; y: number }; to: { x: number; y: number } } | undefined;
+  /** An end of the picked line being dragged onto another shape. */
+  let reaching: { end: 'from' | 'to'; at: { x: number; y: number } } | undefined;
 
   stage.addEventListener('pointerdown', event => {
     if (event.button !== 0) return;
     const target = event.target as Element | null;
     const onHandle = target?.closest('.dp-canvas-handle') != null && picked.length === 1;
+    const onEnd = target?.closest('.dp-canvas-end')?.getAttribute('data-end');
     const id = onHandle ? primary() : target?.closest('[data-node]')?.getAttribute('data-node');
+    // A shape under the pointer wins; only then is a line looked for.
+    const onLine = id === undefined || id === null ? lineAt(pointOn(event)) : undefined;
+
+    if (onEnd === 'from' || onEnd === 'to') {
+      event.stopPropagation();
+      stage.focus({ preventScroll: true });
+      reaching = { end: onEnd, at: pointIn(event) };
+      drag = {
+        kind: 'move', from: { x: event.clientX, y: event.clientY },
+        pointerId: event.pointerId, id: '', box: bandBox(), moved: false,
+        by: { x: 0, y: 0 }, size: undefined,
+      };
+      return;
+    }
+    if (onLine !== undefined) {
+      event.stopPropagation();
+      stage.focus({ preventScroll: true });
+      pickLine(onLine);
+      return;
+    }
 
     // The press belongs to the canvas, not to the page behind it — but the
     // default is cancelled on the mouse event below rather than here:
@@ -326,6 +442,11 @@ export function createCanvas(options: CanvasOptions): Canvas {
       current.moved = true;
     }
 
+    if (reaching) {
+      reaching = { end: reaching.end, at: pointIn(event) };
+      paint();
+      return;
+    }
     if (band) {
       band = { from: band.from, to: pointIn(event) };
       paint();
@@ -362,6 +483,27 @@ export function createCanvas(options: CanvasOptions): Canvas {
     drag = undefined;
     drawing.classList.remove('dp-canvas-dragging');
     if (stage.hasPointerCapture(event.pointerId)) stage.releasePointerCapture(event.pointerId);
+
+    if (reaching) {
+      const end = reaching.end;
+      const at = reaching.at;
+      reaching = undefined;
+      const chosen = lineOf(line);
+      if (!chosen || !current.moved) { paint(); return; }
+      // Whatever shape the end was let go over is the new end. Let go over
+      // nothing and the line stays as it was.
+      const onto = [...laid.boxes].find(([, box]) =>
+        at.x + laid.origin.x >= box.x && at.x + laid.origin.x <= box.x + box.width
+        && at.y + laid.origin.y >= box.y && at.y + laid.origin.y <= box.y + box.height)?.[0];
+      if (onto === undefined) { paint(); return; }
+      const edge = { from: chosen.edge.from, to: chosen.edge.to };
+      const ends = end === 'from' ? { from: onto } : { to: onto };
+      options.apply(
+        () => reconnect(file, source, edge, ends), [],
+        end === 'from' ? `${onto}->${edge.to}` : `${edge.from}->${onto}`,
+      );
+      return;
+    }
 
     if (band) {
       const box = bandBox();
@@ -487,6 +629,18 @@ export function createCanvas(options: CanvasOptions): Canvas {
   stage.addEventListener('contextmenu', event => {
     event.preventDefault();
     event.stopPropagation();
+    const overShape = (event.target as Element | null)?.closest('[data-node]');
+    const onLine = overShape ? undefined : lineAt(pointOn(event));
+    if (onLine !== undefined) {
+      pickLine(onLine);
+      const edge = lineOf(onLine)?.edge;
+      if (!edge) return;
+      menu.open(event.clientX, event.clientY, [{
+        label: '線を消す',
+        run: () => options.apply(() => disconnectNodes(file, source, edge.from, edge.to), []),
+      }]);
+      return;
+    }
     const id = (event.target as Element | null)?.closest('[data-node]')?.getAttribute('data-node');
     if (id === null || id === undefined) {
       menu.open(event.clientX, event.clientY, addItems(event));
@@ -662,6 +816,13 @@ export function createCanvas(options: CanvasOptions): Canvas {
       pick(next === undefined ? [] : [next]);
       return;
     }
+    const chosen = lineOf(line);
+    if ((event.key === 'Delete' || event.key === 'Backspace') && chosen) {
+      event.preventDefault();
+      const edge = chosen.edge;
+      options.apply(() => disconnectNodes(file, source, edge.from, edge.to), []);
+      return;
+    }
     if ((event.key === 'Delete' || event.key === 'Backspace') && picked.length > 0) {
       event.preventDefault();
       const ids = [...picked];
@@ -732,6 +893,11 @@ export function createCanvas(options: CanvasOptions): Canvas {
     if (!where) return;
     if (connecting !== undefined) {
       where.textContent = `${connecting} から線を引く先を選ぶ`;
+      return;
+    }
+    const chosen = lineOf(line);
+    if (chosen) {
+      where.textContent = `${chosen.edge.from} → ${chosen.edge.to}  (線)`;
       return;
     }
     if (picked.length > 1) {

@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { parseDiagram } from '@docpresenter/core';
 import {
   addNode, applyEdit, canUnpin, connectNodes, DiagramEditError, disconnectNodes, groupMembers,
-  groupNodes, moveCallout, pinNode, pinNodes, removeNode, removeNodes, setNodeShape, setNodeText,
-  unpinNode,
+  groupNodes, moveCallout, pinNode, pinNodes, reconnect, removeNode, removeNodes, setNodeShape,
+  setNodeText, unpinNode,
 } from '../src/index.js';
 
 const FLOW = [
@@ -222,6 +222,28 @@ describe('図形の追加と削除', () => {
     const gone = applyEdit(drawn, disconnectNodes(parseDiagram(drawn), drawn, 'start', 'done'));
     expect(parseDiagram(gone).edges.map(e => `${e.from}->${e.to}`)).not.toContain('start->done');
     expect(gone).toBe(FLOW);
+  });
+
+  it('線のつなぎ替えは同じ行の書き換え', () => {
+    const written = run(FLOW, f => reconnect(f, FLOW, { from: 'start', to: 'next' }, { to: 'done' }));
+    expect(written).toContain('  start --> done');
+    expect(parseDiagram(written).edges.map(e => `${e.from}->${e.to}`))
+      .toEqual(['start->done', 'next->done']);
+  });
+
+  it('つなぎ替えてもラベルと線種は残る', () => {
+    const source = 'flow {\n  a [A]\n  b [B]\n  c [C]\n  a -.-> b  "かもしれない"\n}';
+    const written = applyEdit(source,
+      reconnect(parseDiagram(source), source, { from: 'a', to: 'b' }, { to: 'c' }));
+    expect(written).toContain('  a -.-> c  "かもしれない"');
+    const edge = parseDiagram(written).edges[0]!;
+    expect(edge.line).toBe('dashed');
+    expect(edge.label).toBe('かもしれない');
+  });
+
+  it('つなぎ替え先が既に繋がっていれば断る', () => {
+    expect(() => reconnect(parseDiagram(FLOW), FLOW, { from: 'start', to: 'next' }, { from: 'next' }))
+      .toThrow(DiagramEditError);
   });
 
   it('同じ線を二度は引かない', () => {

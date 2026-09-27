@@ -140,4 +140,77 @@ check('ほかのピンは 1 文字も動かない', back.includes('  frame    @ 
   back.split('\n').find(l => l.includes('frame')));
 
 await page.screenshot({ path: 'out/canvas-shapes.png' });
+
+
+// --- 線を選ぶ・消す・つなぎ替える -----------------------------------------
+await openSheet(4);
+// 線は「近さ」で拾う。描かれている線の中ほどを押す。
+const pressLine = async (from, to) => {
+  const at = await page.$eval('.dp-canvas-stage svg', (svg, key) => {
+    const g = svg.querySelector(`[data-edge="${key}"] polyline`);
+    const points = g.getAttribute('points').split(' ').map(p => p.split(',').map(Number));
+    // 折れている線もあるので、線の長さの真ん中を取る。
+    const lengths = points.slice(1).map((p, i) => Math.hypot(p[0] - points[i][0], p[1] - points[i][1]));
+    const half = lengths.reduce((a, b) => a + b, 0) / 2;
+    let walked = 0;
+    let found = points[0];
+    for (let i = 0; i < lengths.length; i++) {
+      if (walked + lengths[i] >= half) {
+        const t = (half - walked) / (lengths[i] || 1);
+        found = [points[i][0] + (points[i + 1][0] - points[i][0]) * t,
+          points[i][1] + (points[i + 1][1] - points[i][1]) * t];
+        break;
+      }
+      walked += lengths[i];
+    }
+    const box = svg.getBoundingClientRect();
+    const scale = box.width / svg.viewBox.baseVal.width;
+    return { x: box.left + found[0] * scale, y: box.top + found[1] * scale };
+  }, `${from}->${to}`);
+  await page.mouse.click(at.x, at.y);
+  await page.waitForTimeout(250);
+};
+await pressLine('active', 'expired');
+check('線をクリックすると線が選ばれる',
+  (await page.textContent('.dp-sheet:not([hidden]) .dp-canvas-where')).includes('active → expired'),
+  await page.textContent('.dp-sheet:not([hidden]) .dp-canvas-where'));
+check('両端に掴む点が出る', (await page.$$('.dp-canvas-end')).length === 2,
+  String((await page.$$('.dp-canvas-end')).length));
+
+// つなぎ替え先として、まだどの線も繋がっていない図形を 1 つ足す
+await page.click('.dp-sheet:not([hidden]) .dp-canvas-bar button:text("＋ 図形")');
+await page.waitForSelector('.dp-menu button');
+await page.click(item('＋ 四角'));
+await page.waitForTimeout(400);
+await pressLine('active', 'expired');
+
+// つなぎ替え: 終端を別の図形へ
+const factor = await page.$eval('.dp-canvas-stage svg', svg =>
+  svg.getBoundingClientRect().width / svg.viewBox.baseVal.width);
+const endAt = await page.locator('.dp-canvas-end[data-end="to"]').boundingBox();
+const onto = await page.locator(node('box1')).boundingBox();
+await page.mouse.move(endAt.x + endAt.width / 2, endAt.y + endAt.height / 2);
+await page.mouse.down();
+await page.mouse.move(onto.x + onto.width / 2, onto.y + onto.height / 2, { steps: 10 });
+await page.mouse.up();
+await page.waitForTimeout(400);
+const rewired = await source();
+check('線のつなぎ替えは同じ 1 行の書き換え',
+  rewired.includes('  active  --> box1  "24 時間経過"'),
+  rewired.split('\n').find(l => l.includes('active  -->')));
+check('ラベルも線種もそのまま', !rewired.includes('active  --> expired'));
+void factor;
+
+// 消す
+await pressLine('active', 'box1');
+check('つなぎ替えた線をもう一度選べる',
+  (await page.textContent('.dp-sheet:not([hidden]) .dp-canvas-where')).includes('active → box1'),
+  await page.textContent('.dp-sheet:not([hidden]) .dp-canvas-where'));
+await page.keyboard.press('Delete');
+await page.waitForTimeout(400);
+const cut = await source();
+check('Delete で線が消える', !cut.includes('active  --> box1'),
+  cut.split('\n').filter(l => l.includes('active  -->')).join(' / '));
+check('図形は残っている', cut.includes('  active  [有効]') && cut.includes('  revoked [失効]'));
+
 await browser.close();

@@ -61,6 +61,8 @@ const FONT = 14;
 const LINE_HEIGHT = 20;
 const TEXT_PAD = 24;
 const MAX_NODE_WIDTH = 260;
+/** The room a cylinder's lid takes out of its box. */
+const CYLINDER_LID = 24;
 
 /** The plate a connection's label sits on. The renderer draws it; the layout
  *  has to know its size so the label is not left outside the canvas. */
@@ -306,9 +308,12 @@ function measure(node: Node, diagram: DiagramFile): { width: number; height: num
     : Math.min(MAX_NODE_WIDTH, Math.max(DEFAULT_SIZE.width, textWidth(node.text, FONT) + TEXT_PAD)) - TEXT_PAD;
   const lines = wrapText(node.text, inner, FONT);
   const widest = lines.reduce((w, line) => Math.max(w, textWidth(line, FONT)), 0);
+  // A cylinder spends the top of its box on the lid, so the text needs the
+  // room back; otherwise two lines run into the curve.
+  const lid = node.shape === 'cylinder' ? CYLINDER_LID : 0;
   return {
     width: Math.max(DEFAULT_SIZE.width, Math.ceil(widest) + TEXT_PAD),
-    height: Math.max(DEFAULT_SIZE.height, lines.length * LINE_HEIGHT + TEXT_PAD),
+    height: Math.max(DEFAULT_SIZE.height, lines.length * LINE_HEIGHT + TEXT_PAD + lid),
     lines,
   };
 }
