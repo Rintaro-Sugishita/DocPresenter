@@ -190,6 +190,7 @@ export const EDITOR_STYLE = `
   padding: 0.3em 0.6em; border-radius: 3px; font: inherit; font-size: 12px;
 }
 .dp-canvas-bar button:hover { background: #eceef1; }
+.dp-canvas-bar button:disabled { opacity: 0.4; cursor: default; }
 .dp-canvas-where {
   color: #3a4048; font-size: 12px; font-variant-numeric: tabular-nums;
   min-width: 14em; padding: 0.2em 0.4em; background: #f2f3f5; border-radius: 3px;

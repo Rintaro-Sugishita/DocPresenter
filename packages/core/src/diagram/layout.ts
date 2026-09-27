@@ -97,6 +97,8 @@ export function layOutDiagram(diagram: DiagramFile): LaidOutDiagram {
     });
   }
 
+  park(plain.filter(node => !boxes.has(node.id)), sizes, boxes);
+
   for (const group of groups) {
     const box = groupBox(group, diagram, boxes, diagnostics);
     if (box) boxes.set(group.id, box);
@@ -110,6 +112,29 @@ export function layOutDiagram(diagram: DiagramFile): LaidOutDiagram {
 
   const routes = route(diagram, boxes, auto.rank);
   return normalize(boxes, routes, diagram, diagnostics);
+}
+
+/**
+ * Puts the shapes that have nowhere to be in a row under the drawing. A shape
+ * with no position is still in the file, and a drawing that answers that by
+ * showing nothing is a drawing that lies about its own contents: it has to be
+ * visible to be draggable, and draggable to be fixed.
+ */
+function park(
+  missing: readonly Node[],
+  sizes: ReadonlyMap<string, { width: number; height: number; lines: readonly string[] }>,
+  boxes: Map<string, Box>,
+): void {
+  if (missing.length === 0) return;
+  const placed = [...boxes.values()];
+  let x = placed.length ? Math.min(...placed.map(b => b.x)) : 0;
+  const y = (placed.length ? Math.max(...placed.map(b => b.y + b.height)) : 0) + RANK_GAP;
+  for (const node of missing) {
+    const size = sizes.get(node.id);
+    if (!size) continue;
+    boxes.set(node.id, { x, y, width: size.width, height: size.height, z: 0, lines: size.lines });
+    x += size.width + NODE_GAP;
+  }
 }
 
 /**

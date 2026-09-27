@@ -87,10 +87,12 @@ describe('レイアウトの算出', () => {
     expect(laid.boxes.get('issued')!.y).toBeLessThan(laid.boxes.get('active')!.y);
   });
 
-  it('自由配置で置き場所のない要素は黙って消さずに報告する', () => {
+  it('自由配置で置き場所のない要素は、報告したうえで図の下に並べる', () => {
     const d = parseDiagram('free {\n a [A]\n b [B]\n}\nlayout {\n a @ (0, 0)\n}');
     const laid = layOutDiagram(d);
-    expect(laid.boxes.has('b')).toBe(false);
+    // 消してしまうと、ファイルにある図形が画面から消える。掴めなければ直せない。
+    expect(laid.boxes.has('b')).toBe(true);
+    expect(laid.boxes.get('b')!.y).toBeGreaterThan(laid.boxes.get('a')!.y);
     expect(laid.diagnostics).toContain('配置がない: b');
   });
 

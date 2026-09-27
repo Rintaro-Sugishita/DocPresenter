@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { parseDiagram } from '@docpresenter/core';
-import { applyEdit, DiagramEditError, pinNode, unpinNode, moveCallout } from '../src/index.js';
+import { applyEdit, canUnpin, DiagramEditError, pinNode, unpinNode, moveCallout } from '../src/index.js';
 
 const FLOW = [
   '# 流れ',
@@ -92,8 +92,9 @@ describe('図形のピン留め', () => {
 
 describe('ピンの解除', () => {
   it('行ごと消え、残りの行は動かない', () => {
-    const written = run(SCREEN, f => unpinNode(f, SCREEN, 'frame'));
-    expect(layout(written)).toEqual(['layout {', '  title @ ( 70,  50) 320x24', '}']);
+    const two = FLOW.replace('  done @ (320, 640)', '  next @ ( 80,  40)\n  done @ (320, 640)');
+    const written = run(two, f => unpinNode(f, two, 'next'));
+    expect(layout(written)).toEqual(['layout {', '  done @ (320, 640)', '}']);
   });
 
   it('最後の 1 行を消しても空の layout が残る', () => {
@@ -104,6 +105,22 @@ describe('ピンの解除', () => {
 
   it('留めていない図形は解除できない', () => {
     expect(() => unpinNode(parseDiagram(FLOW), FLOW, 'next')).toThrow(DiagramEditError);
+  });
+
+  it('自由配置の図では外せない（外すと置き場所が無くなる）', () => {
+    const file = parseDiagram(SCREEN);
+    expect(canUnpin(file, 'title')).toBe(false);
+    expect(() => unpinNode(file, SCREEN, 'title')).toThrow(/自由配置/);
+  });
+
+  it('グループはどの図でも外せる（中身から決まるので）', () => {
+    const source = [
+      'free {', '  a [A]', '  group g "G" { a }', '}', '',
+      'layout {', '  a @ (10, 10)', '  g @ (0, 0) 100x100  z:-1', '}',
+    ].join('\n');
+    const file = parseDiagram(source);
+    expect(canUnpin(file, 'g')).toBe(true);
+    expect(applyEdit(source, unpinNode(file, source, 'g'))).not.toContain('g @ (0, 0)');
   });
 });
 

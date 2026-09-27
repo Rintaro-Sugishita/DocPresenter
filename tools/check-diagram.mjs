@@ -202,6 +202,20 @@ await page.click('.dp-sheet:not([hidden]) .dp-figure-body');
 await page.waitForTimeout(300);
 await page.screenshot({ path: 'out/canvas.png' });
 
+// --- 画面設計（自由配置。戻す先の自動レイアウトが無い図）------------------
+await openSheet(3, 2);
+const button = '.dp-sheet:not([hidden]) .dp-canvas-bar button:text("自動配置に戻す")';
+await page.click(node('submit'));
+await page.waitForTimeout(150);
+check('自由配置の図では「自動配置に戻す」は押せない', await page.isDisabled(button));
+
+await drag(node('submit'), 16, -12);
+check('動かした図形は消えない', await page.isVisible(node('submit')));
+check('動かしても押せないまま', await page.isDisabled(button));
+const screen = await source();
+check('図形の数は変わらない', (screen.match(/@ \(/g) ?? []).length === 11,
+  String((screen.match(/@ \(/g) ?? []).length));
+
 // --- 画面キャプチャへの注釈 ---------------------------------------------
 await openSheet(3, 1);
 check('注釈は画像の上でそのまま掴める',

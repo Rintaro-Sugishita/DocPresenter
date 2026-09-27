@@ -9,7 +9,7 @@
 import { layOutDiagram, type Box, type DiagramFile } from '@docpresenter/core';
 import { renderDiagram } from '@docpresenter/render';
 import type { Edit } from '../edit.js';
-import { pinNode, unpinNode } from '../diagram.js';
+import { canUnpin, pinNode, unpinNode } from '../diagram.js';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 /** How far a shape's edge may be from another's to be pulled into line. */
@@ -54,6 +54,7 @@ export function createCanvas(options: CanvasOptions): Canvas {
   // Declared up here because the bar is built before the code below runs, and
   // a `let` reached early is an error rather than an empty box.
   let where: HTMLElement | undefined;
+  let release: HTMLButtonElement | undefined;
 
   const root = element('div', 'dp-canvas');
   const stage = element('div', 'dp-canvas-stage');
@@ -327,6 +328,9 @@ export function createCanvas(options: CanvasOptions): Canvas {
   // --- 操作列 ------------------------------------------------------------
 
   function describe(): void {
+    // A shape that cannot be handed back says so before it is pressed, not
+    // after: in a freely placed drawing there is no engine to hand it to.
+    if (release) release.disabled = selected === undefined || !canUnpin(file, selected);
     if (!where) return;
     const box = preview?.box ?? boxOf(selected);
     if (selected === undefined || !box) {
@@ -343,7 +347,7 @@ export function createCanvas(options: CanvasOptions): Canvas {
     where = element('span', 'dp-canvas-where');
     node.append(where);
 
-    const add = (label: string, title: string, run: () => void): void => {
+    const add = (label: string, title: string, run: () => void): HTMLButtonElement => {
       const button = owner.createElement('button');
       button.type = 'button';
       button.textContent = label;
@@ -354,12 +358,12 @@ export function createCanvas(options: CanvasOptions): Canvas {
         run();
       });
       node.append(button);
+      return button;
     };
 
-    add('自動配置に戻す', '手で決めた位置を捨て、レイアウトエンジンに返す', () => {
+    release = add('自動配置に戻す', '手で決めた位置を捨て、レイアウトエンジンに返す', () => {
       const id = selected;
       if (id === undefined) return;
-      if (!file.layout.has(id)) { options.onError?.(`${id} は自動配置のまま`); return; }
       options.apply(() => unpinNode(file, source, id), id);
     });
     add('ソース', '.dgm のソースを直接編集する', () => options.showSource());

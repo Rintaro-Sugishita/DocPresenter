@@ -63,10 +63,19 @@ export function pinNode(file: DiagramFile, source: string, id: string, pin: Pin)
   };
 }
 
-/** Hands a shape back to the layout engine by removing its line. */
+/**
+ * Hands a shape back to the layout engine by removing its line. Only a diagram
+ * that has an engine can take it back: in a freely placed drawing the pin is
+ * the only thing that says where the shape is, so removing it would leave the
+ * shape with nowhere to be. A group is the exception in any mode — its box is
+ * computed from what it contains.
+ */
 export function unpinNode(file: DiagramFile, source: string, id: string): Edit {
   const existing = file.layout.get(id);
   if (!existing) throw new DiagramEditError(`${id} は自動配置のまま`);
+  if (!canUnpin(file, id)) {
+    throw new DiagramEditError(`自由配置の図では位置を外せない（${id} の置き場所が無くなる）`);
+  }
   // The span starts after the indent, so take the indent with it: leaving it
   // behind would push the next line sideways.
   const before = sliceBytes(source, 0, existing.span.start);
@@ -79,6 +88,13 @@ export function unpinNode(file: DiagramFile, source: string, id: string): Edit {
     text: '',
     description: '配置を自動に戻す',
   };
+}
+
+/** Whether a shape has somewhere to go once its pin is gone. */
+export function canUnpin(file: DiagramFile, id: string): boolean {
+  if (!file.layout.has(id)) return false;
+  const node = file.nodes.find(n => n.id === id);
+  return file.mode === 'flow' || node?.shape === 'group';
 }
 
 /** Where a callout's marker sits and what it points at, in image pixels. */
