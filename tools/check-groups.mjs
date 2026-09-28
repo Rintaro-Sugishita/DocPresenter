@@ -196,10 +196,10 @@ await page.waitForTimeout(200);
 check('2 つでは等間隔は押せない',
   await page.isDisabled('.dp-canvas-icon[title="横に等間隔で並べる"]'));
 
-// 図形の見本には絵が付く
+// 図形の見本には絵が付く（基本 8 ＋ フローチャート 4）
 await page.click('.dp-sheet:not([hidden]) .dp-canvas-bar button:text("＋ 図形")');
 await page.waitForSelector('.dp-menu button');
-check('図形の見本は絵で選ぶ', (await page.$$('.dp-menu button svg')).length === 8,
+check('図形の見本は絵で選ぶ', (await page.$$('.dp-menu button svg')).length === 12,
   String((await page.$$('.dp-menu button svg')).length));
 await page.keyboard.press('Escape');
 

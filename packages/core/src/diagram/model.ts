@@ -6,7 +6,10 @@ import type { ByteSpan } from '../document/model.js';
 
 export type ShapeKind =
   | 'rect' | 'round-rect' | 'stadium' | 'cylinder' | 'diamond'
-  | 'ellipse' | 'note' | 'text' | 'group';
+  | 'ellipse' | 'note' | 'text' | 'group'
+  // The flowchart set. A loop needs a start and an end that are read as a
+  // pair, which is what the two trapezoids are for.
+  | 'parallelogram' | 'hexagon' | 'loop-start' | 'loop-end';
 
 export interface Node {
   readonly id: string;

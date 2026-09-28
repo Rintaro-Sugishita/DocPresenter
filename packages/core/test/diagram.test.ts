@@ -145,3 +145,22 @@ describe('折れ線', () => {
     expect(laid.routes[0]!.points).toHaveLength(2);
   });
 });
+
+describe('フローチャートの図形', () => {
+  it('Mermaid の括弧をそのまま読む', () => {
+    const d = parseDiagram([
+      'flow {',
+      '  a [/入出力/]',
+      '  b {{準備}}',
+      '  c [/ループ開始\\]',
+      '  d [\\ループ終了/]',
+      '}',
+    ].join('\n'));
+    expect(d.nodes.map(n => [n.shape, n.text])).toEqual([
+      ['parallelogram', '入出力'],
+      ['hexagon', '準備'],
+      ['loop-start', 'ループ開始'],
+      ['loop-end', 'ループ終了'],
+    ]);
+  });
+});

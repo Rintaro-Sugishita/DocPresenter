@@ -40,6 +40,12 @@ const PALETTE: readonly (readonly [ShapeKind, string])[] = [
   ['cylinder', '円柱'],
   ['note', '付箋'],
   ['text', '文字だけ'],
+  // The flowchart set. Kept together at the end, after the shapes that get
+  // used in any kind of drawing.
+  ['parallelogram', '入出力'],
+  ['hexagon', '六角形'],
+  ['loop-start', 'ループ開始'],
+  ['loop-end', 'ループ終了'],
 ];
 
 export interface CanvasOptions {
@@ -790,6 +796,7 @@ export function createCanvas(options: CanvasOptions): Canvas {
     return PALETTE.map(([shape, label]) => ({
       label,
       icon: shapeIcon(shape),
+      separated: shape === 'parallelogram',
       run: () => addShape(shape, event),
     }));
   }
@@ -843,7 +850,7 @@ export function createCanvas(options: CanvasOptions): Canvas {
       items.push({
         label,
         icon: shapeIcon(shape),
-        separated: shape === PALETTE[0]![0],
+        separated: shape === PALETTE[0]![0] || shape === 'parallelogram',
         disabled: node?.shape === shape || node?.shape === 'group',
         run: () => options.apply(() => setNodeShape(file, id, shape), [id]),
       });
@@ -1185,6 +1192,7 @@ export function createCanvas(options: CanvasOptions): Canvas {
       menu.open(at.left + 8, at.bottom + 4, PALETTE.map(([shape, label]) => ({
         label,
         icon: shapeIcon(shape),
+        separated: shape === 'parallelogram',
         run: () => addShape(shape),
       })));
     });

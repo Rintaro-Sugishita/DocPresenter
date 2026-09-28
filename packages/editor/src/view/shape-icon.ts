@@ -26,6 +26,14 @@ export function shapeIcon(shape: ShapeKind): string {
         return `<path d="M3 4.5 L15 4.5 M9 4.5 L9 12" ${OUTLINE}/>`;
       case 'group':
         return `<rect x="1.5" y="2.5" width="15" height="11" stroke-dasharray="2 1.5" ${OUTLINE}/>`;
+      case 'parallelogram':
+        return `<polygon points="4,2.5 16.5,2.5 14,13.5 1.5,13.5" ${OUTLINE}/>`;
+      case 'hexagon':
+        return `<polygon points="4,2.5 14,2.5 16.5,8 14,13.5 4,13.5 1.5,8" ${OUTLINE}/>`;
+      case 'loop-start':
+        return `<polygon points="4,2.5 14,2.5 16.5,13.5 1.5,13.5" ${OUTLINE}/>`;
+      case 'loop-end':
+        return `<polygon points="1.5,2.5 16.5,2.5 14,13.5 4,13.5" ${OUTLINE}/>`;
     }
   })();
   return `<svg viewBox="0 0 18 16" width="18" height="16" aria-hidden="true">${body}</svg>`;

@@ -302,16 +302,31 @@ Mermaid の「レンダリングが良くない」は二つに分解できる。
 
 ### 10.1 図形は DrawingML のプリセットに限る
 
-§5 の制約を具体化する。
+§5 の制約を具体化する。**記法は Mermaid の括弧をそのまま借り**、それぞれに DrawingML のプリセットが 1 つ対応する。
 
-```
-shape : rect / round-rect / diamond / cylinder / ellipse /
-        parallelogram / hexagon / document / note
-line  : solid / dashed / dotted
-arrow : none / open / filled
-```
+| 記法 | 図形 | DrawingML |
+|---|---|---|
+| `[ ]` | rect | `rect` |
+| `( )` | round-rect | `roundRect` |
+| `([ ])` | stadium（開始・終了） | `flowChartTerminator` |
+| `{ }` | diamond（判断） | `flowChartDecision` |
+| `[( )]` | cylinder（データストア） | `flowChartMagneticDisk` |
+| `(( ))` | ellipse | `ellipse` |
+| `> ]` | note（吹き出し・注記） | `foldedCorner` |
+| `" "` | text（枠の無い文字） | テキストボックス |
+| `[/ /]` | parallelogram（入出力） | `flowChartInputOutput` |
+| `{{ }}` | hexagon（準備） | `flowChartPreparation` |
+| `[/ \]` | loop-start（ループ開始） | `trapezoid` |
+| `[\ /]` | loop-end（ループ終了） | `flowChartManualOperation` |
+| `group … { }` | group（囲い） | グループ |
+
+**ループの開始と終了は対で読む記号**なので、互いの鏡像にした（上が狭い / 下が狭い）。
+どちらも Mermaid が台形として持っている記法であり、発明していない。
 
 この範囲を超える表現が要る図は、ラスタ画像へのフォールバックとし「pptx で編集できない」と警告する（§5）。
+
+**ここに際限なく足さない。** 語彙は「どの設計書にも出てくる図形」に限る。
+ネットワーク図のルータや AWS のアイコンのような**数の多い絵**は、この語彙ではなく[部品ライブラリ](#104-数の多い絵は語彙ではなく部品ライブラリ)に置く。
 
 ### 10.2 スタイルトークンは表と揃える
 

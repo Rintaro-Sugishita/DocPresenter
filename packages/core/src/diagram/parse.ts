@@ -25,6 +25,12 @@ export class DiagramParseError extends Error {
 
 /** Bracket pairs decide the shape, as in Mermaid. */
 const SHAPES: readonly { open: string; close: string; shape: ShapeKind }[] = [
+  // Mermaid's own bracket pairs, including the two trapezoids it draws for
+  // what a flowchart calls the start and the end of a loop.
+  { open: '[/', close: '\\]', shape: 'loop-start' },
+  { open: '[\\', close: '/]', shape: 'loop-end' },
+  { open: '[/', close: '/]', shape: 'parallelogram' },
+  { open: '{{', close: '}}', shape: 'hexagon' },
   { open: '([', close: '])', shape: 'stadium' },
   { open: '[(', close: ')]', shape: 'cylinder' },
   { open: '((', close: '))', shape: 'ellipse' },

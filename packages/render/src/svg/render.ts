@@ -116,9 +116,33 @@ function shapeElement(shape: ShapeKind, box: Box): string {
     case 'ellipse':
       return `<ellipse cx="${n(x + w / 2)}" cy="${n(y + h / 2)}" rx="${n(w / 2)}" ry="${n(h / 2)}"/>`;
     case 'diamond':
-      return `<polygon points="${[
+      return polygon([
         [x + w / 2, y], [x + w, y + h / 2], [x + w / 2, y + h], [x, y + h / 2],
-      ].map(([px, py]) => `${n(px!)},${n(py!)}`).join(' ')}"/>`;
+      ]);
+    case 'parallelogram': {
+      const slant = slantOf(w);
+      return polygon([
+        [x + slant, y], [x + w, y], [x + w - slant, y + h], [x, y + h],
+      ]);
+    }
+    case 'hexagon': {
+      const cut = slantOf(w);
+      return polygon([
+        [x + cut, y], [x + w - cut, y], [x + w, y + h / 2],
+        [x + w - cut, y + h], [x + cut, y + h], [x, y + h / 2],
+      ]);
+    }
+    // The two ends of a loop. Read as a pair, so they are mirror images: the
+    // one that opens a loop narrows at the top, the one that closes it at the
+    // bottom.
+    case 'loop-start': {
+      const cut = slantOf(w);
+      return polygon([[x + cut, y], [x + w - cut, y], [x + w, y + h], [x, y + h]]);
+    }
+    case 'loop-end': {
+      const cut = slantOf(w);
+      return polygon([[x, y], [x + w, y], [x + w - cut, y + h], [x + cut, y + h]]);
+    }
     case 'cylinder': {
       const ry = cylinderRadius(h);
       return `<path d="M ${n(x)} ${n(y + ry)}`
@@ -139,6 +163,15 @@ function shapeElement(shape: ShapeKind, box: Box): string {
         + ` L ${n(x + w - fold)} ${n(y + fold)} L ${n(x + w)} ${n(y + fold)}"/>`;
     }
   }
+}
+
+function polygon(at: readonly (readonly number[])[]): string {
+  return `<polygon points="${at.map(([px, py]) => `${n(px!)},${n(py!)}`).join(' ')}"/>`;
+}
+
+/** How far the slanted side of a trapezoid or a hexagon comes in. */
+function slantOf(width: number): number {
+  return Math.min(18, width / 6);
 }
 
 function rect(x: number, y: number, w: number, h: number, r: number): string {

@@ -45,7 +45,7 @@ const shapes = () => page.$$eval('.dp-canvas-stage [data-node]', ns => ns.length
 const before = await shapes();
 await page.click('.dp-sheet:not([hidden]) .dp-canvas-bar button:text("＋ 図形")');
 await page.waitForSelector('.dp-menu button');
-check('図形の見本が並ぶ', (await page.$$('.dp-menu button')).length === 8,
+check('図形の見本が並ぶ', (await page.$$('.dp-menu button')).length === 12,
   String((await page.$$('.dp-menu button')).length));
 await page.click(item('ひし形'));
 await page.waitForTimeout(400);

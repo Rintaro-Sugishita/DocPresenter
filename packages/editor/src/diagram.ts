@@ -292,12 +292,17 @@ const BRACKETS: Readonly<Record<ShapeKind, readonly [string, string]>> = {
   note: ['>', ']'],
   text: ['"', '"'],
   group: ['[', ']'],
+  parallelogram: ['[/', '/]'],
+  hexagon: ['{{', '}}'],
+  'loop-start': ['[/', '\\]'],
+  'loop-end': ['[\\', '/]'],
 };
 
 /** What a new shape of each kind is called, before anyone renames it. */
 const BASE: Readonly<Record<ShapeKind, string>> = {
   rect: 'box', 'round-rect': 'box', stadium: 'pill', cylinder: 'store',
   ellipse: 'oval', diamond: 'branch', note: 'note', text: 'label', group: 'group',
+  parallelogram: 'io', hexagon: 'prep', 'loop-start': 'loop', 'loop-end': 'loopEnd',
 };
 
 export interface NewShape {
