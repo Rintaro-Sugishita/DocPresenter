@@ -28,7 +28,8 @@ node tools/render-sample.mjs       # サンプルを HTML に → out/auth-desig
 for f in tools/check-*.mjs; do node "$f"; done   # ブラウザ検証
 ```
 
-`out/canvas-app.html` は base ＋ diagram だけで作られている。文書エンジンは 1 バイトも入っていない。
+`out/canvas-app.html` は base ＋ diagram だけで作られている。文書エンジンは 1 バイトも入っていない
+（`out/canvas/index.html` はそれを 1 枚に畳んだもの）。
 
 ## 設計
 
