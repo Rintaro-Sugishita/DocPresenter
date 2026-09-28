@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { cellAt, parseTable } from '@docpresenter/core';
-import { applyEdit } from '../src/index.js';
+import { applyEdit } from '@docpresenter/base';
+import { cellAt, parseTable } from '@docpresenter/markdown';
 import {
   clearRange, copyRange,
   formatTable, insertColumn, insertRow, mergeDown, mergeRight, parseClipboardGrid,

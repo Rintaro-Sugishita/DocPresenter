@@ -9,8 +9,8 @@ import {
   cellAt, delimiterField, displayWidth, formatGrid, formatRule, insertField, joinFields,
   removeField, replaceField, sameSelector, splitFields,
   type Align, type Selector, type TableFile,
-} from '@docpresenter/core';
-import type { Edit } from './edit.js';
+} from '@docpresenter/markdown';
+import type { Edit } from '@docpresenter/base';
 
 export class TableEditError extends Error {}
 

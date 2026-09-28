@@ -1,6 +1,6 @@
-// The editor's own chrome. This is not part of a theme: a theme styles the
-// document, and the document must look the same in the editor as it does in
-// the PDF. Everything here sits outside the page.
+// The document editor's own chrome: the page, the blocks, the table grid
+// and the sheet tabs. The parts it shares with the drawing editor are in
+// the base package, and the canvas's parts are in the diagram package.
 
 export const EDITOR_STYLE = `
 .dp-editor { display: flex; flex-direction: column; height: 100%; min-height: 0; background: #f4f5f7; }
@@ -53,41 +53,6 @@ export const EDITOR_STYLE = `
 .dp-append-add:hover { background: #eceef1; color: #3a4048; }
 .dp-append.dp-editing, .dp-append:has(.dp-block-source) { color: inherit; font-size: inherit; }
 .dp-append:has(.dp-block-source) .dp-append-add { display: none; }
-
-.dp-format-bar {
-  position: absolute; top: -2.4em; right: 0; z-index: 2;
-  display: flex; align-items: stretch; gap: 1px;
-  background: #2d3138; border-radius: 4px; padding: 2px;
-  box-shadow: 0 2px 6px rgba(0,0,0,.25);
-  font-family: system-ui, sans-serif; font-size: 12px; line-height: 1;
-}
-.dp-format-bar button {
-  border: none; background: transparent; color: #e6e8eb; cursor: pointer;
-  padding: 0.45em 0.6em; border-radius: 3px; font-size: 12px;
-}
-.dp-format-bar button:hover { background: #454b54; }
-.dp-format-bar button[aria-pressed="true"] { background: #fff; color: #1c1f24; }
-.dp-format-bold { font-weight: 700; }
-.dp-format-italic { font-style: italic; }
-.dp-format-code { font-family: ui-monospace, monospace; }
-.dp-format-divider { width: 1px; background: #565c66; margin: 0.3em 0.25em; }
-/* Each token button shows a swatch of the colour the theme gives that meaning,
-   so the bar shows the vocabulary instead of only naming it. */
-/* Colour is picked, not named, so the buttons are the colours themselves. */
-/* The bar's own button rule sets a background, so the swatch has to outrank
-   it or every colour comes out blank. */
-.dp-format-bar .dp-format-swatch {
-  width: 1.5em; padding: 0; background: var(--swatch);
-  box-shadow: inset 0 0 0 1px rgba(255,255,255,.35);
-}
-.dp-format-bar .dp-format-swatch[aria-pressed="true"] { box-shadow: 0 0 0 2px #fff; }
-/* The display rule above would otherwise beat the browser's rule for [hidden]. */
-.dp-format-bar[hidden] { display: none; }
-.dp-format-picker {
-  width: 1.7em; height: 1.7em; padding: 0; border: none; background: none;
-  cursor: pointer; align-self: center;
-}
-
 /* Figures. The drawing is a file of its own and the caption stands for the
    import line that placed it, so each is hinted as its own target. */
 .dp-figure-body { position: relative; }
@@ -141,28 +106,6 @@ export const EDITOR_STYLE = `
 .dp-grid-swatch-reset:hover { background: #eceef1; }
 .dp-grid-swatch-reset:disabled { opacity: .4; cursor: default; }
 
-/* The context menu. It sits on the document, not inside the grid, so nothing
-   it opens over can clip it. */
-.dp-menu {
-  position: fixed; z-index: 20; min-width: 11em;
-  background: #fff; border: 1px solid #c8ccd2; border-radius: 4px;
-  box-shadow: 0 4px 14px rgba(0,0,0,.18); padding: 4px;
-  font-family: system-ui, sans-serif; font-size: 13px;
-}
-.dp-menu button {
-  display: block; width: 100%; text-align: left;
-  border: none; background: transparent; color: #3a4048; cursor: pointer;
-  padding: 0.4em 0.8em; border-radius: 3px; font: inherit;
-}
-.dp-menu button:hover, .dp-menu button:focus { background: #eceef1; outline: none; }
-.dp-menu button:disabled { color: #b6bcc5; cursor: default; background: transparent; }
-/* A disabled first item is the explanation above a choice, not a choice. */
-.dp-menu button:disabled:first-child { color: #6b7280; font-size: 0.92em; }
-.dp-menu-icon {
-  display: inline-flex; width: 18px; margin-right: 0.5em; color: #5a6270; vertical-align: -3px;
-}
-.dp-menu-rule { height: 1px; background: #e2e4e8; margin: 4px 2px; }
-
 /* The selected cell's text box takes the caret while a cell is open, so it
    must show a text cursor rather than the grid's own. */
 .dp-grid-editing .dp-grid-input { cursor: text; user-select: text; }
@@ -181,83 +124,6 @@ export const EDITOR_STYLE = `
   background: #2d3138; color: #fff; border-color: #2d3138;
 }
 .dp-grid-bar button:disabled { opacity: 0.4; cursor: default; }
-
-/* The canvas: direct manipulation of a diagram. Everything here is editor
-   chrome drawn over the real drawing, never part of the output. */
-.dp-canvas { font-family: system-ui, sans-serif; font-size: 13px; }
-.dp-canvas-bar {
-  display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin-bottom: 0.5em;
-}
-.dp-canvas-bar button {
-  border: 1px solid #d3d7dd; background: #f7f8fa; color: #3a4048; cursor: pointer;
-  padding: 0.3em 0.6em; border-radius: 3px; font: inherit; font-size: 12px;
-}
-.dp-canvas-bar button:hover { background: #eceef1; }
-.dp-canvas-bar button:disabled { opacity: 0.4; cursor: default; }
-.dp-canvas-where {
-  color: #3a4048; font-size: 12px; font-variant-numeric: tabular-nums;
-  min-width: 14em; padding: 0.2em 0.4em; background: #f2f3f5; border-radius: 3px;
-}
-.dp-canvas-hint { color: #8b929c; font-size: 11px; margin-left: auto; }
-/* The alignment row. It appears with the selection that gives it a meaning. */
-.dp-canvas-aligners { display: inline-flex; gap: 1px; align-items: center; }
-/* A display rule beats the hidden attribute, so hidden has to be said again. */
-.dp-canvas-aligners[hidden] { display: none; }
-.dp-canvas-icon {
-  display: inline-flex; align-items: center; justify-content: center;
-  border: 1px solid #d3d7dd; background: #f7f8fa; color: #3a4048; cursor: pointer;
-  padding: 0.15em 0.25em; border-radius: 3px;
-}
-.dp-canvas-icon:hover { background: #eceef1; }
-.dp-canvas-icon:disabled { opacity: 0.35; cursor: default; }
-.dp-canvas-stage { outline: none; position: relative; }
-/* The text box sits over the shape being renamed: an IME needs somewhere to
-   compose from, the same reason the grid keeps one over the selected cell. */
-/* The format bar over a label. The shared rule pins it to the top right of
-   whatever it is in; over a drawing it is placed by hand instead. */
-.dp-canvas-format { top: auto; right: auto; }
-.dp-canvas-text {
-  position: absolute; box-sizing: border-box; font: inherit; font-size: 13px;
-  text-align: center; border: 1.5px solid #1f5fa8; border-radius: 2px;
-  background: #fff; color: #1c1f24; padding: 0 0.3em; min-width: 4em;
-}
-.dp-canvas-stage:focus-visible { box-shadow: 0 0 0 2px #cfe0f5; }
-.dp-canvas-stage [data-node] { cursor: move; }
-.dp-canvas-outline {
-  fill: rgba(31, 95, 168, 0.12); stroke: #1f5fa8; stroke-width: 1.5; pointer-events: none;
-}
-.dp-canvas-handle { fill: #fff; stroke: #1f5fa8; stroke-width: 1.5; cursor: nwse-resize; }
-/* Pink and dashed, so a guide never reads as part of the drawing. */
-.dp-canvas-guide { stroke: #e0439b; stroke-width: 1; stroke-dasharray: 3 3; pointer-events: none; }
-.dp-canvas-edge-picked {
-  fill: none; stroke: #1f5fa8; stroke-width: 2.5; opacity: 0.45; pointer-events: none;
-}
-.dp-canvas-end { fill: #fff; stroke: #1f5fa8; stroke-width: 1.5; cursor: move; }
-/* A corner of a line. Square, so it is not mistaken for an end. */
-.dp-canvas-bend { fill: #fff; stroke: #1f5fa8; stroke-width: 1.5; cursor: move; }
-/* Where a corner would go. Faint until the pointer is on it: it is an offer,
-   not a part of the drawing. */
-.dp-canvas-bend-new { fill: #fff; stroke: #1f5fa8; stroke-width: 1.2; opacity: 0.45; cursor: move; }
-.dp-canvas-bend-new:hover { opacity: 1; }
-.dp-canvas-rubber { stroke: #1f5fa8; stroke-width: 1.5; stroke-dasharray: 4 3; pointer-events: none; }
-
-/* The rubber band: what a press on empty canvas draws to pick several shapes. */
-.dp-canvas-band {
-  fill: rgba(31, 95, 168, 0.08); stroke: #1f5fa8; stroke-width: 1;
-  stroke-dasharray: 3 2; pointer-events: none;
-}
-/* Connections are re-routed when the shape lands, so they fade while it moves
-   rather than trailing behind it. */
-.dp-canvas-dragging .dp-edge { opacity: 0.25; }
-.dp-overlay-editing { outline: none; }
-.dp-overlay-editing .dp-callout { cursor: move; }
-.dp-overlay-editing .dp-callout.dp-picked { box-shadow: 0 0 0 2px #1f5fa8; }
-/* The end of the leader line, so what a callout points at can be moved too. */
-.dp-callout-handle {
-  position: absolute; transform: translate(-50%, -50%);
-  width: 9px; height: 9px; border-radius: 50%;
-  background: #fff; border: 1.5px solid #1f5fa8; cursor: move;
-}
 
 .dp-grid-table { border-collapse: collapse; width: 100%; }
 .dp-grid-table th, .dp-grid-table td {

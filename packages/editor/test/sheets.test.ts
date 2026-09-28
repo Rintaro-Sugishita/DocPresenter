@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { parseDocument, sheetsOf } from '@docpresenter/core';
-import { applyEdit, insertSheet, moveSheet, removeSheet, renameSheet, SheetEditError } from '../src/index.js';
+import { parseDocument, sheetsOf } from '@docpresenter/markdown';
+import { applyEdit } from '@docpresenter/base';
+import { insertSheet, moveSheet, removeSheet, renameSheet, SheetEditError } from '../src/index.js';
 
 const DOC = ['# 題名', '', '---', '', '## 二枚目', '', '本文。', '', '---', '', '## 三枚目'].join('\n');
 

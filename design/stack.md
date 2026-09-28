@@ -9,6 +9,7 @@
 - **HTML 生成は TS 側に置く**（§1）。
 - **案 1（TypeScript 単一言語）に確定**（§3・§4）。C# は使わない。
 - `ErCreator.Canvas` は**再利用しない**。ただし**移植元の参照実装として扱う**（§4）。
+- **単一言語のまま、パッケージは 4 つに分ける**（[パッケージ分割](packaging.md)）。`base` / `diagram` / `markdown` / `editor`。作図と Markdown エンジンはそれぞれ単独で出せる形に保つ。
 
 ## 1. なぜ HTML 生成が TS 側なのか
 

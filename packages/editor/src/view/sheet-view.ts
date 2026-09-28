@@ -5,22 +5,23 @@
 // which are byte-range edits. That means what the screen shows and what the
 // file contains can never drift apart: there is only the file.
 
+import { parseDocument, parseTable, sheetsOf, type Sheet } from '@docpresenter/markdown';
+import { parseDiagram } from '@docpresenter/diagram';
 import {
-  byteLength, parseDiagram, parseDocument, parseTable, sheetsOf, sliceBytes, type Sheet,
-} from '@docpresenter/core';
-import type { Edit } from '../edit.js';
-import { applyEdit } from '../edit.js';
-import { toggleInline, type InlineMark } from '../inline.js';
+  applyEdit, byteLength, sliceBytes, toggleInline, type Edit, type InlineMark,
+} from '@docpresenter/base';
 import { DEFAULT_SETTINGS, isCommit, type EditorSettings } from '../settings.js';
 import { insertSheet, moveSheet, removeSheet, renameSheet, SheetEditError } from '../sheets.js';
-import { DiagramEditError } from '../diagram.js';
+import { DiagramEditError } from '@docpresenter/diagram';
 import { TableEditError } from '../table.js';
-import { createCanvas } from './canvas.js';
-import { createOverlayEditor } from './overlay.js';
+import { createCanvas } from '@docpresenter/diagram';
+import { createOverlayEditor } from '@docpresenter/diagram';
 import { createGrid, type Grid, type GridPosition } from './grid.js';
-import { createMenu } from './menu.js';
+import { createMenu } from '@docpresenter/base';
 import { EDITOR_STYLE } from './style.js';
-import { createToolbar } from './toolbar.js';
+import { BASE_STYLE } from '@docpresenter/base';
+import { DIAGRAM_STYLE } from '@docpresenter/diagram';
+import { createToolbar } from '@docpresenter/base';
 
 export interface SheetViewOptions {
   readonly root: HTMLElement;
@@ -866,6 +867,8 @@ function injectStyle(document: Document): void {
   if (document.getElementById('dp-editor-style')) return;
   const style = document.createElement('style');
   style.id = 'dp-editor-style';
-  style.textContent = EDITOR_STYLE;
+  // Each package styles its own chrome; the shell puts them together. Opening
+  // the drawing editor on its own needs only the first two.
+  style.textContent = [BASE_STYLE, DIAGRAM_STYLE, EDITOR_STYLE].join('\n');
   document.head.append(style);
 }

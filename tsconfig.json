@@ -1,14 +1,9 @@
 {
   "files": [],
   "references": [
-    {
-      "path": "packages/core"
-    },
-    {
-      "path": "packages/render"
-    },
-    {
-      "path": "packages/editor"
-    }
+    { "path": "packages/base" },
+    { "path": "packages/diagram" },
+    { "path": "packages/markdown" },
+    { "path": "packages/editor" }
   ]
 }

@@ -1,0 +1,14 @@
+{
+  "name": "@docpresenter/markdown",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "dependencies": {
+    "@docpresenter/base": "*",
+    "@docpresenter/diagram": "*",
+    "yaml": "^2.9.1",
+    "markdown-it": "^15.0.2"
+  }
+}

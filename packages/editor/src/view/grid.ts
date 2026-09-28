@@ -11,22 +11,22 @@
 
 import {
   cellAt, type Align, type Cell, type Selector, type StyleRule, type TableFile,
-} from '@docpresenter/core';
+} from '@docpresenter/markdown';
 import {
   alignOf, cellClasses, cellRules, headerClasses, headerRules, inlineMarkdown,
   inlineStyle, rowClasses,
-} from '@docpresenter/render';
-import type { Edit } from '../edit.js';
+} from '@docpresenter/markdown';
+import type { Edit } from '@docpresenter/base';
 import {
   formatTable, insertColumn, insertRow, parseClipboardGrid, pasteGrid,
   mergeDown, mergeLoses, mergeRange, mergeRight, removeColumn, removeRow, setAlign,
   clearRange, copyRange, setCell, setStyle, setWidth, styleAt, unmerge, wholeCells,
   type CellRange, type StyleProperty,
 } from '../table.js';
-import { toggleInline, type InlineMark } from '../inline.js';
-import { createMenu, type MenuItem } from './menu.js';
-import { createSwatchRow, FILL_SWATCHES, TEXT_SWATCHES } from './swatches.js';
-import { createToolbar, type Toolbar } from './toolbar.js';
+import { toggleInline, type InlineMark } from '@docpresenter/base';
+import { createMenu, type MenuItem } from '@docpresenter/base';
+import { createSwatchRow, FILL_SWATCHES, TEXT_SWATCHES } from '@docpresenter/base';
+import { createToolbar, type Toolbar } from '@docpresenter/base';
 
 export interface GridPosition {
   /** -1 is the header row. */

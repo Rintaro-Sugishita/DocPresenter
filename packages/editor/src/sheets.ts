@@ -6,8 +6,8 @@
 // because that is what changed. The joins inside that run are normalised to
 // `\n\n---\n\n`; everything inside each sheet is carried across verbatim.
 
-import { sheetsOf, sliceBytes, type DocumentFile, type Sheet } from '@docpresenter/core';
-import type { Edit } from './edit.js';
+import { sheetsOf, type DocumentFile, type Sheet } from '@docpresenter/markdown';
+import { sliceBytes, type Edit } from '@docpresenter/base';
 
 const JOIN = '\n\n---\n\n';
 

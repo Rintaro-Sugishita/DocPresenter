@@ -24,8 +24,8 @@ collect('sample');
 const entry = `
 const ASSETS = ${JSON.stringify(resolve(base))};
 
-import { parseDocument, resolveDocument } from '@docpresenter/core';
-import { renderDocument } from '@docpresenter/render';
+import { parseDocument, resolveDocument } from '@docpresenter/markdown';
+import { renderDocument } from '@docpresenter/markdown';
 import { COMMIT_KEYS, COMMIT_KEY_LABEL, DEFAULT_SETTINGS, mountSheetView } from '@docpresenter/editor';
 
 const FILES = ${JSON.stringify(files)};
