@@ -119,6 +119,8 @@ export interface DiagramFile {
   readonly bends: ReadonlyMap<string, Bend>;
   /** Absent when the file has no `layout { … }` block yet. */
   readonly layoutBlock: LayoutBlock | undefined;
+  /** The `style { … }` section, for adding a declaration to it. */
+  readonly styleBlock: Section | undefined;
   readonly theme: string | undefined;
   readonly style: ReadonlyMap<string, ReadonlyMap<string, string>>;
   /** Overlay only: the image the callouts annotate. */

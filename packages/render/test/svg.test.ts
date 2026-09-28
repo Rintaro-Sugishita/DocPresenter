@@ -80,3 +80,26 @@ describe('画像注釈のレンダリング', () => {
     expect(html).toContain('ログイン状態を保持');
   });
 });
+
+describe('部品', () => {
+  const draw = (icon: string) => renderDiagram(parseDiagram(
+    `free {\n  r [ルータ]\n}\n\nlayout {\n  r @ (0, 0) 100x90\n}\n\nstyle {\n  r { icon: ${icon} }\n}`,
+  ));
+
+  it('同梱の絵はその場に描かれる', () => {
+    const svg = draw('net/router');
+    expect(svg).toContain('dp-part-art');
+    expect(svg).toContain('dp-part');
+    // 絵が図形の代わりなので、枠は描かれない。
+    expect(svg).not.toContain('<rect x="0" y="0" width="100" height="90"');
+    expect(svg).toContain('ルータ');
+  });
+
+  it('パスを指せば画像として貼る', () => {
+    expect(draw('./icons/ec2.svg')).toContain('<image class="dp-part-image" href="./icons/ec2.svg"');
+  });
+
+  it('知らない部品は黙って消えない', () => {
+    expect(draw('net/nope')).toContain('dp-missing-part');
+  });
+});

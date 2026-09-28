@@ -144,6 +144,11 @@ code { font-family: var(--font-mono); font-size: 0.9em; background: var(--fill-t
 .dp-diagram .dp-shape-text .dp-label { font-size: 14px; }
 
 .dp-diagram .dp-shape-group > rect { fill: var(--fill-tint-1); stroke: #b6bcc5; }
+
+/* Parts: a picture with its name under it. The picture takes the outline
+   colour, so a part sits in the same palette as the shapes around it. */
+.dp-diagram .dp-part-art { color: var(--dp-line, #4a5058); }
+.dp-diagram .dp-missing-part { fill: #b3261e; font-size: 20px; }
 .dp-diagram .dp-group-label { font-size: 12px; fill: #6b7280; }
 
 .dp-diagram .dp-cylinder-lid, .dp-diagram .dp-note-fold { fill: none; stroke: #3a4048; stroke-width: 1.4; }

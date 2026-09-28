@@ -7,14 +7,14 @@
 // of the three-layer model: the mouse is for the exceptions.
 
 import { layOutDiagram, type Box, type DiagramFile, type ShapeKind } from '@docpresenter/core';
-import { renderDiagram } from '@docpresenter/render';
+import { renderDiagram, stencilParts } from '@docpresenter/render';
 import type { Edit } from '../edit.js';
 import {
   addNode, bendEdge, canUnpin, connectNodes, disconnectNodes, groupMembers, groupNodes,
   nextShapeId, pinNode, pinNodes, reconnect, removeNodes, setNodeShape, setNodeText, unpinNode,
 } from '../diagram.js';
 import { createMenu, type MenuItem } from './menu.js';
-import { alignIcon, shapeIcon } from './shape-icon.js';
+import { alignIcon, partIcon, shapeIcon } from './shape-icon.js';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 /** How far a shape's edge may be from another's to be pulled into line. */
@@ -793,7 +793,7 @@ export function createCanvas(options: CanvasOptions): Canvas {
   }
 
   function addItems(event: MouseEvent): MenuItem[] {
-    return PALETTE.map(([shape, label]) => ({
+    return PALETTE.map(([shape, label]): MenuItem => ({
       label,
       icon: shapeIcon(shape),
       separated: shape === 'parallelogram',
@@ -801,7 +801,22 @@ export function createCanvas(options: CanvasOptions): Canvas {
     }));
   }
 
-  function addShape(shape: ShapeKind, event?: MouseEvent): void {
+  /**
+   * The parts library, on its own list. There are many of them and they are
+   * pictures of particular things, so putting them among the shapes would bury
+   * "四角" under a hundred routers.
+   */
+  function partItems(event?: MouseEvent): MenuItem[] {
+    return stencilParts().map(part => ({
+      label: part.label,
+      icon: partIcon(part.body),
+      run: () => addShape('text', event, part.name, part.label),
+    }));
+  }
+
+  function addShape(
+    shape: ShapeKind, event?: MouseEvent, icon?: string, text = '図形',
+  ): void {
     // A freely placed drawing has no engine to decide where a shape goes, so
     // the new one is pinned: at the pointer if it came from the drawing, and
     // under the drawing otherwise.
@@ -811,8 +826,8 @@ export function createCanvas(options: CanvasOptions): Canvas {
     // Selected as soon as it exists, so the next gesture — dragging it, or
     // typing over its text — lands on the shape just added.
     options.apply(
-      () => addNode(file, source, { shape, text: '図形', at }),
-      [nextShapeId(file, shape)],
+      () => addNode(file, source, { shape, text, at, icon }),
+      [nextShapeId(file, icon === undefined ? shape : 'part')],
     );
   }
 
@@ -1187,6 +1202,10 @@ export function createCanvas(options: CanvasOptions): Canvas {
     spreaders = spread_;
     node.append(aligners);
 
+    add('＋ 部品', 'ルータやサーバなどの絵を足す', () => {
+      const at = bar.getBoundingClientRect();
+      menu.open(at.left + 8, at.bottom + 4, partItems());
+    });
     add('＋ 図形', 'この図に図形を足す', () => {
       const at = bar.getBoundingClientRect();
       menu.open(at.left + 8, at.bottom + 4, PALETTE.map(([shape, label]) => ({

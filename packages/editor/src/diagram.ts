@@ -305,11 +305,19 @@ const BASE: Readonly<Record<ShapeKind, string>> = {
   parallelogram: 'io', hexagon: 'prep', 'loop-start': 'loop', 'loop-end': 'loopEnd',
 };
 
+/** Parts are named for what they are, not for the shape that carries them. */
+const PART_BASE = 'part';
+
 export interface NewShape {
   readonly shape: ShapeKind;
   readonly text: string;
   /** Where to pin it. A freely placed drawing needs one; a flow does not. */
   readonly at?: { readonly x: number; readonly y: number } | undefined;
+  /**
+   * A picture to draw instead of an outline — a part from the library, or a
+   * path to an image file. It is a look, so it goes in the style section.
+   */
+  readonly icon?: string | undefined;
 }
 
 /**
@@ -320,12 +328,15 @@ export interface NewShape {
  */
 export function addNode(file: DiagramFile, source: string, shape: NewShape): Edit {
   if (!file.body) throw new DiagramEditError('図形を書くセクションが無い');
-  const id = nextShapeId(file, shape.shape);
+  const id = nextShapeId(file, shape.icon === undefined ? shape.shape : 'part');
   const [open, close] = BRACKETS[shape.shape];
   const changes: Change[] = [{
     span: { start: file.body.insertAt, end: file.body.insertAt },
     text: `\n${file.body.indent}${id} ${open}${shape.text}${close}`,
   }];
+  // Sections the file does not have yet are written once, after everything
+  // else: two separate appends would both claim the end of the file.
+  const tail: string[] = [];
 
   if (shape.at) {
     const line = formatPlacement(id, shape.at, undefined, idWidth(file));
@@ -335,14 +346,30 @@ export function addNode(file: DiagramFile, source: string, shape: NewShape): Edi
         text: `\n${file.layoutBlock.indent}${line}`,
       });
     } else {
-      const end = byteLength(source.replace(/\s+$/, ''));
-      changes.push({
-        span: { start: end, end: byteLength(source) },
-        text: `\n\nlayout {\n  ${line}\n}\n`,
-      });
+      tail.push(`layout {\n  ${line}\n}`);
     }
   }
-  return splice(source, changes, '図形を追加');
+
+  if (shape.icon !== undefined) {
+    const line = `${id} { icon: ${shape.icon} }`;
+    if (file.styleBlock) {
+      changes.push({
+        span: { start: file.styleBlock.insertAt, end: file.styleBlock.insertAt },
+        text: `\n${file.styleBlock.indent}${line}`,
+      });
+    } else {
+      tail.push(`style {\n  ${line}\n}`);
+    }
+  }
+
+  if (tail.length > 0) {
+    const end = byteLength(source.replace(/\s+$/, ''));
+    changes.push({
+      span: { start: end, end: byteLength(source) },
+      text: `\n\n${tail.join('\n\n')}\n`,
+    });
+  }
+  return splice(source, changes, shape.icon === undefined ? '図形を追加' : '部品を追加');
 }
 
 /** Removes several shapes as one change. */
@@ -529,8 +556,8 @@ function groupLine(group: Node, children: readonly string[]): string {
  * what it just added — the same file and the same kind always give the same
  * answer.
  */
-export function nextShapeId(file: DiagramFile, shape: ShapeKind): string {
-  const base = BASE[shape];
+export function nextShapeId(file: DiagramFile, shape: ShapeKind | 'part'): string {
+  const base = shape === 'part' ? PART_BASE : BASE[shape];
   const taken = new Set(file.nodes.map(n => n.id));
   for (let n = 1; ; n++) {
     const id = `${base}${n}`;

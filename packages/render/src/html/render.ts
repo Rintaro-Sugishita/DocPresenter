@@ -131,7 +131,7 @@ function renderKnown(
   }
   if (path.toLowerCase().endsWith('.dgm')) {
     const diagram = parseDiagram(source);
-    if (diagram.mode !== 'overlay') return renderDiagram(diagram);
+    if (diagram.mode !== 'overlay') return renderDiagram(diagram, url);
     // The image is written relative to the diagram, not to the document.
     const image = diagram.image === undefined ? undefined : url(joinPath(path, diagram.image));
     return renderOverlay(diagram, image);

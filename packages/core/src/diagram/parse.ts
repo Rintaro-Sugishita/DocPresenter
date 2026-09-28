@@ -82,6 +82,7 @@ export function parseDiagram(source: string): DiagramFile {
   let image: string | undefined;
   let layoutBlock: LayoutBlock | undefined;
   let body: Section | undefined;
+  let styleBlock: Section | undefined;
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i]!;
@@ -120,12 +121,14 @@ export function parseDiagram(source: string): DiagramFile {
       layoutBlock = blockOf(lines, raw, start, i, inner);
     } else {
       theme = parseStyle(inner.map(l => l.text), style) ?? theme;
+      styleBlock = blockOf(lines, raw, start, i, inner);
     }
   }
 
   if (!mode) throw new DiagramParseError('free / flow / overlay のいずれのセクションも無い', 1);
   return {
-    mode, comments, nodes, edges, body, layout, bends, layoutBlock, theme, style, image, callouts,
+    mode, comments, nodes, edges, body, layout, bends, layoutBlock, styleBlock,
+    theme, style, image, callouts,
   };
 }
 

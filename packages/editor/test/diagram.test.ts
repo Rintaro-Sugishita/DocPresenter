@@ -388,3 +388,39 @@ describe('折れ点の後始末', () => {
     expect(parseDiagram(written).bends.has('a->b')).toBe(false);
   });
 });
+
+describe('部品を足す', () => {
+  const BARE = 'free {\n  a [A]\n}';
+
+  it('図形の行・ピン・絵の指定が 1 回で入る', () => {
+    const source = 'free {\n  a [A]\n}\n\nlayout {\n  a @ (0, 0)\n}\n\nstyle {\n  theme: default\n}';
+    const written = applyEdit(source, addNode(parseDiagram(source), source, {
+      shape: 'text', text: 'ルータ', at: { x: 40, y: 120 }, icon: 'net/router',
+    }));
+    const file = parseDiagram(written);
+    expect(file.nodes.map(n => n.id)).toEqual(['a', 'part1']);
+    expect(file.layout.get('part1')).toMatchObject({ x: 40, y: 120 });
+    expect(file.style.get('part1')?.get('icon')).toBe('net/router');
+  });
+
+  it('セクションが無ければ、まとめて 1 回で作る', () => {
+    const written = applyEdit(BARE, addNode(parseDiagram(BARE), BARE, {
+      shape: 'text', text: 'ルータ', at: { x: 10, y: 10 }, icon: 'net/router',
+    }));
+    expect(written).toContain('layout {');
+    expect(written).toContain('style {');
+    const file = parseDiagram(written);
+    expect(file.layout.get('part1')).toMatchObject({ x: 10, y: 10 });
+    expect(file.style.get('part1')?.get('icon')).toBe('net/router');
+  });
+
+  it('部品の名前は part1, part2', () => {
+    const once = applyEdit(BARE, addNode(parseDiagram(BARE), BARE, {
+      shape: 'text', text: '一', icon: 'net/router', at: { x: 0, y: 0 },
+    }));
+    const twice = applyEdit(once, addNode(parseDiagram(once), once, {
+      shape: 'text', text: '二', icon: 'net/switch', at: { x: 0, y: 40 },
+    }));
+    expect(parseDiagram(twice).nodes.map(n => n.id)).toEqual(['a', 'part1', 'part2']);
+  });
+});

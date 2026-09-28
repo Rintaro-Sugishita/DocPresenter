@@ -298,4 +298,28 @@ check('線の上に戻すと折れ点は消える', !straight.includes('-> web @
   straight.split('\n').filter(l => l.includes('-> web')).join(' / '));
 check('折れ点の目印も消える', (await page.$$('.dp-canvas-bend')).length === 0);
 
+// --- 部品（図形とは別の一覧）---------------------------------------------
+await openSheet(4);
+await page.click('.dp-sheet:not([hidden]) .dp-canvas-bar button:text("＋ 部品")');
+await page.waitForSelector('.dp-menu button');
+const parts = await page.$$eval('.dp-menu button', ns => ns.map(n => n.textContent));
+check('部品は別の一覧になっている', parts.includes('ルータ') && !parts.includes('四角'),
+  parts.slice(0, 4).join(' / '));
+check('部品も絵で選ぶ', (await page.$$('.dp-menu button svg')).length === parts.length,
+  `${(await page.$$('.dp-menu button svg')).length} / ${parts.length}`);
+
+await page.click(item('ルータ'));
+await page.waitForTimeout(500);
+check('1 回の操作として書かれる', (await status()).includes('部品を追加'), await status());
+check('絵が描かれる', (await page.$$('.dp-canvas-stage .dp-part-art')).length === 1,
+  String((await page.$$('.dp-canvas-stage .dp-part-art')).length));
+check('名前は絵の下に出る',
+  (await page.textContent(node('part1'))).includes('ルータ'),
+  await page.textContent(node('part1')));
+
+const withPart = await source();
+check('意味は意味層、絵はスタイル層', withPart.includes('  part1 "ルータ"')
+  && withPart.includes('part1 { icon: net/router }'),
+  withPart.split('\n').filter(l => l.includes('part1')).join(' / '));
+
 await browser.close();

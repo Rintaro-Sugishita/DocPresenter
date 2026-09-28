@@ -9,12 +9,17 @@ import {
   type Box, type DiagramFile, type EdgeRoute, type Node, type Point, type ShapeKind,
 } from '@docpresenter/core';
 import { escapeAttr, escapeHtml } from '../html/table.js';
+import { isIconPath, stencilArt } from './stencil.js';
 
 const LINE_HEIGHT = 20;
 const ARROW_LENGTH = 10;
 const ARROW_HALF_WIDTH = 4;
 
-export function renderDiagram(diagram: DiagramFile): string {
+/**
+ * Draws a diagram. `url` resolves a picture a part points at by path; without
+ * it such a part is drawn as its name, which is at least visible.
+ */
+export function renderDiagram(diagram: DiagramFile, url?: (path: string) => string): string {
   const laid = layOutDiagram(diagram);
   const byId = new Map(diagram.nodes.map(n => [n.id, n]));
 
@@ -24,7 +29,7 @@ export function renderDiagram(diagram: DiagramFile): string {
     const node = byId.get(id);
     const box = laid.boxes.get(id);
     if (!node || !box) continue;
-    (box.z < 0 ? behind : front).push(renderNode(node, box, diagram));
+    (box.z < 0 ? behind : front).push(renderNode(node, box, diagram, url));
   }
 
   // Connections are drawn in two passes: every line and plate first, then every
@@ -56,17 +61,23 @@ export function diagramDiagnostics(diagram: DiagramFile): readonly string[] {
   return layOutDiagram(diagram).diagnostics;
 }
 
-function renderNode(node: Node, box: Box, diagram: DiagramFile): string {
+function renderNode(
+  node: Node, box: Box, diagram: DiagramFile, url?: (path: string) => string,
+): string {
+  const icon = diagram.style.get(node.id)?.get('icon');
   const classes = [
     'dp-node',
     `dp-shape-${node.shape}`,
+    ...(icon ? ['dp-part'] : []),
     ...(node.className ? [`dp-class-${node.className}`] : []),
     ...styleClasses(diagram, node.id),
   ];
-  const shape = shapeElement(node.shape, box);
+  // A part is a picture with its name under it: the picture is the shape, so
+  // no outline is drawn around it.
+  const shape = icon ? picture(icon, box, url) : shapeElement(node.shape, box);
   const text = node.shape === 'group'
     ? groupLabel(box)
-    : label(box, diagram.style.get(node.id)?.get('align'), node.shape);
+    : label(box, diagram.style.get(node.id)?.get('align'), node.shape, icon !== undefined);
   const colours = styleColours(diagram, node.id);
   const style = colours === '' ? '' : ` style="${escapeAttr(colours)}"`;
   return `<g class="${escapeAttr(classes.join(' '))}" data-node="${escapeAttr(node.id)}"${style}>`
@@ -81,8 +92,48 @@ function styleClasses(diagram: DiagramFile, id: string): string[] {
   const rule = diagram.style.get(id);
   if (!rule) return [];
   return [...rule]
-    .filter(([property, value]) => !COLOUR.test(value) && property !== 'align')
+    .filter(([property, value]) =>
+      !COLOUR.test(value) && property !== 'align' && property !== 'icon')
     .map(([property, value]) => `dp-${property}-${value}`);
+}
+
+/** The room a part's picture takes at the top of its box. */
+const ICON_ROOM = 44;
+
+/**
+ * How big a part's picture is drawn. The name is what a reader needs, so a
+ * long name that has to wrap takes its room out of the picture rather than
+ * running off the bottom of the box.
+ */
+function artSize(box: Box): number {
+  const room = Math.min(ICON_ROOM, box.height - LINE_HEIGHT * box.lines.length);
+  return Math.max(16, Math.min(room, box.width));
+}
+
+/**
+ * A part's picture, drawn to fit the box above its label. A name that ends in
+ * a file extension is a file the author pointed at; anything else is one of the
+ * pictures shipped with the tool.
+ */
+function picture(icon: string, box: Box, url?: (path: string) => string): string {
+  const size = artSize(box);
+  const x = box.x + (box.width - size) / 2;
+  const y = box.y + Math.max(0, (box.height - LINE_HEIGHT * box.lines.length - size) / 2);
+
+  if (isIconPath(icon)) {
+    const href = url ? url(icon) : icon;
+    return `<image class="dp-part-image" href="${escapeAttr(href)}" x="${n(x)}" y="${n(y)}"`
+      + ` width="${n(size)}" height="${n(size)}" preserveAspectRatio="xMidYMid meet"/>`;
+  }
+  const part = stencilArt(icon);
+  if (!part) {
+    // P6: an unknown part is said out loud rather than drawn as nothing.
+    return `<text class="dp-missing-part" x="${n(box.x + box.width / 2)}" y="${n(y + size / 2)}"`
+      + ` text-anchor="middle" dominant-baseline="central">?</text>`;
+  }
+  const scale = size / 24;
+  return `<g class="dp-part-art" transform="translate(${n(x)}, ${n(y)}) scale(${n(scale)})">`
+    + `${part.body}</g>`;
 }
 
 /**
@@ -184,7 +235,9 @@ function rect(x: number, y: number, w: number, h: number, r: number): string {
  * label on a screen mock-up is not, and a screen made of centred labels reads
  * as nothing anyone would build.
  */
-function label(box: Box, align: string | undefined, shape: ShapeKind): string {
+function label(
+  box: Box, align: string | undefined, shape: ShapeKind, underPicture = false,
+): string {
   const anchor = align === 'left' ? 'start' : align === 'right' ? 'end' : 'middle';
   const inset = 8;
   const x = anchor === 'start' ? box.x + inset
@@ -194,7 +247,12 @@ function label(box: Box, align: string | undefined, shape: ShapeKind): string {
   // the middle of the space the text has. Centring there runs the text into
   // the curve.
   const lid = shape === 'cylinder' ? cylinderRadius(box.height) : 0;
-  const top = box.y + (box.height + lid) / 2 - ((box.lines.length - 1) * LINE_HEIGHT) / 2;
+  // A part's name sits under its picture, which is where a network drawing
+  // puts it; everything else centres in its shape.
+  const top = underPicture
+    ? box.y + Math.max(0, (box.height - LINE_HEIGHT * box.lines.length - artSize(box)) / 2)
+      + artSize(box) + LINE_HEIGHT * 0.65
+    : box.y + (box.height + lid) / 2 - ((box.lines.length - 1) * LINE_HEIGHT) / 2;
   const spans = box.lines.map((line, i) =>
     `<tspan x="${n(x)}" y="${n(top + i * LINE_HEIGHT)}">${escapeHtml(line)}</tspan>`);
   return `<text class="dp-label" text-anchor="${anchor}" dominant-baseline="central">${spans.join('')}</text>`;

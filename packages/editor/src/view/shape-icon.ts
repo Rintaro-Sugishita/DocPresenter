@@ -60,3 +60,8 @@ export function alignIcon(kind: string): string {
   })();
   return `<svg viewBox="0 0 18 16" width="18" height="16" aria-hidden="true">${body}</svg>`;
 }
+
+/** A part from the library, drawn at the size of a line of text. */
+export function partIcon(body: string): string {
+  return `<svg viewBox="0 0 24 24" width="18" height="16" aria-hidden="true">${body}</svg>`;
+}
