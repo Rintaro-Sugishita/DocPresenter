@@ -213,6 +213,9 @@ export const EDITOR_STYLE = `
 .dp-canvas-stage { outline: none; position: relative; }
 /* The text box sits over the shape being renamed: an IME needs somewhere to
    compose from, the same reason the grid keeps one over the selected cell. */
+/* The format bar over a label. The shared rule pins it to the top right of
+   whatever it is in; over a drawing it is placed by hand instead. */
+.dp-canvas-format { top: auto; right: auto; }
 .dp-canvas-text {
   position: absolute; box-sizing: border-box; font: inherit; font-size: 13px;
   text-align: center; border: 1.5px solid #1f5fa8; border-radius: 2px;

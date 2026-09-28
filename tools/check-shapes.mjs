@@ -75,6 +75,38 @@ const named = await source();
 check('書き換わるのは同じ 1 行', named.includes('  branch1 {判定する}'),
   named.split('\n').find(l => l.includes('branch1')));
 
+// 書式バーは表のセルと同じものが、図形の上に浮いて出る
+await page.dblclick(node('branch1'));
+await page.waitForSelector('.dp-canvas-text');
+await page.waitForTimeout(150);
+check('文字を編集すると書式バーが浮く', await page.isVisible('.dp-canvas-format'));
+const barAt = await page.locator('.dp-canvas-format').boundingBox();
+const textAt = await page.locator('.dp-canvas-text').boundingBox();
+check('バーは編集中の図形のそば', Math.abs(barAt.y + barAt.height - textAt.y) < 12,
+  `バー ${Math.round(barAt.y + barAt.height)} / 文字 ${Math.round(textAt.y)}`);
+
+await page.fill('.dp-canvas-text', '判定する');
+await page.$eval('.dp-canvas-text', el => el.setSelectionRange(0, 2));
+await page.dispatchEvent('.dp-canvas-text', 'select');
+await page.waitForTimeout(150);
+await page.click('.dp-canvas-format .dp-format-bold');
+await page.waitForTimeout(150);
+check('選んだところに太字が付く', (await page.inputValue('.dp-canvas-text')) === '**判定**する',
+  await page.inputValue('.dp-canvas-text'));
+check('付いている書式は点灯する',
+  await page.getAttribute('.dp-canvas-format .dp-format-bold', 'aria-pressed') === 'true');
+await page.click('.dp-canvas-format .dp-format-swatch[title*="赤"]');
+await page.waitForTimeout(150);
+check('色も同じバーから付く',
+  (await page.inputValue('.dp-canvas-text')).includes('{color=#ff0000}'),
+  await page.inputValue('.dp-canvas-text'));
+await page.keyboard.press('Escape');
+await page.waitForTimeout(250);
+check('閉じるとバーも消える', !(await page.isVisible('.dp-canvas-format')));
+check('Escape なので文字は元のまま',
+  (await page.textContent(node('branch1'))).includes('判定する'),
+  await page.textContent(node('branch1')));
+
 // 図形の文字は本文と同じ md 記法が効く
 await page.dblclick(node('branch1'));
 await page.waitForSelector('.dp-canvas-text');

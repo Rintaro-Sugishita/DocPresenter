@@ -13,7 +13,9 @@ import {
   addNode, bendEdge, canUnpin, connectNodes, disconnectNodes, groupMembers, groupNodes,
   nextShapeId, pinNode, pinNodes, reconnect, removeNodes, setNodeShape, setNodeText, unpinNode,
 } from '../diagram.js';
+import { toggleInline, type InlineMark } from '../inline.js';
 import { createMenu, type MenuItem } from './menu.js';
+import { createToolbar } from './toolbar.js';
 import { alignIcon, partIcon, shapeIcon } from './shape-icon.js';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
@@ -416,6 +418,8 @@ export function createCanvas(options: CanvasOptions): Canvas {
   stage.addEventListener('pointerdown', event => {
     if (event.button !== 0) return;
     const target = event.target as Element | null;
+    // The text box and its bar sit over the drawing but are not part of it.
+    if (target?.closest('.dp-canvas-text, .dp-format-bar')) return;
     const onHandle = target?.closest('.dp-canvas-handle') != null && picked.length === 1;
     const onEnd = target?.closest('.dp-canvas-end')?.getAttribute('data-end');
     const id = onHandle ? primary() : target?.closest('[data-node]')?.getAttribute('data-node');
@@ -720,6 +724,7 @@ export function createCanvas(options: CanvasOptions): Canvas {
   // Keeps the browser from moving the focus or starting a text selection,
   // while leaving click and double click to be made as usual.
   stage.addEventListener('mousedown', event => {
+    if ((event.target as Element | null)?.closest('.dp-canvas-text, .dp-format-bar')) return;
     event.preventDefault();
     event.stopPropagation();
   });
@@ -952,13 +957,39 @@ export function createCanvas(options: CanvasOptions): Canvas {
     input.className = 'dp-canvas-text';
     input.value = node.text;
     input.spellcheck = false;
-    input.style.left = `${rect.left - stageAt.left + box.x * factor}px`;
-    input.style.top = `${rect.top - stageAt.top + box.y * factor}px`;
+    const left = rect.left - stageAt.left + box.x * factor;
+    const top = rect.top - stageAt.top + box.y * factor;
+    input.style.left = `${left}px`;
+    input.style.top = `${top}px`;
     input.style.width = `${box.width * factor}px`;
     input.style.height = `${box.height * factor}px`;
     stage.append(input);
+
+    // The same bar a paragraph and a table cell get: a label holds the same
+    // inline Markdown they do, so it gets the same way of writing it.
+    const toolbar = createToolbar(owner, mark => applyMark(mark));
+    toolbar.element.classList.add('dp-canvas-format');
+    stage.append(toolbar.element);
+    const bar = toolbar.element.getBoundingClientRect();
+    // Above the shape, or below it when the shape is against the top edge.
+    const above = top - bar.height - 4;
+    toolbar.element.style.left = `${Math.max(0, left)}px`;
+    toolbar.element.style.top = `${above >= 0 ? above : top + box.height * factor + 4}px`;
+
     input.focus();
     input.select();
+    const sync = (): void =>
+      toolbar.sync(input.value, input.selectionStart ?? 0, input.selectionEnd ?? 0);
+    sync();
+
+    function applyMark(mark: InlineMark): void {
+      const change = toggleInline(
+        input.value, input.selectionStart ?? 0, input.selectionEnd ?? 0, mark);
+      input.setRangeText(change.text, change.start, change.end, 'preserve');
+      input.setSelectionRange(change.select.start, change.select.end);
+      input.focus();
+      sync();
+    }
 
     let done = false;
     const finish = (keep: boolean): void => {
@@ -966,17 +997,29 @@ export function createCanvas(options: CanvasOptions): Canvas {
       done = true;
       const text = input.value;
       input.remove();
+      toolbar.element.remove();
       stage.focus({ preventScroll: true });
       if (!keep || text === node.text) return;
       options.apply(() => setNodeText(file, id, text), [id]);
     };
     input.addEventListener('blur', () => finish(true));
+    for (const event of ['input', 'select', 'keyup', 'click']) {
+      input.addEventListener(event, sync);
+    }
     input.addEventListener('keydown', event => {
       // Every key here belongs to the text, including the ones the canvas uses.
       event.stopPropagation();
       if (event.isComposing) return;
       if (event.key === 'Enter') { event.preventDefault(); finish(true); }
       if (event.key === 'Escape') { event.preventDefault(); finish(false); }
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'b') {
+        event.preventDefault();
+        applyMark('bold');
+      }
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'i') {
+        event.preventDefault();
+        applyMark('italic');
+      }
     });
   }
 
