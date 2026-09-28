@@ -5,8 +5,9 @@
 // cannot be repeated across the many diagrams of one page.
 
 import {
-  EDGE_LABEL, layOutDiagram, textWidth,
+  EDGE_LABEL, layOutDiagram, lineText, parseRuns, textWidth,
   type Box, type DiagramFile, type EdgeRoute, type Node, type Point, type ShapeKind,
+  type TextLine,
 } from '@docpresenter/core';
 import { escapeAttr, escapeHtml } from '../html/table.js';
 import { isIconPath, stencilArt } from './stencil.js';
@@ -254,7 +255,7 @@ function label(
       + artSize(box) + LINE_HEIGHT * 0.65
     : box.y + (box.height + lid) / 2 - ((box.lines.length - 1) * LINE_HEIGHT) / 2;
   const spans = box.lines.map((line, i) =>
-    `<tspan x="${n(x)}" y="${n(top + i * LINE_HEIGHT)}">${escapeHtml(line)}</tspan>`);
+    `<tspan x="${n(x)}" y="${n(top + i * LINE_HEIGHT)}">${runs(line)}</tspan>`);
   return `<text class="dp-label" text-anchor="${anchor}" dominant-baseline="central">${spans.join('')}</text>`;
 }
 
@@ -263,11 +264,29 @@ function cylinderRadius(height: number): number {
   return Math.min(12, height / 4);
 }
 
+/**
+ * The runs of one line, as nested `tspan`s. A label takes the same inline
+ * formatting as the rest of the document, and SVG says "part of this text is
+ * different" the same way: a span inside the text.
+ */
+function runs(line: TextLine): string {
+  return line.map(run => {
+    const text = escapeHtml(run.text);
+    const attributes = [
+      ...(run.bold ? ['font-weight="600"'] : []),
+      ...(run.italic ? ['font-style="italic"'] : []),
+      ...(run.code ? ['class="dp-code"'] : []),
+      ...(run.colour && COLOUR.test(run.colour) ? [`fill="${escapeAttr(run.colour)}"`] : []),
+    ];
+    return attributes.length === 0 ? text : `<tspan ${attributes.join(' ')}>${text}</tspan>`;
+  }).join('');
+}
+
 /** A group is named in its top-left corner so the label never covers a shape. */
 function groupLabel(box: Box): string {
-  const text = box.lines.join(' ');
-  if (text === '') return '';
-  return `<text class="dp-group-label" x="${n(box.x + 8)}" y="${n(box.y + 14)}">${escapeHtml(text)}</text>`;
+  const line = box.lines.flatMap(one => [...one]);
+  if (lineText(line) === '') return '';
+  return `<text class="dp-group-label" x="${n(box.x + 8)}" y="${n(box.y + 14)}">${runs(line)}</text>`;
 }
 
 interface DrawnEdge { readonly geometry: string; readonly label: string }
@@ -345,7 +364,7 @@ function labelPlate(text: string, { x, y }: Point): string {
 
 function labelText(text: string, { x, y }: Point): string {
   return `<text class="dp-edge-label" x="${n(x)}" y="${n(y)}"`
-    + ` text-anchor="middle" dominant-baseline="central">${escapeHtml(text)}</text>`;
+    + ` text-anchor="middle" dominant-baseline="central">${runs(parseRuns(text))}</text>`;
 }
 
 /** Coordinates are rounded: a diff of a rendered SVG should stay readable. */

@@ -75,6 +75,27 @@ const named = await source();
 check('書き換わるのは同じ 1 行', named.includes('  branch1 {判定する}'),
   named.split('\n').find(l => l.includes('branch1')));
 
+// 図形の文字は本文と同じ md 記法が効く
+await page.dblclick(node('branch1'));
+await page.waitForSelector('.dp-canvas-text');
+await page.fill('.dp-canvas-text', '**必須** か [任意]{color=#1f7a1f}');
+await page.keyboard.press('Enter');
+await page.waitForTimeout(400);
+check('図形の文字にも md 記法が効く',
+  (await page.innerHTML(node('branch1'))).includes('font-weight="600"')
+  && (await page.innerHTML(node('branch1'))).includes('fill="#1f7a1f"'));
+check('印そのものは出ない',
+  !(await page.textContent(node('branch1'))).includes('**'),
+  await page.textContent(node('branch1')));
+await page.dblclick(node('branch1'));
+await page.waitForSelector('.dp-canvas-text');
+check('開けばもとの記法が出る',
+  (await page.inputValue('.dp-canvas-text')).includes('**必須**'),
+  await page.inputValue('.dp-canvas-text'));
+await page.fill('.dp-canvas-text', '判定する');
+await page.keyboard.press('Enter');
+await page.waitForTimeout(400);
+
 // --- 線を引く ------------------------------------------------------------
 await page.click(node('branch1'), { button: 'right' });
 await page.waitForSelector('.dp-menu button');

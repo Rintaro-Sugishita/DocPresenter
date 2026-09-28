@@ -4,8 +4,9 @@
 // automatic layout that moved a shape someone had placed by hand would make
 // the pin meaningless.
 
+import { lineText, parseRuns, type TextLine } from './inline.js';
 import { DEFAULT_SIZE, type DiagramFile, type Edge, type Node, type Point } from './model.js';
-import { textWidth, wrapText } from './text.js';
+import { textWidth, wrapRuns } from './text.js';
 
 export interface Box {
   readonly x: number;
@@ -13,8 +14,12 @@ export interface Box {
   readonly width: number;
   readonly height: number;
   readonly z: number;
-  /** The label already broken into lines that fit the box. */
-  readonly lines: readonly string[];
+  /**
+   * The label already broken into lines that fit the box. Each line is a list
+   * of runs, because a label takes the same inline formatting the rest of the
+   * document does.
+   */
+  readonly lines: readonly TextLine[];
 }
 
 export type { Point } from './model.js';
@@ -73,7 +78,7 @@ export function layOutDiagram(diagram: DiagramFile): LaidOutDiagram {
   const plain = diagram.nodes.filter(n => n.shape !== 'group');
   const groups = diagram.nodes.filter(n => n.shape === 'group');
 
-  const sizes = new Map<string, { width: number; height: number; lines: readonly string[] }>();
+  const sizes = new Map<string, { width: number; height: number; lines: readonly TextLine[] }>();
   for (const node of plain) sizes.set(node.id, measure(node, diagram));
 
   const auto = diagram.mode === 'flow'
@@ -128,7 +133,7 @@ export function layOutDiagram(diagram: DiagramFile): LaidOutDiagram {
  */
 function park(
   missing: readonly Node[],
-  sizes: ReadonlyMap<string, { width: number; height: number; lines: readonly string[] }>,
+  sizes: ReadonlyMap<string, { width: number; height: number; lines: readonly TextLine[] }>,
   boxes: Map<string, Box>,
 ): void {
   if (missing.length === 0) return;
@@ -241,7 +246,7 @@ function placeLabels(routes: readonly EdgeRoute[]): EdgeRoute[] {
     const width = textWidth(label, EDGE_LABEL.fontSize) + EDGE_LABEL.padding;
     const boxAt = (at: Point): Box => ({
       x: at.x - width / 2, y: at.y - EDGE_LABEL.height / 2,
-      width, height: EDGE_LABEL.height, z: 0, lines: [label],
+      width, height: EDGE_LABEL.height, z: 0, lines: [parseRuns(label)],
     });
 
     for (const t of [0.5, 0.36, 0.64, 0.24, 0.76]) {
@@ -310,17 +315,19 @@ export function edgeLabelBox(route: EdgeRoute): Box | undefined {
   const width = textWidth(route.edge.label, EDGE_LABEL.fontSize) + EDGE_LABEL.padding;
   return {
     x: route.labelAt.x - width / 2, y: route.labelAt.y - EDGE_LABEL.height / 2,
-    width, height: EDGE_LABEL.height, z: 0, lines: [route.edge.label],
+    width, height: EDGE_LABEL.height, z: 0, lines: [parseRuns(route.edge.label)],
   };
 }
 
-function measure(node: Node, diagram: DiagramFile): { width: number; height: number; lines: readonly string[] } {
+function measure(
+  node: Node, diagram: DiagramFile,
+): { width: number; height: number; lines: readonly TextLine[] } {
   const pin = diagram.layout.get(node.id);
   const inner = pin?.width !== undefined
     ? pin.width - TEXT_PAD
     : Math.min(MAX_NODE_WIDTH, Math.max(DEFAULT_SIZE.width, textWidth(node.text, FONT) + TEXT_PAD)) - TEXT_PAD;
-  const lines = wrapText(node.text, inner, FONT);
-  const widest = lines.reduce((w, line) => Math.max(w, textWidth(line, FONT)), 0);
+  const lines = wrapRuns(parseRuns(node.text), inner, FONT);
+  const widest = lines.reduce((w, line) => Math.max(w, textWidth(lineText(line), FONT)), 0);
   // A cylinder spends the top of its box on the lid, so the text needs the
   // room back; otherwise two lines run into the curve.
   const lid = node.shape === 'cylinder' ? CYLINDER_LID : 0;
@@ -456,7 +463,7 @@ function groupBox(
       width: pin.width ?? spread(children, 'x'),
       height: pin.height ?? spread(children, 'y'),
       z: pin.z ?? -1,
-      lines: [group.text],
+      lines: [parseRuns(group.text)],
     };
   }
   if (children.length === 0) return undefined;
@@ -464,7 +471,10 @@ function groupBox(
   const top = Math.min(...children.map(b => b.y)) - GROUP_PAD - GROUP_HEADER;
   const right = Math.max(...children.map(b => b.x + b.width)) + GROUP_PAD;
   const bottom = Math.max(...children.map(b => b.y + b.height)) + GROUP_PAD;
-  return { x: left, y: top, width: right - left, height: bottom - top, z: -1, lines: [group.text] };
+  return {
+    x: left, y: top, width: right - left, height: bottom - top, z: -1,
+    lines: [parseRuns(group.text)],
+  };
 }
 
 function spread(boxes: readonly Box[], axis: 'x' | 'y'): number {

@@ -103,3 +103,27 @@ describe('部品', () => {
     expect(draw('net/nope')).toContain('dp-missing-part');
   });
 });
+
+describe('ラベルの書式', () => {
+  const draw = (text: string) =>
+    renderDiagram(parseDiagram(`free {\n  a [${text}]\n}\n\nlayout {\n  a @ (0, 0) 200x60\n}`));
+
+  it('太字・斜体・コード・色が tspan になる', () => {
+    expect(draw('**強い**')).toContain('font-weight="600"');
+    expect(draw('*弱い*')).toContain('font-style="italic"');
+    expect(draw('`code`')).toContain('class="dp-code"');
+    expect(draw('[赤]{color=#c62828}')).toContain('fill="#c62828"');
+  });
+
+  it('印そのものは描かれない', () => {
+    const svg = draw('**強い**');
+    expect(svg).toContain('>強い<');
+    expect(svg).not.toContain('**');
+  });
+
+  it('線のラベルにも効く', () => {
+    const svg = renderDiagram(parseDiagram(
+      'flow {\n  a [A]\n  b [B]\n  a --> b  "**必須**"\n}'));
+    expect(svg).toContain('font-weight="600"');
+  });
+});

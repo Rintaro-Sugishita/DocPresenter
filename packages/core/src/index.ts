@@ -9,5 +9,6 @@ export * from './numbering/model.js';
 export * from './numbering/resolve.js';
 export * from './diagram/model.js';
 export * from './diagram/parse.js';
+export * from './diagram/inline.js';
 export * from './diagram/text.js';
 export * from './diagram/layout.js';

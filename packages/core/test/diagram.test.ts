@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { layOutDiagram, parseDiagram, wrapText } from '../src/index.js';
+import { layOutDiagram, parseDiagram, parseRuns, wrapRuns, wrapText } from '../src/index.js';
 
 const read = (path: string): string => readFileSync(path, 'utf8');
 
@@ -162,5 +162,41 @@ describe('フローチャートの図形', () => {
       ['loop-start', 'ループ開始'],
       ['loop-end', 'ループ終了'],
     ]);
+  });
+});
+
+describe('ラベルの書式', () => {
+  const runs = (text: string) => parseRuns(text).map(r =>
+    [r.text, r.bold ? 'b' : '', r.italic ? 'i' : '', r.code ? 'c' : '', r.colour ?? ''].join('|'));
+
+  it('太字・斜体・コード・色を読む', () => {
+    expect(runs('**強い**')).toEqual(['強い|b|||']);
+    expect(runs('*弱い*')).toEqual(['弱い||i||']);
+    expect(runs('`code`')).toEqual(['code|||c|']);
+    expect(runs('[赤]{color=#c62828}')).toEqual(['赤||||#c62828']);
+  });
+
+  it('閉じていない印はただの文字', () => {
+    expect(runs('2 * 3 = 6')).toEqual(['2 * 3 = 6||||']);
+    expect(runs('user_id_1')).toEqual(['user_id_1||||']);
+  });
+
+  it('入れ子と逃げ道', () => {
+    expect(runs('**[強い赤]{color=#f00}**')).toEqual(['強い赤|b|||#f00']);
+    expect(runs('\\*そのまま\\*')).toEqual(['*そのまま*||||']);
+  });
+
+  it('折り返しても書式は保たれる', () => {
+    const lines = wrapRuns(parseRuns('**あいうえお**かきくけこ'), 5 * 14, 14);
+    expect(lines).toHaveLength(2);
+    expect(lines[0]!.every(run => run.bold)).toBe(true);
+    expect(lines[1]!.every(run => run.bold)).toBe(false);
+  });
+
+  it('大きさは見える文字で決まる（印は数えない）', () => {
+    const marked = layOutDiagram(parseDiagram('flow {\n  a [**あいう**]\n}'));
+    const plain = layOutDiagram(parseDiagram('flow {\n  a [あいう]\n}'));
+    expect(marked.boxes.get('a')!.width).toBe(plain.boxes.get('a')!.width);
+    expect(marked.boxes.get('a')!.height).toBe(plain.boxes.get('a')!.height);
   });
 });
