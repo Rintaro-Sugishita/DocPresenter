@@ -632,7 +632,10 @@ export function createCanvas(options: CanvasOptions): Canvas {
       const which = bending;
       const route = lineOf(line);
       bending = undefined;
-      if (!route || !current.moved) { paint(); return; }
+      // Nothing moved, so nothing is redrawn: repainting here would replace the
+      // handle under the pointer, and the browser makes no double click out of
+      // two presses on two different elements.
+      if (!route || !current.moved) return;
       const edge = route.edge;
       const path = route.points.map(p => ({ x: p.x, y: p.y }));
       if (which.fresh) path.splice(which.index + 1, 0, which.at);
@@ -657,7 +660,7 @@ export function createCanvas(options: CanvasOptions): Canvas {
       const at = reaching.at;
       reaching = undefined;
       const chosen = lineOf(line);
-      if (!chosen || !current.moved) { paint(); return; }
+      if (!chosen || !current.moved) return;
       // Whatever shape the end was let go over is the new end. Let go over
       // nothing and the line stays as it was.
       const onto = [...laid.boxes].find(([, box]) =>
@@ -730,11 +733,34 @@ export function createCanvas(options: CanvasOptions): Canvas {
   });
 
   stage.addEventListener('dblclick', event => {
-    const id = (event.target as Element | null)?.closest('[data-node]')?.getAttribute('data-node');
+    const target = event.target as Element | null;
+    // Double clicking a corner takes it out. Dragging it back onto the line
+    // does too, but that asks someone to aim at a line that is not drawn any
+    // more — the corner is where the line goes now.
+    const corner = target?.closest('.dp-canvas-bend')?.getAttribute('data-bend');
+    if (corner !== undefined && corner !== null) {
+      event.preventDefault();
+      dropCorner(Number(corner));
+      return;
+    }
+    const id = target?.closest('[data-node]')?.getAttribute('data-node');
     if (id === null || id === undefined) return;
     event.preventDefault();
     beginText(id);
   });
+
+  /** Removes one corner from the picked line, or all of them. */
+  function dropCorner(index: number | 'all'): void {
+    const chosen = lineOf(line);
+    if (!chosen) return;
+    const edge = chosen.edge;
+    const corners = [...file.bends.get(nameOf(edge))?.points ?? []];
+    if (corners.length === 0) return;
+    const left = index === 'all' ? [] : corners.filter((_, i) => i !== index);
+    options.apply(
+      () => bendEdge(file, source, edge.from, edge.to, left), [], nameOf(edge),
+    );
+  }
 
   /**
    * Pulls an edge, a centre or a midline into line with another shape's. This
@@ -798,16 +824,33 @@ export function createCanvas(options: CanvasOptions): Canvas {
   stage.addEventListener('contextmenu', event => {
     event.preventDefault();
     event.stopPropagation();
-    const overShape = (event.target as Element | null)?.closest('[data-node]');
+    const target = event.target as Element | null;
+    const corner = target?.closest('.dp-canvas-bend')?.getAttribute('data-bend');
+    if (corner !== undefined && corner !== null) {
+      menu.open(event.clientX, event.clientY, [
+        { label: 'この折れ点を消す', run: () => dropCorner(Number(corner)) },
+        { label: 'まっすぐに戻す（折れ点を全部消す）', run: () => dropCorner('all') },
+      ]);
+      return;
+    }
+    const overShape = target?.closest('[data-node]');
     const onLine = overShape ? undefined : lineAt(pointOn(event));
     if (onLine !== undefined) {
       pickLine(onLine);
       const edge = lineOf(onLine)?.edge;
       if (!edge) return;
-      menu.open(event.clientX, event.clientY, [{
-        label: '線を消す',
-        run: () => options.apply(() => disconnectNodes(file, source, edge.from, edge.to), []),
-      }]);
+      const bent = (file.bends.get(onLine)?.points.length ?? 0) > 0;
+      menu.open(event.clientX, event.clientY, [
+        ...(bent ? [{
+          label: 'まっすぐに戻す（折れ点を全部消す）',
+          run: () => dropCorner('all'),
+        }] : []),
+        {
+          label: '線を消す',
+          separated: bent,
+          run: () => options.apply(() => disconnectNodes(file, source, edge.from, edge.to), []),
+        },
+      ]);
       return;
     }
     const id = (event.target as Element | null)?.closest('[data-node]')?.getAttribute('data-node');
@@ -1218,7 +1261,10 @@ export function createCanvas(options: CanvasOptions): Canvas {
     const chosen = lineOf(line);
     if (chosen) {
       where.textContent = `${chosen.edge.from} → ${chosen.edge.to}  (線)`;
-      if (hint) hint.textContent = '線の途中の○をドラッグすると曲がる / 端の○でつなぎ替え / Delete で消す';
+      if (hint) {
+        hint.textContent = '線の途中の○をドラッグすると曲がる / □をダブルクリックでその折れ点を消す / '
+          + '端の○でつなぎ替え / Delete で線を消す';
+      }
       return;
     }
     if (hint) hint.textContent = HINT;

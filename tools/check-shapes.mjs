@@ -336,6 +336,53 @@ check('角は隣の点と直角に吸着する',
 mid = await linePoint('browser->web', 0.25);
 await page.mouse.click(mid.x, mid.y);
 await page.waitForTimeout(250);
+// 折れ点はダブルクリックでも消える（線の上に戻すより確実）
+mid = await linePoint('browser->web', 0.25);
+await page.mouse.click(mid.x, mid.y);
+await page.waitForTimeout(250);
+const cornerAt = await page.locator('.dp-canvas-bend').boundingBox();
+await page.mouse.dblclick(cornerAt.x + cornerAt.width / 2, cornerAt.y + cornerAt.height / 2);
+await page.waitForTimeout(400);
+check('折れ点はダブルクリックで消える', (await page.$$('.dp-canvas-bend')).length === 0,
+  String((await page.$$('.dp-canvas-bend')).length));
+const straightened = await source();
+check('行ごと消える', !straightened.includes('-> web @'),
+  straightened.split('\n').filter(l => l.includes('-> web')).join(' / '));
+
+// 折れ点を 2 つ作り、線のメニューから一度にまっすぐへ戻す
+mid = await linePoint('browser->web');
+await page.mouse.click(mid.x, mid.y);
+await page.waitForTimeout(250);
+for (const [at, dy] of [[0.3, 50], [0.7, -50]]) {
+  const spot = await linePoint('browser->web', at);
+  await page.mouse.move(spot.x, spot.y);
+  await page.mouse.down();
+  await page.mouse.move(spot.x, spot.y + dy * spot.scale, { steps: 6 });
+  await page.mouse.up();
+  await page.waitForTimeout(350);
+}
+check('折れ点は 2 つになる', (await page.$$('.dp-canvas-bend')).length === 2,
+  String((await page.$$('.dp-canvas-bend')).length));
+await page.click('.dp-canvas-bend', { button: 'right' });
+await page.waitForSelector('.dp-menu button');
+await page.click(item('まっすぐに戻す（折れ点を全部消す）'));
+await page.waitForTimeout(400);
+check('一度に全部消せる', (await page.$$('.dp-canvas-bend')).length === 0,
+  String((await page.$$('.dp-canvas-bend')).length));
+const flat = await source();
+check('layout から折れ点の行が消える', !flat.includes('-> web @'),
+  flat.split('\n').filter(l => l.includes('-> web')).join(' / '));
+
+// もう一度折って、線の上に落とす道も残っていることを確かめる
+mid = await linePoint('browser->web');
+await page.mouse.click(mid.x, mid.y);
+await page.waitForTimeout(250);
+await page.mouse.move(mid.x, mid.y);
+await page.mouse.down();
+await page.mouse.move(mid.x, mid.y + 60 * mid.scale, { steps: 6 });
+await page.mouse.up();
+await page.waitForTimeout(400);
+
 // まっすぐな線は 2 つの図形の中心を結ぶ。その真ん中に落とす。
 const centres = await Promise.all([node('browser'), node('web')].map(async selector => {
   const box = await page.locator(selector).boundingBox();
