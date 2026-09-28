@@ -89,6 +89,27 @@ check('動かしていない図形は 1 文字も動かない',
 check('書き換えは 1 回', (await page.textContent('#status')).includes('配置を変更'),
   await page.textContent('#status'));
 
+// 矩形は指したところに出る（図の原点ぶんずれていないこと）
+const one = await page.locator(node('browser')).boundingBox();
+await page.mouse.move(one.x - 12, one.y - 12);
+await page.mouse.down();
+await page.mouse.move(one.x + one.width + 12, one.y + one.height + 12, { steps: 8 });
+const drawn = await page.$eval('.dp-canvas-band', r => ({
+  x: +r.getAttribute('x'), y: +r.getAttribute('y'),
+  w: +r.getAttribute('width'), h: +r.getAttribute('height'),
+}));
+const inside = await page.$eval(node('browser') + ' rect', r => ({
+  x: +r.getAttribute('x'), y: +r.getAttribute('y'),
+  w: +r.getAttribute('width'), h: +r.getAttribute('height'),
+}));
+await page.mouse.up();
+await page.waitForTimeout(250);
+check('矩形は指した場所に出る',
+  drawn.x < inside.x && drawn.y < inside.y
+  && drawn.x + drawn.w > inside.x + inside.w && drawn.y + drawn.h > inside.y + inside.h,
+  `枠 ${Math.round(drawn.x)},${Math.round(drawn.y)} / 図形 ${inside.x},${inside.y}`);
+check('囲った 1 つだけが選ばれる', (await where()).startsWith('browser'), await where());
+
 // 矩形選択
 await page.mouse.move(10, 10);
 const area = await page.locator('.dp-canvas-stage svg').boundingBox();

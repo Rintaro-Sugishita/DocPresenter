@@ -25,6 +25,9 @@ const GRID = 4;
 const THRESHOLD = 3;
 const MIN_SIZE = 16;
 
+/** What the bar says when nothing in particular is picked. */
+const HINT = 'ドラッグで移動 / 右下で大きさ / ダブルクリックで文字 / 右クリックで操作';
+
 /**
  * The shapes on offer. Fewer than the notation has: a palette is a set of
  * choices someone has to make every time, and the ones left out (`group`, and
@@ -97,6 +100,7 @@ export function createCanvas(options: CanvasOptions): Canvas {
   let where: HTMLElement | undefined;
   let release: HTMLButtonElement | undefined;
   let aligners: HTMLElement | undefined;
+  let hint: HTMLElement | undefined;
   let spreaders: readonly HTMLButtonElement[] = [];
 
   const root = element('div', 'dp-canvas');
@@ -162,6 +166,20 @@ export function createCanvas(options: CanvasOptions): Canvas {
       mark.setAttribute('points', points(path));
       overlay.append(mark);
 
+      // A hollow circle in the middle of every segment. Dragging the line
+      // anywhere bends it, but nothing on screen said so; a handle does.
+      for (let i = 0; i + 1 < path.length; i++) {
+        const a = path[i]!;
+        const b = path[i + 1]!;
+        if (Math.hypot(b.x - a.x, b.y - a.y) < 40 / scale()) continue;
+        const spot = shape('circle', 'dp-canvas-bend-new');
+        spot.setAttribute('cx', String((a.x + b.x) / 2));
+        spot.setAttribute('cy', String((a.y + b.y) / 2));
+        spot.setAttribute('r', String(4.5 / scale()));
+        spot.setAttribute('data-segment', String(i));
+        overlay.append(spot);
+      }
+
       // A square for every corner the line turns through: drag one to move it,
       // drop it back on the straight line to take it out.
       for (let i = 1; i + 1 < path.length; i++) {
@@ -202,6 +220,8 @@ export function createCanvas(options: CanvasOptions): Canvas {
     for (const id of picked) {
       const box = id === primary() ? preview?.box ?? boxOf(id) : shifted(id);
       if (!box) continue;
+      // Every picked shape is washed over, not merely outlined: with several
+      // picked, an outline alone is a thin line among many other thin lines.
       const outline = shape('rect', 'dp-canvas-outline');
       place(outline, box);
       overlay.append(outline);
@@ -405,7 +425,19 @@ export function createCanvas(options: CanvasOptions): Canvas {
     if (onEnd === 'from' || onEnd === 'to') {
       event.stopPropagation();
       stage.focus({ preventScroll: true });
-      reaching = { end: onEnd, at: pointIn(event) };
+      reaching = { end: onEnd, at: pointOn(event) };
+      drag = {
+        kind: 'move', from: { x: event.clientX, y: event.clientY },
+        pointerId: event.pointerId, id: '', box: bandBox(), moved: false,
+        by: { x: 0, y: 0 }, size: undefined,
+      };
+      return;
+    }
+    const onSegment = target?.closest('.dp-canvas-bend-new')?.getAttribute('data-segment');
+    if (onSegment !== undefined && onSegment !== null) {
+      event.stopPropagation();
+      stage.focus({ preventScroll: true });
+      bending = { index: Number(onSegment), at: pointOn(event), fresh: true };
       drag = {
         kind: 'move', from: { x: event.clientX, y: event.clientY },
         pointerId: event.pointerId, id: '', box: bandBox(), moved: false,
@@ -454,7 +486,7 @@ export function createCanvas(options: CanvasOptions): Canvas {
       if (!event.shiftKey) pick([]);
       // An empty press starts a rubber band. Nothing is selected until it is
       // let go, so a stray click still just clears the selection.
-      band = { from: pointIn(event), to: pointIn(event) };
+      band = { from: pointOn(event), to: pointOn(event) };
       drag = {
         kind: 'move', from: { x: event.clientX, y: event.clientY },
         pointerId: event.pointerId, id: '', box: bandBox(), moved: false,
@@ -551,12 +583,12 @@ export function createCanvas(options: CanvasOptions): Canvas {
       return;
     }
     if (reaching) {
-      reaching = { end: reaching.end, at: pointIn(event) };
+      reaching = { end: reaching.end, at: pointOn(event) };
       paint();
       return;
     }
     if (band) {
-      band = { from: band.from, to: pointIn(event) };
+      band = { from: band.from, to: pointOn(event) };
       paint();
       return;
     }
@@ -625,8 +657,8 @@ export function createCanvas(options: CanvasOptions): Canvas {
       // Whatever shape the end was let go over is the new end. Let go over
       // nothing and the line stays as it was.
       const onto = [...laid.boxes].find(([, box]) =>
-        at.x + laid.origin.x >= box.x && at.x + laid.origin.x <= box.x + box.width
-        && at.y + laid.origin.y >= box.y && at.y + laid.origin.y <= box.y + box.height)?.[0];
+        at.x >= box.x && at.x <= box.x + box.width
+        && at.y >= box.y && at.y <= box.y + box.height)?.[0];
       if (onto === undefined) { paint(); return; }
       const edge = { from: chosen.edge.from, to: chosen.edge.to };
       const ends = end === 'from' ? { from: onto } : { to: onto };
@@ -831,7 +863,12 @@ export function createCanvas(options: CanvasOptions): Canvas {
     );
   }
 
-  /** The point a press landed on, in the file's coordinates. */
+  /**
+   * The point a press landed on, in the file's coordinates — what a pin holds.
+   * Everything drawn on screen uses `pointOn` instead: the drawing is laid out
+   * with a shift applied, and mixing the two puts the band and the line's ends
+   * that shift away from the pointer.
+   */
   function pointIn(event: MouseEvent): { x: number; y: number } {
     const rect = drawing.getBoundingClientRect();
     const factor = scale();
@@ -1138,8 +1175,10 @@ export function createCanvas(options: CanvasOptions): Canvas {
     const chosen = lineOf(line);
     if (chosen) {
       where.textContent = `${chosen.edge.from} → ${chosen.edge.to}  (線)`;
+      if (hint) hint.textContent = '線の途中の○をドラッグすると曲がる / 端の○でつなぎ替え / Delete で消す';
       return;
     }
+    if (hint) hint.textContent = HINT;
     if (picked.length > 1) {
       where.textContent = `${picked.length} 個を選択`;
       return;
@@ -1222,9 +1261,8 @@ export function createCanvas(options: CanvasOptions): Canvas {
     });
     add('ソース', '.dgm のソースを直接編集する', () => options.showSource());
 
-    const hint = element('span', 'dp-canvas-hint');
-    hint.textContent = 'ドラッグで移動 / 右下で大きさ / ダブルクリックで文字 / '
-      + '線はクリックで選び、もう一度引くと折れる / 右クリックで操作';
+    hint = element('span', 'dp-canvas-hint');
+    hint.textContent = HINT;
     node.append(hint);
     return node;
   }

@@ -239,6 +239,11 @@ let mid = await linePoint('browser->web');
 await page.mouse.click(mid.x, mid.y);
 await page.waitForTimeout(250);
 check('線を選んでも、まだ折れていない', (await page.$$('.dp-canvas-bend')).length === 0);
+check('曲げられることが目印で分かる', (await page.$$('.dp-canvas-bend-new')).length === 1,
+  String((await page.$$('.dp-canvas-bend-new')).length));
+check('何をすればよいかが出る',
+  (await page.textContent('.dp-sheet:not([hidden]) .dp-canvas-hint')).includes('ドラッグすると曲がる'),
+  await page.textContent('.dp-sheet:not([hidden]) .dp-canvas-hint'));
 
 // 選んだあとにもう一度引くと折れる
 await page.mouse.move(mid.x, mid.y);

@@ -221,7 +221,7 @@ export const EDITOR_STYLE = `
 .dp-canvas-stage:focus-visible { box-shadow: 0 0 0 2px #cfe0f5; }
 .dp-canvas-stage [data-node] { cursor: move; }
 .dp-canvas-outline {
-  fill: none; stroke: #1f5fa8; stroke-width: 1.5; stroke-dasharray: 4 3; pointer-events: none;
+  fill: rgba(31, 95, 168, 0.12); stroke: #1f5fa8; stroke-width: 1.5; pointer-events: none;
 }
 .dp-canvas-handle { fill: #fff; stroke: #1f5fa8; stroke-width: 1.5; cursor: nwse-resize; }
 /* Pink and dashed, so a guide never reads as part of the drawing. */
@@ -232,6 +232,10 @@ export const EDITOR_STYLE = `
 .dp-canvas-end { fill: #fff; stroke: #1f5fa8; stroke-width: 1.5; cursor: move; }
 /* A corner of a line. Square, so it is not mistaken for an end. */
 .dp-canvas-bend { fill: #fff; stroke: #1f5fa8; stroke-width: 1.5; cursor: move; }
+/* Where a corner would go. Faint until the pointer is on it: it is an offer,
+   not a part of the drawing. */
+.dp-canvas-bend-new { fill: #fff; stroke: #1f5fa8; stroke-width: 1.2; opacity: 0.45; cursor: move; }
+.dp-canvas-bend-new:hover { opacity: 1; }
 .dp-canvas-rubber { stroke: #1f5fa8; stroke-width: 1.5; stroke-dasharray: 4 3; pointer-events: none; }
 
 /* The rubber band: what a press on empty canvas draws to pick several shapes. */
