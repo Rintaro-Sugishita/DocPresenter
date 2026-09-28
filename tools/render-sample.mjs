@@ -2,8 +2,7 @@
 // working end to end.
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
-import { parseDocument, resolveDocument } from '../packages/core/dist/index.js';
-import { renderDocument } from '../packages/render/dist/index.js';
+import { parseDocument, renderDocument, resolveDocument } from '../packages/markdown/dist/index.js';
 
 const path = 'sample/docs/auth-design.md';
 const source = readFileSync(path, 'utf8');

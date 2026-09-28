@@ -1,0 +1,273 @@
+// Checks the published specifications against the implementation.
+//
+// `spec/` says what a conformant reader must do, and it says it to people we
+// will never meet — the formats are free for anyone to implement. A sentence in
+// there that the code does not honour is worse than no sentence at all, so every
+// normative claim that can be executed is executed here.
+//
+// Each assertion names the section of the spec it comes from.
+import { parseDiagram } from '../packages/diagram/dist/parse.js';
+import { layOutDiagram } from '../packages/diagram/dist/layout.js';
+import { parseRuns } from '../packages/diagram/dist/inline.js';
+import { parseTable } from '../packages/markdown/dist/table/parse.js';
+import { cellAt as coverAt } from '../packages/markdown/dist/table/model.js';
+import { rowRules, cellRules } from '../packages/markdown/dist/html/table.js';
+
+let failed = 0;
+const check = (where, name, ok, detail = '') => {
+  console.log(`${ok ? '○' : '✗'} ${where}  ${name}${detail ? ' — ' + detail : ''}`);
+  if (!ok) failed++;
+};
+/** Reads a source that the spec says is invalid, and returns the message. */
+const refuses = (read, source) => {
+  try { read(source); return undefined; } catch (error) { return error.message; }
+};
+const node = (file, id) => file.nodes.find(n => n.id === id);
+const NL = String.fromCharCode(10);
+
+// ───────────────────────────── spec/dgm.md ─────────────────────────────
+
+const dgm = (...lines) => parseDiagram(lines.join(NL));
+
+check('dgm §1', '意味の節が無ければエラー',
+  refuses(parseDiagram, 'layout {' + NL + '}') !== undefined);
+check('dgm §1', '解釈できない最上位の行はエラー',
+  refuses(parseDiagram, 'free {' + NL + '}' + NL + 'nonsense') !== undefined);
+check('dgm §1', '閉じられていない節はエラー',
+  refuses(parseDiagram, 'free {' + NL + '  a [x]') !== undefined);
+check('dgm §1.1', '節の見出しの自由文は意味を持たない',
+  dgm('free タイトル {', '  a [x]', '}').nodes.length === 1);
+check('dgm §1', '節は順不同',
+  dgm('style {', '}', 'free {', '  a [x]', '}').nodes.length === 1);
+check('dgm §1', 'layout が複数あれば統合する',
+  dgm('free {', '  a [x]', '  b [y]', '}',
+      'layout {', '  a @ (0, 0)', '}',
+      'layout {', '  b @ (10, 10)', '}').layout.size === 2);
+
+// §3.1 the bracket table, in the order a reader must try it
+const shapes = {
+  '[x]': 'rect', '(x)': 'round-rect', '([x])': 'stadium', '[(x)]': 'cylinder',
+  '((x))': 'ellipse', '{x}': 'diamond', '{{x}}': 'hexagon', '[/x/]': 'parallelogram',
+  '[/x\\]': 'loop-start', '[\\x/]': 'loop-end', '>x]': 'note', '"x"': 'text',
+};
+for (const [written, shape] of Object.entries(shapes)) {
+  const found = node(dgm('free {', `  a ${written}`, '}'), 'a');
+  check('dgm §3.1', `${written} は ${shape}`, found?.shape === shape, found?.shape);
+}
+check('dgm §3.1', 'ラベルは空でもよい', node(dgm('free {', '  a []', '}'), 'a')?.text === '');
+check('dgm §3.1', ':::class を読む',
+  node(dgm('free {', '  a [x]:::pending', '}'), 'a')?.className === 'pending');
+
+// §3.2 the connector table
+const edge = text => dgm('free {', '  a [x]', '  b [y]', `  ${text}`, '}').edges[0];
+for (const [written, line, arrow] of [
+  ['a --> b', 'solid', 'arrow'], ['a -> b', 'solid', 'arrow'],
+  ['a -- b', 'solid', 'none'], ['a -.-> b', 'dashed', 'arrow'],
+]) {
+  const found = edge(written);
+  check('dgm §3.2', `${written} は ${line}/${arrow}`,
+    found?.line === line && found?.arrow === arrow, `${found?.line}/${found?.arrow}`);
+}
+check('dgm §3.2', '接続のラベルを読む', edge('a -> b "HTTPS"')?.label === 'HTTPS');
+
+// §2 identifiers
+check('dgm §2', '仮名・漢字は識別子に使える',
+  node(dgm('free {', '   会員DB [x]', '}'), '会員DB') !== undefined);
+check('dgm §2', '全角英数は識別子ではない',
+  refuses(parseDiagram, 'free {' + NL + '  ＡＢ [x]' + NL + '}') !== undefined);
+
+// §3.3 groups
+const grouped = dgm('free {', '  a [x]', '  b [y]', '  group g "G" { a; b }', '}');
+check('dgm §3.3', 'グループの成員は ; 区切り',
+  node(grouped, 'g')?.children.join(',') === 'a,b', node(grouped, 'g')?.children.join(','));
+
+// §4.1 pins
+const pinned = dgm('free {', '  a [x]', '  b [y]', '}',
+  'layout {', '  a @ (-40, 120) 140x60 z:-1', '  b @ (10, 20)', '}');
+const pinA = pinned.layout.get('a');
+check('dgm §4.1', '座標・寸法・z を読む（負の値も）',
+  pinA?.x === -40 && pinA?.y === 120 && pinA?.width === 140 && pinA?.height === 60 && pinA?.z === -1,
+  JSON.stringify(pinA && { x: pinA.x, y: pinA.y, w: pinA.width, h: pinA.height, z: pinA.z }));
+check('dgm §4.1', '寸法と z は省略できる',
+  pinned.layout.get('b')?.width === undefined && pinned.layout.get('b')?.z === undefined);
+check('dgm §4.1', '読めない配置行はエラー',
+  refuses(parseDiagram, ['free {', '  a [x]', '}', 'layout {', '  a @ 40,120', '}'].join(NL)) !== undefined);
+
+// §4.1 stacking: equal z falls back to declaration order
+const stacked = layOutDiagram(dgm('free {', '  first [x]', '  second [y]', '}',
+  'layout {', '  first @ (0, 0)', '  second @ (0, 0)', '}'));
+check('dgm §4.1', '同じ z なら宣言順に前後が決まる',
+  stacked.order.join(',') === 'first,second', stacked.order.join(','));
+
+// §4.3 bends
+const bent = dgm('free {', '  a [x]', '  b [y]', '  a -> b', '}',
+  'layout {', '  a --> b @ (600, 120); (600, 240)', '}');
+check('dgm §4.3', '折れ点は端点の組で引ける（コネクタは問わない）',
+  bent.bends.get('a->b')?.points.length === 2);
+check('dgm §4.3', '折れ点が無い折れ線行はエラー',
+  refuses(parseDiagram, ['free {', '  a [x]', '  b [y]', '  a -> b', '}',
+    'layout {', '  a -> b @ ', '}'].join(NL)) !== undefined);
+
+// §3.2 / §4.3 / §4.4 — diagnostics, not errors
+const dangling = layOutDiagram(dgm('free {', '  a [x]', '  a -> missing', '}',
+  'layout {', '  a @ (0, 0)', '}'));
+check('dgm §3.2', '行き先の無い接続は診断（エラーにしない）',
+  dangling.diagnostics.some(d => d.includes('missing')), dangling.diagnostics.join(' / '));
+const orphan = layOutDiagram(dgm('free {', '  a [x]', '  b [y]', '}',
+  'layout {', '  a @ (0, 0)', '  b @ (0, 80)', '  a -> b @ (40, 40)', '}'));
+check('dgm §4.3', '存在しない接続の折れ点は診断',
+  orphan.diagnostics.some(d => d.includes('a->b')), orphan.diagnostics.join(' / '));
+const unpinned = layOutDiagram(dgm('free {', '  a [x]', '  b [y]', '}', 'layout {', '  a @ (0, 0)', '}'));
+check('dgm §4.4', 'free でピンの無い図形は診断され、なお見える位置に置かれる',
+  unpinned.diagnostics.length > 0 && unpinned.boxes.has('b'),
+  unpinned.diagnostics.join(' / '));
+const computed = layOutDiagram(dgm('flow {', '  a [x]', '  b [y]', '  a --> b', '}'));
+check('dgm §4.4', 'flow はピンの無い図形の位置を計算する',
+  computed.boxes.size === 2 && computed.diagnostics.length === 0);
+// The renderer shifts the whole drawing to fit the canvas, so a pin is checked
+// by the distance it puts between the two shapes, not by an absolute value.
+const overridden = layOutDiagram(dgm('flow {', '  a [x]', '  b [y]', '  a --> b', '}',
+  'layout {', '  b @ (500, 900)', '}'));
+const apart = overridden.boxes.get('b').y - overridden.boxes.get('a').y;
+check('dgm §4.1', 'flow でもピンは計算に勝つ', apart > 400, `縦に ${apart} 離れている`);
+
+// §7 style
+const styled = dgm('free {', '  a [x]', '}',
+  'style {', '  theme: grid', '  a { fill: #e3f2fd; line: dashed }', '  ??? nonsense', '}');
+check('dgm §7.1', 'theme を読む', styled.theme === 'grid');
+check('dgm §7.3', '色とトークンを同じ規則で持つ',
+  styled.style.get('a')?.get('fill') === '#e3f2fd' && styled.style.get('a')?.get('line') === 'dashed');
+check('dgm §7.2', '読めないスタイル行は無視する（エラーにしない）', styled.style.size === 1);
+
+// §5 overlay
+const overlay = dgm('overlay "../assets/login.png" {', '  ① @ (168, 126) -> (188, 132) "ログイン ID"', '}');
+check('dgm §5', 'overlay は画像のパスと注釈を持つ',
+  overlay.image === '../assets/login.png' && overlay.callouts[0]?.text === 'ログイン ID');
+check('dgm §5', 'overlay に画像のパスが無ければエラー',
+  refuses(parseDiagram, 'overlay {' + NL + '}') !== undefined);
+
+// §6.1 every entity carries the byte range of its own line
+const source = ['free {', '  a [x]', '}'].join(NL);
+const buffer = Buffer.from(source, 'utf8');
+const span = parseDiagram(source).nodes[0].span;
+check('dgm §6.1', '図形は自分の行のバイト範囲を持つ',
+  buffer.slice(span.start, span.end).toString('utf8') === 'a [x]',
+  JSON.stringify(buffer.slice(span.start, span.end).toString('utf8')));
+const wide = ['free {', '  会員 [データベース]', '}'].join(NL);
+const wideSpan = parseDiagram(wide).nodes[0].span;
+check('README §6', 'バイト範囲は UTF-8 のバイトで数える',
+  Buffer.from(wide, 'utf8').slice(wideSpan.start, wideSpan.end).toString('utf8') === '会員 [データベース]');
+
+// ───────────────────────── spec/inline-text.md ─────────────────────────
+
+const runs = text => parseRuns(text);
+const only = text => { const r = runs(text); return r.length === 1 ? r[0] : undefined; };
+
+check('inline §2.1', '** は強調', only('**太字**')?.bold === true);
+check('inline §2.1', '* は斜体', only('*斜体*')?.italic === true);
+check('inline §2.2', '` はコード', only('`code`')?.code === true);
+check('inline §2.1', '_ は記号のまま（識別子を壊さない）',
+  only('user_id_1')?.italic === false && only('user_id_1')?.text === 'user_id_1');
+check('inline §2.3', '相手のいない印は文字そのもの',
+  runs('3 * 4').map(r => r.text).join('') === '3 * 4' && runs('3 * 4').every(r => !r.italic));
+check('inline §2.5', '\\ は次の 1 文字をそのまま通す',
+  runs('\\*not em\\*').map(r => r.text).join('') === '*not em*');
+check('inline §2.4', '{color=#rrggbb} は色', only('[x]{color=#c62828}')?.colour === '#c62828');
+check('inline §2.4', '3 桁の短縮形も色', only('[x]{color=#c22}')?.colour === '#c22');
+check('inline §2.4', '色でない値は文字のまま',
+  runs('[x]{color=red}').every(r => r.colour === undefined));
+check('inline §3', '入れ子は 1 つの run の性質になる',
+  only('**`両方`**')?.bold === true && only('**`両方`**')?.code === true);
+check('inline §3', '見える文字だけを数える（折り返しの基準）',
+  runs('**Web フロント**').map(r => r.text).join('').length === 'Web フロント'.length);
+
+// ──────────────────────────── spec/table.md ────────────────────────────
+
+const table = (...lines) => parseTable(lines.join(NL));
+
+check('table §1', 'グリッドが 2 行に満たなければエラー',
+  refuses(parseTable, '| a |') !== undefined);
+check('table §2', '区切り行が正しくなければエラー',
+  refuses(parseTable, ['| a |', '| x |'].join(NL)) !== undefined);
+check('table §1', 'グリッドのあとの解釈できない行はエラー',
+  refuses(parseTable, ['| a |', '|---|', '| 1 |', 'nonsense'].join(NL)) !== undefined);
+
+const t = table('| 分類 | 値 |', '|:-----|---:|', '| 入力 | 1 |', '| ^    | 2 |');
+check('table §2.2', '寄せは区切り行のコロンから決まる',
+  t.columns[0].align === 'left' && t.columns[1].align === 'right',
+  `${t.columns[0].align}/${t.columns[1].align}`);
+check('table §2.3', '^ は上のセルの行数を伸ばす', t.rows[0].cells[0].rowspan === 2);
+check('table §2.3', '結合された位置にセルは作られない', t.rows[1].cells.length === 1);
+check('table §2.3', '位置から覆っているセルを引ける',
+  coverAt(t, 1, 0)?.text === '入力', coverAt(t, 1, 0)?.text);
+check('table §2.3', '上に何も無い ^ はエラー',
+  refuses(parseTable, ['| a |', '|---|', '| ^ |'].join(NL)) !== undefined);
+check('table §2.3', '先頭列の < はエラー',
+  refuses(parseTable, ['| a | b |', '|---|---|', '| < | 1 |'].join(NL)) !== undefined);
+
+const across = table('| a | b | c |', '|---|---|---|', '| 期間 | < | 備考 |', '| ^ | ^ | x |');
+check('table §2.3', '< は列方向に伸ばす', across.rows[0].cells[0].colspan === 2);
+check('table §2.3', '複数列にまたがるセルの下の ^ は行数を 1 度だけ伸ばす',
+  across.rows[0].cells[0].rowspan === 2, String(across.rows[0].cells[0].rowspan));
+
+check('table §2.1', '\\| は文字としてのパイプ',
+  table('| a | b |', '|---|---|', '| x \\| y | 2 |').rows[0].cells[0].text === 'x | y',
+  table('| a | b |', '|---|---|', '| x \\| y | 2 |').rows[0].cells[0].text);
+check('table §2.1', '末尾のパイプは有っても無くてもよい',
+  table('| a | b |', '|---|---|', '| 1 | 2').rows[0].cells.length === 2);
+check('table §2.1', '足りないセルは空で埋め、余りは無視する',
+  table('| a | b |', '|---|---|', '| 1 |').rows[0].cells[1].text === '' &&
+  table('| a | b |', '|---|---|', '| 1 | 2 | 3 |').rows[0].cells.length === 2);
+
+const blocks = table('| a |', '|---|', '| @1 |', '', '[@1]:', '- 一つ目', '- 二つ目', '', 'style {', '}');
+check('table §4', 'ブロックは空行まで続き、改行で連結される',
+  blocks.blocks.get('1') === ['- 一つ目', '- 二つ目'].join(NL), JSON.stringify(blocks.blocks.get('1')));
+
+const ranged = table('| 用語 | 説明 |', '|------|------|', '| あ | 1 |', '| い | 2 |', '| う | 3 |',
+  'range {', '  前半: あ..い', '}',
+  'style {', '  theme: grid', '  col:用語 { width: 30% }', '  row:odd { fill: #eee }',
+  '  cell:う/説明 { fill: #fdf0d5 }', '  range:前半 { fill: changed }', '  ??? nonsense', '}');
+check('table §5', '名前付き範囲は先頭セルの文字で書く',
+  ranged.ranges.get('前半')?.from === 'あ' && ranged.ranges.get('前半')?.to === 'い');
+check('table §6', 'theme を読む', ranged.theme === 'grid');
+check('table §6.2', '読めないスタイル行は無視する（エラーにしない）', ranged.style.length === 4,
+  `規則 ${ranged.style.length} 件`);
+check('table §6.2', 'col: は見出しの文字で列を選ぶ',
+  ranged.style.some(r => r.selector.kind === 'column' && r.selector.name === '用語'));
+check('table §6.2', 'row:odd は 1 行目から数える',
+  rowRules(ranged, 0).some(r => r.declarations.get('fill') === '#eee') &&
+  !rowRules(ranged, 1).some(r => r.declarations.get('fill') === '#eee'));
+check('table §6.2', 'range: は名前で行を選ぶ',
+  rowRules(ranged, 0).some(r => r.declarations.get('fill') === 'changed') &&
+  !rowRules(ranged, 2).some(r => r.declarations.get('fill') === 'changed'));
+check('table §3', 'cell: は先頭セルと見出しの文字で 1 つのセルを選ぶ',
+  cellRules(ranged, ranged.rows[2].cells[1], 2).some(r => r.declarations.get('fill') === '#fdf0d5'));
+
+const lineSpan = (() => {
+  const src = ['| 用語 | 説明 |', '|------|------|', '| 会員 | 登録済みの利用者 |'].join(NL);
+  const file = parseTable(src);
+  const { start, end } = file.rows[0].line.span;
+  return Buffer.from(src, 'utf8').slice(start, end).toString('utf8');
+})();
+check('table §7.1', '行は自分のバイト範囲を持つ（セルではなく行）',
+  lineSpan === '| 会員 | 登録済みの利用者 |', JSON.stringify(lineSpan));
+
+// ───────────────────────── the samples still read ─────────────────────────
+import { readFileSync } from 'node:fs';
+for (const path of [
+  'sample/shared/system-architecture.dgm',
+  'sample/docs/auth-design/login-flow.dgm',
+  'sample/docs/auth-design/token-lifecycle.dgm',
+  'sample/docs/auth-design/login-screen-overlay.dgm',
+]) {
+  const laid = layOutDiagram(parseDiagram(readFileSync(path, 'utf8')));
+  check('spec 全体', `${path} は仕様どおり読める`, laid.diagnostics.length === 0,
+    laid.diagnostics.join(' / '));
+}
+for (const path of ['sample/shared/glossary.table', 'sample/docs/auth-design/screen-items.table']) {
+  const read = parseTable(readFileSync(path, 'utf8'));
+  check('spec 全体', `${path} は仕様どおり読める`, read.rows.length > 0);
+}
+
+console.log(failed === 0 ? '仕様と実装は一致している' : `${failed} 件の食い違い`);
+if (failed > 0) process.exitCode = 1;
