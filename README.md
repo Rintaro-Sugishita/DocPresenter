@@ -31,6 +31,13 @@ for f in tools/check-*.mjs; do node "$f"; done   # ブラウザ検証
 `out/canvas-app.html` は base ＋ diagram だけで作られている。文書エンジンは 1 バイトも入っていない
 （`out/canvas/index.html` はそれを 1 枚に畳んだもの）。
 
+## ライセンス
+
+**ソースは公開していますが、オープンソースではありません。**
+再配布は自由、改変は許諾していません（ビルド・バンドル・最小化は改変に当たりません）。
+`.dgm` と `.table` の**記法そのものは誰が実装しても構いません**。
+方針は [design/licensing.md §6](design/licensing.md)、貢献の手順は [CONTRIBUTING.md](CONTRIBUTING.md) にあります。
+
 ## 設計
 
 決定事項は [design/decisions.md](design/decisions.md) に集約してある。未実装の一覧は
