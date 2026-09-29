@@ -14,18 +14,38 @@
 
 import fontkit from '@pdf-lib/fontkit';
 
-export type FontStyle = 'regular' | 'bold' | 'mono';
+/**
+ * The faces a document can ask for. They are the theme's three families, with
+ * bold as a face of its own: a CJK font has no synthetic bold worth having, so
+ * the bold weight is a different file.
+ */
+export type FontStyle = 'body' | 'bodyBold' | 'heading' | 'headingBold' | 'mono';
 
 export interface FontSource {
   readonly bytes: Uint8Array;
   /** Named in diagnostics, so a missing glyph can be traced to a file. */
   readonly name: string;
+  /** Which face of a collection (`.ttc`) this is. */
+  readonly faceIndex?: number;
 }
 
 export type FontSet = Readonly<Record<FontStyle, FontSource>>;
 
-/** Cuts a font down to the glyphs actually used. See the file comment. */
-export type Subsetter = (bytes: Uint8Array, codePoints: ReadonlySet<number>) => Uint8Array;
+/** The face a run falls back to when the caller supplied none for it. */
+export const FALLBACK: Readonly<Record<FontStyle, FontStyle>> = {
+  body: 'body', bodyBold: 'body', heading: 'body', headingBold: 'heading', mono: 'body',
+};
+
+/**
+ * Cuts a font down to the glyphs actually used. See the file comment, and
+ * `subset.ts` for the one this product uses.
+ *
+ * `faceIndex` picks a face out of a collection (`.ttc`): the Noto CJK fonts
+ * ship as one file holding the Japanese, Korean and both Chinese faces.
+ */
+export type Subsetter = (
+  bytes: Uint8Array, codePoints: ReadonlySet<number>, faceIndex?: number,
+) => Uint8Array;
 
 export interface FontOptions {
   readonly fonts: FontSet;
@@ -36,6 +56,16 @@ export interface FontOptions {
 /** True when the font's outlines are CFF (`.otf`) rather than TrueType glyf. */
 export function isCff(bytes: Uint8Array): boolean {
   return tablesOf(bytes).includes('CFF ');
+}
+
+/**
+ * The face to read. A collection (`.ttc`) is not a font: it holds several, and
+ * the one that is meant is the one the source names by index.
+ */
+function faceIn(source: FontSource): Readable | undefined {
+  const opened = fontkit.create(source.bytes) as Readable & { fonts?: Readable[] };
+  if (!opened.fonts) return opened;
+  return opened.fonts[source.faceIndex ?? 0];
 }
 
 /** The four-character tags of a font's tables. */
@@ -58,13 +88,16 @@ export interface MissingGlyph {
   readonly font: string;
 }
 
+interface Readable {
+  hasGlyphForCodePoint(codePoint: number): boolean;
+}
+
 /** The characters the font cannot draw. Empty is the only acceptable answer. */
 export function missingGlyphs(
   source: FontSource, codePoints: ReadonlySet<number>,
 ): readonly MissingGlyph[] {
-  const font = fontkit.create(source.bytes) as {
-    hasGlyphForCodePoint(codePoint: number): boolean;
-  };
+  const font = faceIn(source);
+  if (!font) return [];
   const missing: MissingGlyph[] = [];
   for (const codePoint of codePoints) {
     if (codePoint < 0x20) continue;             // a control character draws nothing

@@ -8,7 +8,8 @@ import { readFileSync, mkdirSync, writeFileSync } from 'node:fs';
 import { chromium } from 'playwright-core';
 import { rolldown } from 'rolldown';
 import { renderPage } from '../packages/build/dist/index.js';
-import { writePdf } from '../packages/pdf/dist/index.js';
+import { createRequire } from 'node:module';
+import { createSubsetter, writePdf } from '../packages/pdf/dist/index.js';
 
 const CHROMIUM = '/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
 /**
@@ -26,21 +27,64 @@ async function measureScript() {
 }
 
 /**
- * Fonts. The product ships Noto Sans CJK JP (design/pdf-engine.md §8), which is
- * a CFF font and needs a subsetter of its own; what is wired here is the
- * TrueType path, which pdf-lib subsets correctly. The writer refuses a CFF font
- * rather than producing a file whose text extracts and whose glyphs are blank.
+ * The faces the theme names, and where to find them.
+ *
+ * Noto Sans CJK ships as one file holding the Japanese, Korean and both
+ * Chinese faces, so a face is a file and an index into it. These are the ones
+ * `themes/default/theme.css` asks for; a workspace that ships its own fonts
+ * would hand a different set to the writer.
  */
-function fonts(path = '/usr/share/fonts/truetype/fonts-japanese-gothic.ttf') {
-  const bytes = readFileSync(path);
-  const name = path.slice(path.lastIndexOf('/') + 1);
-  return { regular: { bytes, name }, bold: { bytes, name }, mono: { bytes, name } };
+const NOTO = '/usr/share/fonts/opentype/noto';
+const FACES = {
+  body:        { file: `${NOTO}/NotoSerifCJK-Regular.ttc`, index: 0, name: 'NotoSerifCJKjp-Regular' },
+  bodyBold:    { file: `${NOTO}/NotoSerifCJK-Bold.ttc`,    index: 0, name: 'NotoSerifCJKjp-Bold' },
+  heading:     { file: `${NOTO}/NotoSansCJK-Regular.ttc`,  index: 0, name: 'NotoSansCJKjp-Regular' },
+  headingBold: { file: `${NOTO}/NotoSansCJK-Bold.ttc`,     index: 0, name: 'NotoSansCJKjp-Bold' },
+  // Index 5 of the same collection is NotoSansMonoCJKjp, which is what the
+  // theme means by --font-mono.
+  mono:        { file: `${NOTO}/NotoSansCJK-Regular.ttc`,  index: 5, name: 'NotoSansMonoCJKjp-Regular' },
+};
+/** When the product's own fonts are not installed. TrueType, so no subsetter is needed. */
+const FALLBACK_FILE = '/usr/share/fonts/truetype/fonts-japanese-gothic.ttf';
+
+function fonts(override) {
+  const read = path => { try { return new Uint8Array(readFileSync(path)); } catch { return undefined; } };
+  const set = {};
+  const cache = new Map();
+  let missing = false;
+  for (const [style, face] of Object.entries(FACES)) {
+    const path = override ?? face.file;
+    if (!cache.has(path)) cache.set(path, read(path));
+    const bytes = cache.get(path);
+    if (bytes === undefined) { missing = true; break; }
+    set[style] = { bytes, name: face.name, faceIndex: override ? 0 : face.index };
+  }
+  if (!missing) return { set, name: override ?? 'Noto CJK JP' };
+
+  const bytes = read(FALLBACK_FILE);
+  if (!bytes) throw new Error('埋め込むフォントが見つからない');
+  const one = { bytes, name: FALLBACK_FILE.slice(FALLBACK_FILE.lastIndexOf('/') + 1) };
+  return {
+    set: { body: one, bodyBold: one, heading: one, headingBold: one, mono: one },
+    name: one.name,
+  };
+}
+
+/**
+ * The subsetter. Without it the Noto faces cannot be embedded at all: they hold
+ * their outlines in a CFF table, which pdf-lib's own subsetter turns into a
+ * font that draws nothing (design/pdf-engine.md §7.5).
+ */
+async function subsetter() {
+  const wasm = createRequire(import.meta.url).resolve('harfbuzzjs/dist/harfbuzz-subset.wasm');
+  return createSubsetter(readFileSync(wasm));
 }
 
 export async function createPdfWriter(options = {}) {
   const script = await measureScript();
   const browser = await chromium.launch({ executablePath: options.chromium ?? CHROMIUM });
-  const set = fonts(options.font);
+  const { set, name } = fonts(options.font);
+  const subset = await subsetter();
 
   const write = async input => {
     const html = renderPage({
@@ -72,13 +116,16 @@ export async function createPdfWriter(options = {}) {
     await page.close();
     if (errors.length) throw new Error(errors.join(' / '));
 
-    const { bytes, missing } = await writePdf(measured.plan, { fonts: set });
+    const { bytes, missing } = await writePdf(measured.plan, { fonts: set, subset });
     for (const one of missing) {
       input.diagnostics?.push(`フォントに無い字: ${one.character}`);
     }
     return {
       path: `${input.out}.pdf`, bytes, root: input.root.path, format: 'pdf',
-      report: { pages: measured.plan.pages.length, missing, diagnostics: measured.diagnostics },
+      report: {
+        pages: measured.plan.pages.length, missing, font: name,
+        diagnostics: measured.diagnostics,
+      },
     };
   };
 

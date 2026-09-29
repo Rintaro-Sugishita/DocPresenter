@@ -7,8 +7,11 @@
 
 import fontkit from '@pdf-lib/fontkit';
 import { PDFDocument, rgb, type PDFFont, type PDFPage } from 'pdf-lib';
-import { codePointsOf, type Item, type PagePlan } from './plan.js';
-import { isCff, missingGlyphs, type FontOptions, type MissingGlyph } from './fonts.js';
+import { codePointsByFace, faceOf, type Item, type PagePlan } from './plan.js';
+import {
+  FALLBACK, isCff, missingGlyphs,
+  type FontOptions, type FontStyle, type MissingGlyph,
+} from './fonts.js';
 
 export interface WriteResult {
   readonly bytes: Uint8Array;
@@ -19,16 +22,17 @@ export interface WriteResult {
 export class FontError extends Error {}
 
 export async function writePdf(plan: PagePlan, options: FontOptions): Promise<WriteResult> {
-  const used = codePointsOf(plan);
-  const missing = missingGlyphs(options.fonts.regular, used);
+  const byFace = codePointsByFace(plan);
+  const missing: MissingGlyph[] = [];
 
   const pdf = await PDFDocument.create();
   pdf.registerFontkit(fontkit);
 
   const embedded: Record<string, PDFFont> = {};
-  for (const [style, source] of Object.entries(options.fonts)) {
-    const cff = isCff(source.bytes);
-    if (cff && !options.subset) {
+  for (const [style, characters] of byFace) {
+    const source = options.fonts[style as keyof typeof options.fonts];
+    if (!source) continue;                      // the reader falls back below
+    if (isCff(source.bytes) && !options.subset) {
       // Not a warning. pdf-lib's subsetter would produce a file whose text
       // extracts and whose glyphs are blank, and every check that reads the
       // text back would pass it.
@@ -37,7 +41,12 @@ export async function writePdf(plan: PagePlan, options: FontOptions): Promise<Wr
         + 'subset を渡すこと（design/pdf-engine.md §6.4）',
       );
     }
-    const bytes = options.subset ? options.subset(source.bytes, used) : source.bytes;
+    missing.push(...missingGlyphs(source, characters));
+    // Each face is cut down to what it actually carries, not to what the
+    // document uses in total: the monospaced face has no use for the prose.
+    const bytes = options.subset
+      ? options.subset(source.bytes, characters, source.faceIndex ?? 0)
+      : source.bytes;
     embedded[style] = await pdf.embedFont(bytes, { subset: !options.subset });
   }
 
@@ -56,7 +65,17 @@ export async function writePdf(plan: PagePlan, options: FontOptions): Promise<Wr
     for (const item of page.items) await draw(pdf, sheet, item, height, embedded);
   }
 
-  return { bytes: await pdf.save(), missing };
+  // The same character missing from two faces is one thing to say once.
+  const said = new Set<string>();
+  return {
+    bytes: await pdf.save(),
+    missing: missing.filter(one => {
+      const key = `${one.font}/${one.codePoint}`;
+      if (said.has(key)) return false;
+      said.add(key);
+      return true;
+    }),
+  };
 }
 
 async function draw(
@@ -65,7 +84,8 @@ async function draw(
 ): Promise<void> {
   switch (item.kind) {
     case 'text': {
-      const font = fonts[item.mono ? 'mono' : item.bold ? 'bold' : 'regular'] ?? fonts['regular']!;
+      const face = faceOf(item);
+      const font = fonts[face] ?? fonts[FALLBACK[face as FontStyle] ?? 'body'] ?? fonts['body']!;
       // The browser decided how wide this run is, with its own kerning and its
       // own idea of how a proportional Latin face sits beside CJK. Rather than
       // hope the PDF metrics agree, the difference is spread across the gaps.

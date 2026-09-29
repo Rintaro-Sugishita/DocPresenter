@@ -345,7 +345,7 @@ function foot(
     kind: 'text', text,
     x: setup.margin.left,
     y: setup.height - setup.margin.bottom + setup.footSize * 1.8,
-    size: setup.footSize, bold: false, italic: false, mono: false,
+    size: setup.footSize, bold: false, italic: false, family: 'heading',
     colour: setup.footColour,
   };
 }

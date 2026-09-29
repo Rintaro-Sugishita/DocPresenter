@@ -6,7 +6,7 @@
 // with the HTML instead of reimplementing it.
 
 import { mapPathData } from './plan.js';
-import type { Item, TextItem } from './plan.js';
+import type { FontFamily, Item, TextItem } from './plan.js';
 
 export interface Offset {
   readonly left: number;
@@ -124,7 +124,7 @@ function textRuns(node: Text, parent: HTMLElement, at: Offset): TextItem[] {
   const colour = colourOf(style.color) ?? '#000000';
   const bold = Number(style.fontWeight) >= 600 || style.fontWeight === 'bold';
   const italic = style.fontStyle === 'italic';
-  const mono = /mono/i.test(style.fontFamily);
+  const family = familyOf(style);
   const ascent = ascentOf(style);
   const mark = marks(parent);
 
@@ -140,7 +140,7 @@ function textRuns(node: Text, parent: HTMLElement, at: Offset): TextItem[] {
     const text = node.data.slice(start, end);
     if (text.trim() !== '') {
       runs.push({
-        kind: 'text', text, x, y: lineTop + ascent, size, bold, italic, mono, colour,
+        kind: 'text', text, x, y: lineTop + ascent, size, bold, italic, family, colour,
         width: right - x, ...mark,
       });
     }
@@ -155,7 +155,11 @@ function textRuns(node: Text, parent: HTMLElement, at: Offset): TextItem[] {
     range.setStart(node, i);
     range.setEnd(node, i + 1);
     const rect = range.getBoundingClientRect();
-    if (rect.width === 0 && rect.height === 0) { flush(i); continue; }
+    // A character with no box of its own is the second half of a ligature: the
+    // browser reports the whole ligature on the first character and nothing on
+    // the rest. It belongs to the run that is open, and breaking the run there
+    // would put a gap in the middle of a word.
+    if (rect.width === 0 && rect.height === 0) continue;
     const y = rect.top + window.scrollY - at.top;
     if (start < 0 || Math.abs(y - lineTop) > 1) {
       flush(i);
@@ -167,6 +171,30 @@ function textRuns(node: Text, parent: HTMLElement, at: Offset): TextItem[] {
   }
   flush(node.data.length);
   return runs;
+}
+
+/**
+ * Which of the theme's faces this text is set in.
+ *
+ * The theme names three — body, heading, monospace — and the browser has
+ * already resolved which one applies, so the answer is read back rather than
+ * guessed from what kind of element it is. A caption set in the heading face
+ * is then set in the heading face in the PDF too.
+ */
+const FAMILIES = new Map<string, FontFamily>();
+function familyOf(style: CSSStyleDeclaration): FontFamily {
+  const declared = style.fontFamily;
+  const known = FAMILIES.get(declared);
+  if (known !== undefined) return known;
+  const root = getComputedStyle(document.documentElement);
+  const first = (value: string): string =>
+    (value.split(',')[0] ?? '').trim().replace(/^["']|["']$/g, '').toLowerCase();
+  const mine = first(declared);
+  const family: FontFamily = mine === first(root.getPropertyValue('--font-mono')) || /mono/.test(mine)
+    ? 'mono'
+    : mine === first(root.getPropertyValue('--font-heading')) ? 'heading' : 'body';
+  FAMILIES.set(declared, family);
+  return family;
 }
 
 /**
@@ -335,7 +363,7 @@ function svgText(
   return [{
     kind: 'text', text, x: start.x, y: start.y, size,
     bold: Number(style.fontWeight) >= 600, italic: style.fontStyle === 'italic',
-    mono: /mono/i.test(style.fontFamily),
+    family: familyOf(style),
     colour: colourOf(style.fill) ?? '#000000',
     width: element.getComputedTextLength() * scale,
     ...mark,

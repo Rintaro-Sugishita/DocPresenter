@@ -4,6 +4,7 @@
 
 export * from './plan.js';
 export * from './fonts.js';
+export * from './subset.js';
 export * from './collect.js';
 export * from './measure.js';
 export * from './write.js';

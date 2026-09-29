@@ -121,6 +121,7 @@ for (const artifact of result.artifacts) {
   const size = ((artifact.bytes?.length ?? Buffer.byteLength(artifact.text)) / 1024).toFixed(0);
   const extra = artifact.report
     ? `、${artifact.report.pages} ページ`
+      + (artifact.report.font ? `、${artifact.report.font}` : '')
       + (artifact.report.missing.length ? `、欠字 ${artifact.report.missing.length}` : '')
     : '';
   console.log(`${artifact.path}（${artifact.root} → ${artifact.format}、${size} KB${extra}）`);

@@ -14,6 +14,8 @@ const check = (name, ok, detail = '') => {
 };
 
 const bytes = new Uint8Array(readFileSync('out/build/auth-design.pdf'));
+// pdf.js takes the buffer over, so the size is noted before it is handed across.
+const fileSize = bytes.byteLength;
 const pdf = await getDocument({ data: bytes, useSystemFonts: false }).promise;
 
 check('ページがある', pdf.numPages >= 8, `${pdf.numPages} ページ`);
@@ -64,6 +66,18 @@ const images = operators.some(list => list.fnArray.some(fn =>
   fn === OPS.paintImageXObject || fn === OPS.paintJpegXObject || fn === OPS.paintInlineImageXObject));
 check('画像が埋め込まれている', images);
 
+// 数字が数字として取り出せる（埋め込み時にもう一度シェーピングが走ると、
+// 字形が差し替わって文字コードに戻せなくなり、制御文字として出てくる）
+check('数字が数字として取り出せる', /版 1\.2/.test(whole) && /SD-AUTH-001/.test(whole),
+  /SD-AUTH-\S{1,8}/.exec(whole)?.[0] ?? '');
+check('等幅の字も取り出せる', whole.includes('varchar(64)'));
+check('合字を含む語が切れていない', whole.includes('@fig-login-flow'),
+  /@fi\S{0,20}/.exec(whole)?.[0] ?? '');
+
+// サブセットが効いている（丸ごと埋めると 1 つで 20 MB 近くになる）
+check('フォントはサブセットで埋まっている', fileSize < 1024 * 1024,
+  `${(fileSize / 1024).toFixed(0)} KB`);
+
 // 埋め込みフォントで描かれている（標準 14 書体では日本語は出ない）
 const fonts = new Set();
 for (let i = 1; i <= pdf.numPages; i++) {
@@ -73,6 +87,8 @@ for (let i = 1; i <= pdf.numPages; i++) {
   }
 }
 check('フォントが埋め込まれている', fonts.size > 0, [...fonts].join(' '));
+// 本文・見出し・等幅はテーマが別の書体を指しており、PDF もそれに従う
+check('書体が使い分けられている', fonts.size >= 3, `${fonts.size} 書体`);
 
 // 表の罫線
 check('表の罫線が引かれている', drawn.some(count => count > 20));

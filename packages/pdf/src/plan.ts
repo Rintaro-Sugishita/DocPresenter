@@ -23,6 +23,9 @@ interface Marked {
   readonly doc?: string;
 }
 
+/** Which of the theme's faces a run is set in. */
+export type FontFamily = 'body' | 'heading' | 'mono';
+
 export interface TextItem extends Marked {
   readonly kind: 'text';
   readonly text: string;
@@ -32,7 +35,7 @@ export interface TextItem extends Marked {
   readonly size: number;
   readonly bold: boolean;
   readonly italic: boolean;
-  readonly mono: boolean;
+  readonly family: FontFamily;
   /** `#rrggbb`. */
   readonly colour: string;
   /** What the browser made the text this wide; the writer keeps it there. */
@@ -123,6 +126,32 @@ export function codePointsOf(plan: PagePlan): Set<number> {
     }
   }
   return found;
+}
+
+/**
+ * The characters each face has to carry. A document sets its prose in one face
+ * and its headings in another, and cutting each one down to what it is actually
+ * used for is the difference between a file of tens of kilobytes and one of
+ * tens of megabytes.
+ */
+export function codePointsByFace(plan: PagePlan): Map<string, Set<number>> {
+  const found = new Map<string, Set<number>>();
+  for (const page of plan.pages) {
+    for (const item of page.items) {
+      if (item.kind !== 'text') continue;
+      const face = faceOf(item);
+      const set = found.get(face) ?? new Set<number>();
+      for (const character of item.text) set.add(character.codePointAt(0)!);
+      found.set(face, set);
+    }
+  }
+  return found;
+}
+
+/** Which face a run is drawn in: the family, and bold as a face of its own. */
+export function faceOf(item: TextItem): string {
+  if (item.family === 'mono') return 'mono';
+  return item.bold ? `${item.family}Bold` : item.family;
 }
 
 /**

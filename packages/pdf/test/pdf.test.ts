@@ -63,7 +63,7 @@ describe('使う字', () => {
     const plan: PagePlan = {
       width: 100, height: 100,
       pages: [{ items: [
-        { kind: 'text', text: '認証', x: 0, y: 0, size: 10, bold: false, italic: false, mono: false, colour: '#000' },
+        { kind: 'text', text: '認証', x: 0, y: 0, size: 10, bold: false, italic: false, family: 'body', colour: '#000' },
         { kind: 'fill', x: 0, y: 0, width: 1, height: 1, colour: '#000' },
       ] }],
     };
@@ -85,11 +85,12 @@ describe('フォント', () => {
     const plan: PagePlan = {
       width: 100, height: 100,
       pages: [{ items: [
-        { kind: 'text', text: '認証', x: 0, y: 0, size: 10, bold: false, italic: false, mono: false, colour: '#000' },
+        { kind: 'text', text: '認証', x: 0, y: 0, size: 10, bold: false, italic: false, family: 'body', colour: '#000' },
       ] }],
     };
     const font = { bytes: noto, name: 'NotoSerifCJKjp' };
-    await expect(writePdf(plan, { fonts: { regular: font, bold: font, mono: font } }))
-      .rejects.toThrow(/CFF/);
+    await expect(writePdf(plan, { fonts: {
+      body: font, bodyBold: font, heading: font, headingBold: font, mono: font,
+    } })).rejects.toThrow(/CFF/);
   });
 });
