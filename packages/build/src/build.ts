@@ -8,6 +8,8 @@
 import {
   expandDocument, resolveDocument, type DocumentFile, type ResolvedDocument,
 } from '@docpresenter/markdown';
+import { writePptx } from '@docpresenter/pptx';
+import { deckOf } from './deck.js';
 import { readGraph, type ReferenceGraph, type Root } from './graph.js';
 import { renderPage } from './html.js';
 import type { Artifact, BuildDiagnostic, Workspace } from './workspace.js';
@@ -22,6 +24,8 @@ export interface WriteInput {
   readonly options: BuildOptions;
   /** Where the artifact goes, without its extension. */
   readonly out: string;
+  /** Anything the writer wants to say. */
+  readonly diagnostics: BuildDiagnostic[];
 }
 
 /**
@@ -122,7 +126,8 @@ async function write(
   workspace: Workspace, root: Root, prepared: PreparedDocument, format: string,
   outDir: string, options: BuildOptions, diagnostics: BuildDiagnostic[],
 ): Promise<Artifact | undefined> {
-  const writer = format === 'html' ? html : options.writers?.[format];
+  const builtIn: Record<string, FormatWriter | undefined> = { html, pptx };
+  const writer = builtIn[format] ?? options.writers?.[format];
   if (!writer) {
     // P6: a format that is asked for and not written is said out loud rather
     // than passed over in silence.
@@ -146,7 +151,7 @@ async function write(
 
   try {
     return await writer({
-      workspace, root, prepared, style, options,
+      workspace, root, prepared, style, options, diagnostics,
       out: `${outDir}/${basename(root.path)}`,
     });
   } catch (error) {
@@ -156,6 +161,32 @@ async function write(
     });
     return undefined;
   }
+}
+
+/**
+ * Slides. Built in rather than injected because, unlike the PDF, nothing here
+ * needs a browser: the drawing model already holds the shapes, which is the
+ * whole point of the format (design/pptx-model.md §1.1).
+ */
+function pptx(input: WriteInput): Artifact {
+  const { root, prepared } = input;
+  const raw = root.document.frontmatter.raw;
+  const title = String(raw['title'] ?? root.path);
+  const foot = [raw['document'], raw['version'] ? `版 ${String(raw['version'])}` : '']
+    .filter(value => value !== undefined && value !== '').join('　');
+  const deck = deckOf({
+    workspace: input.workspace,
+    document: prepared.document,
+    resolved: prepared.resolved,
+    title,
+    ...(foot ? { foot } : {}),
+  });
+  for (const message of deck.diagnostics) {
+    input.diagnostics.push({ severity: 'warning', path: root.path, message });
+  }
+  return {
+    path: `${input.out}.pptx`, bytes: writePptx(deck), root: root.path, format: 'pptx',
+  };
 }
 
 /** The built-in writer. Everything it needs is a string. */

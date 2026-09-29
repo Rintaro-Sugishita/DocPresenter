@@ -6,7 +6,7 @@ status: draft
 author: 設計チーム
 updated: 2026-09-21
 theme: default
-output: [html]
+output: [html, pptx]
 ---
 
 # 認証機能 概要
@@ -29,6 +29,14 @@ output: [html]
 ログインの画面遷移を @fig-login-flow に示す。連続失敗 5 回でアカウントをロックする。
 
 @import "auth-design/login-flow.dgm" {#fig-login-flow caption="ログイン画面遷移"}
+
+---
+
+## 用語 {#sec-terms}
+
+本書で用いる用語を @tbl-glossary に示す。
+
+@import "../shared/glossary.table" {#tbl-glossary caption="用語集（抜粋）" rows="認証関連"}
 
 ---
 

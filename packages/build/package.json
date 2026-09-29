@@ -8,6 +8,7 @@
   "dependencies": {
     "@docpresenter/base": "*",
     "@docpresenter/diagram": "*",
-    "@docpresenter/markdown": "*"
+    "@docpresenter/markdown": "*",
+    "@docpresenter/pptx": "*"
   }
 }

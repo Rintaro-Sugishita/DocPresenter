@@ -6,6 +6,7 @@ export * from './parse.js';
 export * from './inline.js';
 export * from './text.js';
 export * from './layout.js';
+export * from './draw/geometry.js';
 export * from './draw/render.js';
 export * from './draw/overlay.js';
 export * from './draw/stencil.js';

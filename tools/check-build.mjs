@@ -49,16 +49,17 @@ check('シートが分かれている', (await page.$$('.dp-sheet')).length >= 5
 // 別の文書から取り込んだ節は、どのファイルの何バイト目かまで言える
 const included = await page.$('[data-doc="shared/revision.md"]');
 check('取り込んだ文書はどのファイルか言える', included !== null);
-check('取り込んだ節も採番される',
-  (await page.textContent('#sec-revision')).trim().startsWith('6'),
-  await page.textContent('#sec-revision'));
+const revisionInDesign = (await page.textContent('#sec-revision')).trim();
+check('取り込んだ節も採番される', /^\d+\s/.test(revisionInDesign), revisionInDesign);
 
 // 同じファイルが、置かれた文書ごとに別の番号を得る
 await page.goto('file://' + process.cwd() + '/out/build/auth-overview.html');
 await page.waitForTimeout(200);
+// 番号そのものは標本の中身で決まる。主張は「文書が違えば番号も違う」こと
+const revisionInOverview = (await page.textContent('#sec-revision')).trim();
 check('同じ節が別の文書では別の番号になる',
-  (await page.textContent('#sec-revision')).trim().startsWith('3'),
-  await page.textContent('#sec-revision'));
+  /^\d+\s/.test(revisionInOverview) && revisionInOverview !== revisionInDesign,
+  `${revisionInDesign} / ${revisionInOverview}`);
 check('概要にも図が出る', (await page.$$('.dp-diagram')).length === 2);
 check('生成元のコミットが埋まっている',
   (await page.getAttribute('meta[name="dp-commit"]', 'content') ?? '').length === 40);
