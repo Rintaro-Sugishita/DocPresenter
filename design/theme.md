@@ -151,6 +151,22 @@ theme/
 }
 ```
 
+#### 実装は `:root` のカスタムプロパティで読む（2026-09-29）
+
+`@page` は**ブラウザからは読み出せない**。CSS パーサを持ち込まずに用紙を知るため、
+テーマは同じ値を**カスタムプロパティとしても**宣言し、PDF 側は `getComputedStyle` で読む。
+
+```css
+:root {
+  --page-width: 210mm;  --page-height: 297mm;
+  --page-margin-top: 20mm;  --page-margin-right: 18mm;
+  --page-margin-bottom: 18mm;  --page-margin-left: 18mm;
+  --page-foot-size: 8pt;  --page-foot-colour: #6b7280;
+}
+```
+
+**テーマが紙を持つ**という決定は変わらない。読み方だけが決まった。
+
 **横長の表や図のために、ページ単位で向きを変えられる。** 項目定義表は横長になりがちで、実務上これが無いと困る。
 
 ```markdown

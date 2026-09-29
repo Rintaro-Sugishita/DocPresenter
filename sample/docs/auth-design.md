@@ -6,7 +6,7 @@ status: draft
 author: 設計チーム
 updated: 2026-09-21
 theme: default
-output: [html]
+output: [html, pdf]
 ---
 
 # 認証機能 設計書

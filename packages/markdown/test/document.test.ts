@@ -128,7 +128,7 @@ describe('サンプルの実ファイル', () => {
 
     expect(doc.frontmatter.raw['document']).toBe('SD-AUTH-001');
     expect(isBuildRoot(doc)).toBe(true);            // output: [html] を持つ
-    expect(doc.frontmatter.output).toEqual(['html']);
+    expect(doc.frontmatter.output).toEqual(['html', 'pdf']);
     expect(doc.frontmatter.theme).toBe('default');
 
     const imports = doc.blocks.filter(b => b.kind === 'import') as Import[];

@@ -6,7 +6,7 @@
 ## 0. 決定事項（ロック済み）
 
 - **公開単位は 3 つに分ける。**「作図（エンジン ＋ GUI）」「Markdown レンダリングエンジン（GUI なし）」「設計書製品」。
-- **依存は一方向。** `base ← diagram ← markdown ← { build, editor }`。逆流も循環も作らない。
+- **依存は一方向。** `base ← diagram ← { markdown, pdf } ← build`、`markdown ← editor`。逆流も循環も作らない。
 - **設計書製品は二重実装しない。** `.dgm` の描画も編集も、作図パッケージのものをそのまま使う。
 - **共有の土台（base）は最小に保つ。** バイト範囲・編集・inline 記法・共通 UI 部品まで。「共有できるから」で太らせない。
 - **CSS もパッケージごとに持つ。** 器が連結して 1 つ入れる。
@@ -37,7 +37,8 @@ CI で HTML や PDF を吐く、他の製品に組み込む、AI に読ませる
 | **base** | バイト範囲（`ByteSpan` / `sliceBytes`）、編集（`Edit` / `applyEdit`）、inline 記法の付け外し、共通 UI 部品（メニュー・書式バー・色見本）とその CSS | — | しない（土台） |
 | **diagram** | 作図の意味 / レイアウト / スタイル、SVG 描画、部品ライブラリ、編集操作、キャンバス GUI | base | **する** |
 | **markdown** | 文書モデル、シート、採番と相互参照、表（`.table`）、HTML 描画 | base, diagram | **する**（GUI なし） |
-| **build** | ビルド（ルート探索・参照閉包・診断・成果物の書き出し） | base, markdown, diagram | 設計書製品の一部 |
+| **pdf** | PDF（ページ計画・組版済み DOM の読み取り・改ページ・書き出し） | base, diagram | 設計書製品の一部 |
+| **build** | ビルド（ルート探索・参照閉包・診断・成果物の書き出し） | base, markdown, diagram, pdf | 設計書製品の一部 |
 | **editor** | 設計書の GUI（シートタブ・本文ブロック・表のグリッド） | base, markdown, diagram | 設計書製品の一部 |
 
 **build と editor は互いを知らない。** ビルドは画面を持たず、エディタは成果物を作らない。

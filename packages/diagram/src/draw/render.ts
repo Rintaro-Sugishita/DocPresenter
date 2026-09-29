@@ -10,10 +10,10 @@ import { textWidth } from '../text.js';
 import type { DiagramFile, Node, Point, ShapeKind } from '../model.js';
 import { escapeAttr, escapeHtml } from '@docpresenter/base';
 import { isIconPath, stencilArt } from './stencil.js';
-
-const LINE_HEIGHT = 20;
-const ARROW_LENGTH = 10;
-const ARROW_HALF_WIDTH = 4;
+import {
+  arrowHead as arrowCorners, border, cylinderRadius, labelLayout, n, shapeOutlines,
+  LINE_HEIGHT, type Outline, type ShapePart,
+} from './geometry.js';
 
 /**
  * Draws a diagram. `url` resolves a picture a part points at by path; without
@@ -153,114 +153,43 @@ function styleColours(diagram: DiagramFile, id: string): string {
   return parts.join(';');
 }
 
+/** The outline, as SVG. What the marks are is decided in `geometry.ts`. */
 function shapeElement(shape: ShapeKind, box: Box): string {
-  const { x, y, width: w, height: h } = box;
-  switch (shape) {
-    case 'rect':
-      return rect(x, y, w, h, 0);
-    case 'group':
-      return rect(x, y, w, h, 4);
-    case 'round-rect':
-      return rect(x, y, w, h, 8);
-    case 'stadium':
-      return rect(x, y, w, h, h / 2);
+  return shapeOutlines(shape, box).map(markup).join('');
+}
+
+function markup(part: ShapePart): string {
+  const className = part.detail === 'lid' ? ' class="dp-cylinder-lid"'
+    : part.detail === 'fold' ? ' class="dp-note-fold"' : '';
+  return element(part.outline, className);
+}
+
+function element(outline: Outline, className: string): string {
+  switch (outline.kind) {
+    case 'rect': {
+      const radius = outline.radius > 0 ? ` rx="${n(outline.radius)}"` : '';
+      return `<rect${className} x="${n(outline.x)}" y="${n(outline.y)}"`
+        + ` width="${n(outline.width)}" height="${n(outline.height)}"${radius}/>`;
+    }
     case 'ellipse':
-      return `<ellipse cx="${n(x + w / 2)}" cy="${n(y + h / 2)}" rx="${n(w / 2)}" ry="${n(h / 2)}"/>`;
-    case 'diamond':
-      return polygon([
-        [x + w / 2, y], [x + w, y + h / 2], [x + w / 2, y + h], [x, y + h / 2],
-      ]);
-    case 'parallelogram': {
-      const slant = slantOf(w);
-      return polygon([
-        [x + slant, y], [x + w, y], [x + w - slant, y + h], [x, y + h],
-      ]);
-    }
-    case 'hexagon': {
-      const cut = slantOf(w);
-      return polygon([
-        [x + cut, y], [x + w - cut, y], [x + w, y + h / 2],
-        [x + w - cut, y + h], [x + cut, y + h], [x, y + h / 2],
-      ]);
-    }
-    // The two ends of a loop. Read as a pair, so they are mirror images: the
-    // one that opens a loop narrows at the top, the one that closes it at the
-    // bottom.
-    case 'loop-start': {
-      const cut = slantOf(w);
-      return polygon([[x + cut, y], [x + w - cut, y], [x + w, y + h], [x, y + h]]);
-    }
-    case 'loop-end': {
-      const cut = slantOf(w);
-      return polygon([[x, y], [x + w, y], [x + w - cut, y + h], [x + cut, y + h]]);
-    }
-    case 'cylinder': {
-      const ry = cylinderRadius(h);
-      return `<path d="M ${n(x)} ${n(y + ry)}`
-        + ` A ${n(w / 2)} ${n(ry)} 0 0 1 ${n(x + w)} ${n(y + ry)}`
-        + ` L ${n(x + w)} ${n(y + h - ry)}`
-        + ` A ${n(w / 2)} ${n(ry)} 0 0 1 ${n(x)} ${n(y + h - ry)} Z"/>`
-        + `<path class="dp-cylinder-lid" d="M ${n(x)} ${n(y + ry)}`
-        + ` A ${n(w / 2)} ${n(ry)} 0 0 0 ${n(x + w)} ${n(y + ry)}"/>`;
-    }
-    case 'text':
-      // Nothing is drawn: the label is the shape.
-      return '';
-    case 'note': {
-      const fold = 14;
-      return `<path d="M ${n(x)} ${n(y)} L ${n(x + w - fold)} ${n(y)} L ${n(x + w)} ${n(y + fold)}`
-        + ` L ${n(x + w)} ${n(y + h)} L ${n(x)} ${n(y + h)} Z"/>`
-        + `<path class="dp-note-fold" d="M ${n(x + w - fold)} ${n(y)}`
-        + ` L ${n(x + w - fold)} ${n(y + fold)} L ${n(x + w)} ${n(y + fold)}"/>`;
-    }
+      return `<ellipse${className} cx="${n(outline.cx)}" cy="${n(outline.cy)}"`
+        + ` rx="${n(outline.rx)}" ry="${n(outline.ry)}"/>`;
+    case 'polygon':
+      return `<polygon${className} points="`
+        + `${outline.points.map(p => `${n(p.x)},${n(p.y)}`).join(' ')}"/>`;
+    case 'path':
+      return `<path${className} d="${outline.d}"/>`;
   }
 }
 
-function polygon(at: readonly (readonly number[])[]): string {
-  return `<polygon points="${at.map(([px, py]) => `${n(px!)},${n(py!)}`).join(' ')}"/>`;
-}
-
-/** How far the slanted side of a trapezoid or a hexagon comes in. */
-function slantOf(width: number): number {
-  return Math.min(18, width / 6);
-}
-
-function rect(x: number, y: number, w: number, h: number, r: number): string {
-  const radius = r > 0 ? ` rx="${n(r)}"` : '';
-  return `<rect x="${n(x)}" y="${n(y)}" width="${n(w)}" height="${n(h)}"${radius}/>`;
-}
-
-/**
- * Centred unless the author said otherwise. A box in a flowchart is centred; a
- * label on a screen mock-up is not, and a screen made of centred labels reads
- * as nothing anyone would build.
- */
 function label(
   box: Box, align: string | undefined, shape: ShapeKind, underPicture = false,
 ): string {
-  const anchor = align === 'left' ? 'start' : align === 'right' ? 'end' : 'middle';
-  const inset = 8;
-  const x = anchor === 'start' ? box.x + inset
-    : anchor === 'end' ? box.x + box.width - inset
-    : box.x + box.width / 2;
-  // A cylinder's lid takes the top of the box, so the middle of the box is not
-  // the middle of the space the text has. Centring there runs the text into
-  // the curve.
-  const lid = shape === 'cylinder' ? cylinderRadius(box.height) : 0;
-  // A part's name sits under its picture, which is where a network drawing
-  // puts it; everything else centres in its shape.
-  const top = underPicture
-    ? box.y + Math.max(0, (box.height - LINE_HEIGHT * box.lines.length - artSize(box)) / 2)
-      + artSize(box) + LINE_HEIGHT * 0.65
-    : box.y + (box.height + lid) / 2 - ((box.lines.length - 1) * LINE_HEIGHT) / 2;
+  const at = labelLayout(box, align, shape, underPicture ? artSize(box) : 0);
   const spans = box.lines.map((line, i) =>
-    `<tspan x="${n(x)}" y="${n(top + i * LINE_HEIGHT)}">${runs(line)}</tspan>`);
-  return `<text class="dp-label" text-anchor="${anchor}" dominant-baseline="central">${spans.join('')}</text>`;
-}
-
-/** How deep the lid of a cylinder is. The body and the text both need it. */
-function cylinderRadius(height: number): number {
-  return Math.min(12, height / 4);
+    `<tspan x="${n(at.x)}" y="${n(at.top + i * at.lineHeight)}">${runs(line)}</tspan>`);
+  return `<text class="dp-label" text-anchor="${at.anchor}" dominant-baseline="central">`
+    + `${spans.join('')}</text>`;
 }
 
 /**
@@ -319,38 +248,8 @@ function renderEdge(
   };
 }
 
-function centre(box: Box): Point {
-  return { x: box.x + box.width / 2, y: box.y + box.height / 2 };
-}
-
-/** Where the line from the centre towards `towards` leaves the shape. */
-function border(box: Box, shape: ShapeKind, towards: Point): Point {
-  const c = centre(box);
-  const dx = towards.x - c.x;
-  const dy = towards.y - c.y;
-  if (dx === 0 && dy === 0) return c;
-  const rx = box.width / 2;
-  const ry = box.height / 2;
-
-  let t: number;
-  if (shape === 'ellipse') {
-    t = 1 / Math.hypot(dx / rx, dy / ry);
-  } else if (shape === 'diamond') {
-    t = 1 / (Math.abs(dx) / rx + Math.abs(dy) / ry);
-  } else {
-    t = Math.min(rx / Math.abs(dx || Number.EPSILON), ry / Math.abs(dy || Number.EPSILON));
-  }
-  return { x: c.x + dx * t, y: c.y + dy * t };
-}
-
 function arrowHead(start: Point, end: Point): string {
-  const angle = Math.atan2(end.y - start.y, end.x - start.x);
-  const back = { x: end.x - Math.cos(angle) * ARROW_LENGTH, y: end.y - Math.sin(angle) * ARROW_LENGTH };
-  const nx = -Math.sin(angle) * ARROW_HALF_WIDTH;
-  const ny = Math.cos(angle) * ARROW_HALF_WIDTH;
-  const points = [
-    [end.x, end.y], [back.x + nx, back.y + ny], [back.x - nx, back.y - ny],
-  ].map(([x, y]) => `${n(x!)},${n(y!)}`).join(' ');
+  const points = arrowCorners(start, end).map(p => `${n(p.x)},${n(p.y)}`).join(' ');
   return `<polygon class="dp-arrow" points="${points}"/>`;
 }
 
@@ -366,7 +265,3 @@ function labelText(text: string, { x, y }: Point): string {
     + ` text-anchor="middle" dominant-baseline="central">${runs(parseRuns(text))}</text>`;
 }
 
-/** Coordinates are rounded: a diff of a rendered SVG should stay readable. */
-function n(value: number): string {
-  return String(Math.round(value * 100) / 100);
-}

@@ -30,6 +30,19 @@
   --text-pending:  #1f5fa8;
   --text-disabled: #767c85;
   --text-removed:  #b3261e;
+
+  /* The page, for PDF. The theme owns the paper and the margins — a document
+     says what it is, not how wide the paper is. Read by the PDF writer through
+     getComputedStyle, so no CSS parser is needed to find them. */
+  --page-width:  210mm;
+  --page-height: 297mm;
+  --page-margin-top:    20mm;
+  --page-margin-right:  18mm;
+  --page-margin-bottom: 18mm;
+  --page-margin-left:   18mm;
+  /* The running foot: the page number, and what the document is. */
+  --page-foot-size: 8pt;
+  --page-foot-colour: #6b7280;
 }
 
 body {

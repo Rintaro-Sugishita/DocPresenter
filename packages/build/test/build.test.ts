@@ -16,7 +16,7 @@ const root = (body: string, output = '[html]'): string =>
   `---\ntitle: T\noutput: ${output}\n---\n\n${body}\n`;
 
 describe('ルート探索', () => {
-  it('output: を持つ文書だけがルートになる', () => {
+  it('output: を持つ文書だけがルートになる', async () => {
     const graph = readGraph(workspace({
       'a.md': root('# A'),
       'b.md': '# B だけ\n',
@@ -26,12 +26,12 @@ describe('ルート探索', () => {
     expect(graph.roots[0]!.formats).toEqual(['html']);
   });
 
-  it('ルートが 1 つも無ければ警告する', () => {
+  it('ルートが 1 つも無ければ警告する', async () => {
     const graph = readGraph(workspace({ 'a.md': '# A\n' }));
     expect(graph.diagnostics.some(d => d.message.includes('ビルドするものが何も無い'))).toBe(true);
   });
 
-  it('読めない文書は警告で、他のビルドを止めない', () => {
+  it('読めない文書は警告で、他のビルドを止めない', async () => {
     const graph = readGraph(workspace({
       'a.md': root('# A'),
       'broken.md': '# 見出し\n---\n',            // setext と区別できない `---`
@@ -43,7 +43,7 @@ describe('ルート探索', () => {
 });
 
 describe('収集', () => {
-  it('参照を推移的に辿る', () => {
+  it('参照を推移的に辿る', async () => {
     const graph = readGraph(workspace({
       'docs/a.md': root('@import "b.md"'),
       'docs/b.md': '# B\n\n@import "../shared/t.table"\n',
@@ -53,7 +53,7 @@ describe('収集', () => {
     expect(graph.closure.get('docs/a.md')).toEqual(['docs/a.md', 'docs/b.md', 'shared/t.table']);
   });
 
-  it('どのルートからも届かないファイルを警告する', () => {
+  it('どのルートからも届かないファイルを警告する', async () => {
     const graph = readGraph(workspace({
       'a.md': root('# A'),
       'orphan.table': '| a |\n|---|\n| 1 |\n',
@@ -62,7 +62,7 @@ describe('収集', () => {
     expect(graph.orphans).toEqual(['orphan.table']);
   });
 
-  it('注釈図が指す画像は孤児ではない', () => {
+  it('注釈図が指す画像は孤児ではない', async () => {
     const graph = readGraph(workspace({
       'a.md': root('@import "shot.dgm"'),
       'shot.dgm': 'overlay "screen.png" {\n  1 @ (0, 0) -> (1, 1) "x"\n}\n',
@@ -73,13 +73,13 @@ describe('収集', () => {
     expect(graph.closure.get('a.md')).toContain('screen.png');
   });
 
-  it('参照先が無ければエラー', () => {
+  it('参照先が無ければエラー', async () => {
     const graph = readGraph(workspace({ 'a.md': root('@import "missing.table"'), ...THEME }));
     expect(graph.diagnostics.some(d =>
       d.severity === 'error' && d.message.includes('missing.table'))).toBe(true);
   });
 
-  it('循環参照はエラー', () => {
+  it('循環参照はエラー', async () => {
     const graph = readGraph(workspace({
       'a.md': root('@import "b.md"'),
       'b.md': '# B\n\n@import "a.md"\n',
@@ -91,55 +91,55 @@ describe('収集', () => {
 });
 
 describe('成果物', () => {
-  it('HTML は 1 枚で完結する', () => {
-    const result = build(workspace({ 'docs/a.md': root('# A\n\n本文'), ...THEME }));
+  it('HTML は 1 枚で完結する', async () => {
+    const result = await build(workspace({ 'docs/a.md': root('# A\n\n本文'), ...THEME }));
     expect(result.artifacts.map(a => a.path)).toEqual(['dist/a.html']);
-    const html = result.artifacts[0]!.text;
+    const html = result.artifacts[0]!.text!;
     expect(html).toContain('body { color: #000 }');     // テーマは埋め込む
     expect(html).not.toContain('<link');                // 外を参照しない
   });
 
-  it('取り込んだ文書は畳まれ、出自のファイルを持つ', () => {
-    const result = build(workspace({
+  it('取り込んだ文書は畳まれ、出自のファイルを持つ', async () => {
+    const result = await build(workspace({
       'docs/a.md': root('# A\n\n@import "../shared/part.md"'),
       'shared/part.md': '## 共有の節 {#sec-shared}\n\n本文\n',
       ...THEME,
     }));
-    const html = result.artifacts[0]!.text;
+    const html = result.artifacts[0]!.text!;
     expect(html).toContain('id="sec-shared"');
     expect(html).toContain('data-doc="shared/part.md"');
   });
 
-  it('同じ節が、置かれた文書ごとに別の番号を得る', () => {
+  it('同じ節が、置かれた文書ごとに別の番号を得る', async () => {
     const files = {
       'one.md': root('# 一\n\n## 章 {#sec-x}\n\n@import "part.md"'),
       'two.md': root('# 二\n\n@import "part.md"'),
       'part.md': '## 共有 {#sec-shared}\n\n本文\n',
       ...THEME,
     };
-    const result = build(workspace(files));
+    const result = await build(workspace(files));
     const numberIn = (name: string): string => {
-      const html = result.artifacts.find(a => a.path.endsWith(name))!.text;
+      const html = result.artifacts.find(a => a.path.endsWith(name))!.text!;
       return /id="sec-shared"[^>]*><span class="dp-number">([\d.]+)</.exec(html)![1]!;
     };
     expect(numberIn('one.html')).toBe('2');
     expect(numberIn('two.html')).toBe('1');
   });
 
-  it('書けない形式は黙って落とさず、そう言う', () => {
-    const result = build(workspace({ 'a.md': root('# A', '[pdf]'), ...THEME }));
+  it('書けない形式は黙って落とさず、そう言う', async () => {
+    const result = await build(workspace({ 'a.md': root('# A', '[pdf]'), ...THEME }));
     expect(result.artifacts).toEqual([]);
-    expect(result.diagnostics.some(d => d.message.includes('pdf 出力はまだ実装していない'))).toBe(true);
+    expect(result.diagnostics.some(d => d.message.includes('pdf 出力はこの環境では書けない'))).toBe(true);
   });
 
-  it('テーマが無ければエラー', () => {
-    const result = build(workspace({ 'a.md': root('# A') }));
+  it('テーマが無ければエラー', async () => {
+    const result = await build(workspace({ 'a.md': root('# A') }));
     expect(result.diagnostics.some(d =>
       d.severity === 'error' && d.message.includes('テーマが見つからない'))).toBe(true);
   });
 
-  it('ルートでないものを名指しされたらそう言う', () => {
-    const result = build(workspace({ 'a.md': root('# A'), 'b.md': '# B\n', ...THEME }),
+  it('ルートでないものを名指しされたらそう言う', async () => {
+    const result = await build(workspace({ 'a.md': root('# A'), 'b.md': '# B\n', ...THEME }),
       { only: ['b.md'] });
     expect(result.artifacts).toEqual([]);
     expect(result.diagnostics.some(d => d.message.includes('ビルドルートではない'))).toBe(true);

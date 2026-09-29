@@ -4,6 +4,8 @@
     { "path": "packages/base" },
     { "path": "packages/diagram" },
     { "path": "packages/markdown" },
+    { "path": "packages/pdf" },
+    { "path": "packages/pptx" },
     { "path": "packages/build" },
     { "path": "packages/editor" }
   ]

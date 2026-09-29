@@ -1,0 +1,13 @@
+{
+  "name": "@docpresenter/pptx",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "dependencies": {
+    "@docpresenter/base": "*",
+    "@docpresenter/diagram": "*",
+    "fflate": "^0.8.2"
+  }
+}

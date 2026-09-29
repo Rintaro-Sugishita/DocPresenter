@@ -11,6 +11,7 @@ import { readFileSync, readdirSync, writeFileSync, mkdirSync, statSync } from 'n
 import { execFileSync } from 'node:child_process';
 import { dirname, join, relative, resolve } from 'node:path';
 import { build } from '../packages/build/dist/index.js';
+import { createPdfWriter } from './pdf-writer.mjs';
 
 const SKIP = new Set(['node_modules', '.git', 'dist', 'out']);
 const BINARY = /\.(png|jpe?g|gif|webp)$/i;
@@ -65,8 +66,13 @@ const commit = (() => {
   } catch { return undefined; }
 })();
 
+const wantsPdf = files.some(path => /\.md$/i.test(path)
+  && (workspace.read(path) ?? '').includes('pdf'));
+const pdf = wantsPdf ? await createPdfWriter() : undefined;
+
 const only = argv.map(path => relative(root, resolve(path)).split('\\').join('/'));
-const result = build(workspace, {
+const result = await build(workspace, {
+  ...(pdf ? { writers: { pdf: pdf.write } } : {}),
   outDir,
   // The workspace's own theme wins; otherwise the one the product ships.
   style: theme => workspace.read(`themes/${theme}/theme.css`)
@@ -82,9 +88,16 @@ for (const d of result.diagnostics) {
 }
 for (const artifact of result.artifacts) {
   mkdirSync(dirname(artifact.path), { recursive: true });
-  writeFileSync(artifact.path, artifact.text);   // outDir is relative to the cwd
-  const size = (Buffer.byteLength(artifact.text) / 1024).toFixed(0);
-  console.log(`${artifact.path}（${artifact.root} → ${artifact.format}、${size} KB）`);
+  const body = artifact.bytes ?? artifact.text;   // outDir is relative to the cwd
+  writeFileSync(artifact.path, body);
+  const size = ((artifact.bytes?.length ?? Buffer.byteLength(artifact.text)) / 1024).toFixed(0);
+  const extra = artifact.report
+    ? `、${artifact.report.pages} ページ`
+      + (artifact.report.missing.length ? `、欠字 ${artifact.report.missing.length}` : '')
+    : '';
+  console.log(`${artifact.path}（${artifact.root} → ${artifact.format}、${size} KB${extra}）`);
+  for (const message of artifact.report?.diagnostics ?? []) console.log(`  ! ${message}`);
 }
+await pdf?.close();
 console.log(`ルート ${result.graph.roots.length} 件 / 成果物 ${result.artifacts.length} 件`);
 if (result.diagnostics.some(d => d.severity === 'error')) process.exitCode = 1;

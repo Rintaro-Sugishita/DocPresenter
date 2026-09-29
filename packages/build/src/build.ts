@@ -12,6 +12,25 @@ import { readGraph, type ReferenceGraph, type Root } from './graph.js';
 import { renderPage } from './html.js';
 import type { Artifact, BuildDiagnostic, Workspace } from './workspace.js';
 
+/** What a format writer is given. Everything is prepared before it is called. */
+export interface WriteInput {
+  readonly workspace: Workspace;
+  readonly root: Root;
+  readonly prepared: PreparedDocument;
+  /** The theme's CSS, already resolved. */
+  readonly style: string;
+  readonly options: BuildOptions;
+  /** Where the artifact goes, without its extension. */
+  readonly out: string;
+}
+
+/**
+ * Writes one format. HTML is built in; anything that needs more than strings —
+ * PDF needs a browser to lay the document out — is supplied by the caller, so
+ * that this package keeps no dependency on one.
+ */
+export type FormatWriter = (input: WriteInput) => Promise<Artifact | undefined> | Artifact | undefined;
+
 export interface BuildOptions {
   /** Build only these roots. Everything with an `output:` when absent. */
   readonly only?: readonly string[];
@@ -27,6 +46,8 @@ export interface BuildOptions {
   readonly style?: (theme: string) => string | undefined;
   readonly commit?: string;
   readonly builtAt?: string;
+  /** Writers for formats beyond `html`. */
+  readonly writers?: Readonly<Record<string, FormatWriter>>;
 }
 
 export interface BuildResult {
@@ -43,7 +64,9 @@ export interface PreparedDocument {
   readonly diagnostics: readonly BuildDiagnostic[];
 }
 
-export function build(workspace: Workspace, options: BuildOptions = {}): BuildResult {
+export async function build(
+  workspace: Workspace, options: BuildOptions = {},
+): Promise<BuildResult> {
   const graph = readGraph(workspace);
   const diagnostics: BuildDiagnostic[] = [];
   const artifacts: Artifact[] = [];
@@ -70,7 +93,7 @@ export function build(workspace: Workspace, options: BuildOptions = {}): BuildRe
     if (prepared.diagnostics.some(d => d.severity === 'error')) continue;
 
     for (const format of root.formats) {
-      const artifact = write(workspace, root, prepared, format, outDir, options, diagnostics);
+      const artifact = await write(workspace, root, prepared, format, outDir, options, diagnostics);
       if (artifact) artifacts.push(artifact);
     }
   }
@@ -95,16 +118,17 @@ export function prepare(workspace: Workspace, root: Root): PreparedDocument {
   return { root: root.path, document: expansion.document, resolved, diagnostics };
 }
 
-function write(
+async function write(
   workspace: Workspace, root: Root, prepared: PreparedDocument, format: string,
   outDir: string, options: BuildOptions, diagnostics: BuildDiagnostic[],
-): Artifact | undefined {
-  if (format !== 'html') {
+): Promise<Artifact | undefined> {
+  const writer = format === 'html' ? html : options.writers?.[format];
+  if (!writer) {
     // P6: a format that is asked for and not written is said out loud rather
     // than passed over in silence.
     diagnostics.push({
       severity: 'warning', path: root.path,
-      message: `${format} 出力はまだ実装していない`,
+      message: `${format} 出力はこの環境では書けない（書き手が渡されていない）`,
     });
     return undefined;
   }
@@ -120,17 +144,33 @@ function write(
     return undefined;
   }
 
+  try {
+    return await writer({
+      workspace, root, prepared, style, options,
+      out: `${outDir}/${basename(root.path)}`,
+    });
+  } catch (error) {
+    diagnostics.push({
+      severity: 'error', path: root.path,
+      message: `${format} を書けなかった: ${error instanceof Error ? error.message : String(error)}`,
+    });
+    return undefined;
+  }
+}
+
+/** The built-in writer. Everything it needs is a string. */
+function html(input: WriteInput): Artifact {
+  const { root, prepared, options } = input;
   const text = renderPage({
-    workspace,
+    workspace: input.workspace,
     document: prepared.document,
     resolved: prepared.resolved,
-    style,
+    style: input.style,
     root: root.path,
     ...(options.commit === undefined ? {} : { commit: options.commit }),
     ...(options.builtAt === undefined ? {} : { builtAt: options.builtAt }),
   });
-
-  return { path: `${outDir}/${basename(root.path)}.html`, text, root: root.path, format };
+  return { path: `${input.out}.html`, text, root: root.path, format: 'html' };
 }
 
 /** `docs/auth-design.md` becomes `auth-design`. */

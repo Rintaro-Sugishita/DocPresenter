@@ -17,11 +17,12 @@ export interface Workspace {
   dataUrl?(path: string): string | undefined;
 }
 
-/** A finished file the build produces. */
+/** A finished file the build produces. Text or bytes — a PDF is not a string. */
 export interface Artifact {
   /** Where it goes, relative to the workspace root. */
   readonly path: string;
-  readonly text: string;
+  readonly text?: string;
+  readonly bytes?: Uint8Array;
   /** Which root it came from, for the report. */
   readonly root: string;
   readonly format: string;
