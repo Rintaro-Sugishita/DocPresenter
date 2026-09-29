@@ -43,14 +43,17 @@ check('タブのドラッグでシートが動く',
   (await tabs()).join(' | '));
 check('移動は 1 回の書き換えとして報告される', (await status()).includes('バイトを書き換え'), await status());
 
-// 追加
+// 追加。数は標本の中身で決まるので、増えたことだけを見る
+const sheetsBefore = (await tabs()).length;
 await page.click('.dp-tab-add');
 await page.waitForTimeout(150);
-check('＋で空のシートが増える', (await tabs()).length === 6 && (await tabs())[5] === 'シート 6',
-  (await tabs()).join(' | '));
+const added = await tabs();
+check('＋で空のシートが増える',
+  added.length === sheetsBefore + 1 && added[added.length - 1] === `シート ${added.length}`,
+  added.join(' | '));
 
 // 改名
-await page.dblclick('.dp-tab[data-index="6"]');
+await page.dblclick(`.dp-tab[data-index="${added.length - 1}"]`);
 await page.fill('.dp-tab-rename', '付録');
 await page.keyboard.press('Enter');
 await page.waitForTimeout(200);
@@ -66,9 +69,11 @@ check('改名は見出しを書き換える', (await source()).includes('## 用�
 check('ラベルは保たれる', (await source()).includes('{#sec-glossary}'));
 
 // 削除
+const sheetsBeforeClose = (await tabs()).length;
 await page.click('.dp-tab[data-index="2"] .dp-tab-close');
 await page.waitForTimeout(200);
-check('×でシートが消える', (await tabs()).length === 5 && !(await tabs()).join().includes('用語集'),
+check('×でシートが消える',
+  (await tabs()).length === sheetsBeforeClose - 1 && !(await tabs()).join().includes('用語集'),
   (await tabs()).join(' | '));
 check('区切りが二重に残らない', !(await source()).includes('---\n\n---'));
 

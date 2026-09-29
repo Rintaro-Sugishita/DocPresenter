@@ -41,6 +41,8 @@ check('書き戻し先はその図のファイル',
 check('本文のソースは変わらない',
   !(await page.textContent('#source')).includes('Web フロント（新）'));
 
+const sheets = (await page.$$('.dp-sheet')).length;
+
 // 壊れた図はページごと落とさず、その場に出す
 await page.click('.dp-sheet:not([hidden]) .dp-figure-body');
 await page.waitForTimeout(200);
@@ -51,7 +53,10 @@ await page.click('.dp-tabbar-spacer');
 await page.waitForTimeout(400);
 check('壊れた図はその場で理由を出す', await page.isVisible('.dp-broken'),
   (await page.textContent('.dp-broken').catch(() => '')) ?? '');
-check('ほかのシートは無事', (await page.$$('.dp-sheet')).length === 5);
+// 壊れたのは 1 つの図であって、文書ではない。数は標本の中身で決まる
+check('ほかのシートは無事',
+  (await page.$$('.dp-sheet')).length === sheets && (await page.$$('.dp-broken')).length === 1,
+  `${(await page.$$('.dp-sheet')).length} 枚`);
 
 // 読めない図は図として開けない。直せるように、ソースで開く。
 await page.click('.dp-sheet:not([hidden]) .dp-figure-body');

@@ -1,0 +1,13 @@
+{
+  "name": "@docpresenter/build",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "dependencies": {
+    "@docpresenter/base": "*",
+    "@docpresenter/diagram": "*",
+    "@docpresenter/markdown": "*"
+  }
+}

@@ -16,7 +16,18 @@ export interface Reference {
   readonly span: ByteSpan;
 }
 
-export interface Heading {
+/**
+ * What every block carries. `doc` is set only when a build has pulled the block
+ * in from another file: a byte range means nothing without knowing which file
+ * it is a range of, and a document may include other documents.
+ */
+export interface BlockBase {
+  readonly span: ByteSpan;
+  /** The file this block was parsed from, when it is not the document itself. */
+  readonly doc?: string;
+}
+
+export interface Heading extends BlockBase {
   readonly kind: 'heading';
   readonly level: number;
   readonly text: string;
@@ -26,7 +37,7 @@ export interface Heading {
 }
 
 /** `@import "path" {attr}` — an embedded object held in its own file. */
-export interface Import {
+export interface Import extends BlockBase {
   readonly kind: 'import';
   readonly path: string;
   readonly label: string | undefined;
@@ -35,12 +46,12 @@ export interface Import {
 }
 
 /** `---` — a page break in PDF and a slide split in PPTX. Never a rule. */
-export interface Separator {
+export interface Separator extends BlockBase {
   readonly kind: 'separator';
   readonly span: ByteSpan;
 }
 
-export interface Prose {
+export interface Prose extends BlockBase {
   readonly kind: 'prose';
   readonly text: string;
   readonly references: readonly Reference[];

@@ -5,6 +5,8 @@ version: 1.2
 status: draft
 author: 設計チーム
 updated: 2026-09-21
+theme: default
+output: [html]
 ---
 
 # 認証機能 設計書
@@ -83,3 +85,7 @@ updated: 2026-09-21
 本書で用いる用語を @tbl-glossary に示す。全社共通の用語集からの抜粋である。
 
 @import "../shared/glossary.table" {#tbl-glossary caption="用語集（抜粋）" rows="認証関連"}
+
+---
+
+@import "../shared/revision.md"

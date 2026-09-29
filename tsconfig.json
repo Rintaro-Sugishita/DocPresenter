@@ -4,6 +4,7 @@
     { "path": "packages/base" },
     { "path": "packages/diagram" },
     { "path": "packages/markdown" },
+    { "path": "packages/build" },
     { "path": "packages/editor" }
   ]
 }

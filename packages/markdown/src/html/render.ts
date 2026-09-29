@@ -6,7 +6,7 @@ import { parseDiagram, renderDiagram, renderOverlay } from '@docpresenter/diagra
 import { describe } from '../numbering/resolve.js';
 import { parseTable } from '../table/parse.js';
 import { sheetsOf } from '../document/sheets.js';
-import type { Block, DocumentFile } from '../document/model.js';
+import type { Block, DocumentFile, Import } from '../document/model.js';
 import type { NumberedElement, ResolvedDocument } from '../numbering/model.js';
 import { markdown } from './markdown.js';
 import { joinPath } from './path.js';
@@ -53,7 +53,7 @@ function renderBlock(
   resolved: ResolvedDocument,
   options: RenderOptions,
 ): string {
-  const span = spanAttr(block.span);
+  const span = spanAttr(block);
   switch (block.kind) {
     case 'heading': {
       const number = elementByBlock.get(block)?.number;
@@ -66,9 +66,7 @@ function renderBlock(
       return `<div class="dp-prose"${span}>`
         + `${markdown.render(substitute(block.text, block.span.start, resolved))}</div>`;
     case 'import':
-      return renderImport(
-        block.path, block.label, elementByBlock.get(block), block.span, block.attributes, options,
-      );
+      return renderImport(block, elementByBlock.get(block), options);
     case 'separator':
       // Sheets are built from the separators, so one never reaches here.
       return '';
@@ -76,9 +74,9 @@ function renderBlock(
 }
 
 function renderImport(
-  path: string, label: string | undefined, element: NumberedElement | undefined,
-  span: ByteSpan, attributes: ReadonlyMap<string, string>, options: RenderOptions,
+  block: Import, element: NumberedElement | undefined, options: RenderOptions,
 ): string {
+  const { path, label, attributes } = block;
   const source = options.loader.read(path);
   const id = label ? ` id="${escapeAttr(label)}"` : '';
   const body = source === undefined
@@ -93,7 +91,7 @@ function renderImport(
     : '';
 
   return `<figure class="dp-figure" data-kind="${element?.kind ?? 'other'}"`
-    + ` data-path="${escapeAttr(path)}"${id}${spanAttr(span)}>`
+    + ` data-path="${escapeAttr(path)}"${id}${spanAttr(block)}>`
     + `\n<div class="dp-figure-body">${body}</div>\n${caption}\n</figure>`;
 }
 
@@ -168,6 +166,12 @@ function inline(text: string, baseOffset: number, resolved: ResolvedDocument): s
   return markdown.renderInline(substitute(text, baseOffset, resolved));
 }
 
-function spanAttr(span: ByteSpan): string {
-  return ` data-span="${span.start},${span.end}"`;
+/**
+ * The source map, as an attribute. A block pulled in from another file also
+ * says which file, because a byte range on its own would be read as a range of
+ * the document being rendered.
+ */
+function spanAttr(block: { readonly span: ByteSpan; readonly doc?: string }): string {
+  const doc = block.doc === undefined ? '' : ` data-doc="${escapeAttr(block.doc)}"`;
+  return ` data-span="${block.span.start},${block.span.end}"${doc}`;
 }

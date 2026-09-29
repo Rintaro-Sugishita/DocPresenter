@@ -12,6 +12,7 @@ Git の差分がレビューになる設計書のための道具。文章は Mar
 | `packages/base` | バイト範囲・編集・inline 記法・共通 UI 部品 | 土台 |
 | `packages/diagram` | 作図：記法・レイアウト・SVG 描画・部品ライブラリ・キャンバス GUI | **する** |
 | `packages/markdown` | 文書エンジン：Markdown・表・採番・HTML 描画（画面を持たない） | **する** |
+| `packages/build` | ビルド：ルート探索・参照閉包・診断・成果物の書き出し | 製品の一部 |
 | `packages/editor` | 設計書の編集 UI：シート・本文ブロック・表のグリッド | 製品の一部 |
 
 ## 動かす
@@ -23,10 +24,10 @@ npx tsc --build                 # 型検査とビルド
 
 node tools/build-editor-demo.mjs   # 設計書の編集画面   → out/editor.html
 node tools/build-canvas-demo.mjs   # 作図だけのページ   → out/canvas-app.html
-node tools/render-sample.mjs       # サンプルを HTML に → out/auth-design.html
+node tools/build.mjs --in sample   # サンプルをビルド     → out/build/*.html
 
 node tools/check-spec.mjs          # 仕様と実装が一致しているか
-for f in tools/check-*.mjs; do node "$f"; done   # 上記を含む全検証
+for f in tools/check-*.mjs; do node "$f"; done   # 全検証（上の 3 つを先に走らせておく）
 ```
 
 `out/canvas-app.html` は base ＋ diagram だけで作られている。文書エンジンは 1 バイトも入っていない

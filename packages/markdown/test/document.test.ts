@@ -127,19 +127,24 @@ describe('サンプルの実ファイル', () => {
     const doc = parseDocument(source);
 
     expect(doc.frontmatter.raw['document']).toBe('SD-AUTH-001');
-    expect(isBuildRoot(doc)).toBe(false);   // sample はまだ output: を持たない
+    expect(isBuildRoot(doc)).toBe(true);            // output: [html] を持つ
+    expect(doc.frontmatter.output).toEqual(['html']);
+    expect(doc.frontmatter.theme).toBe('default');
 
     const imports = doc.blocks.filter(b => b.kind === 'import') as Import[];
     expect(imports.map(i => i.label)).toEqual([
       'fig-architecture', 'fig-login-flow', 'fig-login-screen', 'fig-login-design',
       'tbl-screen-items', 'fig-login-sequence', 'fig-token-lifecycle',
       'fig-customer-domain', 'tbl-glossary',
+      undefined,                                    // 共有の改訂履歴。図表ではないのでラベルを持たない
     ]);
     // 委譲した図も同じ経路で読める
     expect(imports.map(i => i.path)).toContain('auth-design/login-sequence.mmd');
     expect(imports.map(i => i.path)).toContain('../shared/customer-domain.ermlx');
     // 名前付き範囲による部分参照
-    expect(imports.at(-1)!.attributes.get('rows')).toBe('認証関連');
+    expect(imports.find(i => i.label === 'tbl-glossary')!.attributes.get('rows')).toBe('認証関連');
+    // 文書が文書を取り込む
+    expect(imports.at(-1)!.path).toBe('../shared/revision.md');
 
     const headings = doc.blocks.filter(b => b.kind === 'heading') as Heading[];
     expect(headings.filter(h => h.label !== undefined).length).toBeGreaterThan(5);
