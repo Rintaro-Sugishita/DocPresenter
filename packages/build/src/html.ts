@@ -6,7 +6,8 @@
 // Nothing about the result depends on where it is put.
 
 import {
-  renderDocument, type DocumentFile, type ResolvedDocument, type ResourceLoader,
+  renderDocument,
+  type DiffMarks, type DocumentFile, type ResolvedDocument, type ResourceLoader,
 } from '@docpresenter/markdown';
 import type { Workspace } from './workspace.js';
 
@@ -21,6 +22,8 @@ export interface PageOptions {
   /** The commit the build ran on, when the caller knows it. */
   readonly commit?: string;
   readonly builtAt?: string;
+  /** What changed since another version. */
+  readonly marks?: DiffMarks;
 }
 
 export function renderPage(options: PageOptions): string {
@@ -36,7 +39,9 @@ export function renderPage(options: PageOptions): string {
     url: path => workspace.dataUrl?.(path) ?? path,
   };
 
-  const body = renderDocument(document, resolved, { loader });
+  const body = renderDocument(document, resolved, {
+    loader, ...(options.marks === undefined ? {} : { marks: options.marks }),
+  });
 
   return [
     '<!doctype html>',

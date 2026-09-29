@@ -10,8 +10,8 @@
 import { parseDiagram, parseRuns, type Run } from '@docpresenter/diagram';
 import {
   cellAt, describe, parseTable, selectRows, sheetsOf,
-  type Block as DocBlock, type Cell, type DocumentFile, type NumberedElement,
-  type ResolvedDocument, type TableFile,
+  type Block as DocBlock, type Cell, type DiffMarks, type DocumentFile,
+  type NumberedElement, type ResolvedDocument, type TableFile,
 } from '@docpresenter/markdown';
 import { drawingOf, type Block, type Deck, type Slide, type TableCell } from '@docpresenter/pptx';
 import type { Workspace } from './workspace.js';
@@ -22,6 +22,8 @@ export interface DeckOptions {
   readonly resolved: ResolvedDocument;
   readonly title: string;
   readonly foot?: string;
+  /** What changed since another version, when the build was told to compare. */
+  readonly marks?: DiffMarks;
 }
 
 export function deckOf(options: DeckOptions): Deck {
@@ -79,7 +81,10 @@ function blockOf(
       return undefined;
     }
     try {
-      return drawingOf(parseDiagram(source), { diagnostics, source: block.path });
+      const marks = options.marks?.diagrams.get(block.path)?.nodes;
+      return drawingOf(parseDiagram(source), {
+        diagnostics, source: block.path, ...(marks ? { marks } : {}),
+      });
     } catch (error) {
       diagnostics.push(`${block.path} を読めない: ${error instanceof Error ? error.message : String(error)}`);
       return undefined;

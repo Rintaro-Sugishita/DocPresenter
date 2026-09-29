@@ -6,10 +6,12 @@
 // from the HTML's is worse than no PDF.
 
 import {
-  expandDocument, resolveDocument, type DocumentFile, type ResolvedDocument,
+  expandDocument, resolveDocument,
+  type DiffMarks, type DocumentFile, type ResolvedDocument,
 } from '@docpresenter/markdown';
 import { writePptx } from '@docpresenter/pptx';
 import { deckOf } from './deck.js';
+import { diffOf, type Previous } from './diff.js';
 import { readGraph, type ReferenceGraph, type Root } from './graph.js';
 import { renderPage } from './html.js';
 import type { Artifact, BuildDiagnostic, Workspace } from './workspace.js';
@@ -26,6 +28,8 @@ export interface WriteInput {
   readonly out: string;
   /** Anything the writer wants to say. */
   readonly diagnostics: BuildDiagnostic[];
+  /** What changed since another version, when the build was told to compare. */
+  readonly marks?: DiffMarks;
 }
 
 /**
@@ -50,6 +54,12 @@ export interface BuildOptions {
   readonly style?: (theme: string) => string | undefined;
   readonly commit?: string;
   readonly builtAt?: string;
+  /**
+   * Another version to mark changes against: a folder, a commit, whatever the
+   * caller can read a file out of. Nothing is written into the sources.
+   */
+  readonly diffFrom?: { readonly name: string; readonly read: Previous };
+  readonly showRemoved?: 'none' | 'strike';
   /** Writers for formats beyond `html`. */
   readonly writers?: Readonly<Record<string, FormatWriter>>;
 }
@@ -96,8 +106,17 @@ export async function build(
     diagnostics.push(...prepared.diagnostics);
     if (prepared.diagnostics.some(d => d.severity === 'error')) continue;
 
+    const marks = options.diffFrom === undefined ? undefined : diffOf({
+      workspace,
+      previous: options.diffFrom.read,
+      files: graph.closure.get(root.path) ?? [root.path],
+      from: options.diffFrom.name,
+      root: root.path,
+      ...(options.showRemoved === undefined ? {} : { showRemoved: options.showRemoved }),
+    });
+
     for (const format of root.formats) {
-      const artifact = await write(workspace, root, prepared, format, outDir, options, diagnostics);
+      const artifact = await write(workspace, root, prepared, format, outDir, options, diagnostics, marks);
       if (artifact) artifacts.push(artifact);
     }
   }
@@ -125,6 +144,7 @@ export function prepare(workspace: Workspace, root: Root): PreparedDocument {
 async function write(
   workspace: Workspace, root: Root, prepared: PreparedDocument, format: string,
   outDir: string, options: BuildOptions, diagnostics: BuildDiagnostic[],
+  marks: DiffMarks | undefined,
 ): Promise<Artifact | undefined> {
   const builtIn: Record<string, FormatWriter | undefined> = { html, pptx };
   const writer = builtIn[format] ?? options.writers?.[format];
@@ -152,6 +172,7 @@ async function write(
   try {
     return await writer({
       workspace, root, prepared, style, options, diagnostics,
+      ...(marks === undefined ? {} : { marks }),
       out: `${outDir}/${basename(root.path)}`,
     });
   } catch (error) {
@@ -180,6 +201,7 @@ function pptx(input: WriteInput): Artifact {
     resolved: prepared.resolved,
     title,
     ...(foot ? { foot } : {}),
+    ...(input.marks === undefined ? {} : { marks: input.marks }),
   });
   for (const message of deck.diagnostics) {
     input.diagnostics.push({ severity: 'warning', path: root.path, message });
@@ -198,6 +220,7 @@ function html(input: WriteInput): Artifact {
     resolved: prepared.resolved,
     style: input.style,
     root: root.path,
+    ...(input.marks === undefined ? {} : { marks: input.marks }),
     ...(options.commit === undefined ? {} : { commit: options.commit }),
     ...(options.builtAt === undefined ? {} : { builtAt: options.builtAt }),
   });

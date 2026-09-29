@@ -15,11 +15,24 @@ import {
   LINE_HEIGHT, type Outline, type ShapePart,
 } from './geometry.js';
 
+/** What a build found changed since another version, for the drawing's parts. */
+export interface DiagramMarks {
+  readonly nodes: ReadonlyMap<string, string>;
+  /** Keyed `from->to`. */
+  readonly edges: ReadonlyMap<string, string>;
+}
+
 /**
  * Draws a diagram. `url` resolves a picture a part points at by path; without
  * it such a part is drawn as its name, which is at least visible.
+ *
+ * `marks` says which shapes and connections a build found changed. They are
+ * class names, like everything else here: the theme decides what "added" looks
+ * like, and a diagram with no marks is byte for byte what it always was.
  */
-export function renderDiagram(diagram: DiagramFile, url?: (path: string) => string): string {
+export function renderDiagram(
+  diagram: DiagramFile, url?: (path: string) => string, marks?: DiagramMarks,
+): string {
   const laid = layOutDiagram(diagram);
   const byId = new Map(diagram.nodes.map(n => [n.id, n]));
 
@@ -29,12 +42,12 @@ export function renderDiagram(diagram: DiagramFile, url?: (path: string) => stri
     const node = byId.get(id);
     const box = laid.boxes.get(id);
     if (!node || !box) continue;
-    (box.z < 0 ? behind : front).push(renderNode(node, box, diagram, url));
+    (box.z < 0 ? behind : front).push(renderNode(node, box, diagram, url, marks));
   }
 
   // Connections are drawn in two passes: every line and plate first, then every
   // label, so one connection's plate can never blank out another's label.
-  const drawn = laid.routes.map(route => renderEdge(route, byId, laid.boxes));
+  const drawn = laid.routes.map(route => renderEdge(route, byId, laid.boxes, marks));
   const edges = [
     ...drawn.map(e => e.geometry),
     ...drawn.map(e => e.label),
@@ -63,6 +76,7 @@ export function diagramDiagnostics(diagram: DiagramFile): readonly string[] {
 
 function renderNode(
   node: Node, box: Box, diagram: DiagramFile, url?: (path: string) => string,
+  marks?: DiagramMarks,
 ): string {
   const icon = diagram.style.get(node.id)?.get('icon');
   const classes = [
@@ -71,6 +85,7 @@ function renderNode(
     ...(icon ? ['dp-part'] : []),
     ...(node.className ? [`dp-class-${node.className}`] : []),
     ...styleClasses(diagram, node.id),
+    ...(marks?.nodes.get(node.id) ? [`dp-diff-${marks.nodes.get(node.id)!}`] : []),
   ];
   // A part is a picture with its name under it: the picture is the shape, so
   // no outline is drawn around it.
@@ -221,6 +236,7 @@ interface DrawnEdge { readonly geometry: string; readonly label: string }
 
 function renderEdge(
   route: EdgeRoute, byId: ReadonlyMap<string, Node>, boxes: ReadonlyMap<string, Box>,
+  marks?: DiagramMarks,
 ): DrawnEdge {
   const { edge, points } = route;
   const from = boxes.get(edge.from);
@@ -231,7 +247,9 @@ function renderEdge(
   clipped[0] = border(from, byId.get(edge.from)?.shape ?? 'rect', points[1]!);
   clipped[clipped.length - 1] = border(to, byId.get(edge.to)?.shape ?? 'rect', points[points.length - 2]!);
 
-  const open = `<g class="${['dp-edge', `dp-line-${edge.line}`].join(' ')}"`
+  const change = marks?.edges.get(`${edge.from}->${edge.to}`);
+  const open = `<g class="${['dp-edge', `dp-line-${edge.line}`,
+    ...(change ? [`dp-diff-${change}`] : [])].join(' ')}"`
     + ` data-edge="${escapeAttr(`${edge.from}->${edge.to}`)}">`;
   const geometry = [
     open,

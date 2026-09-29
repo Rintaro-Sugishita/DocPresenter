@@ -14,6 +14,11 @@ import type { DrawingBlock, DrawnConnector, DrawnShape } from './model.js';
 /** A colour an author wrote, as opposed to a token only the theme can resolve. */
 const COLOUR = /^#[0-9a-fA-F]{3}([0-9a-fA-F]{3})?$/;
 
+/** The default theme's diff colours, for a deck that cannot read a stylesheet. */
+const DIFF: Readonly<Record<string, string>> = {
+  added: '#e6f4e9', changed: '#fdf0d5', removed: '#fde8e8',
+};
+
 const PRESETS: Readonly<Record<ShapeKind, { preset: string; adjust?: number; flipV?: boolean }>> = {
   'rect':          { preset: 'rect' },
   'round-rect':    { preset: 'roundRect', adjust: 12000 },
@@ -36,6 +41,12 @@ const PRESETS: Readonly<Record<ShapeKind, { preset: string; adjust?: number; fli
 export interface DrawingOptions {
   /** The file the drawing was read from; carried into the slide (§8.1). */
   readonly source?: string;
+  /**
+   * What a build found changed since another version, by node id. A slide has
+   * no CSS to resolve a class, so the colour is decided here — the one place
+   * this output has to hold a colour of its own.
+   */
+  readonly marks?: ReadonlyMap<string, 'added' | 'removed' | 'changed'>;
   /** Colours the theme resolves, which the model cannot. Keyed by style token. */
   readonly tokens?: Readonly<Record<string, string>>;
   readonly diagnostics?: string[];
@@ -63,12 +74,16 @@ export function drawingOf(diagram: DiagramFile, options: DrawingOptions = {}): D
       options.diagnostics?.push(`部品の絵は PPTX にまだ出せない: ${id}`);
     }
 
+    const marked = options.marks?.get(id);
     shapes.push({
       id,
       preset: preset.preset,
       x: box.x, y: box.y, width: box.width, height: box.height,
       lines: node.shape === 'group' ? groupLabel(box) : box.lines.map(line => [...line]),
-      ...(node.shape === 'text' ? {} : { fill: fill ?? (node.shape === 'group' ? '#f7f8fa' : '#ffffff') }),
+      ...(node.shape === 'text'
+        ? {}
+        : { fill: (marked ? DIFF[marked] : undefined)
+            ?? fill ?? (node.shape === 'group' ? '#f7f8fa' : '#ffffff') }),
       ...(node.shape === 'text' ? {} : { line: line ?? '#3a4048' }),
       ...(colour ? { colour } : {}),
       dashed: style?.get('line') === 'dashed',

@@ -10,6 +10,7 @@ export * from './document/expand.js';
 export * from './document/sheets.js';
 export * from './numbering/model.js';
 export * from './numbering/resolve.js';
+export * from './html/diff.js';
 export * from './html/render.js';
 export * from './html/table.js';
 export * from './html/path.js';

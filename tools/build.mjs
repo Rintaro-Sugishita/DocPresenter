@@ -8,7 +8,7 @@
 // build sees is relative to it. Ours is `sample`; a real one is the repository
 // the design documents are kept in.
 import { readFileSync, readdirSync, writeFileSync, mkdirSync, statSync } from 'node:fs';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { dirname, join, relative, resolve } from 'node:path';
 import { build } from '../packages/build/dist/index.js';
 import { createPdfWriter } from './pdf-writer.mjs';
@@ -27,6 +27,9 @@ const option = (name, fallback) => {
 };
 const root = option('--in', '.');
 const outDir = option('--out', 'out/build');
+// 何と比べるか。コミット・タグ・ブランチ、またはフォルダ（design/diff-marking.md §2）
+const diffFrom = option('--diff-from', undefined);
+const showRemoved = option('--show-removed', undefined);
 const inside = path => join(root, path);
 
 const files = [];
@@ -60,6 +63,29 @@ const workspace = {
 
 const tryRead = path => { try { return readFileSync(path, 'utf8'); } catch { return undefined; } };
 
+/**
+ * The other version. A folder is read straight; anything else is asked of Git,
+ * which is where the answer lives for the usual case — "what changed since the
+ * version we reviewed".
+ */
+const previous = (() => {
+  if (!diffFrom) return undefined;
+  let isDirectory = false;
+  try { isDirectory = statSync(diffFrom).isDirectory(); } catch { isDirectory = false; }
+  if (isDirectory) {
+    return { name: diffFrom, read: path => tryRead(join(diffFrom, path)) };
+  }
+  const prefix = relative('.', root).split('\\').join('/');
+  return {
+    name: diffFrom,
+    read: path => {
+      const target = prefix && prefix !== '.' ? `${prefix}/${path}` : path;
+      const shown = spawnSync('git', ['show', `${diffFrom}:${target}`], { encoding: 'utf8' });
+      return shown.status === 0 ? shown.stdout : undefined;
+    },
+  };
+})();
+
 const commit = (() => {
   try {
     return execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
@@ -77,6 +103,8 @@ const result = await build(workspace, {
   // The workspace's own theme wins; otherwise the one the product ships.
   style: theme => workspace.read(`themes/${theme}/theme.css`)
     ?? tryRead(`themes/${theme}/theme.css`),
+  ...(previous ? { diffFrom: previous } : {}),
+  ...(showRemoved ? { showRemoved } : {}),
   ...(only.length ? { only } : {}),
   ...(commit ? { commit } : {}),
   builtAt: new Date().toISOString(),

@@ -115,7 +115,10 @@ export function measure(root: HTMLElement, options: MeasureOptions = {}): Measur
   /** Where a page break is required whatever the space left. */
   const forced = new Set<number>();
 
-  for (const sheet of root.querySelectorAll<HTMLElement>('.dp-sheet, .dp-cover')) {
+  // Everything the page holds, not only the sheets: a cover comes before them
+  // and a build may put a legend after them, and a part of the document that is
+  // skipped here is a part that is missing from the PDF.
+  for (const sheet of [...root.children].filter(child => child instanceof HTMLElement)) {
     if (sheet.classList.contains('dp-sheet') && block > 0) forced.add(block);
     for (const element of blocksOf(sheet)) {
       const rect = boxOf(element, left, top);
@@ -265,9 +268,9 @@ function boxOf(element: Element, left: number, top: number): Rect {
   };
 }
 
-/** The blocks of one sheet: what a page break may fall between. */
+/** The blocks of one section: what a page break may fall between. */
 function blocksOf(sheet: Element): readonly HTMLElement[] {
-  if (sheet.classList.contains('dp-cover')) return [sheet as HTMLElement];
+  if (!sheet.classList.contains('dp-sheet')) return [sheet as HTMLElement];
   return [...sheet.children].filter((child): child is HTMLElement => child instanceof HTMLElement);
 }
 

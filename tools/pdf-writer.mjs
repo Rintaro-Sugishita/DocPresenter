@@ -49,6 +49,9 @@ export async function createPdfWriter(options = {}) {
       resolved: input.prepared.resolved,
       style: input.style,
       root: input.root.path,
+      // 差分の印はクラス名なので、PDF 側は何もしなくてよい——組版済みの
+      // DOM を読むとき、テーマが解決した色がそのまま入ってくる。
+      ...(input.marks ? { marks: input.marks } : {}),
       ...(input.options.commit ? { commit: input.options.commit } : {}),
     });
 

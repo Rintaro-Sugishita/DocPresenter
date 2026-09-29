@@ -2,6 +2,7 @@
 // theme decides what `thick` or `changed` look like; the renderer never emits
 // a literal colour or width.
 
+import { markClass, type TableMarks } from './diff.js';
 import type { Align, Cell, StyleRule, TableFile } from '../table/model.js';
 import { markdown } from './markdown.js';
 
@@ -29,7 +30,7 @@ const COLOUR = /^#[0-9a-fA-F]{3}([0-9a-fA-F]{3})?$/;
 /** A length the layout can use, for column widths. */
 const LENGTH = /^\d+(\.\d+)?(%|em|px|ch)$/;
 
-export function renderTable(table: TableFile): string {
+export function renderTable(table: TableFile, marks?: TableMarks): string {
   const head = table.columns
     .map((c, i) => {
       const rules = [...headerRules(table), ...columnRules(table, c.header)];
@@ -41,8 +42,9 @@ export function renderTable(table: TableFile): string {
     .join('');
 
   const body = table.rows.map((row, r) => {
-    const cells = row.cells.map(cell => renderCell(table, cell, r)).join('');
-    return `<tr${styleAttrs('', rowRules(table, r))}>${cells}</tr>`;
+    const cells = row.cells.map(cell => renderCell(table, cell, r, marks)).join('');
+    const changed = markClass(marks?.rows.get(keyOfRow(table, r)));
+    return `<tr${styleAttrs('', rowRules(table, r), changed)}>${cells}</tr>`;
   }).join('\n');
 
   return [
@@ -72,12 +74,16 @@ function columnGroup(table: TableFile): string {
     .join('')}</colgroup>`;
 }
 
-function renderCell(table: TableFile, cell: Cell, row: number): string {
+function renderCell(table: TableFile, cell: Cell, row: number, marks?: TableMarks): string {
   const rules = cellRules(table, cell, row);
+  // A cell is named the way a selector names it: by the text of its row's
+  // leading cell and of its column's header.
+  const changed = markClass(marks?.cells.get(
+    `${keyOfRow(table, row)}/${table.columns[cell.column]?.header ?? ''}`));
   const attributes = [
     cell.rowspan > 1 ? ` rowspan="${cell.rowspan}"` : '',
     cell.colspan > 1 ? ` colspan="${cell.colspan}"` : '',
-    styleAttrs(alignOf(table, cell.column, rules), rules),
+    styleAttrs(alignOf(table, cell.column, rules), rules, changed),
   ].join('');
   return `<td${attributes}>${renderCellText(table, cell.text)}</td>`;
 }
@@ -179,10 +185,15 @@ export function cellRules(table: TableFile, cell: Cell, row: number): readonly S
  * the author picked. A colour is checked against the hex forms before it is
  * emitted, so nothing else can reach the style attribute.
  */
-function styleAttrs(align: string, rules: readonly StyleRule[]): string {
+function styleAttrs(align: string, rules: readonly StyleRule[], extra = ''): string {
   const inline = inlineStyle(rules);
   const style = inline === '' ? '' : ` style="${escapeAttr(inline)}"`;
-  return `${classAttr([align, ...declarationClasses(rules)])}${style}`;
+  return `${classAttr([align, ...declarationClasses(rules), ...(extra ? [extra.trim()] : [])])}${style}`;
+}
+
+/** A row is named by the text of its leading cell, as everything else names it. */
+function keyOfRow(table: TableFile, row: number): string {
+  return table.rows[row]?.cells[0]?.text ?? '';
 }
 
 /**

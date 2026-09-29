@@ -31,6 +31,13 @@
   --text-disabled: #767c85;
   --text-removed:  #b3261e;
 
+  /* 差分の表示。著者が塗るのではなく、ビルドが Git から付ける（R13）。
+     色だけに頼らないよう、記号と網掛けを併用する。 */
+  --diff-added:   #e6f4e9;
+  --diff-changed: #fdf0d5;
+  --diff-removed: #fde8e8;
+  --diff-edge:    #2e7d32;
+
   /* The page, for PDF. The theme owns the paper and the margins — a document
      says what it is, not how wide the paper is. Read by the PDF writer through
      getComputedStyle, so no CSS parser is needed to find them. */
@@ -210,3 +217,48 @@ code { font-family: var(--font-mono); font-size: 0.9em; background: var(--fill-t
   list-style: none; padding-left: 0; margin-top: 0.8em;
 }
 .dp-callouts .dp-callout-marker { color: #b3261e; margin-right: 0.4em; }
+
+/* 変更箇所の表示 — 差分から自動で付く（design/diff-marking.md） --------------- */
+.dp-diff-added   { background: var(--diff-added); }
+.dp-diff-changed { background: var(--diff-changed); }
+.dp-diff-removed { background: var(--diff-removed); text-decoration: line-through; }
+
+/* 本文と図表は、色に加えて左の帯で示す。白黒印刷でも位置が分かる。 */
+.dp-prose.dp-diff-added, .dp-prose.dp-diff-changed,
+.dp-figure.dp-diff-added, .dp-figure.dp-diff-changed,
+h1.dp-diff-added, h2.dp-diff-added, h3.dp-diff-added, h4.dp-diff-added,
+h1.dp-diff-changed, h2.dp-diff-changed, h3.dp-diff-changed, h4.dp-diff-changed {
+  border-left: 3px solid #7a7f87;
+  padding-left: 0.6em;
+  margin-left: -0.9em;
+}
+.dp-prose.dp-diff-added::before, .dp-figure.dp-diff-added::before {
+  content: "＋"; color: #2e7d32; font-family: var(--font-heading);
+  font-size: 0.8em; float: right;
+}
+.dp-prose.dp-diff-changed::before, .dp-figure.dp-diff-changed::before {
+  content: "＊"; color: #8a5a00; font-family: var(--font-heading);
+  font-size: 0.8em; float: right;
+}
+
+/* 図の中では、塗りは図形自身のものなので枠線で示す。 */
+.dp-diagram .dp-diff-added > rect, .dp-diagram .dp-diff-added > polygon,
+.dp-diagram .dp-diff-added > path, .dp-diagram .dp-diff-added > ellipse {
+  stroke: var(--diff-edge); stroke-width: 2.4;
+}
+.dp-diagram .dp-diff-changed > rect, .dp-diagram .dp-diff-changed > polygon,
+.dp-diagram .dp-diff-changed > path, .dp-diagram .dp-diff-changed > ellipse {
+  stroke: #8a5a00; stroke-width: 2.4;
+}
+.dp-diagram .dp-edge.dp-diff-added polyline,
+.dp-diagram .dp-edge.dp-diff-changed polyline { stroke-width: 2.4; }
+.dp-diagram .dp-edge.dp-diff-added polyline { stroke: var(--diff-edge); }
+.dp-diagram .dp-edge.dp-diff-changed polyline { stroke: #8a5a00; }
+
+.dp-diff-legend {
+  display: flex; gap: 0.8em; align-items: baseline; flex-wrap: wrap;
+  margin: 2.4em 0 0; padding-top: 0.8em; border-top: var(--rule-thin);
+  font-family: var(--font-heading); font-size: 0.8em; color: #3a4048;
+}
+.dp-diff-legend .dp-diff-from { color: #6b7280; }
+.dp-diff-legend .dp-diff-key { padding: 0.1em 0.6em; border: var(--rule-thin); }
