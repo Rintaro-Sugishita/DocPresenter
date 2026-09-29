@@ -42,7 +42,7 @@ check('描画は色の付いた span になる',
   await page.isVisible('.dp-prose span[style*="color:#ff0000"]'));
 
 // --- 表の塗りと文字色 -----------------------------------------------------
-await page.click('.dp-tab[data-index="5"]');
+await page.click('.dp-tab:has-text("用語")');
 await page.waitForTimeout(250);
 await openGrid();
 check('罫線の太線・二重線のボタンは無い',

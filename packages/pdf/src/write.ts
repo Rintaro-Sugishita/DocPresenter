@@ -50,8 +50,10 @@ export async function writePdf(plan: PagePlan, options: FontOptions): Promise<Wr
   if (plan.commit) pdf.setKeywords([`commit:${plan.commit}`]);
 
   for (const page of plan.pages) {
-    const sheet = pdf.addPage([plan.width, plan.height]);
-    for (const item of page.items) await draw(pdf, sheet, item, plan.height, embedded);
+    const width = page.width ?? plan.width;
+    const height = page.height ?? plan.height;
+    const sheet = pdf.addPage([width, height]);
+    for (const item of page.items) await draw(pdf, sheet, item, height, embedded);
   }
 
   return { bytes: await pdf.save(), missing };

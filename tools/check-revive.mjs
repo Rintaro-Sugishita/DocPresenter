@@ -12,7 +12,7 @@ const check = (name, ok, detail = '') => {
 };
 const cell = (row, column) => `.dp-grid-table [data-row="${row}"][data-column="${column}"]`;
 
-await page.click('.dp-tab[data-index="5"]');
+await page.click('.dp-tab:has-text("用語")');
 await page.waitForTimeout(250);
 await page.click('.dp-sheet:not([hidden]) .dp-figure-body');
 await page.waitForSelector('.dp-grid-table');

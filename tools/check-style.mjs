@@ -32,7 +32,7 @@ const press = async (selector) => {
   await page.waitForTimeout(250);
 };
 
-await page.click('.dp-tab[data-index="5"]');
+await page.click('.dp-tab:has-text("用語")');
 await page.waitForTimeout(250);
 await openGrid();
 check('スタイルの操作列が出る', await page.isVisible('.dp-grid-style'));

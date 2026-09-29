@@ -79,7 +79,8 @@ export function toPoints(value: string, fallback = 0): number {
 
 /**
  * One piece of a block that a page break may fall between. A line of prose, a
- * row of a table, a whole figure. Ranges are in document pixels.
+ * row of a table, a whole figure. Ranges are in the pixels of the pass the
+ * block was measured in.
  */
 interface Fragment {
   readonly top: number;
@@ -88,18 +89,203 @@ interface Fragment {
   readonly repeat: boolean;
   /** Kept with the fragment after it: a heading alone at the foot reads badly. */
   readonly keepWithNext: boolean;
-  /** Fragments of the same block, so a table's header follows its rows. */
+  /** Which block it belongs to, so a table's header follows its rows. */
   readonly block: number;
 }
 
+type Orientation = 'portrait' | 'landscape';
+
+/** A mark, with what a page break needs to know about it. */
+interface Held {
+  readonly item: Item;
+  readonly top: number;
+  readonly bottom: number;
+  /** The merged cell it belongs to, when it belongs to one. */
+  readonly cell?: { readonly top: number; readonly bottom: number; readonly room: number };
+}
+
+/** One block of the document, as one measuring pass saw it. */
+interface MeasuredBlock {
+  readonly index: number;
+  readonly orientation: Orientation;
+  /** A page break is required before this block. */
+  readonly forced: boolean;
+  readonly items: readonly Held[];
+  readonly fragments: readonly Fragment[];
+}
+
+/** A page, before its marks are placed on it. */
+interface Sheet {
+  readonly orientation: Orientation;
+  readonly fragments: Fragment[];
+  readonly offsets: number[];
+}
+
 export function measure(root: HTMLElement, options: MeasureOptions = {}): Measurement {
-  const setup = readPageSetup(document.documentElement);
+  const portrait = readPageSetup(document.documentElement);
+  const landscape = turned(portrait);
   const diagnostics: string[] = [];
 
-  const contentWidth = (setup.width - setup.margin.left - setup.margin.right) * PX_PER_PT;
-  const contentHeight = (setup.height - setup.margin.top - setup.margin.bottom) * PX_PER_PT;
+  // Two passes, because a page turned sideways is a different measure and the
+  // browser has to lay the block out at the width it will be printed at. Only
+  // the blocks that asked for it are taken from the second pass, and a document
+  // with none is not laid out twice.
+  const turns = root.querySelector('[data-page="landscape"]') !== null;
+  const blocks = [
+    ...(turns ? pass(root, landscape, 'landscape', diagnostics) : []),
+    ...pass(root, portrait, 'portrait', diagnostics),
+  ].sort((a, b) => a.index - b.index);
 
-  // Lay the document out at exactly the measure it will be printed at.
+  const sheets: Sheet[] = [];
+  let current: Sheet | undefined;
+  let cursor = 0;
+  const repeats = new Map<number, Fragment[]>();
+
+  const flush = (): void => {
+    if (current && current.fragments.length > 0) sheets.push(current);
+    current = undefined;
+    cursor = 0;
+  };
+
+  for (const block of blocks) {
+    const setup = block.orientation === 'landscape' ? landscape : portrait;
+    const contentHeight = (setup.height - setup.margin.top - setup.margin.bottom) * PX_PER_PT;
+
+    // A sheet boundary, a change of paper, or the first block starts a page.
+    if (block.forced || current === undefined || current.orientation !== block.orientation) {
+      flush();
+    }
+
+    for (const [i, fragment] of block.fragments.entries()) {
+      const height = fragment.bottom - fragment.top;
+      if (fragment.repeat) {
+        const held = repeats.get(fragment.block) ?? [];
+        held.push(fragment);
+        repeats.set(fragment.block, held);
+      }
+
+      // A heading is kept with what follows it, so it never ends a page alone.
+      const next = block.fragments[i + 1];
+      const withNext = fragment.keepWithNext && next ? next.bottom - next.top : 0;
+
+      if (current && cursor > 0 && cursor + height + withNext > contentHeight) {
+        flush();
+      }
+      if (current === undefined) {
+        current = { orientation: block.orientation, fragments: [], offsets: [] };
+        // A table that continues brings its header rows with it.
+        if (!fragment.repeat) {
+          for (const header of repeats.get(fragment.block) ?? []) {
+            current.fragments.push(header);
+            current.offsets.push(cursor - header.top);
+            cursor += header.bottom - header.top;
+          }
+        }
+      }
+      if (height > contentHeight) {
+        diagnostics.push(`1 ページに収まらない要素がある（高さ ${Math.round(height)}px）`);
+      }
+      current.fragments.push(fragment);
+      current.offsets.push(cursor - fragment.top);
+      cursor += height;
+    }
+  }
+  flush();
+
+  const byBlock = new Map(blocks.map(block => [block.index, block]));
+  // How the theme writes "continued". Empty means the theme does not want it.
+  const continuedValue = getComputedStyle(document.documentElement)
+    .getPropertyValue('--table-continued').trim().replace(/^["']|["']$/g, '');
+  const continued = continuedValue === '' ? undefined : continuedValue;
+  const built: Page[] = sheets.map((sheet, index) => {
+    const setup = sheet.orientation === 'landscape' ? landscape : portrait;
+    const dx = setup.margin.left * PX_PER_PT;
+    const dy = setup.margin.top * PX_PER_PT;
+    const placed: Item[] = [];
+
+    sheet.fragments.forEach((fragment, at) => {
+      const offset = sheet.offsets[at]!;
+      // Where a merged cell that began on an earlier page says what it is a
+      // continuation of: the first fragment of the block on this page that is
+      // not one of the repeated header rows.
+      const opens = sheet.fragments.findIndex(
+        one => one.block === fragment.block && !one.repeat) === at;
+      for (const held of byBlock.get(fragment.block)?.items ?? []) {
+        for (const piece of within(held, fragment, opens, continued)) {
+          placed.push(shift(piece, dx, offset + dy));
+        }
+      }
+    });
+
+    return {
+      items: [...placed.map(toPoints2), foot(setup, index + 1, sheets.length, options)],
+      ...(sheet.orientation === 'landscape'
+        ? { width: setup.width, height: setup.height } : {}),
+    };
+  });
+
+  return {
+    plan: {
+      width: portrait.width, height: portrait.height, pages: built,
+      ...(options.title === undefined ? {} : { title: options.title }),
+      ...(options.commit === undefined ? {} : { commit: options.commit }),
+    },
+    diagnostics,
+  };
+}
+
+/**
+ * The part of a mark that belongs to one fragment.
+ *
+ * Most marks belong where they start. A fill is the exception and is cut: the
+ * background and the side rules of a cell merged down five rows have to carry
+ * on across the page break, and a cell that stopped at the foot of the page
+ * would leave the continuation open on one side.
+ */
+function within(
+  held: Held, fragment: Fragment, opens: boolean, continued: string | undefined,
+): Item[] {
+  const starts = held.top >= fragment.top - 0.5 && held.top < fragment.bottom - 0.5;
+
+  // A merged cell whose text was written on an earlier page is written again,
+  // marked as a continuation. Excel and Word both do this, and a column of
+  // blank cells at the top of a page says nothing about what they belong to.
+  // Only at the top of the page: repeating it on every row would turn one
+  // merged cell into a column of identical ones.
+  if (opens && held.item.kind === 'text' && !starts && held.cell
+    && held.cell.top < fragment.top - 0.5 && held.cell.bottom > fragment.top + 0.5) {
+    // The suffix is dropped when the column is too narrow for it: a name that
+    // runs into the next column says less than a name on its own.
+    const room = held.cell.room;
+    const needed = (held.item.width ?? 0) + (continued?.length ?? 0) * held.item.size;
+    const text = continued !== undefined && needed <= room
+      ? `${held.item.text}${continued}` : held.item.text;
+    return [{ ...held.item, text, y: fragment.top + (held.item.y - held.cell.top) }];
+  }
+
+  if (held.item.kind !== 'fill') return starts ? [held.item] : [];
+
+  const fill = held.item;
+  const top = Math.max(fill.y, fragment.top);
+  const bottom = Math.min(fill.y + fill.height, fragment.bottom);
+  if (bottom - top <= 0.01) return [];
+  if (starts && bottom >= fill.y + fill.height - 0.5) return [fill];
+  return [{ ...fill, y: top, height: bottom - top }];
+}
+
+/** The same paper, turned. Margins stay as they are. */
+function turned(setup: PageSetup): PageSetup {
+  return { ...setup, width: setup.height, height: setup.width };
+}
+
+/**
+ * One measuring pass. The document is laid out at the width this paper gives
+ * it, and the blocks that belong on it are read.
+ */
+function pass(
+  root: HTMLElement, setup: PageSetup, orientation: Orientation, diagnostics: string[],
+): MeasuredBlock[] {
+  const contentWidth = (setup.width - setup.margin.left - setup.margin.right) * PX_PER_PT;
   root.style.width = `${contentWidth}px`;
   root.style.maxWidth = 'none';
   root.style.margin = '0';
@@ -109,99 +295,45 @@ export function measure(root: HTMLElement, options: MeasureOptions = {}): Measur
   const left = origin.left + window.scrollX;
   const top = origin.top + window.scrollY;
 
-  const items: { item: Item; y: number }[] = [];
-  const fragments: Fragment[] = [];
-  let block = 0;
-  /** Where a page break is required whatever the space left. */
-  const forced = new Set<number>();
+  const measured: MeasuredBlock[] = [];
+  let index = 0;
 
-  // Everything the page holds, not only the sheets: a cover comes before them
-  // and a build may put a legend after them, and a part of the document that is
-  // skipped here is a part that is missing from the PDF.
-  for (const sheet of [...root.children].filter(child => child instanceof HTMLElement)) {
-    if (sheet.classList.contains('dp-sheet') && block > 0) forced.add(block);
-    for (const element of blocksOf(sheet)) {
+  for (const section of [...root.children].filter(child => child instanceof HTMLElement)) {
+    const boundary = section.classList.contains('dp-sheet');
+    for (const [n, element] of blocksOf(section).entries()) {
+      const at = index++;
+      if (orientationOf(element) !== orientation) continue;
       const rect = boxOf(element, left, top);
       if (rect.height <= 0) continue;
-      const collected = collect(element, left, top, diagnostics);
-      items.push(...collected.map(({ item, top: y }) => ({ item, y })));
-      fragments.push(...fragmentsOf(element, rect, block, left, top));
-      block++;
+      measured.push({
+        index: at,
+        orientation,
+        forced: boundary && n === 0 && at > 0,
+        items: collect(element, left, top, orientation === 'portrait' ? diagnostics : [])
+          .map(({ item, top: y, cell }) => ({
+            item, top: y, bottom: y + heightOf(item), ...(cell ? { cell } : {}),
+          })),
+        fragments: fragmentsOf(element, rect, at, left, top),
+      });
     }
   }
+  return measured;
+}
 
-  // Pack the fragments into pages, repeating what has to be repeated.
-  const pages: { fragments: Fragment[]; offsets: number[] }[] = [];
-  let current: Fragment[] = [];
-  let offsets: number[] = [];
-  let cursor = 0;
-  const repeats = new Map<number, Fragment[]>();
+/** `{page="landscape"}` on an import reaches the page as an attribute. */
+function orientationOf(element: HTMLElement): Orientation {
+  return element.getAttribute('data-page') === 'landscape'
+    || element.querySelector('[data-page="landscape"]') !== null
+    ? 'landscape' : 'portrait';
+}
 
-  const flush = (): void => {
-    if (current.length === 0) return;
-    pages.push({ fragments: current, offsets });
-    current = [];
-    offsets = [];
-    cursor = 0;
-  };
-
-  for (let i = 0; i < fragments.length; i++) {
-    const fragment = fragments[i]!;
-    const height = fragment.bottom - fragment.top;
-    if (fragment.repeat) {
-      const held = repeats.get(fragment.block) ?? [];
-      held.push(fragment);
-      repeats.set(fragment.block, held);
-    }
-
-    const startsBlock = i === 0 || fragments[i - 1]!.block !== fragment.block;
-    if (startsBlock && forced.has(fragment.block) && cursor > 0) flush();
-
-    // A heading is kept with what follows it, so it never ends a page alone.
-    const withNext = fragment.keepWithNext && i + 1 < fragments.length
-      ? fragments[i + 1]!.bottom - fragments[i + 1]!.top : 0;
-
-    if (cursor > 0 && cursor + height + withNext > contentHeight) {
-      flush();
-      // A table that continues brings its header rows with it.
-      for (const header of repeats.get(fragment.block) ?? []) {
-        if (header === fragment) continue;
-        current.push(header);
-        offsets.push(cursor - header.top);
-        cursor += header.bottom - header.top;
-      }
-    }
-    if (height > contentHeight) {
-      diagnostics.push(`1 ページに収まらない要素がある（高さ ${Math.round(height)}px）`);
-    }
-    current.push(fragment);
-    offsets.push(cursor - fragment.top);
-    cursor += height;
+function heightOf(item: Item): number {
+  switch (item.kind) {
+    case 'fill':
+    case 'picture': return item.height;
+    case 'text': return item.size;
+    default: return 0;
   }
-  flush();
-
-  // Place every mark on the page its fragment landed on.
-  const built: Page[] = pages.map((page, index) => {
-    const placed: Item[] = [];
-    for (const { item, y } of items) {
-      const at = page.fragments.findIndex(
-        (fragment, n) => y >= fragment.top - 0.5 && y < fragment.bottom - 0.5
-          && !(fragment.repeat && page.fragments.indexOf(fragment) !== n),
-      );
-      if (at < 0) continue;
-      placed.push(shift(item, setup.margin.left * PX_PER_PT, page.offsets[at]! + setup.margin.top * PX_PER_PT));
-    }
-    return { items: [...placed.map(toPoints2), foot(setup, index + 1, pages.length, options)] };
-  });
-
-  return {
-    plan: {
-      width: setup.width, height: setup.height, pages: built,
-      ...(options.title === undefined ? {} : { title: options.title }),
-      ...(options.commit === undefined ? {} : { commit: options.commit }),
-    },
-    diagnostics,
-  };
 }
 
 /** The running foot: which page this is, and what document it belongs to. */

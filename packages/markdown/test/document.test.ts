@@ -135,7 +135,7 @@ describe('サンプルの実ファイル', () => {
     expect(imports.map(i => i.label)).toEqual([
       'fig-architecture', 'fig-login-flow', 'fig-login-screen', 'fig-login-design',
       'tbl-screen-items', 'fig-login-sequence', 'fig-token-lifecycle',
-      'fig-customer-domain', 'tbl-glossary',
+      'fig-customer-domain', 'tbl-glossary', 'tbl-error-codes',
       undefined,                                    // 共有の改訂履歴。図表ではないのでラベルを持たない
     ]);
     // 委譲した図も同じ経路で読める

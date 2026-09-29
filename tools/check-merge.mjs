@@ -51,7 +51,7 @@ await page.keyboard.press('Escape');
 await page.waitForTimeout(200);
 
 // --- パレット（セル）— 同じ部品 -------------------------------------------
-await page.click('.dp-tab[data-index="5"]');
+await page.click('.dp-tab:has-text("用語")');
 await page.waitForTimeout(250);
 await openGrid();
 await page.dblclick(cell(0, 1));
@@ -87,7 +87,7 @@ await page.keyboard.press('Escape');
 // --- 範囲の結合 -----------------------------------------------------------
 await page.goto('file://' + process.cwd() + '/out/editor.html');
 await page.waitForTimeout(500);
-await page.click('.dp-tab[data-index="5"]');
+await page.click('.dp-tab:has-text("用語")');
 await page.waitForTimeout(250);
 await openGrid();
 
@@ -136,7 +136,7 @@ check('左上の文字だけが残る',
 // --- 見出しの寄せと色 -----------------------------------------------------
 await page.goto('file://' + process.cwd() + '/out/editor.html');
 await page.waitForTimeout(500);
-await page.click('.dp-tab[data-index="5"]');
+await page.click('.dp-tab:has-text("用語")');
 await page.waitForTimeout(250);
 await openGrid();
 
@@ -173,7 +173,7 @@ check('本文セルの寄せは変わらない',
 // --- グリッドは「見た目」を出す -------------------------------------------
 await page.goto('file://' + process.cwd() + '/out/editor.html');
 await page.waitForTimeout(500);
-await page.click('.dp-tab[data-index="5"]');
+await page.click('.dp-tab:has-text("用語")');
 await page.waitForTimeout(250);
 await openGrid();
 

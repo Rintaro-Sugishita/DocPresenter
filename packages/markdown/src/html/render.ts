@@ -98,9 +98,13 @@ function renderImport(
       + `</figcaption>`
     : '';
 
+  // `{page="landscape"}` travels to the output as an attribute: the PDF turns
+  // that page over, and the screen ignores it.
+  const paper = attributes.get('page');
+  const page = paper === undefined ? '' : ` data-page="${escapeAttr(paper)}"`;
   return `<figure class="dp-figure${markClass(markOf(options.marks, block.doc, block.span))}"`
     + ` data-kind="${element?.kind ?? 'other'}"`
-    + ` data-path="${escapeAttr(path)}"${id}${spanAttr(block)}>`
+    + ` data-path="${escapeAttr(path)}"${page}${id}${spanAttr(block)}>`
     + `\n<div class="dp-figure-body">${body}</div>\n${caption}\n</figure>`;
 }
 

@@ -21,7 +21,7 @@ const read = () => page.evaluate(() => navigator.clipboard.readText());
 const write = text => page.evaluate(t => navigator.clipboard.writeText(t), text);
 const textOf = (row, column) => page.textContent(cell(row, column));
 
-await page.click('.dp-tab[data-index="5"]');
+await page.click('.dp-tab:has-text("用語")');
 await page.waitForTimeout(250);
 await page.click('.dp-sheet:not([hidden]) .dp-figure-body');
 await page.waitForSelector('.dp-grid-table');

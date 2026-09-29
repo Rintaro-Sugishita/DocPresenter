@@ -17,7 +17,7 @@ const openGrid = async () => {
   await page.waitForTimeout(200);
 };
 
-await page.click('.dp-tab[data-index="5"]');
+await page.click('.dp-tab:has-text("用語")');
 await page.waitForTimeout(250);
 await openGrid();
 
@@ -74,7 +74,7 @@ check('1 列目の左に列を足せる', (await firstCol()).trim() === '', `「
 // セルの一部に色（行や列を足したあとの表では名前付き範囲が崩れるので、開き直す）
 await page.goto('file://' + process.cwd() + '/out/editor.html');
 await page.waitForTimeout(500);
-await page.click('.dp-tab[data-index="5"]');
+await page.click('.dp-tab:has-text("用語")');
 await page.waitForTimeout(250);
 await openGrid();
 await page.click(cell(2, 1));

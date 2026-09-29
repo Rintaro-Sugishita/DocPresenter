@@ -21,6 +21,16 @@ export interface Offset {
 export interface Placed {
   readonly item: Item;
   readonly top: number;
+  /**
+   * The cell this mark belongs to, when that cell is merged down several rows.
+   * A page break may fall inside such a cell, and the continuation has to say
+   * what it is a continuation of.
+   */
+  readonly cell?: {
+    readonly top: number; readonly bottom: number;
+    /** What the text has to fit into, so a continuation can be dropped if it does not. */
+    readonly room: number;
+  };
 }
 
 /** Every mark inside `element`, in document pixels. */
@@ -57,8 +67,9 @@ function walk(node: Element, at: Offset, items: Placed[], diagnostics: string[])
     for (const child of node.childNodes) {
       if (child instanceof Element) walk(child, at, items, diagnostics);
       else if (child instanceof Text) {
+        const cell = mergedCell(node, at);
         for (const run of textRuns(child, node, at)) {
-          items.push({ item: run, top: run.y - run.size });
+          items.push({ item: run, top: run.y - run.size, ...(cell ? { cell } : {}) });
         }
       }
     }
@@ -177,6 +188,18 @@ function ascentOf(style: CSSStyleDeclaration): number {
   }
   ASCENTS.set(font, ascent);
   return ascent;
+}
+
+/** The box of the merged cell this text is in, if it is in one. */
+function mergedCell(
+  element: HTMLElement, at: Offset,
+): { top: number; bottom: number; room: number } | undefined {
+  const cell = element.closest('td, th');
+  if (!(cell instanceof HTMLTableCellElement) || cell.rowSpan <= 1) return undefined;
+  const box = rectOf(cell, at);
+  const style = getComputedStyle(cell);
+  const room = box.width - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
+  return { top: box.y, bottom: box.y + box.height, room };
 }
 
 /** The source range an element carries, so the plan can point back at the file. */

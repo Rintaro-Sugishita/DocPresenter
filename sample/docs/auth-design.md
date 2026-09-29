@@ -88,4 +88,12 @@ output: [html, pdf]
 
 ---
 
+## エラーコード {#sec-errors}
+
+ログイン機能が返すエラーを @tbl-error-codes に示す。表が長いので、この表だけ用紙を横向きにする。
+
+@import "auth-design/error-codes.table" {#tbl-error-codes caption="エラーコード一覧" page="landscape"}
+
+---
+
 @import "../shared/revision.md"

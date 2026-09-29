@@ -27,6 +27,7 @@ npx tsc --build                 # 型検査とビルド
 node tools/build-editor-demo.mjs   # 設計書の編集画面   → out/editor.html
 node tools/build-canvas-demo.mjs   # 作図だけのページ   → out/canvas-app.html
 node tools/build.mjs --in sample   # サンプルをビルド     → out/build/*.{html,pdf,pptx}
+                                  #   長い表はページをまたぎ、`{page="landscape"}` の表は横向きのページになる
 node tools/build.mjs --in sample --diff-from HEAD~3   # 前の版からの変更に印を付ける
 node tools/pptx-back.mjs out/build/auth-overview.pptx --in sample   # 直された図を読み戻す
 

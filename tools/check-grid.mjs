@@ -14,7 +14,7 @@ const check = (name, ok, detail = '') => {
 };
 // 用語集のシートを開き、表のグリッドを出す
 const openGrid = async () => {
-  await page.click('.dp-tab[data-index="5"]');
+  await page.click('.dp-tab:has-text("用語")');
   await page.waitForTimeout(250);
   await page.click('.dp-sheet:not([hidden]) .dp-figure-body');
   await page.waitForTimeout(300);

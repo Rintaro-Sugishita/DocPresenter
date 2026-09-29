@@ -94,6 +94,13 @@ export type Item = TextItem | FillItem | ShapeItem | PathItem | EllipseItem | Pi
 
 export interface Page {
   readonly items: readonly Item[];
+  /**
+   * The paper this page is on, when it is not the document's. A table too wide
+   * to read down the page is turned sideways, and one page of a PDF may be a
+   * different shape from the one before it.
+   */
+  readonly width?: number;
+  readonly height?: number;
 }
 
 export interface PagePlan {
