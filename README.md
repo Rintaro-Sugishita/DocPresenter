@@ -27,6 +27,7 @@ npx tsc --build                 # 型検査とビルド
 node tools/build-editor-demo.mjs   # 設計書の編集画面   → out/editor.html
 node tools/build-canvas-demo.mjs   # 作図だけのページ   → out/canvas-app.html
 node tools/build.mjs --in sample   # サンプルをビルド     → out/build/*.{html,pdf,pptx}
+node tools/pptx-back.mjs out/build/auth-overview.pptx --in sample   # 直された図を読み戻す
 
 node tools/check-spec.mjs          # 仕様と実装が一致しているか
 for f in tools/check-*.mjs; do node "$f"; done   # 全検証（上の 3 つを先に走らせておく）

@@ -7,7 +7,7 @@
 import { zipSync, strToU8 } from 'fflate';
 import { EMU_PER_INCH, SLIDE, type Block, type Deck, type Slide } from './model.js';
 import {
-  drawing, picture, resetIds, table, textBox, type Frame,
+  drawing, picture, resetIds, table, textBox, type Frame, type Placement,
 } from './shapes.js';
 import {
   APP, CONTENT_TYPES, CORE, PRESENTATION, PRESENTATION_RELS, PRES_PROPS, ROOT_RELS,
@@ -42,9 +42,10 @@ export function writePptx(deck: Deck, options: PptxOptions = {}): Uint8Array {
   const slides = deck.slides.map((slide, index) => {
     resetIds();
     const used: { id: number; target: string }[] = [];
-    const body = slideBody(slide, index + 1, deck.slides.length, used, media);
+    const placements: Placement[] = [];
+    const body = slideBody(slide, index + 1, deck.slides.length, used, media, placements);
     rels.push(slideRels(used));
-    return slideXml(body);
+    return slideXml(body, placements.map(mark).join(' '));
   });
 
   const files: Record<string, Uint8Array> = {};
@@ -73,9 +74,16 @@ export function writePptx(deck: Deck, options: PptxOptions = {}): Uint8Array {
   return zipSync(files, { level: 6 });
 }
 
+/** `dp:drawing=…` — read back by `read.ts`, ignored by everything else. */
+function mark(placement: Placement): string {
+  const round = (value: number): number => Math.round(value * 1000) / 1000;
+  return `dp:drawing=${placement.source};scale=${round(placement.scale)}`
+    + `;x=${Math.round(placement.originX)};y=${Math.round(placement.originY)}`;
+}
+
 function slideBody(
   slide: Slide, number: number, total: number,
-  used: { id: number; target: string }[], media: Media,
+  used: { id: number; target: string }[], media: Media, placements: Placement[],
 ): string {
   const parts: string[] = [];
   const hasTitle = slide.title !== undefined && slide.title !== '';
@@ -101,7 +109,7 @@ function slideBody(
   for (const [index, block] of blocks.entries()) {
     const height = Math.round(frame.height / blocks.length);
     const own: Frame = { x: frame.x, y, width: frame.width, height };
-    parts.push(blockXml(block, own, used, media));
+    parts.push(blockXml(block, own, used, media, placements));
     y += height;
     void index;
   }
@@ -117,11 +125,12 @@ function slideBody(
 
 function blockXml(
   block: Block, frame: Frame, used: { id: number; target: string }[], media: Media,
+  placements: Placement[],
 ): string {
   switch (block.kind) {
     case 'text':   return textBox(block, frame, 14);
     case 'table':  return table(block, frame, 10);
-    case 'drawing': return drawing(block, frame);
+    case 'drawing': return drawing(block, frame, placement => placements.push(placement));
     case 'picture': {
       const decoded = dataUrl(block.data);
       if (!decoded) return '';

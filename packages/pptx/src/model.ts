@@ -52,6 +52,8 @@ export interface PictureBlock {
 /** A drawing, as shapes PowerPoint can edit. */
 export interface DrawingBlock {
   readonly kind: 'drawing';
+  /** The `.dgm` it came from, so an edited slide can be read back into it. */
+  readonly source?: string;
   readonly width: number;                       // px, the drawing's own size
   readonly height: number;
   readonly shapes: readonly DrawnShape[];

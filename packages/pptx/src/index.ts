@@ -3,5 +3,6 @@
 
 export * from './model.js';
 export * from './diagram.js';
+export * from './read.js';
 export * from './write.js';
 export { escapeXml, hex } from './xml.js';

@@ -203,6 +203,20 @@ describe('図形の追加と削除', () => {
     expect(body(shaped)).toContain('  a {A}');
   });
 
+  it('名前を変えても桁は揃ったまま', () => {
+    // 図の記法は桁を揃えて書かれる。1 行だけ左に寄ると、差分に読む必要のない
+    // 行が出る。元の行を見せれば、間の空白はそのまま使える。
+    const source = 'free {\n  db      [(会員 DB)]\n  cache   [(セッション)]\n}';
+    const written = applyEdit(source, setNodeText(parseDiagram(source), 'db', '会員データベース', source));
+    expect(written).toContain('  db      [(会員データベース)]');
+  });
+
+  it('元の行を渡さなければ空白ひとつ', () => {
+    const source = 'free {\n  db      [(会員 DB)]\n}';
+    const written = applyEdit(source, setNodeText(parseDiagram(source), 'db', 'X'));
+    expect(written).toContain('  db [(X)]');
+  });
+
   it('種類を変えてもスタイル指定は残る', () => {
     const source = 'flow {\n  a [A]:::pending\n}';
     const written = applyEdit(source, setNodeShape(parseDiagram(source), 'a', 'ellipse'));

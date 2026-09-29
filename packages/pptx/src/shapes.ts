@@ -68,7 +68,17 @@ export function picture(block: PictureBlock, frame: Frame, relationship: number)
  * that arrives is the picture the author drew — and every piece of it is a
  * shape with handles.
  */
-export function drawing(block: DrawingBlock, frame: Frame): string {
+/** How a drawing was placed, so the way back is arithmetic rather than guessing. */
+export interface Placement {
+  readonly source: string;
+  readonly scale: number;
+  readonly originX: number;
+  readonly originY: number;
+}
+
+export function drawing(
+  block: DrawingBlock, frame: Frame, placed?: (placement: Placement) => void,
+): string {
   const scale = Math.min(
     frame.width / (block.width * EMU_PER_PX),
     frame.height / (block.height * EMU_PER_PX),
@@ -82,6 +92,10 @@ export function drawing(block: DrawingBlock, frame: Frame): string {
     y: Math.round(top + y * EMU_PER_PX * scale),
   });
   const size = (value: number): number => Math.round(value * EMU_PER_PX * scale);
+
+  placed?.({
+    source: block.source ?? '', scale: EMU_PER_PX * scale, originX: left, originY: top,
+  });
 
   const behind = block.shapes.filter(shape => shape.behind);
   const front = block.shapes.filter(shape => !shape.behind);

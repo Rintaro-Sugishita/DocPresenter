@@ -5,4 +5,5 @@ export * from './workspace.js';
 export * from './graph.js';
 export * from './html.js';
 export * from './deck.js';
+export * from './writeback.js';
 export * from './build.js';

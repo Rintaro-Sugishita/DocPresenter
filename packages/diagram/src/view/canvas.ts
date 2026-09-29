@@ -1044,7 +1044,7 @@ export function createCanvas(options: CanvasOptions): Canvas {
       toolbar.element.remove();
       stage.focus({ preventScroll: true });
       if (!keep || text === node.text) return;
-      options.apply(() => setNodeText(file, id, text), [id]);
+      options.apply(() => setNodeText(file, id, text, options.source), [id]);
     };
     input.addEventListener('blur', () => finish(true));
     for (const event of ['input', 'select', 'keyup', 'click']) {

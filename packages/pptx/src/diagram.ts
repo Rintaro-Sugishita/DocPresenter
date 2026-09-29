@@ -34,6 +34,8 @@ const PRESETS: Readonly<Record<ShapeKind, { preset: string; adjust?: number; fli
 };
 
 export interface DrawingOptions {
+  /** The file the drawing was read from; carried into the slide (§8.1). */
+  readonly source?: string;
   /** Colours the theme resolves, which the model cannot. Keyed by style token. */
   readonly tokens?: Readonly<Record<string, string>>;
   readonly diagnostics?: string[];
@@ -85,7 +87,11 @@ export function drawingOf(diagram: DiagramFile, options: DrawingOptions = {}): D
 
   for (const message of laid.diagnostics) options.diagnostics?.push(message);
 
-  return { kind: 'drawing', width: laid.width, height: laid.height, shapes, connectors };
+  return {
+    kind: 'drawing',
+    ...(options.source === undefined ? {} : { source: options.source }),
+    width: laid.width, height: laid.height, shapes, connectors,
+  };
 }
 
 /** A group's own label sits at its top-left; it is not the label of a box. */

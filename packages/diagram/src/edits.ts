@@ -446,12 +446,27 @@ function removalOf(file: DiagramFile, source: string, ids: readonly string[]): C
  * group is written as a group, not turned into a box with a list of names for
  * a label.
  */
-export function setNodeText(file: DiagramFile, id: string, text: string): Edit {
+export function setNodeText(
+  file: DiagramFile, id: string, text: string, source?: string,
+): Edit {
   const node = find(file, id);
   const line = node.shape === 'group'
     ? groupLine({ ...node, text }, node.children)
-    : nodeLine(node, node.shape, text);
+    : nodeLine(node, node.shape, text, gapOf(node, source));
   return { span: node.span, text: line, description: '文字を変更' };
+}
+
+/**
+ * The spaces the author put between the id and the shape, so that renaming
+ * something does not pull one line out of a column the rest of the block is
+ * lined up in. Diffs are the point of this format; a line that moves sideways
+ * for no reason is a line a reviewer has to read.
+ */
+function gapOf(node: Node, source: string | undefined): string {
+  if (source === undefined) return ' ';
+  const line = sliceBytes(source, node.span.start, node.span.end);
+  const gap = new RegExp(`^${node.id}(\\s+)`).exec(line);
+  return gap?.[1] ?? ' ';
 }
 
 /** Rewrites which shape it is, by changing the brackets around the text. */
@@ -538,10 +553,10 @@ function find(file: DiagramFile, id: string): Node {
   return node;
 }
 
-function nodeLine(node: Node, shape: ShapeKind, text: string): string {
+function nodeLine(node: Node, shape: ShapeKind, text: string, gap = ' '): string {
   const [open, close] = BRACKETS[shape];
   const name = node.className === undefined ? '' : `:::${node.className}`;
-  return `${node.id} ${open}${text}${close}${name}`;
+  return `${node.id}${gap}${open}${text}${close}${name}`;
 }
 
 function groupLine(group: Node, children: readonly string[]): string {

@@ -79,7 +79,7 @@ function blockOf(
       return undefined;
     }
     try {
-      return drawingOf(parseDiagram(source), { diagnostics });
+      return drawingOf(parseDiagram(source), { diagnostics, source: block.path });
     } catch (error) {
       diagnostics.push(`${block.path} を読めない: ${error instanceof Error ? error.message : String(error)}`);
       return undefined;

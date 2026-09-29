@@ -161,10 +161,17 @@ ${media.map(one => `<Relationship Id="rId${one.id}" Type="http://schemas.openxml
 </Relationships>`;
 }
 
-export function slideXml(body: string): string {
+/**
+ * A slide. Its name carries where a drawing was placed — the file it came from
+ * and the transform used to put it there — because without that the way back
+ * from a moved shape to a coordinate in the `.dgm` cannot be computed
+ * (design/pptx-model.md §8.1). It is the slide's name, which a person can
+ * change; a read-back that does not find it says so rather than guessing.
+ */
+export function slideXml(body: string, name = ''): string {
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <p:sld ${NS}>
-<p:cSld><p:spTree>
+<p:cSld${name ? ` name="${escapeXml(name)}"` : ''}><p:spTree>
 <p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr>
 <p:grpSpPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="0" cy="0"/><a:chOff x="0" y="0"/><a:chExt cx="0" cy="0"/></a:xfrm></p:grpSpPr>
 ${body}
