@@ -309,3 +309,17 @@ writeFileSync('out/editor.html', `<!doctype html>
 <script src="editor.js"></script>
 </body></html>`);
 console.log('out/editor.html を生成');
+
+// 公開用に、テーマを隣に置いた形でもう 1 枚。束は `<script>` の中に入れない——
+// この束は文字列として `<!--` を含んでおり、埋め込むと HTML の解析がそこで狂う。
+mkdirSync('out/editor', { recursive: true });
+writeFileSync('out/editor/index.html',
+  readFileSync('out/editor.html', 'utf8')
+    .replace('href="../themes/default/theme.css"', 'href="theme.css"'));
+writeFileSync('out/editor/theme.css', readFileSync('themes/default/theme.css', 'utf8'));
+// 依存の中に置換文字（U+FFFD）を文字として持つ表がある。中身はどれも文字列
+// リテラルなので、公開する版では同じ意味のエスケープに直す——生のまま置くと、
+// 配信の途中で「壊れた文字」と見なされて弾かれる。
+writeFileSync('out/editor/editor.js',
+  readFileSync('out/editor.js', 'utf8').split('\uFFFD').join('\\uFFFD'));
+console.log('out/editor/ を生成（index.html ＋ editor.js ＋ theme.css）');
