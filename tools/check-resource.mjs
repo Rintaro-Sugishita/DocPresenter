@@ -1,8 +1,6 @@
 // Editing a figure and a table, and the Enter binding. A figure is a file of
 // its own, so what matters is that the edit lands in that file and the drawing
 // is redrawn from it — not that a box opened.
-// 編集を閉じるのは「外を叩く」動作。叩く先はタブバーの余白ではなくペインの余白に
-// する——シートが増えるとタブが並びきって余白は幅 0 になり、叩けなくなるので。
 import { chromium } from 'playwright-core';
 const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' });
 const page = await browser.newPage({ viewport: { width: 1280, height: 860 } });
@@ -33,6 +31,8 @@ check('開くのはファイル全体', opened.trimEnd().endsWith('}'));
 await page.$eval('.dp-block-source', el => {
   el.value = el.value.replace('[Web フロント]', '[Web フロント（新）]');
 });
+// 編集を閉じるのは「外を叩く」動作。叩く先はタブバーの余白ではなくペインの余白に
+// する——シートが増えるとタブが並びきって余白は幅 0 になり、叩けなくなるので。
 await page.click('.dp-editor-pane', { position: { x: 12, y: 6 } });
 await page.waitForTimeout(400);
 check('図が書き換えた内容で描き直される',

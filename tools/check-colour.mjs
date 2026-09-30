@@ -1,6 +1,4 @@
 // Free colour, column widths, and formatting inside a cell.
-// 編集を閉じるのは「外を叩く」動作。叩く先はタブバーの余白ではなくペインの余白に
-// する——シートが増えるとタブが並びきって余白は幅 0 になり、叩けなくなるので。
 import { chromium } from 'playwright-core';
 const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' });
 const page = await browser.newPage({ viewport: { width: 1400, height: 900 } });
@@ -38,6 +36,8 @@ await page.click('.dp-format-swatch[title*="赤"]', { force: true });
 await page.waitForTimeout(150);
 check('選んだ色が記法として入る',
   (await page.inputValue('.dp-block-source')).includes('[認証機能]{color=#ff0000}'));
+// 編集を閉じるのは「外を叩く」動作。叩く先はタブバーの余白ではなくペインの余白に
+// する——シートが増えるとタブが並びきって余白は幅 0 になり、叩けなくなるので。
 await page.click('.dp-editor-pane', { position: { x: 12, y: 6 } });
 await page.waitForTimeout(300);
 check('描画は色の付いた span になる',

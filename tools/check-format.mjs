@@ -1,7 +1,5 @@
 // Drives the formatting bar. What matters is not that the button lights up but
 // that the right bytes end up in the file, so every check reads the source.
-// 編集を閉じるのは「外を叩く」動作。叩く先はタブバーの余白ではなくペインの余白に
-// する——シートが増えるとタブが並びきって余白は幅 0 になり、叩けなくなるので。
 import { chromium } from 'playwright-core';
 const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' });
 const page = await browser.newPage({ viewport: { width: 1280, height: 820 } });
@@ -63,6 +61,8 @@ await page.waitForTimeout(100);
 check('Ctrl+B でも効く', (await page.inputValue('.dp-block-source')).includes('**設計**'));
 
 // 確定（blur）→ ソースに書き戻る
+// 編集を閉じるのは「外を叩く」動作。叩く先はタブバーの余白ではなくペインの余白に
+// する——シートが増えるとタブが並びきって余白は幅 0 になり、叩けなくなるので。
 await page.click('.dp-editor-pane', { position: { x: 12, y: 6 } });
 await page.waitForTimeout(300);
 const written = await source();

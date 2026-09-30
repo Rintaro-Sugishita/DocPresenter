@@ -1,8 +1,6 @@
 // New blocks and renaming. Both are about the moment before anything exists:
 // an empty sheet with nothing to click, and a tab whose width must not move
 // under the pointer while its name is being typed.
-// 編集を閉じるのは「外を叩く」動作。叩く先はタブバーの余白ではなくペインの余白に
-// する——シートが増えるとタブが並びきって余白は幅 0 になり、叩けなくなるので。
 import { chromium } from 'playwright-core';
 const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' });
 const page = await browser.newPage({ viewport: { width: 1280, height: 820 } });
@@ -27,6 +25,8 @@ await page.waitForTimeout(200);
 check('案内をクリックすると空の入力欄が開く', await page.inputValue('.dp-block-source') === '');
 
 await page.fill('.dp-block-source', '## 付録\n\n参考にした資料を並べる。');
+// 編集を閉じるのは「外を叩く」動作。叩く先はタブバーの余白ではなくペインの余白に
+// する——シートが増えるとタブが並びきって余白は幅 0 になり、叩けなくなるので。
 await page.click('.dp-editor-pane', { position: { x: 12, y: 6 } });
 await page.waitForTimeout(300);
 check('書いた内容がソースの末尾に入る', (await source()).trimEnd().endsWith('参考にした資料を並べる。'));

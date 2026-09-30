@@ -233,6 +233,36 @@ const workspace = {
   dataUrl: p => IMAGES[clean(p)],
 };
 
+// 出来上がったものを渡す。渡し方は器による——アーティファクトの枠は、中の
+// コードが勝手に保存するのを止める。そこでは器に「保存してよいか」を聞いて
+// もらう（downloads）。単体の HTML として開いたときは、これまでどおり自分で
+// 保存する。どちらでも押したぶんは届く。
+const deliver = async (name, bytes) => {
+  const blob = new Blob([bytes], { type: 'application/pdf' });
+  const shell = window.claude && window.claude.use
+    ? await window.claude.use('downloads').catch(() => null)
+    : null;
+  if (shell) {
+    try {
+      await shell.save({ filename: name, data: blob });
+      return '保存しました';
+    } catch (error) {
+      const code = error && error.code;
+      if (code === 'declined') return '保存はしていません';
+      // 器が保存を扱えないなら、こちらで保存しても同じように止められる。
+      // 黙って何も起きないより、なぜ渡せないかを言う（P6）。
+      return '保存できませんでした（' + (code || 'unknown') + '）';
+    }
+  }
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = name;
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(url), 10000);
+  return 'ダウンロードしました';
+};
+
 const pdfButton = document.getElementById('make-pdf');
 pdfButton.addEventListener('click', async () => {
   pdfButton.disabled = true;
@@ -260,16 +290,11 @@ pdfButton.addEventListener('click', async () => {
     const measured = measure(stage, { foot, title: String(raw.title ?? '') });
     const { bytes, missing } = await writePdf(measured.plan, { fonts: FONT_SET, subset: alreadyCut });
 
-    const url = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = (raw.document ?? 'document') + '.pdf';
-    link.click();
-    setTimeout(() => URL.revokeObjectURL(url), 10000);
+    const handed = await deliver((raw.document ?? 'document') + '.pdf', bytes);
 
     // P6: 出せなかった字は黙って消さない。同梱したのは標本のぶんだけである。
     const lost = [...new Set(missing.map(one => one.character))].join('');
-    say(measured.plan.pages.length + ' ページの PDF を作りました'
+    say(measured.plan.pages.length + ' ページの PDF を作って' + handed
       + (lost ? '　同梱フォントに無い字: ' + lost : ''), lost ? 'refused' : 'ok');
   } catch (error) {
     say('PDF を作れませんでした: ' + error.message, 'refused');

@@ -5,8 +5,6 @@
 // outside, no font server. The page carries the fonts it needs, cut down to the
 // characters this document uses, and writes the file itself.
 import { readFileSync } from 'node:fs';
-// 編集を閉じるのは「外を叩く」動作。叩く先はタブバーの余白ではなくペインの余白に
-// する——シートが増えるとタブが並びきって余白は幅 0 になり、叩けなくなるので。
 import { chromium } from 'playwright-core';
 import { getDocument } from 'pdfjs-dist/legacy/build/pdf.mjs';
 
@@ -83,6 +81,8 @@ await page.waitForTimeout(200);
 await page.click('.dp-sheet:not([hidden]) .dp-prose');
 await page.waitForSelector('.dp-block-source');
 await page.$eval('.dp-block-source', el => { el.value = el.value + '\n\n鬱蠡驫'; });
+// 編集を閉じるのは「外を叩く」動作。叩く先はタブバーの余白ではなくペインの余白に
+// する——シートが増えるとタブが並びきって余白は幅 0 になり、叩けなくなるので。
 await page.click('.dp-editor-pane', { position: { x: 12, y: 6 } });
 await page.waitForTimeout(400);
 const second = page.waitForEvent('download', { timeout: 60000 });
@@ -90,5 +90,50 @@ await page.click('#make-pdf');
 await second;
 const said = await page.textContent('#status');
 check('同梱していない字は名指しで報告する', said.includes('無い字'), said);
+
+// --- 器が保存を預かる場合 ---------------------------------------------------
+//
+// アーティファクトの枠の中では、中のコードが自分でファイルを降ろすことはできない。
+// 器が「保存してよいか」を尋ね、受け取ったものを保存する。その器はここには無いので、
+// 同じ形の受け皿を置いて、ページがそちらに渡すことを確かめる。
+const shellPage = await context.newPage();
+shellPage.on('pageerror', e => { console.log('✗ ページエラー:', e.message); process.exitCode = 1; });
+await shellPage.addInitScript(() => {
+  window.__saved = null;
+  window.__decline = false;
+  window.claude = {
+    use: async name => (name !== 'downloads' ? null : {
+      save: async request => {
+        if (window.__decline) throw { code: 'declined', message: 'viewer said no' };
+        const data = await request.data.arrayBuffer();
+        window.__saved = { filename: request.filename, size: data.byteLength,
+          head: new TextDecoder().decode(data.slice(0, 5)) };
+        return { status: 'saved' };
+      },
+    }),
+  };
+});
+await shellPage.goto('file://' + process.cwd() + '/out/editor.html');
+await shellPage.waitForTimeout(600);
+
+let fell = false;
+shellPage.on('download', () => { fell = true; });
+await shellPage.click('#make-pdf');
+await shellPage.waitForFunction(() => document.getElementById('status').textContent.includes('PDF'),
+  null, { timeout: 60000 });
+const saved = await shellPage.evaluate(() => window.__saved);
+check('器があるときは器に預ける', saved !== null && saved.head === '%PDF-',
+  saved ? `${saved.filename} / ${(saved.size / 1024).toFixed(0)} KB` : '預けていない');
+check('自分では降ろさない', fell === false);
+check('預けたことを言う', (await shellPage.textContent('#status')).includes('保存しました'),
+  await shellPage.textContent('#status'));
+
+// 断られたときは、断られたと言う。作れなかったことにはしない。
+await shellPage.evaluate(() => { window.__decline = true; window.__saved = null; });
+await shellPage.click('#make-pdf');
+await shellPage.waitForFunction(() => document.getElementById('status').textContent.includes('保存はしていません'),
+  null, { timeout: 60000 });
+check('断られたらそう言う', (await shellPage.textContent('#status')).includes('保存はしていません'),
+  await shellPage.textContent('#status'));
 
 await browser.close();
