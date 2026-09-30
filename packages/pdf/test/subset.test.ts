@@ -10,7 +10,7 @@ import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { describe, expect, it } from 'vitest';
 import fontkit from '@pdf-lib/fontkit';
-import { createSubsetter, isCff, writePdf, type PagePlan } from '../src/index.js';
+import { createSubsetter, drawsGlyphs, isCff, writePdf, type PagePlan } from '../src/index.js';
 
 const wasm = readFileSync(
   createRequire(import.meta.url).resolve('harfbuzzjs/dist/harfbuzz-subset.wasm'));
@@ -89,6 +89,17 @@ describe('サブセット', () => {
     expect(jp.byteLength).toBeGreaterThan(0);
     expect(mono.byteLength).toBeGreaterThan(0);
     expect(jp).not.toEqual(mono);
+  });
+
+  it('削った結果に字形が入っているかを見分ける', () => {
+    expect(drawsGlyphs(subset, codePoints)).toBe(true);
+
+    // HarfBuzz は、頼みすぎると黙って輪郭の無いフォントを返す。形は揃って
+    // いて、cmap も答える。埋めれば「取り出せるが白紙」の PDF になる。
+    const many = new Set<number>();
+    for (let code = 0x4e00; many.size < 22000; code++) many.add(code);
+    const tooMany = subsetter(font, many);
+    expect(drawsGlyphs(tooMany, many)).toBe(false);
   });
 
   it('CFF フォントも、サブセッタを渡せば書ける', async () => {

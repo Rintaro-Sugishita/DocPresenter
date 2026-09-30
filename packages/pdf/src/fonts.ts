@@ -90,6 +90,7 @@ export interface MissingGlyph {
 
 interface Readable {
   hasGlyphForCodePoint(codePoint: number): boolean;
+  glyphForCodePoint?(codePoint: number): { path?: { commands?: readonly unknown[] } } | undefined;
 }
 
 /** The characters the font cannot draw. Empty is the only acceptable answer. */
@@ -105,4 +106,32 @@ export function missingGlyphs(
     missing.push({ character: String.fromCodePoint(codePoint), codePoint, font: source.name });
   }
   return missing;
+}
+
+/**
+ * Whether a cut-down font can actually draw what it was asked to.
+ *
+ * A subsetter can fail without saying so. Asked for twenty thousand CJK
+ * glyphs, HarfBuzz returns a font of the right shape — the tables are there,
+ * the character map answers — whose outlines are empty. Embedded, that is the
+ * same blank page pdf-lib's own subsetter produces, and the same tests pass.
+ * So the result is looked at rather than trusted.
+ */
+export function drawsGlyphs(
+  bytes: Uint8Array, codePoints: ReadonlySet<number>, sample = 8,
+): boolean {
+  const font = faceIn({ bytes, name: '' });
+  if (!font?.glyphForCodePoint) return true;          // cannot tell; do not cry wolf
+  let looked = 0;
+  for (const codePoint of codePoints) {
+    if (codePoint < 0x21) continue;                   // a space draws nothing, correctly
+    // A character the font says it does not have is a missing glyph, which is
+    // reported elsewhere; what is being looked for here is a character the
+    // font claims and cannot draw.
+    if (!font.hasGlyphForCodePoint(codePoint)) continue;
+    const glyph = font.glyphForCodePoint(codePoint);
+    if ((glyph?.path?.commands?.length ?? 0) > 0) return true;
+    if (++looked >= sample) return false;
+  }
+  return true;
 }

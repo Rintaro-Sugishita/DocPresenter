@@ -9,7 +9,7 @@ import fontkit from '@pdf-lib/fontkit';
 import { PDFDocument, rgb, type PDFFont, type PDFPage } from 'pdf-lib';
 import { codePointsByFace, faceOf, type Item, type PagePlan } from './plan.js';
 import {
-  FALLBACK, isCff, missingGlyphs,
+  FALLBACK, drawsGlyphs, isCff, missingGlyphs,
   type FontOptions, type FontStyle, type MissingGlyph,
 } from './fonts.js';
 
@@ -47,6 +47,15 @@ export async function writePdf(plan: PagePlan, options: FontOptions): Promise<Wr
     const bytes = options.subset
       ? options.subset(source.bytes, characters, source.faceIndex ?? 0)
       : source.bytes;
+    if (options.subset && !drawsGlyphs(bytes, characters)) {
+      // The subsetter said nothing and produced a font with no outlines. Left
+      // alone it would make a PDF whose text extracts and whose pages are
+      // blank — the one failure this whole path is arranged to prevent.
+      throw new FontError(
+        `${source.name} を削った結果に字形が入っていない`
+        + `（${characters.size} 字は多すぎる可能性がある）`,
+      );
+    }
     embedded[style] = await pdf.embedFont(bytes, { subset: !options.subset });
   }
 

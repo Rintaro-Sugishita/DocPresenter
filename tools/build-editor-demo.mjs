@@ -163,6 +163,34 @@ toggle.addEventListener('click', () => {
 narrow.addEventListener('change', applyWidth);
 applyWidth();
 
+// --- 画面のフォント ---------------------------------------------------------
+//
+// テーマは Noto を名指しするが、それは**入っている環境の話**である。入って
+// いなければブラウザは総称の serif に落とし、明朝で 10.5pt の本文になって
+// 読みづらい。PDF のために削ったものが手元にあるのだから、画面にもそれを使う。
+// 外へ取りに行かないまま、紙とまったく同じ字面になる。
+const FAMILY = {
+  body: 'DocPresenter Serif', bodyBold: 'DocPresenter Serif',
+  heading: 'DocPresenter Sans', headingBold: 'DocPresenter Sans',
+  mono: 'DocPresenter Mono',
+};
+const faces = document.createElement('style');
+faces.textContent = Object.entries(FONTS).map(([style, font]) => [
+  '@font-face {',
+  '  font-family: "' + FAMILY[style] + '";',
+  '  font-weight: ' + (style.endsWith('Bold') ? 700 : 400) + ';',
+  '  src: url(data:font/otf;base64,' + font.base64 + ') format("opentype");',
+  '  font-display: block;',
+  '}',
+].join(NL)).join(NL)
+  // 同梱したのは標本に出る字だけ。範囲外の字は手元のフォントに落ちる。
+  + NL + ':root {' + NL
+  + '  --font-body: "DocPresenter Serif", "Noto Serif CJK JP", serif;' + NL
+  + '  --font-heading: "DocPresenter Sans", "Noto Sans CJK JP", sans-serif;' + NL
+  + '  --font-mono: "DocPresenter Mono", "Noto Sans Mono CJK JP", monospace;' + NL
+  + '}';
+document.head.append(faces);
+
 // --- PDF -------------------------------------------------------------------
 //
 // 組版はブラウザがやり、PDF はこちらが書く——という [PDF エンジン] の筋道は、
