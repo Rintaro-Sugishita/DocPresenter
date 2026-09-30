@@ -36,8 +36,12 @@ async function measureScript() {
  */
 const NOTO = '/usr/share/fonts/opentype/noto';
 const FACES = {
-  body:        { file: `${NOTO}/NotoSerifCJK-Regular.ttc`, index: 0, name: 'NotoSerifCJKjp-Regular' },
-  bodyBold:    { file: `${NOTO}/NotoSerifCJK-Bold.ttc`,    index: 0, name: 'NotoSerifCJKjp-Bold' },
+  // The theme sets the body in the same gothic family as the headings, so these
+  // two name the same file. They stay separate entries because a theme that
+  // splits them again (--font-body back to the serif family) needs no change
+  // here beyond the path.
+  body:        { file: `${NOTO}/NotoSansCJK-Regular.ttc`,  index: 0, name: 'NotoSansCJKjp-Regular' },
+  bodyBold:    { file: `${NOTO}/NotoSansCJK-Bold.ttc`,     index: 0, name: 'NotoSansCJKjp-Bold' },
   heading:     { file: `${NOTO}/NotoSansCJK-Regular.ttc`,  index: 0, name: 'NotoSansCJKjp-Regular' },
   headingBold: { file: `${NOTO}/NotoSansCJK-Bold.ttc`,     index: 0, name: 'NotoSansCJKjp-Bold' },
   // Index 5 of the same collection is NotoSansMonoCJKjp, which is what the

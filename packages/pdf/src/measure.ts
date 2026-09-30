@@ -10,9 +10,9 @@
 // Everything here runs inside the page, so it uses DOM APIs only and holds no
 // imports that a bundler would have to resolve at run time.
 
-import { collect } from './collect.js';
+import { collect, headingFamily } from './collect.js';
 import { mapPathData } from './plan.js';
-import type { Item, Page, PagePlan, TextItem } from './plan.js';
+import type { FontFamily, Item, Page, PagePlan, TextItem } from './plan.js';
 
 /** CSS defines these exactly, so no probing is needed. */
 const PX_PER_PT = 96 / 72;
@@ -28,6 +28,8 @@ export interface PageSetup {
   };
   readonly footSize: number;
   readonly footColour: string;
+  /** The face the foot is set in: the theme's heading face, as it resolves. */
+  readonly footFamily: FontFamily;
 }
 
 export interface MeasureOptions {
@@ -60,6 +62,7 @@ export function readPageSetup(root: Element): PageSetup {
     },
     footSize: pt('--page-foot-size', 8),
     footColour: style.getPropertyValue('--page-foot-colour').trim() || '#6b7280',
+    footFamily: headingFamily(),
   };
 }
 
@@ -345,7 +348,7 @@ function foot(
     kind: 'text', text,
     x: setup.margin.left,
     y: setup.height - setup.margin.bottom + setup.footSize * 1.8,
-    size: setup.footSize, bold: false, italic: false, family: 'heading',
+    size: setup.footSize, bold: false, italic: false, family: setup.footFamily,
     colour: setup.footColour,
   };
 }

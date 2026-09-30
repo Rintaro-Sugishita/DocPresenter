@@ -5,6 +5,8 @@
 // outside, no font server. The page carries the fonts it needs, cut down to the
 // characters this document uses, and writes the file itself.
 import { readFileSync } from 'node:fs';
+// 編集を閉じるのは「外を叩く」動作。叩く先はタブバーの余白ではなくペインの余白に
+// する——シートが増えるとタブが並びきって余白は幅 0 になり、叩けなくなるので。
 import { chromium } from 'playwright-core';
 import { getDocument } from 'pdfjs-dist/legacy/build/pdf.mjs';
 
@@ -81,7 +83,7 @@ await page.waitForTimeout(200);
 await page.click('.dp-sheet:not([hidden]) .dp-prose');
 await page.waitForSelector('.dp-block-source');
 await page.$eval('.dp-block-source', el => { el.value = el.value + '\n\n鬱蠡驫'; });
-await page.click('.dp-tabbar-spacer');
+await page.click('.dp-editor-pane', { position: { x: 12, y: 6 } });
 await page.waitForTimeout(400);
 const second = page.waitForEvent('download', { timeout: 60000 });
 await page.click('#make-pdf');

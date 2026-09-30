@@ -137,7 +137,7 @@ console.log(`out/artifact/index.html を生成（${(page(theme, script).length /
 function page(theme, script) {
   return `<title>DocPresenter シートエディタ</title>
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;600;700&family=Noto+Serif+JP:wght@400;600&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;600;700&display=swap">
 <style>
 /* 文書のテーマ。製品の themes/default/theme.css をそのまま読み込む。 */
 ${theme}
@@ -145,7 +145,7 @@ ${theme}
 /* 同梱フォントの代わりに Google Fonts の Noto を使う。字面は同じ。 */
 :root {
   --font-heading: "Noto Sans JP", "Noto Sans CJK JP", sans-serif;
-  --font-body:    "Noto Serif JP", "Noto Serif CJK JP", serif;
+  --font-body:    "Noto Sans JP", "Noto Sans CJK JP", sans-serif;
   --font-mono:    ui-monospace, "Noto Sans Mono CJK JP", monospace;
 
   --shell:        #eceef1;

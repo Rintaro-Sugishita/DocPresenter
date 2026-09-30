@@ -187,14 +187,33 @@ function familyOf(style: CSSStyleDeclaration): FontFamily {
   const known = FAMILIES.get(declared);
   if (known !== undefined) return known;
   const root = getComputedStyle(document.documentElement);
-  const first = (value: string): string =>
-    (value.split(',')[0] ?? '').trim().replace(/^["']|["']$/g, '').toLowerCase();
-  const mine = first(declared);
-  const family: FontFamily = mine === first(root.getPropertyValue('--font-mono')) || /mono/.test(mine)
+  const mine = firstFamily(declared);
+  const family: FontFamily = mine === firstFamily(root.getPropertyValue('--font-mono')) || /mono/.test(mine)
     ? 'mono'
-    : mine === first(root.getPropertyValue('--font-heading')) ? 'heading' : 'body';
+    : mine === firstFamily(root.getPropertyValue('--font-heading')) ? headingFamily() : 'body';
   FAMILIES.set(declared, family);
   return family;
+}
+
+/** The first family a CSS font stack names, unquoted and folded. */
+function firstFamily(value: string): string {
+  return (value.split(',')[0] ?? '').trim().replace(/^["']|["']$/g, '').toLowerCase();
+}
+
+/**
+ * Which face the theme's headings are, as a face to embed.
+ *
+ * A theme may set the body and the headings in one family — the default one
+ * does. Then the two tokens say nothing apart, and the text belongs to the body
+ * face: it is the one every other face falls back to, and it is what most of
+ * the document is. Without this the prose would be embedded as the heading
+ * face, the body face would never be asked for, and the same file would go into
+ * the PDF twice.
+ */
+export function headingFamily(): FontFamily {
+  const root = getComputedStyle(document.documentElement);
+  return firstFamily(root.getPropertyValue('--font-heading'))
+    === firstFamily(root.getPropertyValue('--font-body')) ? 'body' : 'heading';
 }
 
 /**

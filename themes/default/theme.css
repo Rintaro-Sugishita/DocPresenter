@@ -3,7 +3,9 @@
 
 :root {
   --font-heading: "Noto Sans CJK JP", sans-serif;
-  --font-body:    "Noto Serif CJK JP", serif;
+  /* 本文はゴシック。日本の設計書の慣行であり、画面でも紙でも読みやすい。
+     明朝にしたいテーマはこの 1 行を "Noto Serif CJK JP" に書き換える。 */
+  --font-body:    "Noto Sans CJK JP", sans-serif;
   --font-mono:    "Noto Sans Mono CJK JP", monospace;
 
   --rule-thin:  1px solid #7a7f87;

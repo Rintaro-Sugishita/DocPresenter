@@ -2,7 +2,14 @@
 // gets sent to people, so what matters is that one file opens on its own: no
 // stylesheet beside it, no image folder, no broken reference. That cannot be
 // checked by reading the HTML — it has to be opened.
+import { execFileSync } from 'node:child_process';
 import { chromium } from 'playwright-core';
+
+// 検査するものは自分で建てる。out/build は他の検査も使う置き場で、そこに最後に
+// 書いたのが誰かによって「どの作業場を建てたか」が変わる——取り込み元のパスは
+// 作業場からの相対なので、それだけで答えが変わってしまう。
+execFileSync('node', ['tools/build.mjs', '--in', 'sample'], { encoding: 'utf8' });
+
 const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' });
 const page = await browser.newPage({ viewport: { width: 1100, height: 900 } });
 page.on('pageerror', e => { console.log('✗ ページエラー:', e.message); process.exitCode = 1; });
@@ -21,7 +28,11 @@ page.on('request', request => {
 });
 
 await page.goto('file://' + process.cwd() + '/out/build/auth-design.html');
+// 成果物は 1 枚の HTML なので、体裁が組み終わるのを待てばよい。固定の待ち時間だと
+// 遅い回に間に合わず、後ろの検査が「無い」と言ってしまう。
+await page.waitForSelector('.dp-sheet', { state: 'attached' });
 await page.waitForTimeout(300);
+
 
 check('表紙の事実が出る', (await page.textContent('.dp-cover')).includes('SD-AUTH-001'),
   (await page.textContent('.dp-cover')).replace(/\s+/g, ' ').trim());

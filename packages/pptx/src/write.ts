@@ -63,7 +63,7 @@ export function writePptx(deck: Deck, options: PptxOptions = {}): Uint8Array {
   files['ppt/viewProps.xml'] = strToU8(VIEW_PROPS);
   files['ppt/tableStyles.xml'] = strToU8(TABLE_STYLES);
   files['ppt/theme/theme1.xml'] = strToU8(THEME(
-    options.headingFont ?? 'Noto Sans CJK JP', options.bodyFont ?? 'Noto Serif CJK JP'));
+    options.headingFont ?? 'Noto Sans CJK JP', options.bodyFont ?? 'Noto Sans CJK JP'));
 
   slides.forEach((xml, index) => {
     files[`ppt/slides/slide${index + 1}.xml`] = strToU8(xml);

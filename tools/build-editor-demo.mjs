@@ -40,8 +40,10 @@ collect('sample');
 // 範囲外の字は書き出しのときに欠字として報告される——黙って消えはしない。
 const NOTO = '/usr/share/fonts/opentype/noto';
 const FACES = {
-  body:        { file: `${NOTO}/NotoSerifCJK-Regular.ttc`, index: 0, name: 'NotoSerifCJKjp-Regular' },
-  bodyBold:    { file: `${NOTO}/NotoSerifCJK-Bold.ttc`,    index: 0, name: 'NotoSerifCJKjp-Bold' },
+  // 本文は見出しと同じゴシック（テーマの --font-body）。同じ面を二度持たせる
+  // 必要はないので、下の書き出しでは名前ごとに 1 つだけ削って抱える。
+  body:        { file: `${NOTO}/NotoSansCJK-Regular.ttc`,  index: 0, name: 'NotoSansCJKjp-Regular' },
+  bodyBold:    { file: `${NOTO}/NotoSansCJK-Bold.ttc`,     index: 0, name: 'NotoSansCJKjp-Bold' },
   heading:     { file: `${NOTO}/NotoSansCJK-Regular.ttc`,  index: 0, name: 'NotoSansCJKjp-Regular' },
   headingBold: { file: `${NOTO}/NotoSansCJK-Bold.ttc`,     index: 0, name: 'NotoSansCJKjp-Bold' },
   mono:        { file: `${NOTO}/NotoSansCJK-Regular.ttc`,  index: 5, name: 'NotoSansMonoCJKjp-Regular' },
@@ -66,16 +68,21 @@ for (const c of [
 const subsetter = await createSubsetter(
   readFileSync(createRequire(import.meta.url).resolve('harfbuzzjs/dist/harfbuzz-subset.wasm')));
 const read = path => { try { return new Uint8Array(readFileSync(path)); } catch { return undefined; } };
-const fonts = {};
+// 面は「名前」で数える。本文と見出しが同じ家族なら、削るのもページが抱えるのも
+// 1 つで済む——styles が面を指し、faces がその中身を持つ。
+const fonts = { faces: {}, styles: {} };
 let fontBytes = 0;
 for (const [style, face] of Object.entries(FACES)) {
+  fonts.styles[style] = face.name;
+  if (fonts.faces[face.name] !== undefined) continue;
   const source = read(face.file) ?? read(FALLBACK);
   if (!source) throw new Error('埋め込むフォントが見つからない');
   const cut = subsetter(source, characters, read(face.file) ? face.index : 0);
   fontBytes += cut.length;
-  fonts[style] = { name: face.name, base64: Buffer.from(cut).toString('base64') };
+  fonts.faces[face.name] = Buffer.from(cut).toString('base64');
 }
-console.log(`フォント ${characters.size} 字 → ${(fontBytes / 1024).toFixed(0)} KB（5 面）`);
+const faceCount = Object.keys(fonts.faces).length;
+console.log(`フォント ${characters.size} 字 → ${(fontBytes / 1024).toFixed(0)} KB（${faceCount} 面）`);
 
 const entry = `
 const ASSETS = ${JSON.stringify(resolve(base))};
@@ -166,26 +173,33 @@ applyWidth();
 // --- 画面のフォント ---------------------------------------------------------
 //
 // テーマは Noto を名指しするが、それは**入っている環境の話**である。入って
-// いなければブラウザは総称の serif に落とし、明朝で 10.5pt の本文になって
-// 読みづらい。PDF のために削ったものが手元にあるのだから、画面にもそれを使う。
-// 外へ取りに行かないまま、紙とまったく同じ字面になる。
+// いなければブラウザは総称に落ち、10.5pt の本文が別の字面になる。PDF のために
+// 削ったものが手元にあるのだから、画面にもそれを使う。外へ取りに行かないまま、
+// 紙とまったく同じ字面になる。
 const FAMILY = {
-  body: 'DocPresenter Serif', bodyBold: 'DocPresenter Serif',
+  body: 'DocPresenter Sans', bodyBold: 'DocPresenter Sans',
   heading: 'DocPresenter Sans', headingBold: 'DocPresenter Sans',
   mono: 'DocPresenter Mono',
 };
+// @font-face は「家族と太さ」で 1 つ。本文と見出しが同じ家族なら同じ 1 枚を指す。
+const blocks = new Map();
+for (const style of Object.keys(FONTS.styles)) {
+  const family = FAMILY[style];
+  const weight = style.endsWith('Bold') ? 700 : 400;
+  blocks.set(family + '/' + weight, { family, weight, face: FONTS.styles[style] });
+}
 const faces = document.createElement('style');
-faces.textContent = Object.entries(FONTS).map(([style, font]) => [
+faces.textContent = [...blocks.values()].map(block => [
   '@font-face {',
-  '  font-family: "' + FAMILY[style] + '";',
-  '  font-weight: ' + (style.endsWith('Bold') ? 700 : 400) + ';',
-  '  src: url(data:font/otf;base64,' + font.base64 + ') format("opentype");',
+  '  font-family: "' + block.family + '";',
+  '  font-weight: ' + block.weight + ';',
+  '  src: url(data:font/otf;base64,' + FONTS.faces[block.face] + ') format("opentype");',
   '  font-display: block;',
   '}',
 ].join(NL)).join(NL)
   // 同梱したのは標本に出る字だけ。範囲外の字は手元のフォントに落ちる。
   + NL + ':root {' + NL
-  + '  --font-body: "DocPresenter Serif", "Noto Serif CJK JP", serif;' + NL
+  + '  --font-body: "DocPresenter Sans", "Noto Sans CJK JP", sans-serif;' + NL
   + '  --font-heading: "DocPresenter Sans", "Noto Sans CJK JP", sans-serif;' + NL
   + '  --font-mono: "DocPresenter Mono", "Noto Sans Mono CJK JP", monospace;' + NL
   + '}';
@@ -202,8 +216,13 @@ const decode = base64 => {
   for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
   return bytes;
 };
-const FONT_SET = Object.fromEntries(Object.entries(FONTS).map(([style, font]) => [
-  style, { bytes: decode(font.base64), name: font.name },
+const decoded = new Map();
+const faceBytes = name => {
+  if (!decoded.has(name)) decoded.set(name, decode(FONTS.faces[name]));
+  return decoded.get(name);
+};
+const FONT_SET = Object.fromEntries(Object.entries(FONTS.styles).map(([style, name]) => [
+  style, { bytes: faceBytes(name), name },
 ]));
 // すでに削ってある。pdf-lib 内蔵のサブセッタは CFF を壊すので、通さない。
 const alreadyCut = bytes => bytes;

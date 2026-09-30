@@ -1,5 +1,7 @@
 // The table has to stay alive after its source has been opened and abandoned.
 // A restored snapshot of the grid looks identical and does nothing.
+// 編集を閉じるのは「外を叩く」動作。叩く先はタブバーの余白ではなくペインの余白に
+// する——シートが増えるとタブが並びきって余白は幅 0 になり、叩けなくなるので。
 import { chromium } from 'playwright-core';
 const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' });
 const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
@@ -20,7 +22,7 @@ await page.waitForSelector('.dp-grid-table');
 // ソースを開いて、何も書かずに離れる
 await page.click('.dp-grid-bar button[title*="ソースを直接"]');
 await page.waitForSelector('.dp-block-source');
-await page.click('.dp-tabbar-spacer');
+await page.click('.dp-editor-pane', { position: { x: 12, y: 6 } });
 await page.waitForTimeout(400);
 check('ソースを閉じると表が描き直される',
   await page.isVisible('.dp-sheet:not([hidden]) .dp-table'),
