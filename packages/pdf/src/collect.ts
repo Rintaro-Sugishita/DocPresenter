@@ -61,6 +61,16 @@ function walk(node: Element, at: Offset, items: Placed[], diagnostics: string[])
     return;
   }
   if (node instanceof HTMLElement) {
+    // Where a link may land, and where one leads. Neither draws anything; both
+    // are carried so that pagination cuts them to a page the way it cuts marks.
+    const box = rectOf(node, at);
+    if (node.id !== '') {
+      items.push({ item: { kind: 'anchor', id: node.id, ...box }, top: box.y });
+    }
+    const href = node.getAttribute('href');
+    if (node instanceof HTMLAnchorElement && href !== null && href.startsWith('#') && href.length > 1) {
+      items.push({ item: { kind: 'link', target: href.slice(1), ...box }, top: box.y });
+    }
     for (const item of background(node, at)) {
       items.push({ item, top: item.kind === 'fill' ? item.y : rectOf(node, at).y });
     }
@@ -75,6 +85,15 @@ function walk(node: Element, at: Offset, items: Placed[], diagnostics: string[])
     }
   }
 }
+
+/**
+ * How long the marks and the gaps of a broken border are, as a multiple of its
+ * width. The browser does not say, and these are what it draws.
+ */
+const DASHES: Record<string, ((width: number) => number[]) | undefined> = {
+  dotted: width => [width, width],
+  dashed: width => [width * 3, width * 2],
+};
 
 /** The fill and the rules of one element. A border edge is a thin filled box. */
 function background(element: HTMLElement, at: Offset): Item[] {
@@ -99,7 +118,22 @@ function background(element: HTMLElement, at: Offset): Item[] {
   for (const [widthKey, colourKey, styleKey, edge] of edges) {
     const width = parseFloat(style[widthKey as 'borderTopWidth']);
     const colour = colourOf(style[colourKey as 'borderTopColor']);
-    if (!(width > 0) || !colour || style[styleKey as 'borderTopStyle'] === 'none') continue;
+    const kind = style[styleKey as 'borderTopStyle'];
+    if (!(width > 0) || !colour || kind === 'none') continue;
+    // A broken border is a line with gaps in it, not a thin box. Drawn as a box
+    // it would print solid, and "pending" underlines and the leader of a table
+    // of contents would both lose the only thing that distinguishes them.
+    const dash = DASHES[kind]?.(width);
+    if (dash) {
+      const half = width / 2;
+      items.push({
+        kind: 'shape', closed: false, stroke: colour, lineWidth: width, dash,
+        points: edge.height === 0
+          ? [{ x: edge.x, y: edge.y - half }, { x: edge.x + edge.width, y: edge.y - half }]
+          : [{ x: edge.x - half, y: edge.y }, { x: edge.x - half, y: edge.y + edge.height }],
+      });
+      continue;
+    }
     items.push({
       kind: 'fill', colour,
       x: edge.width === 0 ? edge.x - width / 2 : edge.x,

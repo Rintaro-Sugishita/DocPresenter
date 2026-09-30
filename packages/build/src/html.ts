@@ -6,8 +6,9 @@
 // Nothing about the result depends on where it is put.
 
 import {
-  renderDocument,
-  type DiffMarks, type DocumentFile, type ResolvedDocument, type ResourceLoader,
+  headingsOf, renderDocument,
+  type DiffMarks, type DocumentFile, type SectionHeading,
+  type ResolvedDocument, type ResourceLoader,
 } from '@docpresenter/markdown';
 import type { Workspace } from './workspace.js';
 
@@ -51,7 +52,7 @@ export function renderPage(options: PageOptions): string {
     ...meta(options),
     `<style>${style}</style>`,
     '</head><body>',
-    cover(options),
+    front(options),
     body,
     '</body></html>',
   ].join('\n');
@@ -105,6 +106,59 @@ function cover(options: PageOptions): string {
     '</dl>',
     '</header>',
   ].join('\n');
+}
+
+/**
+ * The front matter: what the theme puts before the document itself.
+ *
+ * It is one element so that the page can break after it and the PDF can tell
+ * which pages are front matter — those carry their own numbering, and the
+ * body's "12 / 13" counts the body alone.
+ */
+function front(options: PageOptions): string {
+  const parts = [cover(options), contents(options)].filter(part => part !== '');
+  if (parts.length === 0) return '';
+  return `<section class="dp-front">\n${parts.join('\n')}\n</section>`;
+}
+
+/** Sections deeper than this are not worth a line of their own. */
+const CONTENTS_DEPTH = 3;
+/**
+ * Below this many entries a contents list is noise: a page of its own to say
+ * what the next two pages hold. The author overrides the guess either way with
+ * `contents: true` or `contents: false` in the frontmatter.
+ */
+const CONTENTS_LEAST = 5;
+
+/**
+ * The table of contents, from the headings rather than from the prose.
+ *
+ * A contents list written by hand goes stale the first time a section moves, so
+ * this one is computed on every build — the same rule the numbering follows.
+ * The page number is left empty here: on screen there are no pages, and on
+ * paper it is filled in once the document has been laid out. The column it will
+ * go in is reserved either way, so filling it in moves nothing.
+ */
+function contents(options: PageOptions): string {
+  const headings = headingsOf(options.document, options.resolved)
+    .filter(heading => heading.level >= 2 && heading.level <= CONTENTS_DEPTH && heading.id);
+  const asked = options.document.frontmatter.raw['contents'];
+  if (asked === false || (asked !== true && headings.length < CONTENTS_LEAST)) return '';
+  if (headings.length === 0) return '';
+  return [
+    '<nav class="dp-toc" aria-label="目次">',
+    '<h2 class="dp-toc-title" id="dp-contents">目次</h2>',
+    ...headings.map(line),
+    '</nav>',
+  ].join('\n');
+}
+
+function line(heading: SectionHeading): string {
+  const number = heading.number ? `<span class="dp-toc-number">${escape(heading.number)}</span>` : '';
+  return `<a class="dp-toc-line" data-level="${heading.level}" href="#${escape(heading.id!)}">`
+    + `${number}<span class="dp-toc-text">${escape(heading.text)}</span>`
+    + '<span class="dp-toc-lead"></span>'
+    + `<span class="dp-toc-page" data-page-of="${escape(heading.id!)}"></span></a>`;
 }
 
 function text(value: unknown): string | undefined {

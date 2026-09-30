@@ -18,14 +18,14 @@ const collect = dir => {
     const path = resolve(dir, entry.name);
     if (entry.isDirectory()) { collect(path); continue; }
     if (/\.(dgm|table|ermlx|mmd|md)$/i.test(entry.name)) {
-      files[relative(base, path)] = readFileSync(path, 'utf8');
+      files[relative('sample', path)] = readFileSync(path, 'utf8');
     }
     // 画像も抱えて持つ。ブラウザにファイルシステムは無いので、
     // 相対パスのままでは画面にも PDF にも出ない。
     const image = /\.(png|jpe?g|gif)$/i.exec(entry.name);
     if (image) {
       const type = image[1].toLowerCase() === 'jpg' ? 'jpeg' : image[1].toLowerCase();
-      images[relative(base, path)] =
+      images[relative('sample', path)] =
         `data:image/${type};base64,${readFileSync(path).toString('base64')}`;
     }
   }
@@ -88,7 +88,8 @@ const entry = `
 const ASSETS = ${JSON.stringify(resolve(base))};
 const FONTS = ${JSON.stringify(fonts)};
 
-import { parseDocument, resolveDocument } from '@docpresenter/markdown';
+import { joinPath, parseDocument, resolveDocument } from '@docpresenter/markdown';
+import { prepare } from '@docpresenter/build';
 import { renderDocument } from '@docpresenter/markdown';
 import { renderPage } from '@docpresenter/build';
 import { measure, writePdf } from '@docpresenter/pdf';
@@ -96,10 +97,19 @@ import { COMMIT_KEYS, COMMIT_KEY_LABEL, DEFAULT_SETTINGS, mountSheetView } from 
 
 const FILES = ${JSON.stringify(files)};
 const IMAGES = ${JSON.stringify(images)};
+const ROOT = 'docs/auth-design.md';
+
+// 器はファイルを**作業場からの相対**で持つ——ビルドが見ているのと同じ形である。
+// 文書の中に書かれるパスは文書からの相対なので、境目で言い換える。この 2 つが
+// 同じものを指しているあいだ、画面の図も、書き出した PDF の目次も揃う。
 const clean = path => (path.startsWith('./') ? path.slice(2) : path);
+const inWorkspace = path => joinPath(ROOT, clean(path));
+const inDocument = path =>
+  path.startsWith('docs/') ? path.slice('docs/'.length) : '../' + path;
+
 const loader = {
-  read: p => FILES[clean(p)],
-  url: p => IMAGES[clean(p)] ?? 'file://' + ASSETS + '/' + clean(p),
+  read: p => FILES[inWorkspace(p)],
+  url: p => IMAGES[inWorkspace(p)] ?? 'file://' + ASSETS + '/' + inWorkspace(p),
 };
 
 const render = source => {
@@ -140,16 +150,17 @@ const view = mountSheetView({
   source: ${JSON.stringify(readFileSync(DOC, "utf8"))},
   render,
   settings,
-  readResource: p => FILES[clean(p)],
+  readResource: p => FILES[inWorkspace(p)],
   createResource,
   // すでにあるものの一覧。どのファイルが在るかは器が知っている。
+  // 差し込まれるのは文書に書かれる形、つまり文書からの相対パスである。
   listResources: () => Object.keys(FILES)
     .filter(path => /\.(dgm|table|mmd|ermlx)$/i.test(path))
     .sort((a, b) => Number(a.includes('shared')) - Number(b.includes('shared')) || a.localeCompare(b))
-    .map(path => ({ path, label: path })),
+    .map(path => ({ path: inDocument(path), label: inDocument(path) })),
   onChange: (edit, text) => {
     if (edit.path === undefined) document.getElementById('source').textContent = text;
-    else FILES[clean(edit.path)] = text;
+    else FILES[inWorkspace(edit.path)] = text;
     const where = edit.path === undefined ? '' : edit.path + ' の ';
     say(where + edit.description + '　' + edit.span.start + '〜' + edit.span.end + ' バイトを書き換え', 'ok');
   },
@@ -233,6 +244,7 @@ const workspace = {
   dataUrl: p => IMAGES[clean(p)],
 };
 
+
 // 出来上がったものを渡す。渡し方は器による——アーティファクトの枠は、中の
 // コードが勝手に保存するのを止める。そこでは器に「保存してよいか」を聞いて
 // もらう（downloads）。単体の HTML として開いたときは、これまでどおり自分で
@@ -272,13 +284,16 @@ pdfButton.addEventListener('click', async () => {
   stage.style.cssText = 'position:absolute; left:-20000px; top:0; width:800px;';
   try {
     const source = view.source;
-    const doc = parseDocument(source);
+    // 書き出しは CLI と同じ支度をする。取り込んだ文書を畳んでおかないと、採番も
+    // 目次もしおりも、取り込んだ節をただ知らないまま出来上がる。
+    const ready = prepare(workspace, { path: ROOT, document: parseDocument(source), formats: ['pdf'] });
+    const doc = ready.document;
     const page = renderPage({
       workspace,
       document: doc,
-      resolved: resolveDocument(doc),
+      resolved: ready.resolved,
       style: '',                       // テーマはページに読み込まれているものを使う
-      root: 'docs/auth-design.md',
+      root: ROOT,
     });
     // 器（このページ）には既にテーマが読み込まれているので、本文だけを取り出す。
     const open = page.indexOf('<body>') + '<body>'.length;

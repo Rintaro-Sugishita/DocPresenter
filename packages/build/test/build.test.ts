@@ -145,3 +145,44 @@ describe('成果物', () => {
     expect(result.diagnostics.some(d => d.message.includes('ビルドルートではない'))).toBe(true);
   });
 });
+
+describe('目次', () => {
+  const sections = (count: number): string =>
+    Array.from({ length: count }, (_, i) => `## 節 ${i + 1} {#sec-${i + 1}}\n\n本文。`).join('\n\n');
+  const html = async (body: string, front = ''): Promise<string> => {
+    const source = `---\ntitle: T\noutput: [html]\n${front}---\n\n${body}\n`;
+    const result = await build(workspace({ 'a.md': source, ...THEME }));
+    return result.artifacts[0]!.text!;
+  };
+
+  it('節が揃えば見出しから組み立てる', async () => {
+    const page = await html(sections(6));
+    expect(page).toContain('class="dp-toc"');
+    // 番号は組版が入れる。HTML には画面のページ番号が無いので、欄だけが空で立つ
+    expect(page).toContain('<span class="dp-toc-page" data-page-of="sec-1"></span>');
+    expect((page.match(/class="dp-toc-line"/g) ?? []).length).toBe(6);
+  });
+
+  it('節が少なければ出さない', async () => {
+    expect(await html(sections(3))).not.toContain('class="dp-toc"');
+  });
+
+  it('要ると書いてあれば少なくても出す', async () => {
+    expect(await html(sections(2), 'contents: true\n')).toContain('class="dp-toc"');
+  });
+
+  it('要らないと書いてあれば出さない', async () => {
+    expect(await html(sections(9), 'contents: false\n')).not.toContain('class="dp-toc"');
+  });
+
+  it('見出しの無い文書では前付けも空にならない', async () => {
+    // 表紙の事実は残る。目次だけが出ない
+    const page = await html('本文だけ。');
+    expect(page).not.toContain('class="dp-toc"');
+  });
+
+  it('深い見出しは載せない', async () => {
+    const page = await html(`${sections(5)}\n\n#### 細目 {#sec-deep}\n\n本文。`);
+    expect(page).not.toContain('data-page-of="sec-deep"');
+  });
+});

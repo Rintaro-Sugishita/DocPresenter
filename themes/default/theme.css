@@ -110,6 +110,46 @@ code { font-family: var(--font-mono); font-size: 0.9em; background: var(--fill-t
 .dp-cover-fields dt { color: #6b7280; }
 .dp-cover-fields dd { margin: 0; }
 
+/* 前付け — 表紙の事実と目次。本文には書かれておらず、ビルドが組み立てる。
+   紙では 1 つのページにまとまり、本文はその次から 1 ページ目として数え直す。 */
+.dp-front { margin: 0 0 2.5em; }
+@media print { .dp-front { break-after: page; } }
+
+/* 目次。行数は見出しの数で決まり、ページ番号の欄は幅が固定である——番号を
+   書き込んでも行がずれないので、組んでから番号を入れて組み直せば必ず落ち着く。 */
+.dp-toc { margin: 0; }
+.dp-toc-title {
+  font-family: var(--font-heading); font-size: 1.1em; font-weight: 700;
+  margin: 0 0 0.8em; padding-bottom: 0.3em; border-bottom: var(--rule-thin);
+}
+.dp-toc-line {
+  display: flex; align-items: baseline; gap: 0.5em;
+  text-decoration: none; color: inherit;
+  padding: 0.22em 0; font-size: 0.95em;
+}
+.dp-toc-line[data-level="3"] { padding-left: 2em; font-size: 0.9em; color: #3a4048; }
+.dp-toc-number {
+  font-family: var(--font-heading); font-variant-numeric: tabular-nums;
+  min-width: 2.4em; flex: 0 0 auto;
+}
+.dp-toc-line[data-level="3"] .dp-toc-number { min-width: 3em; }
+/* 見出しとページ番号の間を点線でつなぐ。行が短いほど間が空くだけで、
+   どの行も同じ高さのままでいる。**擬似要素では描けない**——PDF は要素の箱を
+   読んで引くので、紙に出るものは要素でなければならない。 */
+.dp-toc-text { flex: 0 1 auto; }
+.dp-toc-lead {
+  flex: 1 1 auto; min-width: 1em; height: 0.7em;
+  border-bottom: 1px dotted #aeb4bd;
+}
+.dp-toc-page {
+  flex: 0 0 auto; min-width: 2.2em; text-align: right;
+  font-family: var(--font-heading); font-variant-numeric: tabular-nums;
+}
+/* 画面には「ページ 12」が無い。欄は空のままなので詰め、行き先の無い点線も引かない。 */
+.dp-toc-page:empty { min-width: 0; }
+.dp-toc-line:has(.dp-toc-page:empty) .dp-toc-lead { display: none; }
+.dp-toc-line:hover .dp-toc-text { text-decoration: underline; }
+
 .dp-figure { margin: 1.8em 0; }
 .dp-caption { font-family: var(--font-heading); font-size: 0.9em; color: #3a4048; margin-top: 0.6em; }
 .dp-caption .dp-number { color: #1c1f24; font-weight: 600; }

@@ -93,7 +93,36 @@ export interface PictureItem extends Marked {
   readonly data: string;
 }
 
-export type Item = TextItem | FillItem | ShapeItem | PathItem | EllipseItem | PictureItem;
+/**
+ * Somewhere a link can land: an element that carries an `id`.
+ *
+ * It draws nothing. It travels with the marks so that it is cut to a page the
+ * same way they are — a destination is a page and a height, and only the
+ * pagination knows those.
+ */
+export interface AnchorItem extends Marked {
+  readonly kind: 'anchor';
+  readonly id: string;
+  readonly x: number;
+  readonly y: number;
+  readonly width: number;
+  readonly height: number;
+}
+
+/** A clickable area pointing at an `AnchorItem` elsewhere in the document. */
+export interface LinkItem extends Marked {
+  readonly kind: 'link';
+  /** The `id` of the anchor it leads to. */
+  readonly target: string;
+  readonly x: number;
+  readonly y: number;
+  readonly width: number;
+  readonly height: number;
+}
+
+export type Item =
+  | TextItem | FillItem | ShapeItem | PathItem | EllipseItem | PictureItem
+  | AnchorItem | LinkItem;
 
 export interface Page {
   readonly items: readonly Item[];
@@ -106,10 +135,22 @@ export interface Page {
   readonly height?: number;
 }
 
+/** One line of the document's structure, for the reader's bookmark pane. */
+export interface OutlineEntry {
+  /** 1 for a top-level section; nesting is read from this. */
+  readonly level: number;
+  /** As the reader sees it, number included. */
+  readonly title: string;
+  /** The anchor it leads to. */
+  readonly id: string;
+}
+
 export interface PagePlan {
   readonly width: number;
   readonly height: number;
   readonly pages: readonly Page[];
+  /** The sections, in reading order. Empty when the document has none. */
+  readonly outline?: readonly OutlineEntry[];
   /** For the PDF's own metadata. */
   readonly title?: string;
   readonly subject?: string;

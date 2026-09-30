@@ -6,8 +6,14 @@
 // measurement side free to think in the coordinates it actually sees.
 
 import fontkit from '@pdf-lib/fontkit';
-import { PDFDocument, rgb, type PDFFont, type PDFPage } from 'pdf-lib';
-import { codePointsByFace, faceOf, type Item, type PagePlan } from './plan.js';
+import {
+  PDFArray, PDFDict, PDFDocument, PDFHexString, PDFName, PDFNumber, PDFRef,
+  rgb, type PDFContext, type PDFFont, type PDFPage,
+} from 'pdf-lib';
+import {
+  codePointsByFace, faceOf,
+  type Item, type OutlineEntry, type PagePlan,
+} from './plan.js';
 import {
   FALLBACK, drawsGlyphs, isCff, missingGlyphs,
   type FontOptions, type FontStyle, type MissingGlyph,
@@ -67,12 +73,27 @@ export async function writePdf(plan: PagePlan, options: FontOptions): Promise<Wr
   // back to the source it came from.
   if (plan.commit) pdf.setKeywords([`commit:${plan.commit}`]);
 
+  // Where every destination sits, gathered as the pages are drawn: a link and a
+  // bookmark both need a page and a height, and only the plan knows them.
+  const anchors = new Map<string, Spot>();
+  const wanted: { readonly page: PDFPage; readonly item: Item & { kind: 'link' } }[] = [];
+
   for (const page of plan.pages) {
     const width = page.width ?? plan.width;
     const height = page.height ?? plan.height;
     const sheet = pdf.addPage([width, height]);
-    for (const item of page.items) await draw(pdf, sheet, item, height, embedded);
+    for (const item of page.items) {
+      if (item.kind === 'anchor') {
+        if (!anchors.has(item.id)) anchors.set(item.id, { page: sheet, top: height - item.y });
+        continue;
+      }
+      if (item.kind === 'link') { wanted.push({ page: sheet, item }); continue; }
+      await draw(pdf, sheet, item, height, embedded);
+    }
   }
+
+  for (const { page, item } of wanted) link(pdf, page, item, anchors);
+  if (plan.outline) bookmarks(pdf, plan.outline, anchors);
 
   // The same character missing from two faces is one thing to say once.
   const said = new Set<string>();
@@ -87,11 +108,123 @@ export async function writePdf(plan: PagePlan, options: FontOptions): Promise<Wr
   };
 }
 
+/** A destination: which page, and how far up it. */
+interface Spot {
+  readonly page: PDFPage;
+  /** In PDF coordinates, from the foot of the page. */
+  readonly top: number;
+}
+
+/** `[page /XYZ left top null]` — open that page with that point at the top. */
+function destination(context: PDFContext, spot: Spot): PDFArray {
+  const array = PDFArray.withContext(context);
+  array.push(spot.page.ref);
+  array.push(PDFName.of('XYZ'));
+  array.push(PDFNumber.of(0));
+  array.push(PDFNumber.of(spot.top));
+  array.push(PDFNumber.of(0));
+  return array;
+}
+
+/**
+ * A clickable area leading to an anchor. A link whose target is not in this
+ * document draws nothing rather than a rectangle that does nothing: a box the
+ * reader can click that goes nowhere is worse than no box.
+ */
+function link(
+  pdf: PDFDocument, page: PDFPage, item: Item & { kind: 'link' },
+  anchors: ReadonlyMap<string, Spot>,
+): void {
+  const spot = anchors.get(item.target);
+  if (!spot) return;
+  const height = page.getHeight();
+  const annotation = pdf.context.obj({
+    Type: 'Annot',
+    Subtype: 'Link',
+    Rect: [item.x, height - item.y - item.height, item.x + item.width, height - item.y],
+    // The reader draws no frame: the theme already shows what is a link, and a
+    // yellow box around every cross-reference is how a PDF announces itself.
+    Border: [0, 0, 0],
+    Dest: destination(pdf.context, spot),
+  });
+  const existing = page.node.lookup(PDFName.of('Annots'));
+  const list = existing instanceof PDFArray ? existing : PDFArray.withContext(pdf.context);
+  list.push(pdf.context.register(annotation));
+  page.node.set(PDFName.of('Annots'), list);
+}
+
+/**
+ * The bookmark tree, from the document's own sections.
+ *
+ * pdf-lib has no outline of its own, so the dictionaries are written here.
+ * Nesting comes from the heading levels: a deeper heading is a child of the
+ * last shallower one, which is what the reader's pane shows.
+ */
+function bookmarks(
+  pdf: PDFDocument, entries: readonly OutlineEntry[], anchors: ReadonlyMap<string, Spot>,
+): void {
+  const known = entries.filter(entry => anchors.has(entry.id));
+  if (known.length === 0) return;
+
+  const root = pdf.context.obj({ Type: 'Outlines' }) as PDFDict;
+  const rootRef = pdf.context.register(root);
+
+  interface Node { readonly ref: PDFRef; readonly dict: PDFDict; readonly level: number; }
+  const open: Node[] = [];                     // the path from the root, deepest last
+  const children = new Map<string, PDFRef[]>();
+  const add = (parent: PDFRef, child: PDFRef): void => {
+    const key = String(parent);
+    children.set(key, [...(children.get(key) ?? []), child]);
+  };
+
+  for (const entry of known) {
+    while (open.length > 0 && open[open.length - 1]!.level >= entry.level) open.pop();
+    const parent = open.length === 0 ? rootRef : open[open.length - 1]!.ref;
+    const dict = pdf.context.obj({
+      // A title is text, not bytes: a hexadecimal string carries the Japanese
+      // that a PDF's own Latin-1 strings cannot.
+      Title: PDFHexString.fromText(entry.title),
+      Parent: parent,
+      Dest: destination(pdf.context, anchors.get(entry.id)!),
+    }) as PDFDict;
+    const ref = pdf.context.register(dict);
+    add(parent, ref);
+    open.push({ ref, dict, level: entry.level });
+  }
+
+  // Each level is a doubly linked list, and every parent says how many are
+  // under it. A reader that finds one of these missing shows nothing at all.
+  const close = (parent: PDFRef, dict: PDFDict): number => {
+    const list = children.get(String(parent)) ?? [];
+    if (list.length === 0) return 0;
+    let total = 0;
+    list.forEach((ref, i) => {
+      const child = pdf.context.lookup(ref, PDFDict);
+      if (i > 0) child.set(PDFName.of('Prev'), list[i - 1]!);
+      if (i < list.length - 1) child.set(PDFName.of('Next'), list[i + 1]!);
+      total += 1 + close(ref, child);
+    });
+    dict.set(PDFName.of('First'), list[0]!);
+    dict.set(PDFName.of('Last'), list[list.length - 1]!);
+    // Closed, as a negative count: a document of any size opens with its
+    // sections listed, not with every sub-section unfolded.
+    dict.set(PDFName.of('Count'), PDFNumber.of(dict === root ? total : -list.length));
+    return total;
+  };
+  close(rootRef, root);
+
+  pdf.catalog.set(PDFName.of('Outlines'), rootRef);
+  pdf.catalog.set(PDFName.of('PageMode'), PDFName.of('UseOutlines'));
+}
+
 async function draw(
   pdf: PDFDocument, page: PDFPage, item: Item, height: number,
   fonts: Record<string, PDFFont>,
 ): Promise<void> {
   switch (item.kind) {
+    case 'anchor':
+    case 'link':
+      return;                                   // taken out before drawing
     case 'text': {
       const face = faceOf(item);
       const font = fonts[face] ?? fonts[FALLBACK[face as FontStyle] ?? 'body'] ?? fonts['body']!;

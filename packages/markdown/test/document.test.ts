@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import {
-  DocumentParseError, isBuildRoot, parseDocument, resolveDocument, sheetsOf,
+  DocumentParseError, expandDocument, headingsOf, isBuildRoot,
+  parseDocument, resolveDocument, sheetsOf,
 } from '../src/index.js';
 import type { Heading, Import, Prose } from '../src/index.js';
 
@@ -188,5 +189,27 @@ describe('シート分割', () => {
     const sheets = sheetsOf(parseDocument(source));
     expect(sliceBytes(source, sheets[0]!.span.start, sheets[0]!.span.end)).toBe('本文。');
     expect(sliceBytes(source, sheets[1]!.span.start, sheets[1]!.span.end)).toBe('次。');
+  });
+});
+
+describe('見出しの一覧', () => {
+  it('採番と id を添えて、読む順に返す', () => {
+    const source = '# 題\n\n## 一 {#sec-one}\n\n### 一の一 {#sec-one-one}\n\n## 二 {#sec-two}\n';
+    const document = parseDocument(source);
+    const headings = headingsOf(document, resolveDocument(document));
+    expect(headings.map(h => `${h.level}:${h.number ?? '-'}:${h.text}:${h.id ?? '-'}`)).toEqual([
+      '1:-:題:-',
+      '2:1:一:sec-one',
+      '3:1.1:一の一:sec-one-one',
+      '2:2:二:sec-two',
+    ]);
+  });
+
+  it('取り込んだ文書の見出しも入る', () => {
+    const root = parseDocument('# 題\n\n@import "other.md"\n');
+    const expanded = expandDocument(root, 'a.md', path =>
+      path === 'other.md' ? '## 別の節 {#sec-other}\n' : undefined).document;
+    const headings = headingsOf(expanded, resolveDocument(expanded));
+    expect(headings.map(h => h.text)).toEqual(['題', '別の節']);
   });
 });

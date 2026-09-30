@@ -49,9 +49,18 @@ check('参照が番号に解決されている', whole.includes('図 1 に示す
 check('見出しの採番が入っている', /1\s*概要/.test(whole));
 check('取り込んだ文書の節も入っている', whole.includes('改訂履歴'));
 
-// 柱（ページ番号と文書番号）が全ページにある
-const feet = texts.filter(text => /SD-AUTH-001.+\d+ \/ \d+/.test(text));
-check('全ページに柱がある', feet.length === pdf.numPages, `${feet.length}/${pdf.numPages}`);
+// 柱（ページ番号と文書番号）が全ページにある。前付けと本文は別の体系で数える
+// ので、前付けは i, ii、本文は「3 / 12」——総数も本文だけを数える。
+const feet = texts.map(text => (/SD-AUTH-001[^\n]*/.exec(text) ?? [''])[0].trim());
+check('全ページに柱がある', feet.every(foot => foot !== ''),
+  `${feet.filter(Boolean).length}/${pdf.numPages}`);
+const front = feet.filter(foot => /\s[ivx]+$/.test(foot));
+const body = feet.filter(foot => /\s\d+ \/ \d+$/.test(foot));
+check('前付けはローマ数字で数える', front.length > 0 && front.length + body.length === pdf.numPages,
+  `前付け ${front.length} ＋ 本文 ${body.length} = ${pdf.numPages}`);
+check('本文は 1 から数え直す', /\s1 \/ \d+$/.test(body[0] ?? ''), body[0]);
+check('総数は本文だけを数える', (body.at(-1) ?? '').endsWith(`${body.length} / ${body.length}`),
+  body.at(-1));
 
 // 図はページに描かれた線と塗りであって、貼られた絵ではない
 const drawn = operators.map(list => list.fnArray.filter(fn =>

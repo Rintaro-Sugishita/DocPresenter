@@ -12,7 +12,7 @@
 
 import { collect, headingFamily } from './collect.js';
 import { mapPathData } from './plan.js';
-import type { FontFamily, Item, Page, PagePlan, TextItem } from './plan.js';
+import type { FontFamily, Item, OutlineEntry, Page, PagePlan, TextItem } from './plan.js';
 
 /** CSS defines these exactly, so no probing is needed. */
 const PX_PER_PT = 96 / 72;
@@ -113,6 +113,8 @@ interface MeasuredBlock {
   readonly orientation: Orientation;
   /** A page break is required before this block. */
   readonly forced: boolean;
+  /** Front matter: its pages are numbered apart from the body's. */
+  readonly front: boolean;
   readonly items: readonly Held[];
   readonly fragments: readonly Fragment[];
 }
@@ -124,7 +126,47 @@ interface Sheet {
   readonly offsets: number[];
 }
 
+/**
+ * The document, laid out and cut into pages.
+ *
+ * A table of contents cannot be right the first time: its page numbers are only
+ * known once the document has been paginated, and it is itself part of what is
+ * being paginated. So the numbers are written in and the measure is taken
+ * again. It settles, because the column the numbers go in is a fixed width —
+ * filling it in moves nothing — and it is bounded in case a theme makes that
+ * untrue.
+ */
 export function measure(root: HTMLElement, options: MeasureOptions = {}): Measurement {
+  let laid = layOut(root, options);
+  for (let round = 0; round < 3 && fillContents(root, laid.labels); round++) {
+    laid = layOut(root, options);
+  }
+  return { plan: laid.plan, diagnostics: laid.diagnostics };
+}
+
+/**
+ * Writes the page each section landed on into the table of contents. Returns
+ * whether anything changed — when nothing did, the numbers agree with the
+ * pagination they came from and the document is settled.
+ */
+function fillContents(root: HTMLElement, labels: ReadonlyMap<string, string>): boolean {
+  let changed = false;
+  for (const cell of root.querySelectorAll<HTMLElement>('.dp-toc-page[data-page-of]')) {
+    const label = labels.get(cell.getAttribute('data-page-of') ?? '') ?? '';
+    if (cell.textContent !== label) {
+      cell.textContent = label;
+      changed = true;
+    }
+  }
+  return changed;
+}
+
+interface LaidOut extends Measurement {
+  /** Which page each anchor is on, as the foot of that page prints it. */
+  readonly labels: ReadonlyMap<string, string>;
+}
+
+function layOut(root: HTMLElement, options: MeasureOptions): LaidOut {
   const portrait = readPageSetup(document.documentElement);
   const landscape = turned(portrait);
   const diagnostics: string[] = [];
@@ -195,6 +237,16 @@ export function measure(root: HTMLElement, options: MeasureOptions = {}): Measur
   }
   flush();
 
+  // 前付けと本文は別の体系で数える（テーマ設計 §6.5）。目次が 1 行増えても本文の
+  // ページ番号は動かず、「12 / 13」の総数も本文だけを数える。
+  const frontBlocks = new Set(blocks.filter(block => block.front).map(block => block.index));
+  const isFront = sheets.map(sheet => sheet.fragments.every(one => frontBlocks.has(one.block)));
+  const bodyTotal = isFront.filter(front => !front).length;
+  let frontAt = 0;
+  let bodyAt = 0;
+  const labels = isFront.map(front => front ? roman(++frontAt) : String(++bodyAt));
+  const feet = isFront.map((front, i) => front ? labels[i]! : `${labels[i]} / ${bodyTotal}`);
+
   const byBlock = new Map(blocks.map(block => [block.index, block]));
   // How the theme writes "continued". Empty means the theme does not want it.
   const continuedValue = getComputedStyle(document.documentElement)
@@ -221,20 +273,64 @@ export function measure(root: HTMLElement, options: MeasureOptions = {}): Measur
     });
 
     return {
-      items: [...placed.map(toPoints2), foot(setup, index + 1, sheets.length, options)],
+      items: [...placed.map(toPoints2), foot(setup, feet[index]!, options)],
       ...(sheet.orientation === 'landscape'
         ? { width: setup.width, height: setup.height } : {}),
     };
   });
 
+  // Which page each destination is on, named the way the foot names it: that is
+  // what a table of contents prints, and it is not the same as the sheet count.
+  const where = new Map<string, string>();
+  built.forEach((page, index) => {
+    for (const item of page.items) {
+      if (item.kind === 'anchor' && !where.has(item.id)) where.set(item.id, labels[index]!);
+    }
+  });
+
+  const outline = outlineOf(root);
   return {
     plan: {
       width: portrait.width, height: portrait.height, pages: built,
+      ...(outline.length === 0 ? {} : { outline }),
       ...(options.title === undefined ? {} : { title: options.title }),
       ...(options.commit === undefined ? {} : { commit: options.commit }),
     },
     diagnostics,
+    labels: where,
   };
+}
+
+/**
+ * The sections, for the reader's bookmark pane. Read from the headings the
+ * browser has in front of it, so a section that came from an included file is
+ * here too, numbered as the reader sees it.
+ */
+function outlineOf(root: HTMLElement): OutlineEntry[] {
+  const headings = [...root.querySelectorAll<HTMLElement>('h1, h2, h3, h4, h5, h6')]
+    .filter(heading => heading.id !== '');
+  if (headings.length === 0) return [];
+  const levels = headings.map(heading => Number(heading.tagName.slice(1)));
+  const top = Math.min(...levels);
+  return headings.map((heading, i) => ({
+    level: levels[i]! - top + 1,
+    title: (heading.textContent ?? '').replace(/\s+/g, ' ').trim(),
+    id: heading.id,
+  }));
+}
+
+/** Front-matter page numbers, in the form the convention asks for: i, ii, iii. */
+function roman(value: number): string {
+  const units: [number, string][] = [
+    [1000, 'm'], [900, 'cm'], [500, 'd'], [400, 'cd'], [100, 'c'], [90, 'xc'],
+    [50, 'l'], [40, 'xl'], [10, 'x'], [9, 'ix'], [5, 'v'], [4, 'iv'], [1, 'i'],
+  ];
+  let left = value;
+  let written = '';
+  for (const [size, mark] of units) {
+    while (left >= size) { written += mark; left -= size; }
+  }
+  return written;
 }
 
 /**
@@ -312,6 +408,7 @@ function pass(
         index: at,
         orientation,
         forced: boundary && n === 0 && at > 0,
+        front: section.classList.contains('dp-front'),
         items: collect(element, left, top, orientation === 'portrait' ? diagnostics : [])
           .map(({ item, top: y, cell }) => ({
             item, top: y, bottom: y + heightOf(item), ...(cell ? { cell } : {}),
@@ -335,15 +432,17 @@ function heightOf(item: Item): number {
     case 'fill':
     case 'picture': return item.height;
     case 'text': return item.size;
+    // A destination and a clickable area take no room of their own: they sit on
+    // something that already does, and must not stretch the block they ride on.
+    case 'anchor':
+    case 'link': return 0;
     default: return 0;
   }
 }
 
 /** The running foot: which page this is, and what document it belongs to. */
-function foot(
-  setup: PageSetup, page: number, total: number, options: MeasureOptions,
-): TextItem {
-  const text = options.foot ? `${options.foot}　${page} / ${total}` : `${page} / ${total}`;
+function foot(setup: PageSetup, page: string, options: MeasureOptions): TextItem {
+  const text = options.foot ? `${options.foot}　${page}` : page;
   return {
     kind: 'text', text,
     x: setup.margin.left,
@@ -361,6 +460,8 @@ function toPoints2(item: Item): Item {
       return { ...item, x: s(item.x), y: s(item.y), size: s(item.size),
         ...(item.width === undefined ? {} : { width: s(item.width) }) };
     case 'fill':
+    case 'anchor':
+    case 'link':
       return { ...item, x: s(item.x), y: s(item.y), width: s(item.width), height: s(item.height) };
     case 'picture':
       return { ...item, x: s(item.x), y: s(item.y), width: s(item.width), height: s(item.height) };
@@ -382,6 +483,8 @@ function shift(item: Item, dx: number, dy: number): Item {
     case 'text':
     case 'fill':
     case 'picture':
+    case 'anchor':
+    case 'link':
       return { ...item, x: item.x + dx, y: item.y + dy };
     case 'shape':
       return { ...item, points: item.points.map(p => ({ x: p.x + dx, y: p.y + dy })) };
@@ -405,7 +508,11 @@ function boxOf(element: Element, left: number, top: number): Rect {
 
 /** The blocks of one section: what a page break may fall between. */
 function blocksOf(sheet: Element): readonly HTMLElement[] {
-  if (!sheet.classList.contains('dp-sheet')) return [sheet as HTMLElement];
+  // The front matter holds several things and may outgrow a page, so like a
+  // sheet it is opened up: a page break can fall between its parts.
+  if (!sheet.classList.contains('dp-sheet') && !sheet.classList.contains('dp-front')) {
+    return [sheet as HTMLElement];
+  }
   return [...sheet.children].filter((child): child is HTMLElement => child instanceof HTMLElement);
 }
 
@@ -441,6 +548,19 @@ function fragmentsOf(
         ...rows.slice(1, -1),
         { ...last, bottom: Math.max(last.bottom, rect.y + rect.height) },
       ];
+    }
+  }
+
+  // A table of contents breaks between entries, the way prose breaks between
+  // lines. Its own heading rides with the first entry.
+  if (element.classList.contains('dp-toc')) {
+    const lines = [...element.querySelectorAll<HTMLElement>('.dp-toc-line')]
+      .map(line => boxOf(line, left, top)).filter(box => box.height > 0);
+    if (lines.length > 1) {
+      const edges = [rect.y, ...lines.slice(1).map(line => line.y), rect.y + rect.height];
+      return edges.slice(0, -1).map((from, i) => ({
+        top: from, bottom: edges[i + 1]!, repeat: false, keepWithNext: false, block,
+      }));
     }
   }
 

@@ -8,6 +8,7 @@ export * from './document/model.js';
 export * from './document/parse.js';
 export * from './document/expand.js';
 export * from './document/sheets.js';
+export * from './document/headings.js';
 export * from './numbering/model.js';
 export * from './numbering/resolve.js';
 export * from './html/diff.js';
