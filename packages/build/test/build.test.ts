@@ -157,32 +157,67 @@ describe('目次', () => {
 
   it('節が揃えば見出しから組み立てる', async () => {
     const page = await html(sections(6));
-    expect(page).toContain('class="dp-toc"');
+    expect(page).toContain('class="dp-index dp-index-contents"');
     // 番号は組版が入れる。HTML には画面のページ番号が無いので、欄だけが空で立つ
-    expect(page).toContain('<span class="dp-toc-page" data-page-of="sec-1"></span>');
-    expect((page.match(/class="dp-toc-line"/g) ?? []).length).toBe(6);
+    expect(page).toContain('<span class="dp-index-page" data-page-of="sec-1"></span>');
+    expect((page.match(/class="dp-index-line"/g) ?? []).length).toBe(6);
   });
 
   it('節が少なければ出さない', async () => {
-    expect(await html(sections(3))).not.toContain('class="dp-toc"');
+    expect(await html(sections(3))).not.toContain('class="dp-index dp-index-contents"');
   });
 
   it('要ると書いてあれば少なくても出す', async () => {
-    expect(await html(sections(2), 'contents: true\n')).toContain('class="dp-toc"');
+    expect(await html(sections(2), 'contents: true\n')).toContain('class="dp-index dp-index-contents"');
   });
 
   it('要らないと書いてあれば出さない', async () => {
-    expect(await html(sections(9), 'contents: false\n')).not.toContain('class="dp-toc"');
+    expect(await html(sections(9), 'contents: false\n')).not.toContain('class="dp-index dp-index-contents"');
   });
 
   it('見出しの無い文書では前付けも空にならない', async () => {
     // 表紙の事実は残る。目次だけが出ない
     const page = await html('本文だけ。');
-    expect(page).not.toContain('class="dp-toc"');
+    expect(page).not.toContain('class="dp-index dp-index-contents"');
   });
 
   it('深い見出しは載せない', async () => {
     const page = await html(`${sections(5)}\n\n#### 細目 {#sec-deep}\n\n本文。`);
     expect(page).not.toContain('data-page-of="sec-deep"');
+  });
+});
+
+describe('図表一覧', () => {
+  const TABLE = '| 見出し |\n| ------ |\n| 値     |\n';
+  const imports = (count: number): string =>
+    Array.from({ length: count }, (_, i) =>
+      `@import "t${i + 1}.table" {#tbl-${i + 1} caption="表 ${i + 1} の説明"}`).join('\n\n');
+  const files = (count: number): Record<string, string> =>
+    Object.fromEntries(Array.from({ length: count }, (_, i) => [`t${i + 1}.table`, TABLE]));
+
+  const html = async (count: number, front = ''): Promise<string> => {
+    const source = `---\ntitle: T\noutput: [html]\n${front}---\n\n# 題\n\n${imports(count)}\n`;
+    const result = await build(workspace({ 'a.md': source, ...files(count), ...THEME }));
+    return result.artifacts[0]!.text!;
+  };
+
+  it('採番された図表から組み立てる', async () => {
+    const page = await html(5);
+    expect(page).toContain('class="dp-index dp-index-figures"');
+    expect(page).toContain('<span class="dp-index-number">表 1</span>');
+    expect(page).toContain('<span class="dp-index-text">表 1 の説明</span>');
+    expect(page).toContain('<span class="dp-index-page" data-page-of="tbl-1"></span>');
+  });
+
+  it('数えるほど無ければ出さない', async () => {
+    expect(await html(2)).not.toContain('class="dp-index dp-index-figures"');
+  });
+
+  it('要ると書いてあれば少なくても出す', async () => {
+    expect(await html(2, 'figures: true\n')).toContain('class="dp-index dp-index-figures"');
+  });
+
+  it('要らないと書いてあれば出さない', async () => {
+    expect(await html(7, 'figures: false\n')).not.toContain('class="dp-index dp-index-figures"');
   });
 });

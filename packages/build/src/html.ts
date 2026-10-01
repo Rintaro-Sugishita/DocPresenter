@@ -6,8 +6,8 @@
 // Nothing about the result depends on where it is put.
 
 import {
-  headingsOf, renderDocument,
-  type DiffMarks, type DocumentFile, type SectionHeading,
+  NOUN_BY_KIND, headingsOf, renderDocument,
+  type DiffMarks, type DocumentFile,
   type ResolvedDocument, type ResourceLoader,
 } from '@docpresenter/markdown';
 import type { Workspace } from './workspace.js';
@@ -116,7 +116,8 @@ function cover(options: PageOptions): string {
  * body's "12 / 13" counts the body alone.
  */
 function front(options: PageOptions): string {
-  const parts = [cover(options), contents(options)].filter(part => part !== '');
+  const parts = [cover(options), contents(options), figures(options)]
+    .filter(part => part !== '');
   if (parts.length === 0) return '';
   return `<section class="dp-front">\n${parts.join('\n')}\n</section>`;
 }
@@ -124,11 +125,19 @@ function front(options: PageOptions): string {
 /** Sections deeper than this are not worth a line of their own. */
 const CONTENTS_DEPTH = 3;
 /**
- * Below this many entries a contents list is noise: a page of its own to say
+ * Below this many entries a generated list is noise: a page of its own to say
  * what the next two pages hold. The author overrides the guess either way with
- * `contents: true` or `contents: false` in the frontmatter.
+ * `contents:` or `figures:` in the frontmatter.
  */
-const CONTENTS_LEAST = 5;
+const LIST_LEAST = 5;
+
+/** Whether to build one of the generated lists: the author's word, or the count. */
+function wanted(options: PageOptions, name: string, count: number): boolean {
+  const asked = options.document.frontmatter.raw[name];
+  if (asked === true) return count > 0;
+  if (asked === false) return false;
+  return count >= LIST_LEAST;
+}
 
 /**
  * The table of contents, from the headings rather than from the prose.
@@ -142,23 +151,62 @@ const CONTENTS_LEAST = 5;
 function contents(options: PageOptions): string {
   const headings = headingsOf(options.document, options.resolved)
     .filter(heading => heading.level >= 2 && heading.level <= CONTENTS_DEPTH && heading.id);
-  const asked = options.document.frontmatter.raw['contents'];
-  if (asked === false || (asked !== true && headings.length < CONTENTS_LEAST)) return '';
-  if (headings.length === 0) return '';
+  if (!wanted(options, 'contents', headings.length)) return '';
   return [
-    '<nav class="dp-toc" aria-label="目次">',
-    '<h2 class="dp-toc-title" id="dp-contents">目次</h2>',
-    ...headings.map(line),
+    '<nav class="dp-index dp-index-contents" aria-label="目次">',
+    '<h2 class="dp-index-title" id="dp-contents">目次</h2>',
+    ...headings.map(heading => line({
+      id: heading.id!, number: heading.number, text: heading.text, level: heading.level,
+    })),
     '</nav>',
   ].join('\n');
 }
 
-function line(heading: SectionHeading): string {
-  const number = heading.number ? `<span class="dp-toc-number">${escape(heading.number)}</span>` : '';
-  return `<a class="dp-toc-line" data-level="${heading.level}" href="#${escape(heading.id!)}">`
-    + `${number}<span class="dp-toc-text">${escape(heading.text)}</span>`
-    + '<span class="dp-toc-lead"></span>'
-    + `<span class="dp-toc-page" data-page-of="${escape(heading.id!)}"></span></a>`;
+/**
+ * The figures and tables, from the numbering.
+ *
+ * A running number says what order a drawing comes in and nothing about where
+ * it is; this list is what answers "where is 図 3". Figures come before tables
+ * because each is numbered in its own series, and interleaving them in document
+ * order would read as 図 1, 図 2, 表 1, 図 3.
+ */
+function figures(options: PageOptions): string {
+  const listed = options.resolved.elements.filter(element =>
+    (element.kind === 'figure' || element.kind === 'table')
+    && element.number !== undefined && element.label !== undefined);
+  if (!wanted(options, 'figures', listed.length)) return '';
+  const order: readonly string[] = ['figure', 'table'];
+  // A stable sort, so each series keeps the order it appears in the document.
+  const sorted = [...listed].sort((a, b) => order.indexOf(a.kind) - order.indexOf(b.kind));
+  return [
+    '<nav class="dp-index dp-index-figures" aria-label="図表一覧">',
+    '<h2 class="dp-index-title" id="dp-figures">図表一覧</h2>',
+    ...sorted.map(element => line({
+      id: element.label!,
+      number: `${NOUN_BY_KIND[element.kind] ?? ''} ${element.number!}`.trim(),
+      // A numbered figure with no caption is still worth a line: it says where
+      // 図 3 is, which is the one thing a running number cannot.
+      text: element.caption ?? '',
+      level: 2,
+    })),
+    '</nav>',
+  ].join('\n');
+}
+
+interface IndexLine {
+  readonly id: string;
+  readonly number: string | undefined;
+  readonly text: string;
+  /** Indents the line; the contents list uses the heading's own depth. */
+  readonly level: number;
+}
+
+function line(entry: IndexLine): string {
+  const number = entry.number ? `<span class="dp-index-number">${escape(entry.number)}</span>` : '';
+  return `<a class="dp-index-line" data-level="${entry.level}" href="#${escape(entry.id)}">`
+    + `${number}<span class="dp-index-text">${escape(entry.text)}</span>`
+    + '<span class="dp-index-lead"></span>'
+    + `<span class="dp-index-page" data-page-of="${escape(entry.id)}"></span></a>`;
 }
 
 function text(value: unknown): string | undefined {

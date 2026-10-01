@@ -151,7 +151,7 @@ export function measure(root: HTMLElement, options: MeasureOptions = {}): Measur
  */
 function fillContents(root: HTMLElement, labels: ReadonlyMap<string, string>): boolean {
   let changed = false;
-  for (const cell of root.querySelectorAll<HTMLElement>('.dp-toc-page[data-page-of]')) {
+  for (const cell of root.querySelectorAll<HTMLElement>('.dp-index-page[data-page-of]')) {
     const label = labels.get(cell.getAttribute('data-page-of') ?? '') ?? '';
     if (cell.textContent !== label) {
       cell.textContent = label;
@@ -553,8 +553,8 @@ function fragmentsOf(
 
   // A table of contents breaks between entries, the way prose breaks between
   // lines. Its own heading rides with the first entry.
-  if (element.classList.contains('dp-toc')) {
-    const lines = [...element.querySelectorAll<HTMLElement>('.dp-toc-line')]
+  if (element.classList.contains('dp-index')) {
+    const lines = [...element.querySelectorAll<HTMLElement>('.dp-index-line')]
       .map(line => boxOf(line, left, top)).filter(box => box.height > 0);
     if (lines.length > 1) {
       const edges = [rect.y, ...lines.slice(1).map(line => line.y), rect.y + rect.height];
