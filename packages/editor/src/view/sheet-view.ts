@@ -869,7 +869,68 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
   }
 
   /** Rebuilds everything. Only an edit needs this. */
+  /**
+   * Where the reader is, in terms that survive the page being rebuilt.
+   *
+   * A redraw replaces every node, so a remembered element is no help. What does
+   * survive is a block's byte range: the topmost block still on screen, and how
+   * far below the top of the pane it was sitting. An edit moves the ranges of
+   * everything after it, so the block that is found again is one *before* the
+   * edit — which is exactly the part of the page the reader is looking at.
+   */
+  interface Place {
+    readonly span: string | undefined;
+    readonly offset: number;
+    readonly scroll: number;
+    /** The sheet it was on. Landing on another one is a change of subject. */
+    readonly sheet: number;
+  }
+
+  function placeOf(): Place | undefined {
+    if (pane.scrollTop === 0) return undefined;
+    const top = pane.getBoundingClientRect().top;
+    // Blocks only. A sheet also carries a range, but it begins far above the
+    // viewport and tells us nothing about where in it the reader is.
+    for (const node of pane.querySelectorAll<HTMLElement>(ANCHOR)) {
+      const box = node.getBoundingClientRect();
+      // A block on a sheet that is not showing has no box at all. Left in, it
+      // answers "at the top of the pane" for every question asked of it.
+      if (box.height === 0) continue;
+      if (box.bottom <= top) continue;
+      return { span: node.dataset['span'], offset: box.top - top, scroll: pane.scrollTop, sheet: active };
+    }
+    return { span: undefined, offset: 0, scroll: pane.scrollTop, sheet: active };
+  }
+
+  const ANCHOR = '[data-span]:not(.dp-append):not(.dp-sheet)';
+
+  function restore(place: Place | undefined): void {
+    if (!place) return;
+    // An edit that moves to another sheet has changed the subject after all.
+    if (place.sheet !== active) { refresh(); return; }
+    const settle = (): void => {
+      const again = place.span === undefined
+        ? null
+        : pane.querySelector<HTMLElement>(`[data-span="${place.span}"]:not(.dp-append)`);
+      if (!again) {
+        // The block the reader was on is the one that changed, so its range
+        // moved. Putting the scrollbar back is the nearest true answer.
+        pane.scrollTop = place.scroll;
+        return;
+      }
+      pane.scrollTop += again.getBoundingClientRect().top - pane.getBoundingClientRect().top
+        - place.offset;
+    };
+    settle();
+    // A picture has no size until it is decoded, so the page is briefly shorter
+    // than it will be and the first answer can be clamped. Asking again once
+    // the frame is laid out costs nothing and is right either way.
+    owner.defaultView?.requestAnimationFrame(settle);
+  }
+
   function draw(): void {
+    // An edit is not a change of subject: the reader stays where they were.
+    const place = placeOf();
     const page = element('div', 'dp-page');
     page.innerHTML = render(source);
     pane.replaceChildren(page);
@@ -903,7 +964,8 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
       title: section.dataset['title'] ?? `シート ${i + 1}`,
       empty: section.textContent?.trim() === '',
     })));
-    refresh();
+    refresh('keep');
+    restore(place);
   }
 
   /**
@@ -911,7 +973,7 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
    * rebuild the tab bar: a rebuild replaces the element mid-gesture, so the
    * second half of a double-click lands on a node that is no longer there.
    */
-  function refresh(): void {
+  function refresh(place: 'top' | 'keep' = 'top'): void {
     pane.classList.toggle('dp-continuous', continuous);
     sections.forEach((section, i) => {
       section.hidden = !continuous && i + 1 !== active;
@@ -919,6 +981,9 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
     tabs.forEach((tab, i) => {
       tab.setAttribute('aria-selected', String(i + 1 === active));
     });
+    // Choosing a sheet is a change of subject and starts at its top. A redraw
+    // after an edit is not: the caller puts the reader back where they were.
+    if (place === 'keep') return;
     if (continuous) sections[active - 1]?.scrollIntoView({ block: 'start' });
     else pane.scrollTop = 0;
   }

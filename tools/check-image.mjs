@@ -137,4 +137,60 @@ check('落としたファイルは作業フォルダに置かれる',
   /@import "[^"]*dropped\.png"/.test(await source()),
   (/@import "[^"]*dropped\.png"/.exec(await source()) ?? [''])[0]);
 
+
+
+// --- 編集しても今いるところに留まる -----------------------------------------
+//
+// 編集のたびにページ全体を組み直すので、放っておくと見ていた場所が先頭に戻る。
+// 画像の操作は手元を見たまま行うものなので、そこが一番はっきり出る。
+await page.click('.dp-tab:has-text("ログイン機能")');
+await page.waitForTimeout(300);
+const pane = page.locator('.dp-editor-pane');
+await pane.evaluate(node => { node.scrollTop = node.scrollHeight / 2; });
+await page.waitForTimeout(150);
+const where = async () => pane.evaluate(node => node.scrollTop);
+const at = await where();
+check('試す前に、下のほうを見ている', at > 100, `${Math.round(at)}px`);
+
+// 画面の写真（標本に入っている画像）を開いて、中央に寄せる。
+// 測るのは**押す直前と直後**にする——Playwright は押す前に要素を画面内へ寄せるので、
+// その動きまで数えると、何を直しても合わない。
+const shot = '.dp-sheet:not([hidden]) .dp-figure[data-path$="login-screen.png"]';
+await page.locator(shot).locator('img').click();
+await page.waitForSelector('.dp-picture-bar');
+// 標本のこの画像は既に中央なので、**変わる側**を押す。同じ値を書いても
+// 書き換えは起きず、何も確かめないまま通ってしまう。
+const right = page.locator('.dp-picture-bar button:has-text("右")');
+await right.scrollIntoViewIfNeeded();
+await page.waitForTimeout(150);
+const before1 = await where();
+await right.click();
+await page.waitForTimeout(400);
+const after1 = await where();
+check('寄せは本当に書き換わっている',
+  (await source()).includes('login-screen.png" {#fig-login-shot caption="ログイン画面（撮ったまま）" width="55%" align="right"}'),
+  (/@import "[^"]*login-screen\.png"[^\n]*/.exec(await source()) ?? [''])[0]);
+check('寄せても見ていた場所に留まる', Math.abs(after1 - before1) < 40,
+  `${Math.round(before1)}px → ${Math.round(after1)}px`);
+
+// 画像だけの話ではない。本文を書き換えて確定したときも同じことが起きていた。
+const prose = page.locator('.dp-sheet:not([hidden]) .dp-prose').last();
+await prose.scrollIntoViewIfNeeded();
+await page.waitForTimeout(150);
+const before2 = await where();
+await prose.click();
+await page.waitForSelector('.dp-block-source');
+await page.keyboard.type('。確かに書いた');
+await page.keyboard.press('Control+Enter');
+await page.waitForTimeout(400);
+const after2 = await where();
+check('本文の編集は本当に確定している', (await source()).includes('。確かに書いた'));
+check('本文を確定しても留まる', Math.abs(after2 - before2) < 40,
+  `${Math.round(before2)}px → ${Math.round(after2)}px`);
+
+// シートを選び直したときは、そのシートの先頭から始まる
+await page.click('.dp-tab:has-text("用語")');
+await page.waitForTimeout(300);
+check('シートを選び直したときは先頭に戻る', (await where()) === 0, `${Math.round(await where())}px`);
+
 await browser.close();
