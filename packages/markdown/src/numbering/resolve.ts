@@ -10,7 +10,7 @@ import {
 
 /** Attributes an import may carry. Anything else is a mistake worth reporting. */
 const KNOWN_ATTRIBUTES = new Set([
-  '#', 'alt', 'caption', 'page', 'rows', 'keep-together', 'slide', 'width', 'height',
+  '#', 'alt', 'caption', 'page', 'rows', 'keep-together', 'slide', 'width', 'height', 'align',
 ]);
 
 /** Extensions that decide the kind of an unlabelled import. */

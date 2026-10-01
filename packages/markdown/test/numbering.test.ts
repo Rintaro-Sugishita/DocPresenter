@@ -86,10 +86,11 @@ describe('サンプルの実ファイル', () => {
     expect(r.diagnostics.filter(d => d.severity === 'error')).toEqual([]);
     expect(hasError(r)).toBe(false);
 
-    // 図は 1..8、表は 1..3 の通し番号。画像も作図も同じ系列で数える
+    // 図は 1..11、表は 1..3 の通し番号。画像も作図も部品の見本も同じ系列で数える
     const figures = r.elements.filter(e => e.kind === 'figure');
     const tables = r.elements.filter(e => e.kind === 'table');
-    expect(figures.map(f => f.number)).toEqual(['1', '2', '3', '4', '5', '6', '7', '8']);
+    expect(figures.map(f => f.number))
+      .toEqual(['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11']);
     expect(tables.map(t => t.number)).toEqual(['1', '2', '3']);
 
     // 企画時に手で「図 2」と書いていたものが、計算でも図 2 になる

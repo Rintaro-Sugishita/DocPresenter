@@ -2,7 +2,9 @@
 // from, so the DOM is itself the source map a review comment anchors through.
 
 import { byteLength, type ByteSpan } from '@docpresenter/base';
-import { parseDiagram, renderDiagram, renderOverlay } from '@docpresenter/diagram';
+import {
+  parseDiagram, renderDiagram, renderOverlay, specimenOf, withParts,
+} from '@docpresenter/diagram';
 import { describe } from '../numbering/resolve.js';
 import { parseTable } from '../table/parse.js';
 import { sheetsOf } from '../document/sheets.js';
@@ -209,8 +211,14 @@ function renderKnown(
     return renderTable(selected, marks);
   }
   if (path.toLowerCase().endsWith('.dgm')) {
-    const diagram = parseDiagram(source);
+    // Parts are resolved before anything looks at the drawing, so everything
+    // downstream sees ordinary shapes. The library is named relative to the
+    // drawing, as the overlay's image is.
+    const diagram = withParts(parseDiagram(source),
+      used => options.loader.read(joinPath(path, used)));
     const marks = options.marks?.diagrams.get(path);
+    // A library has nothing of its own to place, so what it draws is itself.
+    if (diagram.mode === 'parts') return renderDiagram(specimenOf(diagram), url, marks);
     if (diagram.mode !== 'overlay') return renderDiagram(diagram, url, marks);
     // The image is written relative to the diagram, not to the document.
     const image = diagram.image === undefined ? undefined : url(joinPath(path, diagram.image));

@@ -7,9 +7,9 @@
 // becomes native shapes. Prose that happens to sit beside the figure follows
 // it; prose on its own becomes a slide of text.
 
-import { parseDiagram, parseRuns, type Run } from '@docpresenter/diagram';
+import { parseDiagram, parseRuns, withParts, type Run } from '@docpresenter/diagram';
 import {
-  cellAt, describe, parseTable, selectRows, sheetsOf,
+  cellAt, describe, joinPath, parseTable, selectRows, sheetsOf,
   type Block as DocBlock, type Cell, type DiffMarks, type DocumentFile,
   type NumberedElement, type ResolvedDocument, type TableFile,
 } from '@docpresenter/markdown';
@@ -82,7 +82,11 @@ function blockOf(
     }
     try {
       const marks = options.marks?.diagrams.get(block.path)?.nodes;
-      return drawingOf(parseDiagram(source), {
+      // Resolved first, so a part reaches PowerPoint as what it draws rather
+      // than as a name PowerPoint has never heard of.
+      const drawing = withParts(parseDiagram(source),
+        used => options.workspace.read(joinPath(block.path, used)));
+      return drawingOf(drawing, {
         diagnostics, source: block.path, ...(marks ? { marks } : {}),
       });
     } catch (error) {

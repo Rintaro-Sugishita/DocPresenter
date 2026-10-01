@@ -1,58 +1,45 @@
 # ログイン画面（画面設計）
 # kind: free — 画面はすべて座標が意味を持つので自由配置。
-# 画面部品の見た目は style で与える。共通スタイルは本来テンプレートから来る。
+# 見た目は部品テンプレートが持つ。この file に残るのは「何が、どこに」だけである。
+
+use "../../shared/ui-parts.dgm"
 
 free {
-  frame    [ ]
-  title    "サービスにログイン"
+  frame    frame:
+  title    title:"サービスにログイン"
 
-  idLabel  "ログイン ID"
-  idBox    [yamada@example.co.jp]
-  idHint   "社員番号を入力してください"
+  idLabel  label:"ログイン ID"
+  idBox    textbox:"yamada@example.co.jp"
+  idHint   hint:"社員番号を入力してください"
 
-  pwLabel  "パスワード"
-  pwBox    [ ]
+  pwLabel  label:"パスワード"
+  pwBox    textbox:
 
-  keepBox  [ ]
-  keepText "ログイン状態を保持する"
+  keepBox  checkbox:
+  keepText label:"ログイン状態を保持する"
 
-  submit   (ログイン)
-  forgot   "パスワードを忘れた方"
+  submit   primary:"ログイン"
+  forgot   link:"パスワードを忘れた方"
 }
 
 layout {
   frame    @ ( 40,  20) 380x330
-  title    @ ( 70,  50) 320x24
+  title    @ ( 70,  50)
 
-  idLabel  @ ( 70,  96) 320x18
-  idBox    @ ( 70, 116) 320x34
-  idHint   @ ( 70, 152) 320x16
+  idLabel  @ ( 70,  96)
+  idBox    @ ( 70, 116)
+  idHint   @ ( 70, 152)
 
-  pwLabel  @ ( 70, 182) 320x18
-  pwBox    @ ( 70, 202) 320x34
+  pwLabel  @ ( 70, 182)
+  pwBox    @ ( 70, 202)
 
-  keepBox  @ ( 70, 250)  16x16
+  keepBox  @ ( 70, 250)
   keepText @ ( 96, 250) 200x16
 
-  submit   @ ( 70, 284) 320x38
-  forgot   @ ( 70, 330) 320x16
+  submit   @ ( 70, 284)
+  forgot   @ ( 70, 330)
 }
 
 style {
   theme: default
-
-  frame    { fill: #ffffff, line: #d3d7dd }
-  title    { color: #1c1f24 }
-
-  idLabel  { color: #3a4048, align: left }
-  pwLabel  { color: #3a4048, align: left }
-  idBox    { fill: #fbfbfc, line: #aeb4bd, align: left }
-  pwBox    { fill: #fbfbfc, line: #aeb4bd, align: left }
-  idHint   { color: #8b929c, align: left }
-
-  keepBox  { fill: #ffffff, line: #aeb4bd }
-  keepText { color: #3a4048, align: left }
-
-  submit   { fill: #2f6fb5, line: #2f6fb5, color: #ffffff }
-  forgot   { color: #1f5fa8, align: right }
 }

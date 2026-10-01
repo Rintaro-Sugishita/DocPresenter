@@ -10,7 +10,15 @@ export function joinPath(from: string, path: string): string {
   const parts: string[] = [];
   for (const part of `${base}/${path}`.split('/')) {
     if (part === '' || part === '.') continue;
-    if (part === '..') { parts.pop(); continue; }
+    if (part === '..') {
+      // Above the base is a real place. Swallowing the `..` here would quietly
+      // answer with a different file — the one a level down from the right
+      // answer — which is worse than saying the path leads outside.
+      const last = parts[parts.length - 1];
+      if (last === undefined || last === '..') parts.push('..');
+      else parts.pop();
+      continue;
+    }
     parts.push(part);
   }
   return parts.join('/');

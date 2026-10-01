@@ -5,7 +5,7 @@
 import { byteLength } from '@docpresenter/base';
 import type {
   ArrowStyle, Bend, Callout, DiagramFile, DiagramMode, Edge, EdgeStyle, LayoutBlock, Node,
-  Placement, Point, Section, ShapeKind,
+  Part, Placement, Point, Section, ShapeKind,
 } from './model.js';
 
 /** One source line, trimmed, with the bytes it occupies. */
@@ -71,6 +71,10 @@ export function parseDiagram(source: string): DiagramFile {
   });
 
   const comments: string[] = [];
+  const uses: string[] = [];
+  const parts = new Map<string, Part>();
+  const partOf = new Map<string, string>();
+  let partsBlock: Section | undefined;
   const nodes: Node[] = [];
   const edges: Edge[] = [];
   const layout = new Map<string, Placement>();
@@ -90,7 +94,13 @@ export function parseDiagram(source: string): DiagramFile {
     if (text === '') continue;
     if (text.startsWith('#')) { comments.push(text.replace(/^#\s?/, '')); continue; }
 
-    const section = /^(free|flow|overlay|layout|style)\b([^{]*)\{$/.exec(text);
+    // `use "…"` names a file of parts. It is not a section, and it is resolved
+    // outside the parser — reading files is the host's business, not this
+    // package's.
+    const used = /^use\s+"([^"]+)"\s*$/.exec(text);
+    if (used) { uses.push(used[1]!); continue; }
+
+    const section = /^(free|flow|overlay|layout|style|parts)\b([^{]*)\{$/.exec(text);
     if (!section) throw new DiagramParseError(`解釈できない行: ${text}`, line.number);
 
     const kind = section[1]!;
@@ -108,8 +118,14 @@ export function parseDiagram(source: string): DiagramFile {
 
     if (kind === 'free' || kind === 'flow') {
       mode = kind;
-      parseBody(inner, nodes, edges);
+      parseBody(inner, nodes, edges, partOf);
       body = blockOf(lines, raw, start, i, inner);
+    } else if (kind === 'parts') {
+      // A file may hold nothing but parts. It is then a library, not a drawing,
+      // and has no shapes of its own to place.
+      mode = mode ?? 'parts';
+      parseParts(inner, parts);
+      partsBlock = blockOf(lines, raw, start, i, inner);
     } else if (kind === 'overlay') {
       mode = kind;
       const quoted = /^"([^"]*)"$/.exec(header);
@@ -128,7 +144,7 @@ export function parseDiagram(source: string): DiagramFile {
   if (!mode) throw new DiagramParseError('free / flow / overlay のいずれのセクションも無い', 1);
   return {
     mode, comments, nodes, edges, body, layout, bends, layoutBlock, styleBlock,
-    theme, style, image, callouts,
+    theme, style, image, callouts, uses, parts, partOf, partsBlock,
   };
 }
 
@@ -157,7 +173,66 @@ function countChar(text: string, char: string): number {
   return n;
 }
 
-function parseBody(body: readonly SourceLine[], nodes: Node[], edges: Edge[]): void {
+/**
+ * `textbox [ ] { fill: …, line: … } 320x34` — a name, a shape, a look, a size.
+ *
+ * The size is last and optional because it is the part people change least: a
+ * system's input boxes are all one height long before anyone argues about it.
+ */
+const PART_NAME = /^([A-Za-z0-9_-]+)\s+(.*)$/;
+const PART_STYLE = /\{([^}]*)\}/;
+const PART_SIZE = /(\d+)x(\d+)\s*$/;
+
+function parseParts(body: readonly SourceLine[], out: Map<string, Part>): void {
+  for (const source of body) {
+    const text = source.text;
+    if (text === '' || text.startsWith('#')) continue;
+    const named = PART_NAME.exec(text);
+    if (!named) throw new DiagramParseError(`部品として読めない行: ${text}`, source.number);
+
+    // Taken apart from the outside in: the style is the only part with braces,
+    // the size is the only part at the end, and a shape such as `[ ]` holds a
+    // space — so none of the three can be found by splitting on whitespace.
+    let rest = named[2]!;
+    const style = new Map<string, string>();
+    const styled = PART_STYLE.exec(rest);
+    if (styled) {
+      for (const one of styled[1]!.split(/[,;]/)) {
+        const kv = /^\s*([\w-]+)\s*:\s*(.+?)\s*$/.exec(one);
+        if (kv) style.set(kv[1]!, kv[2]!);
+      }
+      rest = `${rest.slice(0, styled.index)} ${rest.slice(styled.index + styled[0].length)}`;
+    }
+    const sized = PART_SIZE.exec(rest);
+    if (sized) rest = rest.slice(0, sized.index);
+
+    const written = rest.trim();
+    const shape = shapeOf(written);
+    if (!shape) throw new DiagramParseError(`部品の図形が分からない: ${written}`, source.number);
+    out.set(named[1]!, {
+      name: named[1]!, shape, style,
+      width: sized === null ? undefined : Number(sized[1]),
+      height: sized === null ? undefined : Number(sized[2]),
+      span: source.span,
+    });
+  }
+}
+
+/** The shape a bracket pair means, with nothing inside it. */
+function shapeOf(written: string): ShapeKind | undefined {
+  for (const { open, close, shape } of SHAPES) {
+    if (written.startsWith(open) && written.endsWith(close)
+      && written.length >= open.length + close.length) return shape;
+  }
+  return undefined;
+}
+
+/** `idBox textbox:"yamada@example.co.jp"` — a shape written as a part. */
+const PART_USE = /^([A-Za-z0-9_-]+):\s*(?:"([^"]*)")?$/;
+
+function parseBody(
+  body: readonly SourceLine[], nodes: Node[], edges: Edge[], partOf: Map<string, string>,
+): void {
   body.forEach(source => {
     const span = source.span;
     const text = source.text;
@@ -188,7 +263,20 @@ function parseBody(body: readonly SourceLine[], nodes: Node[], edges: Edge[]): v
 
     const node = NODE.exec(text);
     if (node) {
-      const shaped = readShape(node[2]!.trim());
+      const written = node[2]!.trim();
+      // A shape written as a part carries no shape of its own: the part says
+      // what it looks like. Resolution happens later, so the parser keeps the
+      // name and leaves a plain rectangle in its place until then.
+      const used = PART_USE.exec(written);
+      if (used) {
+        partOf.set(node[1]!, used[1]!);
+        nodes.push({
+          id: node[1]!, text: used[2] ?? '', shape: 'rect', className: node[3],
+          children: [], span,
+        });
+        return;
+      }
+      const shaped = readShape(written);
       if (!shaped) throw new DiagramParseError(`図形の記法が読めない: ${text}`, line);
       nodes.push({
         id: node[1]!, text: shaped.text, shape: shaped.shape, className: node[3],

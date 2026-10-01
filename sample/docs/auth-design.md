@@ -52,6 +52,7 @@ output: [html, pdf]
 @import "assets/login-screen.png" {#fig-login-shot caption="ログイン画面（撮ったまま）" width="55%" align="center"}
 
 設計時点の画面は作図で起こす。画像ではないので、項目の追加や文言の変更が差分に出る。
+見た目は @sec-screens の部品テンプレートが持つので、この図のファイルに色は書かれていない。
 
 @import "auth-design/login-screen.dgm" {#fig-login-design caption="ログイン画面（画面設計）"}
 
@@ -89,6 +90,21 @@ output: [html, pdf]
 本書で用いる用語を @tbl-glossary に示す。全社共通の用語集からの抜粋である。
 
 @import "../shared/glossary.table" {#tbl-glossary caption="用語集（抜粋）" rows="認証関連"}
+
+---
+
+## 画面部品 {#sec-screens}
+
+画面はすべて同じ部品テンプレート（`shared/ui-parts.dgm`）から組む。部品は絵ではなく
+**名前の付いた見た目と既定の大きさ**で、画面側のファイルには「何が、どこに」しか残らない。
+
+@import "../shared/ui-parts.dgm" {#fig-ui-parts caption="画面部品テンプレート"}
+
+再設定とロックの画面も同じ部品でできている。@fig-reset-screen と @fig-locked-screen に示す。
+
+@import "auth-design/password-reset-screen.dgm" {#fig-reset-screen caption="パスワード再設定画面（画面設計）"}
+
+@import "auth-design/locked-screen.dgm" {#fig-locked-screen caption="アカウントロック画面（画面設計）"}
 
 ---
 

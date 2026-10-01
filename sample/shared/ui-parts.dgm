@@ -1,0 +1,27 @@
+# 画面部品テンプレート
+# kind: parts — 絵ではなく「名前の付いた見た目と既定の大きさ」。
+# この一覧は画面を 3 枚描いてから決めた。推測では 4 種で足りると思っていたが、
+# 実際には題名・補助文・リンク・副ボタン・バナー・エラー文が要った。
+
+parts {
+  # 面
+  frame     [ ] { fill: #ffffff, line: #d3d7dd }               380x300
+  banner    [ ] { fill: #eef3f9, line: #c3d3e6 }               320x56
+  alert     [ ] { fill: #fdecea, line: #e9a8a2 }               320x56
+
+  # 文字
+  title     "" { color: #1c1f24 }                              320x24
+  label     "" { color: #3a4048, align: left }                 320x18
+  body      "" { color: #3a4048, align: left }                 320x32
+  hint      "" { color: #8b929c, align: left }                 320x16
+  error     "" { color: #b3261e, align: left }                 320x36
+  link      "" { color: #1f5fa8, align: right }                320x16
+
+  # 入力
+  textbox   [ ] { fill: #fbfbfc, line: #aeb4bd, align: left }  320x34
+  checkbox  [ ] { fill: #ffffff, line: #aeb4bd }                16x16
+
+  # ボタン
+  primary   ( ) { fill: #2f6fb5, line: #2f6fb5, color: #ffffff } 320x38
+  secondary ( ) { fill: #ffffff, line: #aeb4bd, color: #3a4048 } 320x38
+}

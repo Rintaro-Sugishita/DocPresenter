@@ -87,7 +87,26 @@ export interface LayoutBlock {
   readonly indent: string;
 }
 
-export type DiagramMode = 'free' | 'flow' | 'overlay';
+export type DiagramMode = 'free' | 'flow' | 'overlay' | 'parts';
+
+/**
+ * A named look: a shape, a style, and how big it usually is.
+ *
+ * A part is not a drawing. The vocabulary of shapes is fixed and small; a part
+ * says "an input box in this system looks like this", which is a decision about
+ * one system rather than about diagrams. Drawing three screens by hand is what
+ * produced the list — eleven looks, eight of them written more than once.
+ */
+export interface Part {
+  readonly name: string;
+  readonly shape: ShapeKind;
+  readonly style: ReadonlyMap<string, string>;
+  /** Used when the pin gives none; a pin that gives one wins. */
+  readonly width: number | undefined;
+  readonly height: number | undefined;
+  /** The part's own line, so editing one part rewrites one line. */
+  readonly span: ByteSpan;
+}
 
 /**
  * An annotation on an imported image. The image itself is a binary the diff
@@ -126,6 +145,14 @@ export interface DiagramFile {
   /** Overlay only: the image the callouts annotate. */
   readonly image: string | undefined;
   readonly callouts: readonly Callout[];
+  /** Files of parts this one uses, as written (relative to this file). */
+  readonly uses: readonly string[];
+  /** Parts declared in this file, by name. */
+  readonly parts: ReadonlyMap<string, Part>;
+  /** Which part each shape was written as, for the ones that name one. */
+  readonly partOf: ReadonlyMap<string, string>;
+  /** The `parts { … }` section, for adding one. */
+  readonly partsBlock: Section | undefined;
 }
 
 export const DEFAULT_SIZE = { width: 150, height: 56 } as const;

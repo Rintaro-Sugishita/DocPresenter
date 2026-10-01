@@ -3,6 +3,7 @@
 
 export * from './model.js';
 export * from './parse.js';
+export * from './parts.js';
 export * from './inline.js';
 export * from './text.js';
 export * from './layout.js';

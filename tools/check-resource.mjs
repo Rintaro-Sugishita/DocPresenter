@@ -45,8 +45,11 @@ check('本文のソースは変わらない',
 
 const sheets = (await page.$$('.dp-sheet')).length;
 
-// 壊れた図はページごと落とさず、その場に出す
-await page.click('.dp-sheet:not([hidden]) .dp-figure-body');
+// 壊れた図はページごと落とさず、その場に出す。壊すのは**ほかが頼っていない図**に
+// する——部品ライブラリを壊せばそれを使う画面も揃って読めなくなり、それは正しい
+// 連鎖だが、ここで確かめたいこと（1 つの図が落ちても文書は落ちない）ではない。
+await page.locator('.dp-sheet:not([hidden]) .dp-figure[data-path$="system-architecture.dgm"] .dp-figure-body')
+  .first().click();
 await page.waitForTimeout(200);
 await page.click('.dp-canvas-bar button:text("ソース")');
 await page.waitForTimeout(200);
@@ -58,7 +61,7 @@ check('壊れた図はその場で理由を出す', await page.isVisible('.dp-br
 // 壊れたのは 1 つの図であって、文書ではない。数は標本の中身で決まる
 check('ほかのシートは無事',
   (await page.$$('.dp-sheet')).length === sheets && (await page.$$('.dp-broken')).length === 1,
-  `${(await page.$$('.dp-sheet')).length} 枚`);
+  `${(await page.$$('.dp-sheet')).length} 枚 / 壊れた図 ${(await page.$$('.dp-broken')).length} 個`);
 
 // 読めない図は図として開けない。直せるように、ソースで開く。
 await page.click('.dp-sheet:not([hidden]) .dp-figure-body');

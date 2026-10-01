@@ -1,0 +1,36 @@
+# アカウントロック画面（画面設計）
+# kind: free — 警告の面と文字だけが、ほかの 2 枚と違う部品である。
+
+use "../../shared/ui-parts.dgm"
+
+free {
+  frame     frame:
+  title     title:"アカウントがロックされています"
+  banner    alert:
+  message   error:"連続して 5 回ログインに失敗したため、このアカウントは一時的に利用できません。"
+
+  contact   label:"解除をご希望の場合は、システム管理者にご連絡ください。"
+  deskLabel label:"問い合わせ先"
+  deskBox   textbox:"情報システム部　内線 4120"
+
+  back      secondary:"ログイン画面に戻る"
+  help      link:"よくある質問"
+}
+
+layout {
+  frame     @ ( 40,  20) 380x290
+  title     @ ( 70,  50)
+  banner    @ ( 70,  84)
+  message   @ ( 82,  94) 296x36
+
+  contact   @ ( 70, 152)
+  deskLabel @ ( 70, 182)
+  deskBox   @ ( 70, 202)
+
+  back      @ ( 70, 246)
+  help      @ ( 70, 292)
+}
+
+style {
+  theme: default
+}

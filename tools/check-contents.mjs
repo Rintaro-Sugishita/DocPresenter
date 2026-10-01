@@ -59,9 +59,16 @@ const linesOf = async (sheet, first, last) => {
 };
 
 // --- 目次 -------------------------------------------------------------------
-const contents = texts[0] ?? '';
+// 前付けは 1 枚とは限らない。何枚かは柱が言う——ローマ数字が打たれているページが
+// 前付けである。一覧が育ってページをまたいでも、検査はそれを数え直す。
+const frontPages = printed
+  .map((label, i) => ({ label, sheet: i + 1 }))
+  .filter(one => /^[ivx]+$/.test(one.label ?? ''))
+  .map(one => one.sheet);
+const contents = frontPages.map(sheet => texts[sheet - 1]).join('\n');
 check('前付けに目次が出る', contents.includes('目次'));
-const all = await linesOf(1, /./, true);
+check('前付けが何枚でも読む', frontPages.length >= 1, `${frontPages.length} 枚`);
+const all = (await Promise.all(frontPages.map(sheet => linesOf(sheet, /./, true)))).flat();
 const lines = all.filter(line => /^[\d.]+ /.test(line.text));
 check('見出しの数だけ行がある', lines.length >= 10, `${lines.length} 行`);
 check('節と項の両方が載る', lines.some(line => /^\d+\.\d+ /.test(line.text)),

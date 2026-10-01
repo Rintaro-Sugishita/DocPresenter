@@ -15,6 +15,8 @@ sample/
       login-screen-overlay.dgm        画像への注釈オーバーレイ
       login-sequence.mmd              Mermaid へ委譲（シーケンス図）
       error-codes.table               横向きページに送る長い表
+      password-reset-screen.dgm       画面設計 2 枚目（部品テンプレートを使う）
+      locked-screen.dgm               画面設計 3 枚目（同上）
       revision.md                     この文書の改訂履歴
     auth-overview.md                  同じフォルダに置かれたもう 1 本の文書
     auth-overview/
@@ -24,6 +26,7 @@ sample/
   shared/                             複数文書で再利用する要素
     system-architecture.dgm           自由配置型
     glossary.table                    共有表
+    ui-parts.dgm                      画面部品テンプレート（11 種）
     customer-domain.ermlx             ErCreator へ委譲（ER 図）
   reviews/
     2026-10-01-customer.review.yml    顧客レビュー（指摘管理表に相当）
@@ -132,6 +135,15 @@ frontmatter（`document` / `version` / `status` など）を**その場で作っ
 ### 9. セル内改行
 
 今回は `@1` のブロック参照で回避できたが、実務では 1 セル内での改行は頻出する。記法が未決。
+
+### 10. 画面部品は 1 枚では決まらなかった → **解決済み**
+
+画面を 1 枚だけ描いた時点では「入力欄・ラベル・ボタン・チェックボックス」の 4 種で足りると
+思っていた。**2 枚目で副ボタンが、3 枚目で警告の面とエラー文が足りなくなった。**
+
+3 枚描いたところで style の宣言は 29 行、違う見た目は 11 種類。そこで語彙を決めて
+`shared/ui-parts.dgm` に置き、3 枚とも書き直した——**画面のファイルから色が消えた**。
+詳細は[画面設計 §3.4](../design/screen-design.md)。
 
 ## 次に決めるべきこと
 

@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { layOutDiagram, parseDiagram, parseRuns, wrapRuns, wrapText } from '../src/index.js';
+import {
+  layOutDiagram, parseDiagram, parseRuns, specimenOf, withParts, wrapRuns, wrapText,
+} from '../src/index.js';
 
 const read = (path: string): string => readFileSync(path, 'utf8');
 
@@ -198,5 +200,104 @@ describe('ラベルの書式', () => {
     const plain = layOutDiagram(parseDiagram('flow {\n  a [あいう]\n}'));
     expect(marked.boxes.get('a')!.width).toBe(plain.boxes.get('a')!.width);
     expect(marked.boxes.get('a')!.height).toBe(plain.boxes.get('a')!.height);
+  });
+});
+
+describe('画面部品', () => {
+  const LIBRARY = `parts {
+  textbox   [ ] { fill: #fbfbfc, line: #aeb4bd, align: left } 320x34
+  label     "" { color: #3a4048, align: left }                320x18
+  primary   ( ) { fill: #2f6fb5, color: #ffffff }             320x38
+  frame     [ ] { fill: #ffffff, line: #d3d7dd }
+}
+`;
+  const read = (path: string): string | undefined =>
+    (path === 'ui.dgm' ? LIBRARY : undefined);
+
+  const screen = (body: string, layout = '', style = ''): string =>
+    `use "ui.dgm"\n\nfree {\n${body}\n}\n\nlayout {\n${layout}\n}\n\nstyle {\n${style}\n}\n`;
+
+  it('部品だけのファイルは、置くものを持たない', () => {
+    const library = parseDiagram(LIBRARY);
+    expect(library.mode).toBe('parts');
+    expect([...library.parts.keys()]).toEqual(['textbox', 'label', 'primary', 'frame']);
+    expect(library.nodes).toEqual([]);
+  });
+
+  it('図形と見た目と大きさを持つ', () => {
+    const part = parseDiagram(LIBRARY).parts.get('textbox')!;
+    expect(part.shape).toBe('rect');
+    expect(Object.fromEntries(part.style)).toEqual({
+      fill: '#fbfbfc', line: '#aeb4bd', align: 'left',
+    });
+    expect([part.width, part.height]).toEqual([320, 34]);
+  });
+
+  it('大きさは省ける', () => {
+    expect(parseDiagram(LIBRARY).parts.get('frame')!.width).toBeUndefined();
+  });
+
+  it('部品の名前で図形を書くと、図形と見た目が付く', () => {
+    const file = withParts(
+      parseDiagram(screen('  idBox textbox:"山田"', '  idBox @ (70, 116)')), read);
+    expect(file.nodes[0]!.shape).toBe('rect');
+    expect(file.nodes[0]!.text).toBe('山田');
+    expect(Object.fromEntries(file.style.get('idBox')!)).toEqual({
+      fill: '#fbfbfc', line: '#aeb4bd', align: 'left',
+    });
+  });
+
+  it('大きさは部品の既定を使う', () => {
+    const file = withParts(
+      parseDiagram(screen('  idBox textbox:"山田"', '  idBox @ (70, 116)')), read);
+    expect(file.layout.get('idBox')).toMatchObject({ x: 70, y: 116, width: 320, height: 34 });
+  });
+
+  it('ピンが大きさを言えば、そちらが勝つ', () => {
+    const file = withParts(
+      parseDiagram(screen('  idBox textbox:"山田"', '  idBox @ (70, 116) 200x40')), read);
+    expect(file.layout.get('idBox')).toMatchObject({ width: 200, height: 40 });
+  });
+
+  it('画面側の style は部品を上書きする', () => {
+    const file = withParts(parseDiagram(
+      screen('  idBox textbox:"山田"', '  idBox @ (70, 116)', '  idBox { fill: #fff0f0 }')), read);
+    expect(Object.fromEntries(file.style.get('idBox')!)).toEqual({
+      fill: '#fff0f0', line: '#aeb4bd', align: 'left',
+    });
+  });
+
+  it('無い部品は黙って箱にせず、そう言う', () => {
+    expect(() => withParts(parseDiagram(screen('  keep checkbox:')), read))
+      .toThrow('部品が見つからない');
+  });
+
+  it('読めない部品ファイルもそう言う', () => {
+    expect(() => withParts(parseDiagram(screen('  idBox textbox:')), () => undefined))
+      .toThrow('部品の定義が読めない');
+  });
+
+  it('自分で宣言した部品が、取り込んだものに勝つ', () => {
+    const source = `use "ui.dgm"\n\nparts {\n  textbox ( ) { fill: #000000 } 100x20\n}\n\n`
+      + `free {\n  idBox textbox:"山田"\n}\n\nlayout {\n  idBox @ (0, 0)\n}\n`;
+    const file = withParts(parseDiagram(source), read);
+    expect(file.nodes[0]!.shape).toBe('round-rect');
+    expect(file.layout.get('idBox')).toMatchObject({ width: 100, height: 20 });
+  });
+
+  it('部品を使わない図は、何も変わらない', () => {
+    const plain = parseDiagram('free {\n  a [あ]\n}\n');
+    expect(withParts(plain, read)).toBe(plain);
+  });
+
+  it('見本は、部品 1 つにつき 1 行で描ける', () => {
+    const sheet = specimenOf(parseDiagram(LIBRARY));
+    expect(sheet.mode).toBe('free');
+    // 名前・見本・寸法の 3 つで 1 行
+    expect(sheet.nodes.length).toBe(4 * 3);
+    expect(sheet.nodes.map(n => n.id)).toContain('textbox');
+    expect(sheet.nodes.map(n => n.text)).toContain('textbox');
+    expect(sheet.nodes.map(n => n.text)).toContain('320×34');
+    expect(sheet.layout.get('textbox')).toMatchObject({ width: 320, height: 34 });
   });
 });

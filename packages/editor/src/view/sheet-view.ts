@@ -6,10 +6,10 @@
 // file contains can never drift apart: there is only the file.
 
 import {
-  PICTURE, importAttribute, isAddress, parseDocument, parseTable,
+  PICTURE, importAttribute, isAddress, joinPath, parseDocument, parseTable,
   setImportAttribute, sheetsOf, type Sheet,
 } from '@docpresenter/markdown';
-import { parseDiagram } from '@docpresenter/diagram';
+import { parseDiagram, withParts } from '@docpresenter/diagram';
 import {
   applyEdit, byteLength, sliceBytes, toggleInline, type Edit, type InlineMark,
 } from '@docpresenter/base';
@@ -220,6 +220,17 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
       if (other) draw(); else mountGrid(body);
       return;
     }
+    // A library of parts has nothing placed in it, so there is nothing to drag:
+    // what it holds is a list of looks, and a list is edited as text. The page
+    // shows it as a specimen sheet, which is a drawing of the file rather than
+    // the file itself — opening that on a canvas would let someone drag a
+    // picture nothing would be written back to.
+    if (path.toLowerCase().endsWith('.dgm') && parseDiagram(text).mode === 'parts') {
+      grid = undefined;
+      canvas = undefined;
+      open(body, { start: 0, end: byteLength(text) }, text, '', false, path);
+      return;
+    }
     // A diagram opens as the drawing itself. Dragging a shape is the gesture
     // the layout layer was designed for; the source is still one click away.
     if (path.toLowerCase().endsWith('.dgm')) {
@@ -379,7 +390,9 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
   function readable(path: string, text: string): boolean {
     try {
       if (path.toLowerCase().endsWith('.table')) parseTable(text);
-      else if (path.toLowerCase().endsWith('.dgm')) parseDiagram(text);
+      else if (path.toLowerCase().endsWith('.dgm')) {
+        withParts(parseDiagram(text), used => options.readResource?.(joinPath(path, used)));
+      }
       return true;
     } catch {
       return false;
@@ -445,7 +458,8 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
 
     let file;
     try {
-      file = parseDiagram(text);
+      file = withParts(parseDiagram(text),
+        used => options.readResource?.(joinPath(current.path, used)));
     } catch (error) {
       options.onError?.(error instanceof Error ? error.message : String(error));
       canvas = undefined;

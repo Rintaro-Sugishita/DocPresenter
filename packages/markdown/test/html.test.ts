@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve as resolvePath } from 'node:path';
 import { parseDocument, resolveDocument } from '@docpresenter/markdown';
-import { renderDocument, renderTable } from '../src/index.js';
+import { joinPath, renderDocument, renderTable } from '../src/index.js';
 import { parseTable } from '@docpresenter/markdown';
 
 /** Loads referenced files relative to the document, as the CLI will. */
@@ -363,5 +363,26 @@ describe('見出しの扱い', () => {
     const html = renderTable(styled('  header { align: center }'));
     const th = /<th\s[^>]*>/.exec(html)![0];   // <thead> に引っかからないように
     expect(th.match(/dp-align-/g)).toHaveLength(1);
+  });
+});
+
+describe('パスの算術', () => {
+  it('同じ階層', () => {
+    expect(joinPath('docs/a.md', 'b.dgm')).toBe('docs/b.dgm');
+  });
+
+  it('上に戻る', () => {
+    expect(joinPath('docs/auth/a.dgm', '../../shared/x.dgm')).toBe('shared/x.dgm');
+  });
+
+  it('根より上へ出たら、出たと答える', () => {
+    // 握りつぶすと「1 つ下の別のファイル」を指してしまう。基準の取り方が
+    // 器によって違うので、ここで嘘をつくと器ごとに違う答えになる。
+    expect(joinPath('auth/a.dgm', '../../shared/x.dgm')).toBe('../shared/x.dgm');
+    expect(joinPath('a.dgm', '../../x')).toBe('../../x');
+  });
+
+  it('絶対パスはそのまま', () => {
+    expect(joinPath('docs/a.md', '/x.png')).toBe('/x.png');
   });
 });
