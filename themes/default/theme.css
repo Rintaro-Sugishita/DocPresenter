@@ -154,6 +154,15 @@ code { font-family: var(--font-mono); font-size: 0.9em; background: var(--fill-t
 .dp-index-line:hover .dp-index-text { text-decoration: underline; }
 
 .dp-figure { margin: 1.8em 0; }
+/* 図の幅は著者の指示（`{width="60%"}`）で、`.dp-figure-body` の style に出る。
+   画像はその枠に合わせる——版面より大きい画像が紙からはみ出さないように。 */
+.dp-figure-body img { display: block; max-width: 100%; height: auto; }
+/* 寄せ。既定は左のままにしてある——既にある文書の見え方を変えないため。 */
+.dp-figure[data-align="center"] { text-align: center; }
+.dp-figure[data-align="center"] > .dp-figure-body { margin-left: auto; margin-right: auto; }
+.dp-figure[data-align="right"] { text-align: right; }
+.dp-figure[data-align="right"] > .dp-figure-body { margin-left: auto; }
+.dp-figure[data-align="left"] > .dp-figure-body { margin-right: auto; }
 .dp-caption { font-family: var(--font-heading); font-size: 0.9em; color: #3a4048; margin-top: 0.6em; }
 .dp-caption .dp-number { color: #1c1f24; font-weight: 600; }
 .dp-missing { color: #b3261e; font-family: var(--font-heading); }

@@ -16,8 +16,9 @@ const status = () => page.textContent('#status');
 const where = () => page.textContent('.dp-sheet:not([hidden]) .dp-canvas-where');
 const node = id => `.dp-canvas-stage [data-node="${id}"]`;
 
-let openFigure = 0;
-const openSheet = async (index, figure = 0) => {
+let openFigure;
+// 図はファイル名で指す。番号で指すと、標本に 1 枚足しただけで全部ずれる。
+const openSheet = async (index, figure = undefined) => {
   await page.click(`.dp-tab[data-index="${index}"]`);
   await page.waitForTimeout(250);
   openFigure = figure;
@@ -25,8 +26,10 @@ const openSheet = async (index, figure = 0) => {
 };
 /** Opens the figure this run is working on. Reading the source closes it. */
 const reopen = async () => {
-  const figures = await page.$$('.dp-sheet:not([hidden]) .dp-figure-body');
-  await figures[openFigure].click();
+  const where = openFigure === undefined
+    ? '.dp-sheet:not([hidden]) .dp-figure-body'
+    : `.dp-sheet:not([hidden]) .dp-figure[data-path$="${openFigure}"] .dp-figure-body`;
+  await page.locator(where).first().click();
   await page.waitForTimeout(300);
 };
 
@@ -203,7 +206,7 @@ await page.waitForTimeout(300);
 await page.screenshot({ path: 'out/canvas.png' });
 
 // --- 画面設計（自由配置。戻す先の自動レイアウトが無い図）------------------
-await openSheet(3, 2);
+await openSheet(3, 'login-screen.dgm');
 const button = '.dp-sheet:not([hidden]) .dp-canvas-bar button:text("自動配置に戻す")';
 await page.click(node('submit'));
 await page.waitForTimeout(150);
@@ -217,7 +220,7 @@ check('図形の数は変わらない', (screen.match(/@ \(/g) ?? []).length ===
   String((screen.match(/@ \(/g) ?? []).length));
 
 // --- 画面キャプチャへの注釈 ---------------------------------------------
-await openSheet(3, 1);
+await openSheet(3, 'login-screen-overlay.dgm');
 check('注釈は画像の上でそのまま掴める',
   await page.isVisible('.dp-sheet:not([hidden]) .dp-overlay-editing')
   && await page.isVisible('.dp-sheet:not([hidden]) .dp-canvas-bar'));

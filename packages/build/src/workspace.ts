@@ -15,6 +15,20 @@ export interface Workspace {
    * package's business either way.
    */
   dataUrl?(path: string): string | undefined;
+  /**
+   * Fetches a picture written as an `http(s)` address and returns it as a
+   * `data:` URL, or undefined when it cannot be had.
+   *
+   * **A delivered artifact never reaches out.** A document may point at a
+   * picture on the web, and the only way to honour that without the reader
+   * needing a network is to fetch it once, here, while the build runs, and
+   * carry the bytes in the output. Nothing is written to the workspace: the
+   * document still says the address, and the next build fetches it again.
+   *
+   * A shell without the means (or the permission) leaves this out, and the
+   * figure says the picture could not be taken in. Silence is not an option.
+   */
+  inline?(address: string): Promise<string | undefined>;
 }
 
 /** A finished file the build produces. Text or bytes — a PDF is not a string. */

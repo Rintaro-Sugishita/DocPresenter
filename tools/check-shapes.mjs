@@ -16,13 +16,16 @@ const check = (name, ok, detail = '') => {
 const status = () => page.textContent('#status');
 const node = id => `.dp-canvas-stage [data-node="${id}"]`;
 
-let openFigure = 0;
+let openFigure;
 const reopen = async () => {
-  const figures = await page.$$('.dp-sheet:not([hidden]) .dp-figure-body');
-  await figures[openFigure].click();
+  const where = openFigure === undefined
+    ? '.dp-sheet:not([hidden]) .dp-figure-body'
+    : `.dp-sheet:not([hidden]) .dp-figure[data-path$="${openFigure}"] .dp-figure-body`;
+  await page.locator(where).first().click();
   await page.waitForTimeout(300);
 };
-const openSheet = async (index, figure = 0) => {
+// 図はファイル名で指す。番号で指すと、標本に 1 枚足しただけで全部ずれる。
+const openSheet = async (index, figure = undefined) => {
   await page.click(`.dp-tab[data-index="${index}"]`);
   await page.waitForTimeout(250);
   openFigure = figure;
@@ -168,7 +171,7 @@ check('もとからあった行は無傷', removed.includes('  active  [有効]'
   && removed.includes('  active  --> expired  "24 時間経過"'));
 
 // --- 自由配置の図では、置いた場所にピンが書かれる --------------------------
-await openSheet(3, 2);
+await openSheet(3, 'login-screen.dgm');
 await page.click('.dp-sheet:not([hidden]) .dp-canvas-bar button:text("＋ 図形")');
 await page.waitForSelector('.dp-menu button');
 await page.click(item('四角'));

@@ -8,7 +8,9 @@
 // saying out loud rather than quietly leaving out.
 
 import { parseDiagram } from '@docpresenter/diagram';
-import { isBuildRoot, joinPath, parseDocument, type DocumentFile } from '@docpresenter/markdown';
+import {
+  isAddress, isBuildRoot, joinPath, parseDocument, type DocumentFile,
+} from '@docpresenter/markdown';
 import type { BuildDiagnostic, Workspace } from './workspace.js';
 
 export interface Root {
@@ -106,6 +108,9 @@ function walk(
 
     for (const block of document.blocks) {
       if (block.kind !== 'import') continue;
+      // A picture on the web is not part of the workspace: it has no file to
+      // find and no closure to walk. The build takes it in when it writes.
+      if (isAddress(block.path)) continue;
       const target = joinPath(path, block.path);
 
       if (open.includes(target)) {

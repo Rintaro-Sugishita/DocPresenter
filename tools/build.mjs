@@ -59,6 +59,19 @@ const workspace = {
       return `data:${type};base64,${readFileSync(inside(path)).toString('base64')}`;
     } catch { return undefined; }
   },
+  // 文書が web 上の画像を指しているとき、**作業フォルダには落とさず**、
+  // 成果物にだけ入れる。配ったファイルが外に取りに行かないのは譲れないので、
+  // 取り込むならビルドのここしか場所が無い。取れなければ黙らず報告する。
+  async inline(address) {
+    const response = await fetch(address, { redirect: 'follow' });
+    if (!response.ok) return undefined;
+    const type = (response.headers.get('content-type') ?? '').split(';')[0].trim();
+    if (!Object.values(MEDIA).includes(type)) return undefined;
+    const bytes = Buffer.from(await response.arrayBuffer());
+    if (bytes.length === 0) return undefined;
+    console.log(`  取り込み ${address}（${(bytes.length / 1024).toFixed(0)} KB）`);
+    return `data:${type};base64,${bytes.toString('base64')}`;
+  },
 };
 
 const tryRead = path => { try { return readFileSync(path, 'utf8'); } catch { return undefined; } };

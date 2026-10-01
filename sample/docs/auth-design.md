@@ -47,6 +47,10 @@ output: [html, pdf]
 
 @import "auth-design/login-screen-overlay.dgm" {#fig-login-screen caption="ログイン画面（実装後の画面への注釈）"}
 
+注釈を重ねない素の画面は @fig-login-shot に示す。幅と寄せは取り込み行に書く。
+
+@import "assets/login-screen.png" {#fig-login-shot caption="ログイン画面（撮ったまま）" width="55%" align="center"}
+
 設計時点の画面は作図で起こす。画像ではないので、項目の追加や文言の変更が差分に出る。
 
 @import "auth-design/login-screen.dgm" {#fig-login-design caption="ログイン画面（画面設計）"}

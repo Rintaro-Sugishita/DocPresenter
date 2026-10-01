@@ -6,7 +6,7 @@
 // from the HTML's is worse than no PDF.
 
 import {
-  expandDocument, resolveDocument,
+  expandDocument, isAddress, resolveDocument,
   type DiffMarks, type DocumentFile, type ResolvedDocument,
 } from '@docpresenter/markdown';
 import { writePptx } from '@docpresenter/pptx';
@@ -30,6 +30,8 @@ export interface WriteInput {
   readonly diagnostics: BuildDiagnostic[];
   /** What changed since another version, when the build was told to compare. */
   readonly marks?: DiffMarks;
+  /** Pictures from the web, fetched once before any writer ran. */
+  readonly inlined?: ReadonlyMap<string, string>;
 }
 
 /**
@@ -115,8 +117,14 @@ export async function build(
       ...(options.showRemoved === undefined ? {} : { showRemoved: options.showRemoved }),
     });
 
+    // Pictures on the web are taken in once, before any writer runs: every
+    // format needs the same bytes, and fetching the same address per format
+    // would be three requests for one picture.
+    const inlined = await takeIn(workspace, prepared, diagnostics);
+
     for (const format of root.formats) {
-      const artifact = await write(workspace, root, prepared, format, outDir, options, diagnostics, marks);
+      const artifact = await write(
+        workspace, root, prepared, format, outDir, options, diagnostics, marks, inlined);
       if (artifact) artifacts.push(artifact);
     }
   }
@@ -141,10 +149,48 @@ export function prepare(workspace: Workspace, root: Root): PreparedDocument {
   return { root: root.path, document: expansion.document, resolved, diagnostics };
 }
 
+/**
+ * Fetches every `http(s)` picture the document points at.
+ *
+ * Nothing is written to the workspace — the document keeps saying the address —
+ * but the output carries the bytes, so the file that is delivered needs no
+ * network. A picture that cannot be had is reported and the figure says so;
+ * it is never quietly left as a link.
+ */
+export async function takeIn(
+  workspace: Workspace, prepared: PreparedDocument, diagnostics: BuildDiagnostic[],
+): Promise<ReadonlyMap<string, string>> {
+  const addresses = new Set<string>();
+  for (const block of prepared.document.blocks) {
+    if (block.kind === 'import' && isAddress(block.path)) addresses.add(block.path);
+  }
+  const inlined = new Map<string, string>();
+  if (addresses.size === 0) return inlined;
+  if (!workspace.inline) {
+    diagnostics.push({
+      severity: 'warning', path: prepared.root,
+      message: `外部の画像を取り込めない器で建てている（${addresses.size} 件）`,
+    });
+    return inlined;
+  }
+  for (const address of addresses) {
+    const data = await workspace.inline(address).catch(() => undefined);
+    if (data === undefined) {
+      diagnostics.push({
+        severity: 'warning', path: prepared.root,
+        message: `外部の画像を取り込めなかった: ${address}`,
+      });
+      continue;
+    }
+    inlined.set(address, data);
+  }
+  return inlined;
+}
+
 async function write(
   workspace: Workspace, root: Root, prepared: PreparedDocument, format: string,
   outDir: string, options: BuildOptions, diagnostics: BuildDiagnostic[],
-  marks: DiffMarks | undefined,
+  marks: DiffMarks | undefined, inlined: ReadonlyMap<string, string>,
 ): Promise<Artifact | undefined> {
   const builtIn: Record<string, FormatWriter | undefined> = { html, pptx };
   const writer = builtIn[format] ?? options.writers?.[format];
@@ -171,7 +217,7 @@ async function write(
 
   try {
     return await writer({
-      workspace, root, prepared, style, options, diagnostics,
+      workspace, root, prepared, style, options, diagnostics, inlined,
       ...(marks === undefined ? {} : { marks }),
       out: `${outDir}/${basename(root.path)}`,
     });
@@ -220,6 +266,7 @@ function html(input: WriteInput): Artifact {
     resolved: prepared.resolved,
     style: input.style,
     root: root.path,
+    ...(input.inlined === undefined ? {} : { inlined: input.inlined }),
     ...(input.marks === undefined ? {} : { marks: input.marks }),
     ...(options.commit === undefined ? {} : { commit: options.commit }),
     ...(options.builtAt === undefined ? {} : { builtAt: options.builtAt }),

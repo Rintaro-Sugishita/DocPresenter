@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import {
-  DocumentParseError, expandDocument, headingsOf, isBuildRoot,
-  parseDocument, resolveDocument, sheetsOf,
+  DocumentParseError, expandDocument, headingsOf, importAttribute, isBuildRoot,
+  parseDocument, resolveDocument, setImportAttribute, sheetsOf,
 } from '../src/index.js';
 import type { Heading, Import, Prose } from '../src/index.js';
 
@@ -134,11 +134,13 @@ describe('サンプルの実ファイル', () => {
 
     const imports = doc.blocks.filter(b => b.kind === 'import') as Import[];
     expect(imports.map(i => i.label)).toEqual([
-      'fig-architecture', 'fig-login-flow', 'fig-login-screen', 'fig-login-design',
-      'tbl-screen-items', 'fig-login-sequence', 'fig-token-lifecycle',
+      'fig-architecture', 'fig-login-flow', 'fig-login-screen', 'fig-login-shot',
+      'fig-login-design', 'tbl-screen-items', 'fig-login-sequence', 'fig-token-lifecycle',
       'fig-customer-domain', 'tbl-glossary', 'tbl-error-codes',
-      undefined,                                    // 共有の改訂履歴。図表ではないのでラベルを持たない
+      undefined,                                    // 改訂履歴。図表ではないのでラベルを持たない
     ]);
+    // 画像も図表の 1 つ。取り込み方は作図や表と変わらない
+    expect(imports.map(i => i.path)).toContain('assets/login-screen.png');
     // 委譲した図も同じ経路で読める
     expect(imports.map(i => i.path)).toContain('auth-design/login-sequence.mmd');
     expect(imports.map(i => i.path)).toContain('../shared/customer-domain.ermlx');
@@ -211,5 +213,50 @@ describe('見出しの一覧', () => {
       path === 'other.md' ? '## 別の節 {#sec-other}\n' : undefined).document;
     const headings = headingsOf(expanded, resolveDocument(expanded));
     expect(headings.map(h => h.text)).toEqual(['題', '別の節']);
+  });
+});
+
+describe('@import 行の属性', () => {
+  it('無いところに足す', () => {
+    expect(setImportAttribute('@import "a.png"', 'width', '60%'))
+      .toBe('@import "a.png" {width="60%"}');
+  });
+
+  it('あるものを書き換え、他はそのまま残す', () => {
+    const line = '@import "a.png" {#fig-a caption="ログイン画面" width="40%"}';
+    expect(setImportAttribute(line, 'width', '60%'))
+      .toBe('@import "a.png" {#fig-a caption="ログイン画面" width="60%"}');
+  });
+
+  it('消すと属性ごと消える', () => {
+    expect(setImportAttribute('@import "a.png" {width="60%" align="center"}', 'align', undefined))
+      .toBe('@import "a.png" {width="60%"}');
+  });
+
+  it('最後の 1 つを消すと中括弧も消える', () => {
+    expect(setImportAttribute('@import "a.png" {width="60%"}', 'width', undefined))
+      .toBe('@import "a.png"');
+  });
+
+  it('空白を含む値を壊さない', () => {
+    const line = '@import "a.png" {caption="ログイン 画面" width="40%"}';
+    expect(setImportAttribute(line, 'align', 'center'))
+      .toBe('@import "a.png" {caption="ログイン 画面" width="40%" align="center"}');
+  });
+
+  it('画像記法でも効く', () => {
+    expect(setImportAttribute('![図](a.png)', 'align', 'right'))
+      .toBe('![図](a.png) {align="right"}');
+  });
+
+  it('取り込み行でなければ触らない', () => {
+    expect(setImportAttribute('ただの本文', 'width', '60%')).toBe('ただの本文');
+  });
+
+  it('読み出せる', () => {
+    const line = '@import "a.png" {#fig-a width="60%" align="center"}';
+    expect(importAttribute(line, 'width')).toBe('60%');
+    expect(importAttribute(line, 'align')).toBe('center');
+    expect(importAttribute(line, 'page')).toBeUndefined();
   });
 });

@@ -18,11 +18,17 @@ export interface ResourceLoader {
   /** Reads a path written in a document, relative to that document. */
   read(path: string): string | undefined;
   /**
-   * The address the output should point at for a binary such as an image.
+   * The address the output should point at for a binary such as an image, or
+   * for an `http(s)` address written in the document.
+   *
    * A referenced file resolves relative to the document, but the rendered page
    * lives wherever the caller puts it, so only the caller knows the answer.
+   * **Undefined means the output cannot carry it** — a build that must deliver
+   * one self-contained file answers undefined for a picture it could not
+   * inline, and the figure says so rather than pointing at something the
+   * reader may not be able to reach.
    */
-  url?(path: string): string;
+  url?(path: string): string | undefined;
 }
 
 export interface RenderOptions {
@@ -85,11 +91,13 @@ function renderImport(
   block: Import, element: NumberedElement | undefined, options: RenderOptions,
 ): string {
   const { path, label, attributes } = block;
-  const source = options.loader.read(path);
   const id = label ? ` id="${escapeAttr(label)}"` : '';
-  const body = source === undefined
-    ? `<p class="dp-missing">参照先が見つからない: ${escapeHtml(path)}</p>`
-    : renderResource(path, source, attributes, options);
+  // An address is not a file. Nothing is read for it and nothing is written to
+  // the workspace; what the output carries is decided by whoever answers
+  // `loader.url`, which is where a build inlines it.
+  const body = isAddress(path) || PICTURE.test(path)
+    ? picture(path, attributes, options)
+    : fromFile(path, attributes, options);
 
   const caption = element && element.number !== undefined
     ? `<figcaption class="dp-caption">`
@@ -102,10 +110,68 @@ function renderImport(
   // that page over, and the screen ignores it.
   const paper = attributes.get('page');
   const page = paper === undefined ? '' : ` data-page="${escapeAttr(paper)}"`;
+  // Where the figure sits is the author's instruction, not the theme's taste,
+  // so it travels with the document; how that instruction looks is the theme's.
+  const placed = attributes.get('align');
+  const align = placed === undefined ? '' : ` data-align="${escapeAttr(placed)}"`;
   return `<figure class="dp-figure${markClass(markOf(options.marks, block.doc, block.span))}"`
     + ` data-kind="${element?.kind ?? 'other'}"`
-    + ` data-path="${escapeAttr(path)}"${page}${id}${spanAttr(block)}>`
-    + `\n<div class="dp-figure-body">${body}</div>\n${caption}\n</figure>`;
+    + ` data-path="${escapeAttr(path)}"${page}${align}${id}${spanAttr(block)}>`
+    + `\n<div class="dp-figure-body"${sized(attributes)}>${body}</div>\n${caption}\n</figure>`;
+}
+
+/** An `http(s)` address, as opposed to a path in the workspace. */
+export function isAddress(path: string): boolean {
+  return /^https?:\/\//i.test(path);
+}
+
+function fromFile(
+  path: string, attributes: ReadonlyMap<string, string>, options: RenderOptions,
+): string {
+  const source = options.loader.read(path);
+  return source === undefined
+    ? `<p class="dp-missing">参照先が見つからない: ${escapeHtml(path)}</p>`
+    : renderResource(path, source, attributes, options);
+}
+
+export const PICTURE = /\.(png|jpe?g|gif|svg|webp|avif)$/i;
+
+/**
+ * A picture, whether it is a file in the workspace or an address on the web.
+ *
+ * Neither is read as text — a picture has no source to show — so both go
+ * through `url`, and both say so when the answer is that the output cannot
+ * carry it.
+ */
+function picture(
+  path: string, attributes: ReadonlyMap<string, string>, options: RenderOptions,
+): string {
+  const src = options.loader.url?.(path);
+  if (src === undefined) {
+    return isAddress(path)
+      ? `<p class="dp-missing">取り込めなかった画像がある: ${escapeHtml(path)}</p>`
+      : `<p class="dp-missing">参照先が見つからない: ${escapeHtml(path)}</p>`;
+  }
+  return image(src, attributes);
+}
+
+function image(src: string, attributes: ReadonlyMap<string, string>): string {
+  const alt = attributes.get('alt') ?? '';
+  return `<img src="${escapeAttr(src)}" alt="${escapeAttr(alt)}">`;
+}
+
+/**
+ * How wide the author wants it, as a style on the figure's body.
+ *
+ * This is one of the few places a length reaches the output: the theme decides
+ * how a figure looks, but not how big this particular drawing should be, which
+ * only the person who put it there knows. A percentage is of the text column,
+ * so it survives a change of paper or margins; a length is taken as written.
+ */
+function sized(attributes: ReadonlyMap<string, string>): string {
+  const width = attributes.get('width');
+  if (width === undefined || !/^[\d.]+(%|px|pt|mm|cm|em|rem|in)$/.test(width.trim())) return '';
+  return ` style="width: ${escapeAttr(width.trim())}"`;
 }
 
 function captionPrefix(element: NumberedElement): string {
@@ -150,9 +216,7 @@ function renderKnown(
     const image = diagram.image === undefined ? undefined : url(joinPath(path, diagram.image));
     return renderOverlay(diagram, image);
   }
-  if (/\.(png|jpe?g|gif|svg)$/i.test(path)) {
-    return `<img src="${escapeAttr(url(path))}" alt="">`;
-  }
+
   // Diagrams and delegated formats are not rendered yet; the source is shown so
   // nothing is silently dropped.
   return `<pre class="dp-unrendered" data-path="${escapeAttr(path)}">${escapeHtml(source.trim())}</pre>`;

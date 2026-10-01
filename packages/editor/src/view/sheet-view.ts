@@ -5,7 +5,10 @@
 // which are byte-range edits. That means what the screen shows and what the
 // file contains can never drift apart: there is only the file.
 
-import { parseDocument, parseTable, sheetsOf, type Sheet } from '@docpresenter/markdown';
+import {
+  PICTURE, importAttribute, isAddress, parseDocument, parseTable,
+  setImportAttribute, sheetsOf, type Sheet,
+} from '@docpresenter/markdown';
 import { parseDiagram } from '@docpresenter/diagram';
 import {
   applyEdit, byteLength, sliceBytes, toggleInline, type Edit, type InlineMark,
@@ -22,6 +25,7 @@ import { EDITOR_STYLE } from './style.js';
 import { BASE_STYLE } from '@docpresenter/base';
 import { DIAGRAM_STYLE } from '@docpresenter/diagram';
 import { createToolbar } from '@docpresenter/base';
+import { mountPicture, type Align, type PictureControls } from './picture.js';
 
 export interface SheetViewOptions {
   readonly root: HTMLElement;
@@ -47,6 +51,16 @@ export interface SheetViewOptions {
    */
   readonly createResource?: (kind: ResourceKind) => { path: string; text: string } | undefined;
   /**
+   * Takes a picture the author brought in — pasted from the clipboard, or
+   * dropped onto the page — and returns the path to write into the `@import`.
+   *
+   * **The host decides where it goes, and whether it goes anywhere at all.**
+   * A picture the workspace already holds should come back as the path it is
+   * already at rather than as a second copy; that comparison needs the folder,
+   * which is the platform's business and not the editor's.
+   */
+  readonly createImage?: (picture: Picture) => { path: string } | undefined;
+  /**
    * The figures and tables that already exist, for referring to one rather
    * than making another. Which files exist is the platform's business too.
    */
@@ -59,6 +73,15 @@ export interface SheetViewOptions {
 
 /** What can be added to a sheet, besides prose. */
 export type ResourceKind = 'table' | 'diagram';
+
+/** A picture that arrived from outside the document. */
+export interface Picture {
+  readonly bytes: Uint8Array;
+  /** What it was called where it came from; a pasted one may have no name. */
+  readonly name: string;
+  /** `image/png` and the like, as the clipboard or the file reported it. */
+  readonly type: string;
+}
 
 export interface SheetView {
   readonly source: string;
@@ -79,6 +102,8 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
   let tabs: HTMLElement[] = [];
   let editing: BlockEdit | undefined;
   /** The table whose grid is open, and where the selection sits in it. */
+  let picture: { path: string } | undefined;
+  let pictureControls: PictureControls | undefined;
   let grid: { path: string; at: GridPosition; target: string } | undefined;
   let mounted: Grid | undefined;
   /** The diagram open for direct manipulation, and the shapes picked in it. */
@@ -100,6 +125,13 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
   // before the click is resolved — closing one can redraw the page, and a
   // click resolved beforehand would land on a node that no longer exists.
   pane.addEventListener('mousedown', onPointerDown);
+  // A picture arrives either way people bring things into a document: from the
+  // clipboard, or dropped on the page. The paste listener is on the document
+  // because the pane itself never holds focus; both end at the same place.
+  owner.addEventListener('paste', onPaste);
+  pane.addEventListener('dragover', onDragOver);
+  pane.addEventListener('dragleave', onDragLeave);
+  pane.addEventListener('drop', onDrop);
   const tabbar = element('div', 'dp-tabbar');
   tabbar.setAttribute('role', 'tablist');
   root.append(pane, tabbar);
@@ -200,6 +232,147 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
       return;
     }
     open(body, { start: 0, end: byteLength(text) }, text, '', false, path);
+  }
+
+  // --- 画像を持ち込む ------------------------------------------------------
+  //
+  // Three things can arrive, and they are not the same thing:
+  //
+  // - **Bytes** (a pasted screenshot, a dropped file). There is no file in the
+  //   workspace yet, so the host is asked to make one. A host that finds the
+  //   same picture already there hands back the path it is already at — the
+  //   workspace does not need a second copy of a picture it holds.
+  // - **An address** (a dropped link). Nothing is written to the workspace: the
+  //   document says the address, and the build takes the picture into the
+  //   output so that the delivered file still needs no network.
+  // - **Text.** Not ours; the browser's own paste handles it.
+
+  function onPaste(event: ClipboardEvent): void {
+    if (!pane.isConnected || !options.createImage) return;
+    const data = event.clipboardData;
+    if (!data) return;
+    const file = [...data.files].find(one => one.type.startsWith('image/'));
+    if (!file) return;
+    event.preventDefault();
+    void bring(file, undefined);
+  }
+
+  function onDragOver(event: DragEvent): void {
+    if (!carriesPicture(event)) return;
+    event.preventDefault();
+    const target = (event.target as HTMLElement | null)?.closest<HTMLElement>('.dp-append');
+    for (const node of pane.querySelectorAll('.dp-append-over')) node.classList.remove('dp-append-over');
+    target?.classList.add('dp-append-over');
+  }
+
+  function onDragLeave(event: DragEvent): void {
+    if (pane.contains(event.relatedTarget as Node | null)) return;
+    for (const node of pane.querySelectorAll('.dp-append-over')) node.classList.remove('dp-append-over');
+  }
+
+  function onDrop(event: DragEvent): void {
+    if (!carriesPicture(event)) return;
+    event.preventDefault();
+    for (const node of pane.querySelectorAll('.dp-append-over')) node.classList.remove('dp-append-over');
+    const at = spanOf((event.target as HTMLElement | null)?.closest<HTMLElement>('.dp-append')
+      ?? lastTarget())?.end;
+    const address = addressOf(event.dataTransfer);
+    if (address !== undefined) { place(address, at); return; }
+    const file = [...(event.dataTransfer?.files ?? [])].find(one => one.type.startsWith('image/'));
+    if (file) void bring(file, at);
+  }
+
+  /** Whether a drag is carrying something this editor would take. */
+  function carriesPicture(event: DragEvent): boolean {
+    const data = event.dataTransfer;
+    if (!data) return false;
+    if (options.createImage && [...data.items].some(one => one.type.startsWith('image/'))) return true;
+    return [...data.types].includes('text/uri-list');
+  }
+
+  /** A dropped link, when it points at a picture on the web. */
+  function addressOf(data: DataTransfer | null): string | undefined {
+    const text = data?.getData('text/uri-list') || data?.getData('text/plain') || '';
+    const first = text.split(/\r?\n/).find(line => line.trim() !== '')?.trim() ?? '';
+    return isAddress(first) ? first : undefined;
+  }
+
+  async function bring(file: File, at: number | undefined): Promise<void> {
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    const made = options.createImage?.({ bytes, name: file.name, type: file.type });
+    if (!made) {
+      options.onError?.('画像を置けなかった');
+      return;
+    }
+    place(made.path, at);
+  }
+
+  /** Writes the `@import` line. Where the picture came from no longer matters. */
+  function place(path: string, at: number | undefined): void {
+    const target = at ?? spanOf(lastTarget())?.end;
+    if (target === undefined) return;
+    commit(() => ({
+      span: { start: target, end: target },
+      text: `\n\n@import "${path}"`,
+      description: isAddress(path) ? `${path} を参照` : `${path} を貼り付け`,
+    }), active);
+  }
+
+  /** The end of the sheet being looked at: where a paste lands. */
+  function lastTarget(): HTMLElement {
+    const section = sections[active - 1];
+    const targets = section?.querySelectorAll<HTMLElement>('.dp-append');
+    return targets?.[targets.length - 1] ?? section ?? pane;
+  }
+
+  /** A figure holding a picture: a file with no text behind it, or an address. */
+  function isPicture(path: string): boolean {
+    return PICTURE.test(path) || isAddress(path);
+  }
+
+  /**
+   * Opens a picture. There is no source to show, so what opens is the handle
+   * and the three buttons — the only things about a picture the document can
+   * say, and both of them live on the `@import` line.
+   */
+  function beginPictureEdit(figure: HTMLElement): void {
+    const path = figure.dataset['path'];
+    if (!path) return;
+    if (picture?.path === path) return;
+    const other = grid !== undefined || canvas !== undefined;
+    picture = { path };
+    grid = undefined;
+    canvas = undefined;
+    endEdit(true);
+    if (other) draw();
+    else mountPictureControls(figure);
+  }
+
+  function mountPictureControls(figure: HTMLElement): void {
+    const span = spanOf(figure);
+    if (!span) return;
+    const line = sliceBytes(source, span.start, span.end);
+    pictureControls = mountPicture({
+      owner,
+      figure,
+      align: importAttribute(line, 'align'),
+      width: importAttribute(line, 'width'),
+      onAlign: value => writeImport(figure, 'align', value),
+      onWidth: percent => writeImport(figure, 'width', percent === 0 ? undefined : `${percent}%`),
+    });
+  }
+
+  /** One attribute of the `@import` line that placed a figure. */
+  function writeImport(figure: HTMLElement, name: string, value: string | undefined): void {
+    const span = spanOf(figure);
+    if (!span) return;
+    const line = sliceBytes(source, span.start, span.end);
+    const written = setImportAttribute(line, name, value);
+    if (written === line) return;
+    const said = name === 'align'
+      ? (value === undefined ? '左に寄せる' : `${value === 'center' ? '中央' : '右'}に寄せる`)
+      : (value === undefined ? '幅の指定を外す' : `幅を ${value} にする`);
+    commit(() => ({ span, text: written, description: said }), active);
   }
 
   /** Whether the file behind a figure can be shown as what it is. */
@@ -454,6 +627,14 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
       figure: target.classList.contains('dp-figure'),
     };
 
+    // A picture's controls belong to that picture. Pressing anything else —
+    // another figure, a paragraph, the page — takes them away; no redraw is
+    // needed because they are the only thing that was added to the page.
+    if (picture !== undefined && wanted.path !== picture.path) {
+      picture = undefined;
+      pictureControls?.destroy();
+      pictureControls = undefined;
+    }
     if (canvas !== undefined && !wanted.figure && wanted.path === undefined) {
       canvas = undefined;
       draw();
@@ -478,7 +659,12 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
       if (figure) beginEdit2(again, figure);
       return;
     }
-    if (wanted.figure) { beginResourceEdit(again); return; }
+    if (wanted.figure) {
+      const path = again.dataset['path'];
+      if (path && isPicture(path)) beginPictureEdit(again);
+      else beginResourceEdit(again);
+      return;
+    }
     if (wanted.append) beginAppend(again);
     else beginEdit(again);
   }
@@ -705,6 +891,13 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
       if (body) mountCanvas(body);
       else canvas = undefined;
     }
+    pictureControls?.destroy();
+    pictureControls = undefined;
+    if (picture) {
+      const figure = page.querySelector<HTMLElement>(`.dp-figure[data-path="${cssEscape(picture.path)}"]`);
+      if (figure) mountPictureControls(figure);
+      else picture = undefined;
+    }
 
     drawTabs(sections.map((section, i) => ({
       title: section.dataset['title'] ?? `シート ${i + 1}`,
@@ -857,6 +1050,8 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
     },
     destroy() {
       owner.removeEventListener('keydown', onKeyDown);
+      owner.removeEventListener('paste', onPaste);
+      pictureControls?.destroy();
       root.replaceChildren();
       root.classList.remove('dp-editor');
     },

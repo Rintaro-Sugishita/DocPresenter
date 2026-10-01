@@ -11,6 +11,14 @@ const loaderFor = (documentPath: string) => ({
     try { return readFileSync(resolvePath(dirname(documentPath), path), 'utf8'); }
     catch { return undefined; }
   },
+  // 画像はテキストとして読めない。器がどう運ぶかを決める——ここでは在ることだけ
+  // 確かめて、場所をそのまま返す。
+  url(path: string) {
+    try {
+      readFileSync(resolvePath(dirname(documentPath), path));
+      return path;
+    } catch { return undefined; }
+  },
 });
 
 const render = (source: string, loader = { read: () => undefined }) => {

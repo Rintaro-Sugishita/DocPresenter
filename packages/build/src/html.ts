@@ -6,7 +6,7 @@
 // Nothing about the result depends on where it is put.
 
 import {
-  NOUN_BY_KIND, headingsOf, renderDocument,
+  NOUN_BY_KIND, headingsOf, isAddress, renderDocument,
   type DiffMarks, type DocumentFile,
   type ResolvedDocument, type ResourceLoader,
 } from '@docpresenter/markdown';
@@ -25,6 +25,8 @@ export interface PageOptions {
   readonly builtAt?: string;
   /** What changed since another version. */
   readonly marks?: DiffMarks;
+  /** Pictures from the web, already fetched, keyed by the address written. */
+  readonly inlined?: ReadonlyMap<string, string>;
 }
 
 export function renderPage(options: PageOptions): string {
@@ -37,7 +39,11 @@ export function renderPage(options: PageOptions): string {
     // one of them, so that a path written inside an included document still
     // points where its author meant.
     read: path => workspace.read(path),
-    url: path => workspace.dataUrl?.(path) ?? path,
+    // Undefined when the output cannot carry it: the renderer then says so
+    // rather than pointing the reader at something they may not reach.
+    url: path => isAddress(path)
+      ? options.inlined?.get(path)
+      : workspace.dataUrl?.(path),
   };
 
   const body = renderDocument(document, resolved, {

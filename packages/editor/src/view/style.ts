@@ -190,6 +190,31 @@ export const EDITOR_STYLE = `
   padding: 0.1em 0.3em; width: 100%; min-width: 0; box-sizing: border-box;
 }
 .dp-tab-add { font-size: 15px; padding: 0.55em 0.8em; color: #5a6270; }
+/* 画像の操作。画像には開くソースが無いので、エディタの代わりにこれが立つ。
+   どのボタンも、置いた取り込み行の属性 1 つを書き換えるだけである。 */
+.dp-picture-bar {
+  display: flex; align-items: center; gap: 2px; margin-bottom: 0.4em;
+  font-family: system-ui, sans-serif; font-size: 12px;
+}
+.dp-picture-bar button {
+  border: 1px solid #d3d7dd; background: #f7f8fa; color: #3a4048; cursor: pointer;
+  padding: 0.25em 0.7em; border-radius: 3px; font: inherit; font-size: 12px;
+}
+.dp-picture-bar button:hover { background: #eceef1; }
+.dp-picture-bar button[aria-pressed="true"] {
+  background: #2d3138; color: #fff; border-color: #2d3138;
+}
+.dp-picture-size { color: #6b7280; margin: 0 0.6em; min-width: 3.5em; }
+.dp-picture-open > .dp-figure-body { position: relative; outline: 1px solid #1f5fa8; }
+/* つまむところ。右端の真ん中に置く——横幅だけを変えるので、縦に動かす手は要らない。 */
+.dp-picture-handle {
+  position: absolute; right: -5px; top: 50%; transform: translateY(-50%);
+  width: 10px; height: 28px; border-radius: 2px;
+  background: #1f5fa8; cursor: ew-resize;
+}
+/* 画像を落とす先。どの隙間に入るかを、落とす前に見せる。 */
+.dp-append-over { min-height: 1.8em; background: rgba(31, 95, 168, .10); outline: 1px dashed #1f5fa8; }
+
 .dp-tabbar-spacer { flex: 1; }
 .dp-tabbar-toggle {
   border: none; background: transparent; cursor: pointer;

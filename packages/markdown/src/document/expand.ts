@@ -14,6 +14,7 @@
 // over.
 
 import { joinPath } from '../html/path.js';
+import { isAddress } from '../html/render.js';
 import { parseDocument } from './parse.js';
 import type { Block, DocumentFile, Import } from './model.js';
 
@@ -55,6 +56,9 @@ export function expandDocument(
         blocks.push(at(block, path, rootPath));
         continue;
       }
+      // An address is not a path. Resolving it against the document's folder
+      // would turn `https://…` into `https:/…` — a file nobody has.
+      if (isAddress(block.path)) { blocks.push(at(block, path, rootPath)); continue; }
       const target = joinPath(path, block.path);
       const rewritten: Import = { ...at(block, path, rootPath), path: target };
 

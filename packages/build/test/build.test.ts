@@ -221,3 +221,84 @@ describe('図表一覧', () => {
     expect(await html(7, 'figures: false\n')).not.toContain('class="dp-index dp-index-figures"');
   });
 });
+
+describe('web 上の画像', () => {
+  const ADDRESS = 'https://example.com/diagram.png';
+  const DATA = 'data:image/png;base64,iVBORw0KGgo=';
+  const source = `---\ntitle: T\noutput: [html]\n---\n\n# 題\n\n@import "${ADDRESS}"\n`;
+
+  it('ビルド時に取り込み、成果物には住所を残さない', async () => {
+    const files = { 'a.md': source, ...THEME };
+    const asked: string[] = [];
+    const result = await build({
+      ...workspace(files),
+      inline: async address => { asked.push(address); return DATA; },
+    });
+    const page = result.artifacts[0]!.text!;
+    expect(asked).toEqual([ADDRESS]);
+    expect(page).toContain(`src="${DATA}"`);
+    // 配ったファイルが外に取りに行かないことが、取り込む理由のすべてである
+    expect(page).not.toContain(`src="${ADDRESS}"`);
+  });
+
+  it('取り込めなければ黙らず、図がそう言う', async () => {
+    const result = await build({
+      ...workspace({ 'a.md': source, ...THEME }),
+      inline: async () => undefined,
+    });
+    const page = result.artifacts[0]!.text!;
+    expect(page).toContain('取り込めなかった画像がある');
+    expect(page).not.toContain(`src="${ADDRESS}"`);
+    expect(result.diagnostics.some(d => d.message.includes('外部の画像を取り込めなかった'))).toBe(true);
+  });
+
+  it('取り込む手段の無い器では、そう報告する', async () => {
+    const result = await build(workspace({ 'a.md': source, ...THEME }));
+    expect(result.diagnostics.some(d =>
+      d.message.includes('外部の画像を取り込めない器'))).toBe(true);
+  });
+
+  it('同じ住所を二度取りに行かない', async () => {
+    const twice = `---\ntitle: T\noutput: [html]\n---\n\n# 題\n\n@import "${ADDRESS}"\n\n@import "${ADDRESS}"\n`;
+    let calls = 0;
+    await build({
+      ...workspace({ 'a.md': twice, ...THEME }),
+      inline: async () => { calls += 1; return DATA; },
+    });
+    expect(calls).toBe(1);
+  });
+
+  it('作業フォルダの画像は data URL で入る', async () => {
+    const files = { 'a.md': `---\ntitle: T\noutput: [html]\n---\n\n# 題\n\n@import "shot.png"\n`, ...THEME };
+    const result = await build({
+      ...workspace(files),
+      dataUrl: path => (path === 'shot.png' ? DATA : undefined),
+    });
+    expect(result.artifacts[0]!.text!).toContain(`src="${DATA}"`);
+  });
+
+  it('無い画像は黙って消えず、そう言う', async () => {
+    const files = { 'a.md': `---\ntitle: T\noutput: [html]\n---\n\n# 題\n\n@import "none.png"\n`, ...THEME };
+    expect((await build(workspace(files))).artifacts[0]!.text!).toContain('参照先が見つからない');
+  });
+
+  it('幅と寄せは文書の指示として出る', async () => {
+    const files = {
+      'a.md': `---\ntitle: T\noutput: [html]\n---\n\n# 題\n\n@import "shot.png" {width="55%" align="center"}\n`,
+      ...THEME,
+    };
+    const page = (await build({ ...workspace(files), dataUrl: () => DATA })).artifacts[0]!.text!;
+    expect(page).toContain('data-align="center"');
+    expect(page).toContain('style="width: 55%"');
+  });
+
+  it('幅に書けない値は無視する', async () => {
+    const files = {
+      'a.md': `---\ntitle: T\noutput: [html]\n---\n\n# 題\n\n@import "shot.png" {width="url(javascript:alert(1))"}\n`,
+      ...THEME,
+    };
+    const page = (await build({ ...workspace(files), dataUrl: () => DATA })).artifacts[0]!.text!;
+    expect(page).not.toContain('javascript');
+    expect(page).not.toContain('style="width');
+  });
+});

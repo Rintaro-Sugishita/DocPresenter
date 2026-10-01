@@ -89,7 +89,7 @@ const ASSETS = ${JSON.stringify(resolve(base))};
 const FONTS = ${JSON.stringify(fonts)};
 
 import { joinPath, parseDocument, resolveDocument } from '@docpresenter/markdown';
-import { prepare } from '@docpresenter/build';
+import { prepare, takeIn } from '@docpresenter/build';
 import { renderDocument } from '@docpresenter/markdown';
 import { renderPage } from '@docpresenter/build';
 import { measure, writePdf } from '@docpresenter/pdf';
@@ -109,7 +109,11 @@ const inDocument = path =>
 
 const loader = {
   read: p => FILES[inWorkspace(p)],
-  url: p => IMAGES[inWorkspace(p)] ?? 'file://' + ASSETS + '/' + inWorkspace(p),
+  // 画面では web 上の画像をそのまま指してよい。配る成果物とは立場が違う——
+  // ここは編集中の画面であって、誰かに渡したファイルではない。
+  url: p => (p.startsWith('http://') || p.startsWith('https://')
+    ? p
+    : IMAGES[inWorkspace(p)]),
 };
 
 const render = source => {
@@ -151,6 +155,7 @@ const view = mountSheetView({
   render,
   settings,
   readResource: p => FILES[inWorkspace(p)],
+  createImage,
   createResource,
   // すでにあるものの一覧。どのファイルが在るかは器が知っている。
   // 差し込まれるのは文書に書かれる形、つまり文書からの相対パスである。
@@ -239,10 +244,57 @@ const FONT_SET = Object.fromEntries(Object.entries(FONTS.styles).map(([style, na
 const alreadyCut = bytes => bytes;
 
 const workspace = {
-  list: () => Object.keys(FILES),
+  list: () => Object.keys({ ...FILES, ...IMAGES }),
   read: p => FILES[clean(p)],
   dataUrl: p => IMAGES[clean(p)],
+  // 文書が web 上の画像を指しているときだけ、押された瞬間に取りに行く。ページが
+  // 自分の持ち物を外から取ってくるわけではない——取りに行くのは**著者が住所で
+  // 書いたものだけ**で、取れるかどうかは相手のサーバ（CORS）が決める。
+  async inline(address) {
+    try {
+      const response = await fetch(address, { mode: 'cors' });
+      if (!response.ok) return undefined;
+      const blob = await response.blob();
+      if (!blob.type.startsWith('image/')) return undefined;
+      return await new Promise(resolve => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result));
+        reader.onerror = () => resolve(undefined);
+        reader.readAsDataURL(blob);
+      });
+    } catch { return undefined; }
+  },
 };
+
+// --- 持ち込まれた画像 -------------------------------------------------------
+//
+// 作業フォルダに**すでにあるものなら、それを指す**。同じ絵を 2 枚持っても、
+// 文書が重くなるだけで誰も得をしない。無ければ新しく置く——置き場は
+// 「その文書専用のフォルダ」で、これはパスが共有物かどうかを表すという決定の
+// とおりである。ここはデモなので、置き場はこのページの中の IMAGES である。
+const KIND = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/gif': 'gif', 'image/webp': 'webp' };
+const base64Of = bytes => {
+  let binary = '';
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary);
+};
+let pasted = 0;
+// 宣言で書く——エディタを組み立てるのはこれより前で、const では間に合わない。
+function createImage(picture) {
+  const extension = KIND[picture.type];
+  if (!extension) return undefined;
+  const data = 'data:' + picture.type + ';base64,' + base64Of(picture.bytes);
+  // 同じ中身のものが在れば、それを指す。
+  for (const [path, held] of Object.entries(IMAGES)) {
+    if (held === data) return { path: inDocument(path) };
+  }
+  pasted += 1;
+  // 生成コードはテンプレートリテラルの中にある。\\w と書かないと w になる。
+  const name = (picture.name || 'image-' + pasted).replace(/[^\\w.-]/g, '-');
+  const path = 'docs/auth-design/' + (name.endsWith('.' + extension) ? name : name + '.' + extension);
+  IMAGES[path] = data;
+  return { path: inDocument(path) };
+}
 
 
 // 出来上がったものを渡す。渡し方は器による——アーティファクトの枠は、中の
@@ -288,10 +340,14 @@ pdfButton.addEventListener('click', async () => {
     // 目次もしおりも、取り込んだ節をただ知らないまま出来上がる。
     const ready = prepare(workspace, { path: ROOT, document: parseDocument(source), formats: ['pdf'] });
     const doc = ready.document;
+    // web 上の画像は、ここで一度だけ取り込む。CLI のビルドと同じ段取りである。
+    const trouble = [];
+    const inlined = await takeIn(workspace, ready, trouble);
     const page = renderPage({
       workspace,
       document: doc,
       resolved: ready.resolved,
+      inlined,
       style: '',                       // テーマはページに読み込まれているものを使う
       root: ROOT,
     });
@@ -309,8 +365,10 @@ pdfButton.addEventListener('click', async () => {
 
     // P6: 出せなかった字は黙って消さない。同梱したのは標本のぶんだけである。
     const lost = [...new Set(missing.map(one => one.character))].join('');
+    const unfetched = trouble.map(one => one.message).join('　');
     say(measured.plan.pages.length + ' ページの PDF を作って' + handed
-      + (lost ? '　同梱フォントに無い字: ' + lost : ''), lost ? 'refused' : 'ok');
+      + (lost ? '　同梱フォントに無い字: ' + lost : '')
+      + (unfetched ? '　' + unfetched : ''), lost || unfetched ? 'refused' : 'ok');
   } catch (error) {
     say('PDF を作れませんでした: ' + error.message, 'refused');
   } finally {
