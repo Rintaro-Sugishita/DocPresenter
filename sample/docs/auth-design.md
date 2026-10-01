@@ -96,4 +96,4 @@ output: [html, pdf]
 
 ---
 
-@import "../shared/revision.md"
+@import "auth-design/revision.md"

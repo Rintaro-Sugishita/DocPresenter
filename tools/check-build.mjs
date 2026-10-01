@@ -58,19 +58,25 @@ check('シートが分かれている', (await page.$$('.dp-sheet')).length >= 5
   String((await page.$$('.dp-sheet')).length) + ' 枚');
 
 // 別の文書から取り込んだ節は、どのファイルの何バイト目かまで言える
-const included = await page.$('[data-doc="shared/revision.md"]');
+const included = await page.$('[data-doc="docs/auth-design/revision.md"]');
 check('取り込んだ文書はどのファイルか言える', included !== null);
 const revisionInDesign = (await page.textContent('#sec-revision')).trim();
 check('取り込んだ節も採番される', /^\d+\s/.test(revisionInDesign), revisionInDesign);
 
-// 同じファイルが、置かれた文書ごとに別の番号を得る
+// 共有要素の採番は、置かれた文書ごとに決まる。用語集はどちらの文書も同じ
+// ファイルを引いているが、何番目の表になるかは文書の中身で決まる——だから
+// 番号は参照元に書けない（R11 の出発点）。改訂履歴は共有できない：
+// 文書ごとの履歴なので、その文書のフォルダに置く。
+const glossaryInDesign = (await page.textContent('#tbl-glossary .dp-number')).trim();
 await page.goto('file://' + process.cwd() + '/out/build/auth-overview.html');
+await page.waitForSelector('.dp-sheet', { state: 'attached' });
 await page.waitForTimeout(200);
-// 番号そのものは標本の中身で決まる。主張は「文書が違えば番号も違う」こと
-const revisionInOverview = (await page.textContent('#sec-revision')).trim();
-check('同じ節が別の文書では別の番号になる',
-  /^\d+\s/.test(revisionInOverview) && revisionInOverview !== revisionInDesign,
-  `${revisionInDesign} / ${revisionInOverview}`);
+const glossaryInOverview = (await page.textContent('#tbl-glossary .dp-number')).trim();
+check('同じ表が別の文書では別の番号になる',
+  glossaryInDesign !== '' && glossaryInOverview !== '' && glossaryInDesign !== glossaryInOverview,
+  `${glossaryInDesign} / ${glossaryInOverview}`);
+check('それぞれの文書が自分の改訂履歴を持つ',
+  (await page.$('[data-doc="docs/auth-overview/revision.md"]')) !== null);
 check('概要にも図が出る', (await page.$$('.dp-diagram')).length === 2);
 check('生成元のコミットが埋まっている',
   (await page.getAttribute('meta[name="dp-commit"]', 'content') ?? '').length === 40);

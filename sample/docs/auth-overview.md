@@ -40,4 +40,4 @@ output: [html, pptx]
 
 ---
 
-@import "../shared/revision.md"
+@import "auth-overview/revision.md"

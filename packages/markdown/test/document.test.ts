@@ -145,7 +145,7 @@ describe('サンプルの実ファイル', () => {
     // 名前付き範囲による部分参照
     expect(imports.find(i => i.label === 'tbl-glossary')!.attributes.get('rows')).toBe('認証関連');
     // 文書が文書を取り込む
-    expect(imports.at(-1)!.path).toBe('../shared/revision.md');
+    expect(imports.at(-1)!.path).toBe('auth-design/revision.md');
 
     const headings = doc.blocks.filter(b => b.kind === 'heading') as Heading[];
     expect(headings.filter(h => h.label !== undefined).length).toBeGreaterThan(5);
