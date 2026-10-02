@@ -19,7 +19,14 @@ const DIFF: Readonly<Record<string, string>> = {
   added: '#e6f4e9', changed: '#fdf0d5', removed: '#fde8e8',
 };
 
-const PRESETS: Readonly<Record<ShapeKind, { preset: string; adjust?: number; flipV?: boolean }>> = {
+/**
+ * A preset per shape — except the line, which is not a shape here at all: a
+ * slide draws a lone line with the same connector it draws a connection with,
+ * so that PowerPoint hands it back with two draggable ends.
+ */
+const PRESETS: Readonly<Record<
+  Exclude<ShapeKind, 'line'>, { preset: string; adjust?: number; flipV?: boolean }
+>> = {
   'rect':          { preset: 'rect' },
   'round-rect':    { preset: 'roundRect', adjust: 12000 },
   'stadium':       { preset: 'roundRect', adjust: 50000 },
@@ -56,6 +63,7 @@ export function drawingOf(diagram: DiagramFile, options: DrawingOptions = {}): D
   const laid = layOutDiagram(diagram);
   const byId = new Map(diagram.nodes.map(node => [node.id, node]));
   const shapes: DrawnShape[] = [];
+  const lines: DrawnConnector[] = [];
 
   for (const id of laid.order) {
     const node = byId.get(id);
@@ -66,6 +74,24 @@ export function drawingOf(diagram: DiagramFile, options: DrawingOptions = {}): D
     const line = resolve(style?.get('line'), options);
     const colour = resolve(style?.get('color'), options);
     const align = style?.get('align');
+    const weight = Number(style?.get('weight'));
+
+    if (node.shape === 'line') {
+      const arrow = style?.get('arrow');
+      const up = style?.get('slope') === 'up';
+      lines.push({
+        points: [
+          { x: box.x, y: up ? box.y + box.height : box.y },
+          { x: box.x + box.width, y: up ? box.y : box.y + box.height },
+        ],
+        arrow: arrow === 'end' || arrow === 'both',
+        startArrow: arrow === 'start' || arrow === 'both',
+        dashed: style?.get('line') === 'dashed',
+        ...(line ? { line } : {}),
+        ...(weight > 0 ? { weight } : {}),
+      });
+      continue;
+    }
     const preset = PRESETS[node.shape];
 
     if (style?.get('icon') !== undefined) {
@@ -87,13 +113,14 @@ export function drawingOf(diagram: DiagramFile, options: DrawingOptions = {}): D
       ...(node.shape === 'text' ? {} : { line: line ?? '#3a4048' }),
       ...(colour ? { colour } : {}),
       dashed: style?.get('line') === 'dashed',
+      ...(weight > 0 ? { weight } : {}),
       fontSize: node.shape === 'group' ? 9 : 10.5,
       align: align === 'left' ? 'left' : align === 'right' ? 'right' : 'center',
       behind: box.z < 0 || node.shape === 'group',
     });
   }
 
-  const connectors: DrawnConnector[] = laid.routes.map(route => ({
+  const connectors: DrawnConnector[] = laid.routes.map((route): DrawnConnector => ({
     points: route.points.map(point => ({ x: point.x, y: point.y })),
     arrow: route.edge.arrow === 'arrow',
     dashed: route.edge.line === 'dashed',
@@ -105,7 +132,10 @@ export function drawingOf(diagram: DiagramFile, options: DrawingOptions = {}): D
   return {
     kind: 'drawing',
     ...(options.source === undefined ? {} : { source: options.source }),
-    width: laid.width, height: laid.height, shapes, connectors,
+    width: laid.width, height: laid.height, shapes,
+    // The lines someone drew on their own come first, so a connection between
+    // two shapes is never hidden under a rule drawn across them.
+    connectors: [...lines, ...connectors],
   };
 }
 

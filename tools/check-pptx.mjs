@@ -68,6 +68,18 @@ check('接続がコネクタとして出ている', whole.includes('straightConn
 check('折れた線は自由形として出ている', whole.includes('custGeom'));
 check('矢印が付いている', whole.includes('tailEnd'));
 check('破線が保たれている', whole.includes('prstDash'));
+// 単独の線も、図形ではなくコネクタとして出る——受け取った人が端を掴める。
+// 構成図の「組織の境界」は破線で、矢印を持たない 1 本である。
+const connectors = [...whole.matchAll(/<p:cxnSp>[\s\S]*?<\/p:cxnSp>/g)].map(m => m[0]);
+const standalone = connectors.filter(one =>
+  one.includes('prstDash') && !one.includes('tailEnd') && !one.includes('headEnd'));
+check('単独の線もコネクタとして出ている', standalone.length === 1,
+  `コネクタ ${connectors.length} 本のうち ${standalone.length} 本`);
+const widthOf = one => Number(/<a:ln w="(\d+)"/.exec(one)?.[1] ?? 0);
+check('線の太さが運ばれている',
+  widthOf(standalone[0] ?? '') > widthOf(connectors.find(one => !standalone.includes(one)) ?? ''),
+  `${widthOf(standalone[0] ?? '')} / 既定 ${widthOf(connectors.find(one => !standalone.includes(one)) ?? '')}`);
+
 check('表がネイティブの表として出ている', whole.includes('<a:tbl>'));
 check('部分参照の行だけが入っている',
   whole.includes('アクセストークン') && !whole.includes('DMZ は外部公開セグメント'),

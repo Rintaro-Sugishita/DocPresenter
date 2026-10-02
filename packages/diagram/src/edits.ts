@@ -294,6 +294,9 @@ const BRACKETS: Readonly<Record<ShapeKind, readonly [string, string]>> = {
   hexagon: ['{{', '}}'],
   'loop-start': ['[/', '\\]'],
   'loop-end': ['[\\', '/]'],
+  // A line is written as the connector it is drawn like, and has nothing to
+  // put between a pair: the text it would hold is never drawn.
+  line: ['--', ''],
 };
 
 /** What a new shape of each kind is called, before anyone renames it. */
@@ -301,6 +304,7 @@ const BASE: Readonly<Record<ShapeKind, string>> = {
   rect: 'box', 'round-rect': 'box', stadium: 'pill', cylinder: 'store',
   ellipse: 'oval', diamond: 'branch', note: 'note', text: 'label', group: 'group',
   parallelogram: 'io', hexagon: 'prep', 'loop-start': 'loop', 'loop-end': 'loopEnd',
+  line: 'rule',
 };
 
 /** Parts are named for what they are, not for the shape that carries them. */
@@ -328,9 +332,12 @@ export function addNode(file: DiagramFile, source: string, shape: NewShape): Edi
   if (!file.body) throw new DiagramEditError('図形を書くセクションが無い');
   const id = nextShapeId(file, shape.icon === undefined ? shape.shape : 'part');
   const [open, close] = BRACKETS[shape.shape];
+  // A line has nowhere to keep words, so it is written with none — whatever
+  // placeholder the caller hands every other shape.
+  const text = shape.shape === 'line' ? '' : shape.text;
   const changes: Change[] = [{
     span: { start: file.body.insertAt, end: file.body.insertAt },
-    text: `\n${file.body.indent}${id} ${open}${shape.text}${close}`,
+    text: `\n${file.body.indent}${id} ${open}${text}${close}`,
   }];
   // Sections the file does not have yet are written once, after everything
   // else: two separate appends would both claim the end of the file.
@@ -467,6 +474,66 @@ function gapOf(node: Node, source: string | undefined): string {
   const line = sliceBytes(source, node.span.start, node.span.end);
   const gap = new RegExp(`^${node.id}(\\s+)`).exec(line);
   return gap?.[1] ?? ' ';
+}
+
+/**
+ * Changes a shape's look: declarations in, or out, of its own style rule.
+ *
+ * The style layer is where "how it is drawn" lives, so a canvas that lets
+ * someone thicken a line or turn its arrow off writes here and nowhere else —
+ * the semantics line keeps saying what the shape is. A value of `undefined`
+ * takes a declaration out, and a rule with nothing left in it goes with it: a
+ * shape carrying an empty `{ }` is a line a reviewer has to read for nothing.
+ */
+export function setNodeStyle(
+  file: DiagramFile, source: string, id: string,
+  declarations: Readonly<Record<string, string | undefined>>,
+): Edit {
+  find(file, id);
+  const merged = new Map(file.style.get(id) ?? []);
+  let moved = false;
+  for (const [property, value] of Object.entries(declarations)) {
+    // Written out rather than with `||=`: that short-circuits, and the thing on
+    // its right is the deletion itself — the second one would never happen.
+    if (value === undefined) {
+      if (merged.delete(property)) moved = true;
+      continue;
+    }
+    if (merged.get(property) !== value) moved = true;
+    merged.set(property, value);
+  }
+  if (!moved) throw new DiagramEditError('見た目は既にそうなっている');
+
+  const span = file.styleSpans.get(id);
+  const written = [...merged].map(([property, value]) => `${property}: ${value}`).join(', ');
+  const line = `${id}${styleGap(file, source, id)}{ ${written} }`;
+
+  if (span) {
+    return splice(source, [merged.size === 0
+      ? whole(source, span, '')
+      : { span, text: line }], '見た目を変更');
+  }
+  if (file.styleBlock) {
+    return splice(source, [{
+      span: { start: file.styleBlock.insertAt, end: file.styleBlock.insertAt },
+      text: `\n${file.styleBlock.indent}${line}`,
+    }], '見た目を変更');
+  }
+  // No style section yet: one is written at the end, the way adding a shape to
+  // a file with no layout section writes that one.
+  const end = byteLength(source.replace(/\s+$/, ''));
+  return splice(source, [{
+    span: { start: end, end: byteLength(source) },
+    text: `\n\nstyle {\n  ${line}\n}\n`,
+  }], '見た目を変更');
+}
+
+/** The spaces the author left between the id and its `{`, for the same reason. */
+function styleGap(file: DiagramFile, source: string, id: string): string {
+  const span = file.styleSpans.get(id);
+  if (!span) return ' ';
+  const line = sliceBytes(source, span.start, span.end);
+  return new RegExp(`^${id}(\\s+)\\{`).exec(line)?.[1] ?? ' ';
 }
 
 /** Rewrites which shape it is, by changing the brackets around the text. */

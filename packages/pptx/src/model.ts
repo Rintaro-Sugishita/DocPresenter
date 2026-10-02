@@ -73,6 +73,8 @@ export interface DrawnShape {
   readonly line?: string;
   readonly colour?: string;
   readonly dashed: boolean;
+  /** Outline thickness in drawing units; the default is the theme's. */
+  readonly weight?: number;
   readonly fontSize: number;                    // pt
   readonly align: 'left' | 'center' | 'right';
   /** Behind everything else: a group's container. */
@@ -83,9 +85,14 @@ export interface DrawnShape {
 
 export interface DrawnConnector {
   readonly points: readonly { readonly x: number; readonly y: number }[];
+  /** A head at the far end. */
   readonly arrow: boolean;
+  /** A head at the near end as well, which only a line drawn alone asks for. */
+  readonly startArrow?: boolean;
   readonly dashed: boolean;
   readonly line?: string;
+  /** Thickness in drawing units; the default is the one the theme draws with. */
+  readonly weight?: number;
   readonly label?: readonly Run[];
 }
 

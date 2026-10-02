@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { parseDiagram } from '@docpresenter/diagram';
-import { renderDiagram, renderOverlay } from '../src/index.js';
+import { renderDiagram, renderOverlay, withParts } from '../src/index.js';
 
 const draw = (path: string): string => renderDiagram(parseDiagram(readFileSync(path, 'utf8')));
 
@@ -65,6 +65,56 @@ describe('作図のレンダリング', () => {
   it('描けなかったものは注記として残す', () => {
     const svg = renderDiagram(parseDiagram('free {\n a [A]\n b [B]\n}\nlayout {\n a @ (0,0)\n}'));
     expect(svg).toContain('<!-- 配置がない: b -->');
+  });
+});
+
+describe('単独の線', () => {
+  const drawLine = (body: string, style = ''): string => renderDiagram(parseDiagram(
+    `free {\n  rule1 --\n}\n\nlayout {\n  rule1 ${body}\n}\n`
+    + (style === '' ? '' : `\nstyle {\n  rule1 { ${style} }\n}\n`)));
+
+  it('箱の対角線として引かれる', () => {
+    // 幅も高さも持つ箱に、角から角へ。高さ 0 なら水平線になる。
+    expect(drawLine('@ (0, 0) 240x0')).toContain('<path d="M 16 16 L 256 16"/>');
+    expect(drawLine('@ (0, 0) 0x120')).toContain('<path d="M 16 16 L 16 136"/>');
+  });
+
+  it('傾きを逆にできる', () => {
+    // 箱の対角線は 2 本ある。どちらかは「どこに置いたか」では決まらない。
+    expect(drawLine('@ (0, 0) 100x60', 'slope: up'))
+      .toContain('<path d="M 16 76 L 116 16"/>');
+  });
+
+  it('矢印は端に付き、両端にも付く', () => {
+    expect(drawLine('@ (0, 0) 100x0', 'arrow: end'))
+      .toContain('<polygon class="dp-arrow" points="116,16 106,20 106,12"/>');
+    const both = drawLine('@ (0, 0) 100x0', 'arrow: both');
+    expect(both.match(/dp-arrow/g)).toHaveLength(2);
+    expect(drawLine('@ (0, 0) 100x0')).not.toContain('dp-arrow');
+  });
+
+  it('太さは値なので、class ではなく変数で渡す', () => {
+    // 1.4 も 2.5 も 4 も書ける。class にすると、どの数があるかをテーマが
+    // 先に決めることになる。
+    expect(drawLine('@ (0, 0) 100x0', 'weight: 2.5')).toContain('--dp-weight:2.5');
+    expect(drawLine('@ (0, 0) 100x0', 'weight: 2.5')).not.toContain('dp-weight-2.5');
+  });
+
+  it('文字は持たない', () => {
+    const svg = renderDiagram(parseDiagram(
+      'free {\n  rule1 --\n}\nlayout {\n  rule1 @ (0,0) 100x0\n}\n'));
+    expect(svg).not.toContain('<text');
+  });
+
+  it('同梱の部品として使える', () => {
+    const file = withParts(parseDiagram(
+      'use "default"\n\nfree {\n  sep1 divider:\n}\n\nlayout {\n  sep1 @ (0,0)\n}\n'),
+    () => undefined);
+    const svg = renderDiagram(file);
+    expect(svg).toContain('dp-shape-line');
+    expect(svg).toContain('--dp-line:#d3d7dd');
+    // 既定の大きさ（320x0）が効く：水平に 320 伸びている
+    expect(svg).toContain('<path d="M 16 16 L 336 16"/>');
   });
 });
 

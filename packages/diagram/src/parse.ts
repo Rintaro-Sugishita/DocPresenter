@@ -2,7 +2,7 @@
 // so someone who writes Mermaid can write this, and the layout and style
 // sections stay separate so that moving a shape never touches the semantics.
 
-import { byteLength } from '@docpresenter/base';
+import { byteLength, type ByteSpan } from '@docpresenter/base';
 import type {
   ArrowStyle, Bend, Callout, DiagramFile, DiagramMode, Edge, EdgeStyle, LayoutBlock, Node,
   Part, Placement, Point, Section, ShapeKind,
@@ -44,6 +44,25 @@ const SHAPES: readonly { open: string; close: string; shape: ShapeKind }[] = [
   { open: '"',  close: '"',  shape: 'text' },
 ];
 
+/**
+ * A line on its own: `rule1 --`.
+ *
+ * Borrowed from the connector it is drawn like, so nobody has to learn a second
+ * way of writing a line. There is no bracket pair because there is nothing to
+ * put inside one — a line holds no words — and the form is exact so that a
+ * mistyped connection (`a --> b` with the `b` lost) is refused rather than
+ * quietly read as a line.
+ */
+const LINE_SHAPE = /^-{2,}$/;
+/**
+ * The same thing on a line of the drawing: `rule1 --`.
+ *
+ * Read before the connections, not after. An id may end in a hyphen, so
+ * `rule1 ---` is also a connection from `rule1` to a node called `-`; the
+ * reading that needs no such node is the one meant.
+ */
+const LINE_NODE = /^([A-Za-z0-9_぀-鿿-]+?)\s*(-{2,})$/;
+
 const NODE = /^([A-Za-z0-9_぀-鿿-]+)\s*(.+?)(?::::([\w-]+))?$/;
 const EDGE = /^([A-Za-z0-9_぀-鿿-]+)\s*(-->|->|--|-\.->)\s*([A-Za-z0-9_぀-鿿-]+)\s*(?:"([^"]*)")?\s*$/;
 const GROUP = /^group\s+([A-Za-z0-9_぀-鿿-]+)\s*(?:"([^"]*)")?\s*\{([^}]*)\}\s*$/;
@@ -80,6 +99,7 @@ export function parseDiagram(source: string): DiagramFile {
   const layout = new Map<string, Placement>();
   const bends = new Map<string, Bend>();
   const style = new Map<string, ReadonlyMap<string, string>>();
+  const styleSpans = new Map<string, ByteSpan>();
   const callouts: Callout[] = [];
   let theme: string | undefined;
   let mode: DiagramMode | undefined;
@@ -136,7 +156,7 @@ export function parseDiagram(source: string): DiagramFile {
       parseLayout(inner, layout, bends);
       layoutBlock = blockOf(lines, raw, start, i, inner);
     } else {
-      theme = parseStyle(inner.map(l => l.text), style) ?? theme;
+      theme = parseStyle(inner, style, styleSpans) ?? theme;
       styleBlock = blockOf(lines, raw, start, i, inner);
     }
   }
@@ -147,7 +167,7 @@ export function parseDiagram(source: string): DiagramFile {
   if (!mode) throw new DiagramParseError('free / flow / overlay のいずれのセクションも無い', 1);
   return {
     mode, comments, nodes, edges, body, layout, bends, layoutBlock, styleBlock,
-    theme, style, image, callouts, uses, parts, partOf, partsBlock,
+    theme, style, styleSpans, image, callouts, uses, parts, partOf, partsBlock,
   };
 }
 
@@ -229,12 +249,14 @@ function parseParts(body: readonly SourceLine[], out: Map<string, Part>): void {
  * three rectangles of different colours and cannot tell what decided that.
  */
 export function notationOf(shape: ShapeKind): string {
+  if (shape === 'line') return '--';
   const found = SHAPES.find(one => one.shape === shape);
   return found ? `${found.open} ${found.close}` : shape;
 }
 
 /** The shape a bracket pair means, with nothing inside it. */
 function shapeOf(written: string): ShapeKind | undefined {
+  if (LINE_SHAPE.test(written)) return 'line';
   for (const { open, close, shape } of SHAPES) {
     if (written.startsWith(open) && written.endsWith(close)
       && written.length >= open.length + close.length) return shape;
@@ -263,6 +285,15 @@ function parseBody(
         className: undefined,
         children: group[3]!.split(';').map(s => s.trim()).filter(s => s !== ''),
         span,
+      });
+      return;
+    }
+
+    const alone = LINE_NODE.exec(text);
+    if (alone) {
+      nodes.push({
+        id: alone[1]!, text: '', shape: 'line',
+        className: undefined, children: [], span,
       });
       return;
     }
@@ -363,10 +394,12 @@ function parseLayout(
 }
 
 function parseStyle(
-  body: string[], out: Map<string, ReadonlyMap<string, string>>,
+  body: readonly SourceLine[], out: Map<string, ReadonlyMap<string, string>>,
+  spans: Map<string, ByteSpan>,
 ): string | undefined {
   let theme: string | undefined;
-  for (const text of body) {
+  for (const source of body) {
+    const text = source.text;
     if (text === '' || text.startsWith('#')) continue;
     const themeDecl = /^theme\s*:\s*(\S+)\s*$/.exec(text);
     if (themeDecl) { theme = themeDecl[1]!; continue; }
@@ -378,6 +411,7 @@ function parseStyle(
       if (kv) declarations.set(kv[1]!, kv[2]!);
     }
     out.set(rule[1]!, declarations);
+    spans.set(rule[1]!, source.span);
   }
   return theme;
 }

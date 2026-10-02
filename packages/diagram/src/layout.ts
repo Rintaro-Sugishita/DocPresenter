@@ -88,10 +88,15 @@ export function layOutDiagram(diagram: DiagramFile): LaidOutDiagram {
 
   const boxes = new Map<string, Box>();
   for (const node of plain) {
-    // P6: a scrollbar has nowhere to put words, so words written into one are
-    // not drawn. Saying so is the difference between a decision and a loss.
-    if (node.text !== '' && textPlace(diagram.style.get(node.id)?.get('icon')) === 'none') {
+    // P6: a scrollbar has nowhere to put words, and neither has a line, so
+    // words written into one are not drawn. Saying so is the difference
+    // between a decision and a loss.
+    if (node.text !== '' && (node.shape === 'line'
+      || textPlace(diagram.style.get(node.id)?.get('icon')) === 'none')) {
       diagnostics.push(`この部品は文字を持たない。書いた文字は出ない: ${node.id}`);
+    }
+    for (const problem of lookProblems(node, diagram.style.get(node.id))) {
+      diagnostics.push(problem);
     }
     const size = sizes.get(node.id)!;
     const pin = diagram.layout.get(node.id);
@@ -325,9 +330,42 @@ export function edgeLabelBox(route: EdgeRoute): Box | undefined {
   };
 }
 
+/**
+ * Declarations only a line has, and what each one may say.
+ *
+ * P6: an `arrow: left` nobody drew is worse than an arrow drawn the wrong way,
+ * because nothing says the word was not understood. The same for a declaration
+ * on a shape that cannot use it.
+ */
+const LINE_ONLY: Readonly<Record<string, readonly string[]>> = {
+  arrow: ['none', 'start', 'end', 'both'],
+  slope: ['down', 'up'],
+};
+
+function lookProblems(node: Node, rule: ReadonlyMap<string, string> | undefined): string[] {
+  if (!rule) return [];
+  const found: string[] = [];
+  for (const [property, choices] of Object.entries(LINE_ONLY)) {
+    const value = rule.get(property);
+    if (value === undefined) continue;
+    if (node.shape !== 'line') found.push(`線だけが ${property} を持つ: ${node.id}`);
+    else if (!choices.includes(value)) {
+      found.push(`${property} に書けるのは ${choices.join(' / ')}: ${value}（${node.id}）`);
+    }
+  }
+  const weight = rule.get('weight');
+  if (weight !== undefined && !(Number(weight) > 0)) {
+    found.push(`太さは正の数で書く: ${weight}（${node.id}）`);
+  }
+  return found;
+}
+
 function measure(
   node: Node, diagram: DiagramFile,
 ): { width: number; height: number; lines: readonly TextLine[] } {
+  // A line has no inside, so nothing about it is measured from its words: it is
+  // as long as the default width and flat, until a pin says otherwise.
+  if (node.shape === 'line') return { width: DEFAULT_SIZE.width, height: 0, lines: [] };
   const pin = diagram.layout.get(node.id);
   const inner = pin?.width !== undefined
     ? pin.width - TEXT_PAD

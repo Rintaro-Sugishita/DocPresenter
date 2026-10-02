@@ -76,6 +76,13 @@ parts {
   # 中にほかの部品を置くのは、座標で重ねれば今でもできる。
   grid       [ ] { icon: ui/grid }                               240x120
 
+  # --- 線 ---
+  # つなぐ線ではなく、仕切る線・指し示す線。太さ・色・矢印は部品の側で決める。
+  divider    -- { line: #d3d7dd }                                320x0
+  dividerV   -- { line: #d3d7dd }                                  0x120
+  pointer    -- { line: #3a4048, arrow: end }                    120x0
+  guide      -- { line: dashed }                                 160x0
+
   # --- 飾り・見せるもの ---
   scrollbar  [ ] { icon: ui/scrollbar-v }                         12x120
   scrollbarH [ ] { icon: ui/scrollbar-h }                        120x12

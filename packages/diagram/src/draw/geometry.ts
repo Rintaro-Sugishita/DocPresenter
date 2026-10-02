@@ -29,14 +29,37 @@ export type Outline =
 export interface ShapePart {
   readonly outline: Outline;
   /**
-   * A line drawn on top of the body rather than the body itself: a cylinder's
-   * lid, a note's folded corner. It is stroked, never filled.
+   * A mark that is not the body itself: a cylinder's lid and a note's folded
+   * corner are stroked on top of it, an arrowhead is filled with the line's
+   * own colour. The renderer names each one so the theme can tell them apart.
    */
-  readonly detail?: 'lid' | 'fold';
+  readonly detail?: 'lid' | 'fold' | 'arrow';
 }
 
+/**
+ * How a line on its own is drawn: which way it leans, and which ends it points.
+ *
+ * Both are look rather than meaning, so both arrive from the style layer — the
+ * same place the colour and the thickness come from. A part can therefore carry
+ * them, which is what makes "the arrow we point things out with" a thing a
+ * library can name.
+ */
+export interface LineLook {
+  readonly arrow: 'none' | 'start' | 'end' | 'both';
+  /**
+   * `down` runs from the box's top-left corner to its bottom-right, `up` from
+   * the bottom-left to the top-right. A box has two diagonals and a line can
+   * only be one of them; neither is a matter of where the box is.
+   */
+  readonly slope: 'down' | 'up';
+}
+
+export const PLAIN_LINE: LineLook = { arrow: 'none', slope: 'down' };
+
 /** The marks that make up a shape. Empty for `text`, which is only its label. */
-export function shapeOutlines(shape: ShapeKind, box: Box): readonly ShapePart[] {
+export function shapeOutlines(
+  shape: ShapeKind, box: Box, look: LineLook = PLAIN_LINE,
+): readonly ShapePart[] {
   const { x, y, width: w, height: h } = box;
   switch (shape) {
     case 'rect':       return [{ outline: { kind: 'rect', x, y, width: w, height: h, radius: 0 } }];
@@ -105,7 +128,24 @@ export function shapeOutlines(shape: ShapeKind, box: Box): readonly ShapePart[] 
     case 'text':
       // Nothing is drawn: the label is the shape.
       return [];
+    // A line is the one shape with no inside, so it is the one shape drawn as a
+    // stroke from corner to corner rather than as an outline around the box.
+    case 'line': {
+      const [from, to] = look.slope === 'up'
+        ? [{ x, y: y + h }, { x: x + w, y }]
+        : [{ x, y }, { x: x + w, y: y + h }];
+      return [
+        { outline: { kind: 'path', d: `M ${n(from.x)} ${n(from.y)} L ${n(to.x)} ${n(to.y)}` } },
+        ...(look.arrow === 'end' || look.arrow === 'both' ? [head(from, to)] : []),
+        ...(look.arrow === 'start' || look.arrow === 'both' ? [head(to, from)] : []),
+      ];
+    }
   }
+}
+
+/** The arrowhead at one end of a line, as a mark of the shape itself. */
+function head(from: Point, to: Point): ShapePart {
+  return { detail: 'arrow', outline: { kind: 'polygon', points: arrowHead(from, to) } };
 }
 
 function polygon(points: readonly Point[]): ShapePart {

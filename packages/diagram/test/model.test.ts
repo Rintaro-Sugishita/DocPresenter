@@ -203,6 +203,45 @@ describe('ラベルの書式', () => {
   });
 });
 
+describe('単独の線', () => {
+  it('二重線は図形として読む', () => {
+    const file = parseDiagram('free {\n  rule1 --\n  rule2 ---\n}\n');
+    expect(file.nodes.map(n => [n.id, n.shape, n.text]))
+      .toEqual([['rule1', 'line', ''], ['rule2', 'line', '']]);
+    expect(file.edges).toEqual([]);
+  });
+
+  it('接続より先に読む——id は「-」で終われるので、取り違えようがある', () => {
+    // `rule2 ---` は「rule2 から - への接続」とも読めてしまう。そんな図形を
+    // 誰も書いていない以上、読みは 1 つに決まる。
+    const file = parseDiagram('flow {\n  a [あ]\n  rule2 ---\n  a --> a2\n  a2 [い]\n}\n');
+    expect(file.edges.map(e => [e.from, e.to])).toEqual([['a', 'a2']]);
+    expect(file.nodes.find(n => n.id === 'rule2')?.shape).toBe('line');
+  });
+
+  it('部品としても書ける', () => {
+    const part = parseDiagram('parts {\n  divider -- { line: #d3d7dd } 320x0\n}\n')
+      .parts.get('divider')!;
+    expect(part.shape).toBe('line');
+    expect([part.width, part.height]).toEqual([320, 0]);
+  });
+
+  it('文字を測らない。平らなまま置かれる', () => {
+    const laid = layOutDiagram(parseDiagram('free {\n  rule1 --\n}\nlayout {\n  rule1 @ (0,0)\n}'));
+    expect(laid.boxes.get('rule1')!.height).toBe(0);
+  });
+
+  it('読めない宣言は黙って捨てない', () => {
+    const laid = layOutDiagram(parseDiagram(
+      'free {\n  rule1 --\n  box1 [箱]\n}\n'
+      + 'layout {\n  rule1 @ (0,0) 100x0\n  box1 @ (0,40)\n}\n'
+      + 'style {\n  rule1 { arrow: ひだり, weight: 0 }\n  box1 { arrow: end }\n}\n'));
+    expect(laid.diagnostics.join(' / ')).toContain('arrow に書けるのは');
+    expect(laid.diagnostics.join(' / ')).toContain('太さは正の数で書く');
+    expect(laid.diagnostics.join(' / ')).toContain('線だけが arrow を持つ: box1');
+  });
+});
+
 describe('画面部品', () => {
   const LIBRARY = `parts {
   textbox   [ ] { fill: #fbfbfc, line: #aeb4bd, align: left } 320x34

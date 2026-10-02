@@ -4,7 +4,7 @@ import { parseDiagram } from '@docpresenter/diagram';
 import {
   addNode, bendEdge, canUnpin, connectNodes, DiagramEditError, disconnectNodes, groupMembers,
   groupNodes, moveCallout, pinNode, pinNodes, reconnect, removeNode, removeNodes, setNodeShape,
-  setNodeText, unpinNode,
+  setNodeStyle, setNodeText, unpinNode,
 } from '../src/index.js';
 
 const FLOW = [
@@ -437,5 +437,81 @@ describe('部品を足す', () => {
       shape: 'text', text: '二', icon: 'net/switch', at: { x: 0, y: 40 },
     }));
     expect(parseDiagram(twice).nodes.map(n => n.id)).toEqual(['a', 'part1', 'part2']);
+  });
+});
+
+describe('見た目を変える', () => {
+  const LINE = [
+    'free {',
+    '  rule1 --',
+    '  box1  [箱]',
+    '}',
+    '',
+    'layout {',
+    '  rule1 @ (0, 0) 240x0',
+    '  box1  @ (0, 40)',
+    '}',
+    '',
+    'style {',
+    '  rule1 { line: #d3d7dd }',
+    '}',
+  ].join('\n');
+
+  // 閉じ括弧は宣言の中にもあるので、行で切る。
+  const style = (source: string): string[] => {
+    const lines = source.split('\n');
+    const from = lines.findIndex(line => line.startsWith('style {'));
+    return from < 0 ? [] : lines.slice(from, lines.indexOf('}', from) + 1);
+  };
+
+  it('既にある規則に足す', () => {
+    const written = run(LINE, f => setNodeStyle(f, LINE, 'rule1', { arrow: 'end', weight: '2' }));
+    expect(style(written)).toContain('  rule1 { line: #d3d7dd, arrow: end, weight: 2 }');
+    // 書き換わるのはその 1 行だけ。図形の行も配置の行もそのまま。
+    expect(written).toContain('  rule1 --');
+    expect(written).toContain('  rule1 @ (0, 0) 240x0');
+  });
+
+  it('規則の無い図形には規則が増える', () => {
+    const written = run(LINE, f => setNodeStyle(f, LINE, 'box1', { fill: '#eef3f9' }));
+    expect(style(written)).toContain('  box1 { fill: #eef3f9 }');
+    expect(style(written)).toContain('  rule1 { line: #d3d7dd }');
+  });
+
+  it('宣言を外せる。空になった規則は行ごと消える', () => {
+    const written = run(LINE, f => setNodeStyle(f, LINE, 'rule1', { line: undefined }));
+    expect(written).not.toContain('rule1 {');
+    expect(written).toContain('rule1 --');
+  });
+
+  it('いちどに外すものが 2 つあっても、2 つとも外れる', () => {
+    const two = applyEdit(LINE, setNodeStyle(parseDiagram(LINE), LINE, 'rule1', { arrow: 'end' }));
+    const written = applyEdit(two,
+      setNodeStyle(parseDiagram(two), two, 'rule1', { arrow: undefined, line: undefined }));
+    expect(written).not.toContain('rule1 {');
+  });
+
+  it('style セクションが無ければ書き足す', () => {
+    const bare = 'free {\n  rule1 --\n}\n';
+    const written = applyEdit(bare, setNodeStyle(parseDiagram(bare), bare, 'rule1', { weight: '4' }));
+    expect(written).toContain('style {\n  rule1 { weight: 4 }\n}');
+  });
+
+  it('同じ値を書こうとしたら、何も書かずに断る', () => {
+    expect(() => setNodeStyle(parseDiagram(LINE), LINE, 'rule1', { line: '#d3d7dd' }))
+      .toThrow(DiagramEditError);
+  });
+
+  it('知らない図形には書かない', () => {
+    expect(() => setNodeStyle(parseDiagram(LINE), LINE, 'nope', { weight: '2' }))
+      .toThrow(DiagramEditError);
+  });
+
+  it('線を足すと、角括弧ではなく二重線で書かれる', () => {
+    const written = applyEdit(SCREEN, addNode(parseDiagram(SCREEN), SCREEN, {
+      shape: 'line', text: '', at: { x: 60, y: 300 },
+    }));
+    expect(written).toContain('  rule1 --');
+    expect(written).toContain('rule1 @ (60, 300)');
   });
 });

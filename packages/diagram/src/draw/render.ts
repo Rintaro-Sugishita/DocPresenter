@@ -12,7 +12,7 @@ import { escapeAttr, escapeHtml } from '@docpresenter/base';
 import { isIconPath, stencilArt, textPlace } from './stencil.js';
 import {
   arrowHead as arrowCorners, border, cylinderRadius, labelLayout, n, shapeOutlines,
-  LINE_HEIGHT, type Outline, type ShapePart,
+  LINE_HEIGHT, PLAIN_LINE, type LineLook, type Outline, type ShapePart,
 } from './geometry.js';
 
 /** What a build found changed since another version, for the drawing's parts. */
@@ -90,11 +90,13 @@ function renderNode(
   // A part is a picture, so no outline is drawn around it. Where its words go
   // is the picture's own business: under it for a thing with a name, inside it
   // for a control that holds a value, nowhere for a scrollbar.
-  const shape = icon ? picture(icon, box, url) : shapeElement(node.shape, box);
+  const shape = icon
+    ? picture(icon, box, url)
+    : shapeElement(node.shape, box, lineLook(diagram.style.get(node.id)));
   const place = textPlace(icon);
   const text = node.shape === 'group'
     ? groupLabel(box)
-    : place === 'none'
+    : place === 'none' || node.shape === 'line'
       ? ''
       : label(box, diagram.style.get(node.id)?.get('align'), node.shape, place === 'under');
   const colours = styleColours(diagram, node.id);
@@ -106,14 +108,32 @@ function renderNode(
 /** `#abc` or `#aabbcc`. Anything else is not a colour and is not emitted. */
 const COLOUR = /^#[0-9a-fA-F]{3}([0-9a-fA-F]{3})?$/;
 
+/** A thickness in drawing units: `2`, `1.4`. Anything else is not one. */
+const WEIGHT = /^\d+(\.\d+)?$/;
+
+/**
+ * Declarations this file reads itself rather than handing to the theme as a
+ * class: `icon` and `align` decide what is drawn and where the words go, and
+ * the three below are the geometry of a line and its thickness.
+ */
+const READ_HERE = ['align', 'icon', 'arrow', 'slope', 'weight'];
+
 /** `dmz { line: dashed }` becomes `dp-line-dashed`; the theme decides the rest. */
 function styleClasses(diagram: DiagramFile, id: string): string[] {
   const rule = diagram.style.get(id);
   if (!rule) return [];
   return [...rule]
-    .filter(([property, value]) =>
-      !COLOUR.test(value) && property !== 'align' && property !== 'icon')
+    .filter(([property, value]) => !COLOUR.test(value) && !READ_HERE.includes(property))
     .map(([property, value]) => `dp-${property}-${value}`);
+}
+
+/** How a line leans and where it points, as the style layer wrote it. */
+function lineLook(rule: ReadonlyMap<string, string> | undefined): LineLook {
+  const arrow = rule?.get('arrow');
+  return {
+    arrow: arrow === 'start' || arrow === 'end' || arrow === 'both' ? arrow : PLAIN_LINE.arrow,
+    slope: rule?.get('slope') === 'up' ? 'up' : PLAIN_LINE.slope,
+  };
 }
 
 /** The room a part's picture takes at the top of its box. */
@@ -175,6 +195,12 @@ function styleColours(diagram: DiagramFile, id: string): string {
   if (!rule) return '';
   const parts: string[] = [];
   for (const [property, value] of rule) {
+    // A thickness is a number, so it travels the way the colours do: a class
+    // per value would mean the theme deciding in advance which numbers exist.
+    if (property === 'weight' && WEIGHT.test(value)) {
+      parts.push(`--dp-weight:${value}`);
+      continue;
+    }
     if (!COLOUR.test(value)) continue;
     if (property === 'fill') parts.push(`--dp-fill:${value}`);
     if (property === 'line') parts.push(`--dp-line:${value}`);
@@ -184,13 +210,14 @@ function styleColours(diagram: DiagramFile, id: string): string {
 }
 
 /** The outline, as SVG. What the marks are is decided in `geometry.ts`. */
-function shapeElement(shape: ShapeKind, box: Box): string {
-  return shapeOutlines(shape, box).map(markup).join('');
+function shapeElement(shape: ShapeKind, box: Box, look: LineLook): string {
+  return shapeOutlines(shape, box, look).map(markup).join('');
 }
 
 function markup(part: ShapePart): string {
   const className = part.detail === 'lid' ? ' class="dp-cylinder-lid"'
-    : part.detail === 'fold' ? ' class="dp-note-fold"' : '';
+    : part.detail === 'fold' ? ' class="dp-note-fold"'
+      : part.detail === 'arrow' ? ' class="dp-arrow"' : '';
   return element(part.outline, className);
 }
 

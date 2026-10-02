@@ -48,7 +48,7 @@ const shapes = () => page.$$eval('.dp-canvas-stage [data-node]', ns => ns.length
 const before = await shapes();
 await page.click('.dp-sheet:not([hidden]) .dp-canvas-bar button:text("＋ 図形")');
 await page.waitForSelector('.dp-menu button');
-check('図形の見本が並ぶ', (await page.$$('.dp-menu button')).length === 12,
+check('図形の見本が並ぶ', (await page.$$('.dp-menu button')).length === 13,
   String((await page.$$('.dp-menu button')).length));
 await page.click(item('ひし形'));
 await page.waitForTimeout(400);
@@ -435,5 +435,94 @@ const withPart = await source();
 check('意味は意味層、絵はスタイル層', withPart.includes('  part1 "ルータ"')
   && withPart.includes('part1 { icon: net/router }'),
   withPart.split('\n').filter(l => l.includes('part1')).join(' / '));
+
+// --- 単独の線 -------------------------------------------------------------
+//
+// 線は 2 つの図形を結ぶものだけではない。画面を仕切る罫線、何かを指す矢印は
+// どちらも「繋いで」いないので、接続では書けない。見たいのは、置けること・
+// 平らなままでいられること・太さと矢印を GUI から変えられることである。
+await openSheet(3, 'login-screen.dgm');
+await page.click('.dp-sheet:not([hidden]) .dp-canvas-bar button:text("＋ 図形")');
+await page.waitForSelector('.dp-menu button');
+check('図形の一覧に線がある', (await page.$$(item('線'))).length === 1);
+await page.click(item('線'));
+await page.waitForTimeout(400);
+const drawnLine = await source();
+check('線は二重線として書かれる', /^ +rule1 --$/m.test(drawnLine),
+  drawnLine.split('\n').filter(l => l.includes('rule1')).join(' / '));
+check('文字の入る括弧は書かれない', !/rule1 *\[/.test(added));
+check('塗らずに描く（中身の無い図形）',
+  await page.$eval(node('rule1') + ' path', el => getComputedStyle(el).fill) === 'none');
+// 線は「近さ」で拾う。当たり判定の透明な帯を重ねると、その帯が横切っている
+// 図形へのクリックまで奪うからである（接続線と同じ判断）。だから確かめ方も
+// 「要素を指定して押す」のではなく、線の上にポインタを置いて押す。
+const pressShape = async (id, options = {}) => {
+  const at = await page.$eval(node(id), el => {
+    const box = el.getBoundingClientRect();
+    return { x: box.left + box.width / 2, y: box.top + box.height / 2 };
+  });
+  await page.mouse.click(at.x, at.y, options);
+  await page.waitForTimeout(250);
+};
+
+// 選び直す：細い線でも掴める、という確認でもある
+await pressShape('rule1');
+check('線を押すと選べる',
+  (await page.textContent('.dp-sheet:not([hidden]) .dp-canvas-where')).startsWith('rule1'),
+  await page.textContent('.dp-sheet:not([hidden]) .dp-canvas-where'));
+check('線のときだけ、線の見た目の列が出る',
+  await page.isVisible('.dp-sheet:not([hidden]) .dp-canvas-liners'));
+
+await page.click('.dp-canvas-liners button[title="終点に矢印"]');
+await page.waitForTimeout(400);
+check('矢印を付けるとスタイル層に書かれる',
+  /rule1 \{ arrow: end \}/.test(await source()),
+  (/rule1 \{[^}]*\}/.exec(await source()) ?? [''])[0]);
+check('矢じりが描かれる', (await page.$$(node('rule1') + ' .dp-arrow')).length === 1);
+
+await pressShape('rule1');
+await page.click('.dp-canvas-liners button[title="太い線"]');
+await page.waitForTimeout(400);
+check('太さもスタイル層に書かれる', /rule1 \{ arrow: end, weight: 4 \}/.test(await source()),
+  (/rule1 \{[^}]*\}/.exec(await source()) ?? [''])[0]);
+check('太さは描画にも効く',
+  await page.$eval(node('rule1') + ' path:not(.dp-canvas-grab)',
+    el => getComputedStyle(el).strokeWidth) === '4px');
+
+// いま効いている側が印になっている
+await pressShape('rule1');
+check('いまの状態が印されている',
+  await page.getAttribute('.dp-canvas-liners button[title="太い線"]', 'class')
+    === 'dp-canvas-icon dp-canvas-on',
+  await page.getAttribute('.dp-canvas-liners button[title="太い線"]', 'class'));
+
+await page.click('.dp-canvas-liners button[title="矢印なし"]');
+await page.waitForTimeout(400);
+const noArrow = await source();
+check('矢印を外すと宣言ごと消える', /rule1 \{ weight: 4 \}/.test(noArrow),
+  (/rule1 \{[^}]*\}/.exec(noArrow) ?? [''])[0]);
+check('矢じりも消える', (await page.$$(node('rule1') + ' .dp-arrow')).length === 0);
+
+// 平らなまま伸ばせる。ほかの図形には 16 の下限があるので、線にも効いていたら
+// 水平線が引けない。
+await pressShape('rule1');
+const grip = await page.locator('.dp-canvas-handle').boundingBox();
+await page.mouse.move(grip.x + grip.width / 2, grip.y + grip.height / 2);
+await page.mouse.down();
+await page.mouse.move(grip.x + 120, grip.y + grip.height / 2, { steps: 8 });
+await page.mouse.up();
+await page.waitForTimeout(400);
+const stretched = await source();
+const size = /rule1 +@ \(\d+, \d+\) +(\d+)x(\d+)/.exec(stretched);
+check('引き伸ばしても平らなまま', size !== null && Number(size[2]) === 0,
+  (/rule1 +@[^\n]*/.exec(stretched) ?? [''])[0]);
+check('長さは伸びている', size !== null && Number(size[1]) > 150, size?.[0]);
+
+// 文字は持たない
+await pressShape('rule1', { button: 'right' });
+await page.waitForSelector('.dp-menu button');
+check('線に文字は書けない',
+  await page.isDisabled('.dp-menu button:text-is("文字を変える")'));
+await page.keyboard.press('Escape');
 
 await browser.close();

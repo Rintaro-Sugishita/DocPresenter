@@ -9,6 +9,11 @@ free {
   cache   [(セッションキャッシュ)]
   note1   >社内 NW からのみ接続可]
 
+  # 組織の境界。囲いではなく 1 本の線で引く——内と外を分けるだけで、
+  # 中身を数えあげたいわけではないから。
+  bound   --
+  boundT  "組織の境界"
+
   group dmz   "DMZ"           { web }
   group intra "社内ネットワーク" { api; db; cache }
 
@@ -30,10 +35,15 @@ layout {
   intra   @ (440,  20) 400x240  z:-1
 
   note1   @ (440, 300) 200x40
+
+  bound   @ (205,  20)   0x250  z:-1
+  boundT  @ (145, 280) 120x18
 }
 
 style {
   theme: default
   dmz   { line: dashed }
   intra { line: dashed }
+  bound { line: dashed, weight: 2 }
+  boundT { color: #8b929c }
 }

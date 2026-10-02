@@ -226,13 +226,23 @@ code { font-family: var(--font-mono); font-size: 0.9em; background: var(--fill-t
      supplies the default for each. */
   fill: var(--dp-fill, #fff);
   stroke: var(--dp-line, #3a4048);
-  stroke-width: 1.4;
+  /* The thickness is the author's too, when they wrote one. */
+  stroke-width: var(--dp-weight, 1.4);
 }
 .dp-diagram .dp-label { font-size: 14px; fill: var(--dp-text, #1c1f24); }
 /* A label with no outline. */
 .dp-diagram .dp-shape-text .dp-label { font-size: 14px; }
 
 .dp-diagram .dp-shape-group > rect { fill: var(--fill-tint-1); stroke: #b6bcc5; }
+
+/* A line standing on its own. It has no inside, so it is stroke and nothing
+   else; its arrowheads take the line's own colour rather than the fill every
+   other shape's marks get. */
+.dp-diagram .dp-shape-line > path { fill: none; }
+.dp-diagram .dp-shape-line > polygon {
+  fill: var(--dp-line, #3a4048); stroke: none;
+}
+.dp-diagram .dp-shape-line.dp-line-dashed > path { stroke-dasharray: 6 4; }
 
 /* Parts: a picture with its name under it. The picture takes the outline
    colour, so a part sits in the same palette as the shapes around it. */
@@ -244,7 +254,9 @@ code { font-family: var(--font-mono); font-size: 0.9em; background: var(--fill-t
 .dp-diagram .dp-code { font-family: var(--font-mono); font-size: 0.92em; }
 .dp-diagram .dp-group-label { font-size: 12px; fill: #6b7280; }
 
-.dp-diagram .dp-cylinder-lid, .dp-diagram .dp-note-fold { fill: none; stroke: #3a4048; stroke-width: 1.4; }
+.dp-diagram .dp-cylinder-lid, .dp-diagram .dp-note-fold {
+  fill: none; stroke: var(--dp-line, #3a4048); stroke-width: var(--dp-weight, 1.4);
+}
 
 .dp-diagram .dp-class-pending  > rect, .dp-diagram .dp-class-pending  > polygon { fill: var(--fill-pending); }
 .dp-diagram .dp-class-disabled > rect, .dp-diagram .dp-class-disabled > polygon { fill: var(--fill-disabled); }

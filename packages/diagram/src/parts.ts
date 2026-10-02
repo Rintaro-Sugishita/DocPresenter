@@ -14,7 +14,7 @@ import {
   DEFAULT_LIBRARY, DEFAULT_PARTS, ICON_LIBRARY, iconParts,
 } from './default-parts.js';
 import { DiagramParseError, notationOf, parseDiagram } from './parse.js';
-import type { DiagramFile, Node, Part, Placement } from './model.js';
+import type { DiagramFile, Node, Part, Placement, ShapeKind } from './model.js';
 
 /** Reads a file named by a `use` line, as written in the drawing. */
 export type PartReader = (path: string) => string | undefined;
@@ -179,10 +179,14 @@ export function specimenOf(library: DiagramFile, read: PartReader = () => undefi
 
     const left = ROW.name + ROW.gap + ROW.written + ROW.gap;
     nodes.push({
-      id: part.name, text: sampleOf(part.name), shape: part.shape,
+      id: part.name, text: sampleOf(part.name, part.shape), shape: part.shape,
       className: undefined, children: [], span,
     });
-    layout.set(part.name, { x: indent + left, y: top, width, height, z: undefined, span });
+    // Centred in its row rather than sitting at the top of it: a part shorter
+    // than a row — a checkbox, a line — should line up with its own name.
+    layout.set(part.name, {
+      x: indent + left, y: top + (row - height) / 2, width, height, z: undefined, span,
+    });
     style.set(part.name, part.style);
 
     write('-size', `${part.width ?? '—'}×${part.height ?? '—'}`,
@@ -203,7 +207,9 @@ export function specimenOf(library: DiagramFile, read: PartReader = () => undefi
  * The parts that hold nothing come first: a checkbox is 16 pixels square, and a
  * sample sentence in it is not a sample of anything.
  */
-function sampleOf(name: string): string {
+function sampleOf(name: string, shape: ShapeKind): string {
+  // A line holds no words at all, so a sample sentence in one is not a sample.
+  if (shape === 'line') return '';
   if (/check|radio|frame|banner|alert|panel|icon|scroll|slider|image|net-|ui-/.test(name)) return '';
   if (/^required$/.test(name)) return '*';
   if (/button|primary|secondary|danger/.test(name)) return 'ボタン';

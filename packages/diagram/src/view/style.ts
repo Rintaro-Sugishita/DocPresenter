@@ -31,6 +31,13 @@ export const DIAGRAM_STYLE = `
 }
 .dp-canvas-icon:hover { background: #eceef1; }
 .dp-canvas-icon:disabled { opacity: 0.35; cursor: default; }
+/* The look of the picked line. Same row, same buttons; what is on now is
+   marked rather than disabled, because it is a state and not a dead end. */
+.dp-canvas-liners { display: inline-flex; gap: 1px; align-items: center; }
+/* 矢印の 4 つと太さの 3 つは別のことを決めるので、間を空ける。 */
+.dp-canvas-liners .dp-canvas-icon:nth-child(5) { margin-left: 7px; }
+.dp-canvas-liners[hidden] { display: none; }
+.dp-canvas-on { background: #dce6f2; border-color: #9cb4d0; }
 .dp-canvas-stage { outline: none; position: relative; }
 /* The text box sits over the shape being renamed: an IME needs somewhere to
    compose from, the same reason the grid keeps one over the selected cell. */

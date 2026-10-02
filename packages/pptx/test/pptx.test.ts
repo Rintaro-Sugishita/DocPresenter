@@ -71,6 +71,46 @@ describe('図形の対応', () => {
   });
 });
 
+describe('単独の線', () => {
+  // 1 本の線は「図形」ではなく「コネクタ」として出す。そのほうが PowerPoint で
+  // 端を掴んで動かせるからで、これは接続線と同じ扱いである。
+  const drawn = drawingOf(diagram(
+    'free {', '  rule1 --', '  arrow1 --', '  up1 --', '}',
+    'layout {',
+    '  rule1  @ (0, 0) 240x0',
+    '  arrow1 @ (0, 40) 240x0',
+    '  up1    @ (0, 80) 100x60',
+    '}',
+    'style {',
+    '  rule1  { line: #d3d7dd, weight: 2 }',
+    '  arrow1 { arrow: both }',
+    '  up1    { slope: up, arrow: end }',
+    '}',
+  ));
+
+  it('図形ではなくコネクタとして出る', () => {
+    expect(drawn.shapes).toEqual([]);
+    expect(drawn.connectors.length).toBe(3);
+  });
+
+  it('色と太さを運ぶ', () => {
+    expect(drawn.connectors[0]!.line).toBe('#d3d7dd');
+    expect(drawn.connectors[0]!.weight).toBe(2);
+    expect(drawn.connectors[0]!.arrow).toBe(false);
+  });
+
+  it('両端の矢印は両端になる', () => {
+    expect(drawn.connectors[1]!.arrow).toBe(true);
+    expect(drawn.connectors[1]!.startArrow).toBe(true);
+  });
+
+  it('傾きは点の並びに出る', () => {
+    const [from, to] = drawn.connectors[2]!.points;
+    expect(from!.y).toBeGreaterThan(to!.y);
+    expect(from!.x).toBeLessThan(to!.x);
+  });
+});
+
 describe('色', () => {
   it('OOXML の 6 桁に直す', () => {
     expect(hex('#1c1f24', '000000')).toBe('1C1F24');

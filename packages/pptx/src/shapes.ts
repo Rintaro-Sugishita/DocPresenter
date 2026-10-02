@@ -121,7 +121,7 @@ function shapeXml(
     ? `<a:solidFill><a:srgbClr val="${hex(shape.fill, 'FFFFFF')}"/></a:solidFill>`
     : '<a:noFill/>';
   const line = shape.line
-    ? `<a:ln w="${Math.round(1.4 * EMU_PER_PX * scale)}">`
+    ? `<a:ln w="${Math.round((shape.weight ?? 1.4) * EMU_PER_PX * scale)}">`
       + `<a:solidFill><a:srgbClr val="${hex(shape.line, '3A4048')}"/></a:solidFill>`
       + `${shape.dashed ? '<a:prstDash val="dash"/>' : ''}</a:ln>`
     : '<a:ln><a:noFill/></a:ln>';
@@ -159,9 +159,10 @@ function connectorXml(
   const width = Math.max(1, Math.max(...xs) - left);
   const height = Math.max(1, Math.max(...ys) - top);
   const id = nextId();
-  const line = `<a:ln w="${Math.round(1.4 * EMU_PER_PX * scale)}">`
+  const line = `<a:ln w="${Math.round((connector.weight ?? 1.4) * EMU_PER_PX * scale)}">`
     + `<a:solidFill><a:srgbClr val="${hex(connector.line, '3A4048')}"/></a:solidFill>`
     + `${connector.dashed ? '<a:prstDash val="dash"/>' : ''}`
+    + `${connector.startArrow ? '<a:headEnd type="triangle" w="med" len="med"/>' : ''}`
     + `${connector.arrow ? '<a:tailEnd type="triangle" w="med" len="med"/>' : ''}</a:ln>`;
 
   if (points.length === 2) {

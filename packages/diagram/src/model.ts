@@ -9,7 +9,12 @@ export type ShapeKind =
   | 'ellipse' | 'note' | 'text' | 'group'
   // The flowchart set. A loop needs a start and an end that are read as a
   // pair, which is what the two trapezoids are for.
-  | 'parallelogram' | 'hexagon' | 'loop-start' | 'loop-end';
+  | 'parallelogram' | 'hexagon' | 'loop-start' | 'loop-end'
+  // A line standing on its own, as opposed to a connection between two
+  // shapes. A screen is full of rules that divide it and arrows that point at
+  // it, and neither of those joins one thing to another — so neither can be
+  // written as an edge, which exists to say that two shapes are related.
+  | 'line';
 
 export interface Node {
   readonly id: string;
@@ -142,6 +147,12 @@ export interface DiagramFile {
   readonly styleBlock: Section | undefined;
   readonly theme: string | undefined;
   readonly style: ReadonlyMap<string, ReadonlyMap<string, string>>;
+  /**
+   * Where each shape's style rule is written, so one declaration can be changed
+   * where it stands. Without it a colour set from the canvas would have to be
+   * appended as a second rule for the same shape.
+   */
+  readonly styleSpans: ReadonlyMap<string, ByteSpan>;
   /** Overlay only: the image the callouts annotate. */
   readonly image: string | undefined;
   readonly callouts: readonly Callout[];

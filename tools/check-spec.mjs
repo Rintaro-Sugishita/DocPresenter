@@ -8,6 +8,7 @@
 // Each assertion names the section of the spec it comes from.
 import { parseDiagram } from '../packages/diagram/dist/parse.js';
 import { layOutDiagram } from '../packages/diagram/dist/layout.js';
+import { renderDiagram, diagramDiagnostics } from '../packages/diagram/dist/draw/render.js';
 import { parseRuns } from '../packages/diagram/dist/inline.js';
 import { parseTable } from '../packages/markdown/dist/table/parse.js';
 import { cellAt as coverAt } from '../packages/markdown/dist/table/model.js';
@@ -69,6 +70,30 @@ for (const [written, line, arrow] of [
     found?.line === line && found?.arrow === arrow, `${found?.line}/${found?.arrow}`);
 }
 check('dgm §3.2', '接続のラベルを読む', edge('a -> b "HTTPS"')?.label === 'HTTPS');
+
+// §10.1 単独の線
+const lone = (written, style = '') => {
+  const file = dgm('free {', `  rule1 ${written}`, '}',
+    'layout {', '  rule1 @ (0, 0) 100x40', '}',
+    ...(style === '' ? [] : ['style {', `  rule1 { ${style} }`, '}']));
+  return { file, node: node(file, 'rule1') };
+};
+check('dgm §10.1', '`--` は単独の線', lone('--').node?.shape === 'line');
+check('dgm §10.1', 'ハイフンは 3 つ以上でもよい', lone('---').node?.shape === 'line');
+check('dgm §10.1', '単独の線は接続ではない', lone('--').file.edges.length === 0);
+check('dgm §10.1', '線は文字を持たない', lone('--').node?.text === '');
+check('dgm §10.1', '箱の対角線として引かれる',
+  renderDiagram(lone('--').file).includes('L 116 56'),
+  (/<path d="[^"]*"/.exec(renderDiagram(lone('--').file)) ?? [''])[0]);
+check('dgm §10.1', 'slope で対角線を選べる',
+  renderDiagram(lone('--', 'slope: up').file).includes('M 16 56 L 116 16'));
+check('dgm §10.1', 'arrow は端に矢じりを出す',
+  (renderDiagram(lone('--', 'arrow: both').file).match(/dp-arrow/g) ?? []).length === 2);
+check('dgm §10.1', 'weight は class ではなく変数で渡す',
+  renderDiagram(lone('--', 'weight: 2').file).includes('--dp-weight:2'));
+check('dgm §10.1', '線だけが arrow を持つ',
+  diagramDiagnostics(dgm('free {', '  a [x]', '}', 'layout {', '  a @ (0,0)', '}',
+    'style {', '  a { arrow: end }', '}')).join(' ').includes('線だけが'));
 
 // §2 identifiers
 check('dgm §2', '仮名・漢字は識別子に使える',

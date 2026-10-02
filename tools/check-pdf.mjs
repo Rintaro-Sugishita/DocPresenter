@@ -70,6 +70,29 @@ const figurePage = drawn.findIndex(count => count > 40);
 check('図が線と塗りで描かれている', figurePage >= 0,
   `最も多いページで ${Math.max(...drawn)} 個の描画命令`);
 
+// 単独の線も、紙の上では線である。画面の仕切りは 2 本——横に 1 本、縦に 1 本——
+// で、横のほうだけ太さ 2 を書いてある。だから紙の上では、平らな線が 2 本立って
+// いて、横のほうが 2÷1.4 倍太い。比で見るのは、図が版面に合わせて縮むぶんだけ
+// 絶対値がページ幅で変わるからである。
+const screenPage = texts.findIndex(text => text.includes('利用者の検索'));
+const flat = { across: undefined, down: undefined };
+let pen = 1;
+operators[screenPage].fnArray.forEach((fn, i) => {
+  const args = operators[screenPage].argsArray[i];
+  if (fn === OPS.setLineWidth) pen = args[0];
+  if (fn !== OPS.constructPath) return;
+  const [x0, y0, x1, y1] = args[2];           // そのパスの外接矩形
+  if (x1 - x0 > 150 && y1 - y0 < 1) flat.across = { length: x1 - x0, pen };
+  if (y1 - y0 > 100 && x1 - x0 < 1) flat.down = { length: y1 - y0, pen };
+});
+check('画面の仕切り線が紙にも引かれている',
+  flat.across !== undefined && flat.down !== undefined,
+  `横 ${flat.across?.length.toFixed(0) ?? '—'}pt / 縦 ${flat.down?.length.toFixed(0) ?? '—'}pt`);
+check('書いた太さで引かれている',
+  flat.across !== undefined && flat.down !== undefined
+  && Math.abs(flat.across.pen / flat.down.pen - 2 / 1.4) < 0.01,
+  `${flat.down?.pen.toFixed(2)} → ${flat.across?.pen.toFixed(2)}`);
+
 // 画像は貼られている（注釈図の下地）
 const images = operators.some(list => list.fnArray.some(fn =>
   fn === OPS.paintImageXObject || fn === OPS.paintJpegXObject || fn === OPS.paintInlineImageXObject));

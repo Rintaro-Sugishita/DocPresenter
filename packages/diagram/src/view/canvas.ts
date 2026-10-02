@@ -13,11 +13,12 @@ import { stencilParts } from '../draw/stencil.js';
 import type { Edit } from '@docpresenter/base';
 import {
   addNode, bendEdge, canUnpin, connectNodes, disconnectNodes, groupMembers, groupNodes,
-  nextShapeId, pinNode, pinNodes, reconnect, removeNodes, setNodeShape, setNodeText, unpinNode,
+  nextShapeId, pinNode, pinNodes, reconnect, removeNodes, setNodeShape, setNodeStyle, setNodeText,
+  unpinNode,
 } from '../edits.js';
 import { toggleInline, type InlineMark } from '@docpresenter/base';
 import { createMenu, createToolbar, type MenuItem } from '@docpresenter/base';
-import { alignIcon, partIcon, shapeIcon } from './shape-icon.js';
+import { alignIcon, lineIcon, partIcon, shapeIcon } from './shape-icon.js';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 /** How far a shape's edge may be from another's to be pulled into line. */
@@ -46,6 +47,9 @@ const PALETTE: readonly (readonly [ShapeKind, string])[] = [
   ['cylinder', '円柱'],
   ['note', '付箋'],
   ['text', '文字だけ'],
+  // A line on its own. Not a connection: it divides a screen or points at a
+  // part of it, and neither of those joins two shapes together.
+  ['line', '線'],
   // The flowchart set. Kept together at the end, after the shapes that get
   // used in any kind of drawing.
   ['parallelogram', '入出力'],
@@ -103,8 +107,10 @@ export function createCanvas(options: CanvasOptions): Canvas {
   let where: HTMLElement | undefined;
   let release: HTMLButtonElement | undefined;
   let aligners: HTMLElement | undefined;
+  let liners: HTMLElement | undefined;
   let hint: HTMLElement | undefined;
   let spreaders: readonly HTMLButtonElement[] = [];
+  let lookButtons: readonly HTMLButtonElement[] = [];
 
   const root = element('div', 'dp-canvas');
   const stage = element('div', 'dp-canvas-stage');
@@ -226,7 +232,7 @@ export function createCanvas(options: CanvasOptions): Canvas {
       // Every picked shape is washed over, not merely outlined: with several
       // picked, an outline alone is a thin line among many other thin lines.
       const outline = shape('rect', 'dp-canvas-outline');
-      place(outline, box);
+      place(outline, thick(box));
       overlay.append(outline);
     }
 
@@ -276,12 +282,35 @@ export function createCanvas(options: CanvasOptions): Canvas {
   }
 
   /**
+   * A line of the drawing itself — one that joins nothing — nearest the
+   * pointer, if one is near enough. Found by distance for the same reason a
+   * connection is, below.
+   */
+  function ruleAt(at: { x: number; y: number }): { id: string; distance: number } | undefined {
+    const near = 6 / scale();
+    let best: { id: string; distance: number } | undefined;
+    for (const node of file.nodes) {
+      if (node.shape !== 'line') continue;
+      const box = laid.boxes.get(node.id);
+      if (!box) continue;
+      const up = file.style.get(node.id)?.get('slope') === 'up';
+      const from = { x: box.x, y: up ? box.y + box.height : box.y };
+      const to = { x: box.x + box.width, y: up ? box.y : box.y + box.height };
+      const distance = toSegment(at, from, to);
+      if (distance <= near && (!best || distance < best.distance)) {
+        best = { id: node.id, distance };
+      }
+    }
+    return best;
+  }
+
+  /**
    * The connection under a point, if one is near enough. Lines are found by
    * distance rather than by a wide invisible shape over them: an invisible
    * shape would have to sit above the drawing, and would then take the presses
    * meant for whatever it crosses.
    */
-  function lineAt(at: { x: number; y: number }): string | undefined {
+  function edgeAt(at: { x: number; y: number }): { name: string; distance: number } | undefined {
     const near = 6 / scale();
     let best: { name: string; distance: number } | undefined;
     for (const route of laid.routes) {
@@ -292,7 +321,20 @@ export function createCanvas(options: CanvasOptions): Canvas {
         }
       }
     }
-    return best?.name;
+    return best;
+  }
+
+  /**
+   * What the pointer means where it is not on a shape: the nearer of the
+   * drawing's own lines and the connections. They cross — a line marking a
+   * boundary is drawn across the connections that pass through it — so at the
+   * crossing the one being pointed at is the one nearer the pointer.
+   */
+  function nearest(at: { x: number; y: number }): { rule?: string; line?: string } {
+    const rule = ruleAt(at);
+    const edge = edgeAt(at);
+    if (rule && (!edge || rule.distance <= edge.distance)) return { rule: rule.id };
+    return edge ? { line: edge.name } : {};
   }
 
   /** Which segment of a path a point is nearest to, counted from zero. */
@@ -339,6 +381,21 @@ export function createCanvas(options: CanvasOptions): Canvas {
     const rect = drawing.getBoundingClientRect();
     const factor = scale();
     return { x: (event.clientX - rect.left) / factor, y: (event.clientY - rect.top) / factor };
+  }
+
+  /**
+   * A box with enough of it to see. A line's box is flat, and a wash over
+   * nothing is a wash nobody sees — so the mark, not the line, is given room.
+   */
+  function thick(box: Box): Box {
+    const least = 5 / scale();
+    const grow = (size: number): number => Math.max(size, least);
+    return {
+      ...box,
+      x: box.x - (grow(box.width) - box.width) / 2,
+      y: box.y - (grow(box.height) - box.height) / 2,
+      width: grow(box.width), height: grow(box.height),
+    };
   }
 
   function place(node: SVGElement, box: Box): void {
@@ -423,9 +480,11 @@ export function createCanvas(options: CanvasOptions): Canvas {
     if (target?.closest('.dp-canvas-text, .dp-format-bar')) return;
     const onHandle = target?.closest('.dp-canvas-handle') != null && picked.length === 1;
     const onEnd = target?.closest('.dp-canvas-end')?.getAttribute('data-end');
-    const id = onHandle ? primary() : target?.closest('[data-node]')?.getAttribute('data-node');
     // A shape under the pointer wins; only then is a line looked for.
-    const onLine = id === undefined || id === null ? lineAt(pointOn(event)) : undefined;
+    const onShape = onHandle ? primary() : target?.closest('[data-node]')?.getAttribute('data-node');
+    const near = onShape === undefined || onShape === null ? nearest(pointOn(event)) : {};
+    const id = onShape ?? near.rule;
+    const onLine = near.line;
 
     if (onEnd === 'from' || onEnd === 'to') {
       event.stopPropagation();
@@ -613,8 +672,12 @@ export function createCanvas(options: CanvasOptions): Canvas {
         node?.setAttribute('transform', `translate(${current.by.x}, ${current.by.y})`);
       }
     } else {
-      const width = Math.max(MIN_SIZE, round(box.width + dx));
-      const height = Math.max(MIN_SIZE, round(box.height + dy));
+      // A line is allowed to be flat — that is what a horizontal rule is — so
+      // the floor every other shape has would make one impossible to draw.
+      const flat = file.nodes.find(n => n.id === primary())?.shape === 'line';
+      const least = flat ? 0 : MIN_SIZE;
+      const width = Math.max(least, round(box.width + dx));
+      const height = Math.max(least, round(box.height + dy));
       current.size = { width, height };
       preview = { box: { ...box, width, height }, guides: [] };
     }
@@ -834,8 +897,10 @@ export function createCanvas(options: CanvasOptions): Canvas {
       ]);
       return;
     }
-    const overShape = target?.closest('[data-node]');
-    const onLine = overShape ? undefined : lineAt(pointOn(event));
+    const under = target?.closest('[data-node]')?.getAttribute('data-node');
+    const near = under ? {} : nearest(pointOn(event));
+    const overShape = under ?? near.rule;
+    const onLine = near.line;
     if (onLine !== undefined) {
       pickLine(onLine);
       const edge = lineOf(onLine)?.edge;
@@ -854,13 +919,12 @@ export function createCanvas(options: CanvasOptions): Canvas {
       ]);
       return;
     }
-    const id = (event.target as Element | null)?.closest('[data-node]')?.getAttribute('data-node');
-    if (id === null || id === undefined) {
+    if (overShape === undefined || overShape === null) {
       menu.open(event.clientX, event.clientY, addItems(event));
       return;
     }
-    if (!picked.includes(id)) pick([id]);
-    menu.open(event.clientX, event.clientY, shapeItems(id));
+    if (!picked.includes(overShape)) pick([overShape]);
+    menu.open(event.clientX, event.clientY, shapeItems(overShape));
   });
 
   /** Where a new shape goes: under the drawing, in the file's own numbers. */
@@ -952,7 +1016,8 @@ export function createCanvas(options: CanvasOptions): Canvas {
       });
     }
     items.push(
-      { label: '文字を変える', run: () => beginText(id) },
+      // A line holds no words, so there is nothing for a text box to edit.
+      { label: '文字を変える', run: () => beginText(id), disabled: node?.shape === 'line' },
       {
         label: connecting === undefined ? '線を引く' : '線を引く（引き先を選ぶ）',
         run: () => { connecting = id; describe(); },
@@ -964,7 +1029,11 @@ export function createCanvas(options: CanvasOptions): Canvas {
         label,
         icon: shapeIcon(shape),
         separated: shape === PALETTE[0]![0] || shape === 'parallelogram',
-        disabled: node?.shape === shape || node?.shape === 'group',
+        // Becoming a line means losing the words: the notation has nowhere to
+        // keep them. So it is offered for a shape that has none, and a shape
+        // with words is left to be emptied first — rather than quietly emptied.
+        disabled: node?.shape === shape || node?.shape === 'group'
+          || (shape === 'line' && (node?.text ?? '') !== ''),
         run: () => options.apply(() => setNodeShape(file, id, shape), [id]),
       });
     }
@@ -1004,7 +1073,7 @@ export function createCanvas(options: CanvasOptions): Canvas {
   function beginText(id: string): void {
     const node = file.nodes.find(n => n.id === id);
     const box = boxOf(id);
-    if (!node || !box) return;
+    if (!node || !box || node.shape === 'line') return;
     const rect = drawing.getBoundingClientRect();
     const stageAt = stage.getBoundingClientRect();
     const factor = scale();
@@ -1266,6 +1335,14 @@ export function createCanvas(options: CanvasOptions): Canvas {
     }
     if (aligners) aligners.hidden = picked.length < 2;
     for (const button of spreaders) button.disabled = picked.length < 3;
+    const alone = picked.length === 1 ? file.nodes.find(n => n.id === picked[0]) : undefined;
+    if (liners) liners.hidden = alone?.shape !== 'line';
+    for (const button of lookButtons) {
+      const [property, value] = (button.dataset.look ?? '=').split('=');
+      button.classList.toggle('dp-canvas-on',
+        alone !== undefined
+        && lookOf(property ?? '', alone.id) === (value === '' ? undefined : value));
+    }
     if (!where) return;
     if (connecting !== undefined) {
       where.textContent = `${connecting} から線を引く先を選ぶ`;
@@ -1280,7 +1357,11 @@ export function createCanvas(options: CanvasOptions): Canvas {
       }
       return;
     }
-    if (hint) hint.textContent = HINT;
+    if (hint) {
+      hint.textContent = alone?.shape === 'line'
+        ? 'ドラッグで移動 / 右下で長さと向き / 左のボタンで矢印と太さ'
+        : HINT;
+    }
     if (picked.length > 1) {
       where.textContent = `${picked.length} 個を選択`;
       return;
@@ -1293,6 +1374,16 @@ export function createCanvas(options: CanvasOptions): Canvas {
     const pinned = file.layout.has(at) ? '固定' : '自動';
     where.textContent = `${at}  ${round(box.x - laid.origin.x)}, `
       + `${round(box.y - laid.origin.y)}  ${round(box.width)}×${round(box.height)}  (${pinned})`;
+  }
+
+  /**
+   * What a declaration says for this shape now. `arrow: none` and no `arrow` at
+   * all are the same drawing, so they are the same answer: a button should be
+   * marked for what is on screen, not for which words happen to be in the file.
+   */
+  function lookOf(property: string, id: string): string | undefined {
+    const value = file.style.get(id)?.get(property);
+    return property === 'arrow' && value === 'none' ? undefined : value;
   }
 
   function createBar(): HTMLElement {
@@ -1342,6 +1433,40 @@ export function createCanvas(options: CanvasOptions): Canvas {
     icon(alignIcon('spread-y'), '縦に等間隔で並べる', () => spread('y'), true);
     spreaders = spread_;
     node.append(aligners);
+
+    // The look of a line: where it points, how thick it is. It appears with a
+    // line picked, the way the lining-up row appears with several shapes — and
+    // it writes to the style section, which is where every other look lives.
+    liners = element('span', 'dp-canvas-liners');
+    const looks: HTMLButtonElement[] = [];
+    const look = (
+      picture: string, title: string, property: string, value: string | undefined,
+    ): void => {
+      const button = owner.createElement('button');
+      button.type = 'button';
+      button.className = 'dp-canvas-icon';
+      button.innerHTML = picture;
+      button.title = title;
+      button.dataset.look = `${property}=${value ?? ''}`;
+      button.addEventListener('mousedown', event => {
+        event.preventDefault();
+        event.stopPropagation();
+        const id = primary();
+        if (id === undefined || lookOf(property, id) === value) return;
+        options.apply(() => setNodeStyle(file, source, id, { [property]: value }), [id]);
+      });
+      liners?.append(button);
+      looks.push(button);
+    };
+    look(lineIcon('arrow-none'), '矢印なし', 'arrow', undefined);
+    look(lineIcon('arrow-end'), '終点に矢印', 'arrow', 'end');
+    look(lineIcon('arrow-start'), '始点に矢印', 'arrow', 'start');
+    look(lineIcon('arrow-both'), '両端に矢印', 'arrow', 'both');
+    look(lineIcon('weight-1'), '細い線', 'weight', undefined);
+    look(lineIcon('weight-2'), '中くらいの太さ', 'weight', '2.5');
+    look(lineIcon('weight-4'), '太い線', 'weight', '4');
+    lookButtons = looks;
+    node.append(liners);
 
     add('＋ 部品', 'ルータやサーバなどの絵を足す', () => {
       const at = bar.getBoundingClientRect();

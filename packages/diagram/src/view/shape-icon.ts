@@ -34,6 +34,34 @@ export function shapeIcon(shape: ShapeKind): string {
         return `<polygon points="4,2.5 14,2.5 16.5,13.5 1.5,13.5" ${OUTLINE}/>`;
       case 'loop-end':
         return `<polygon points="1.5,2.5 16.5,2.5 14,13.5 4,13.5" ${OUTLINE}/>`;
+      case 'line':
+        return `<path d="M1.5 8 L16.5 8" ${OUTLINE}/>`;
+    }
+  })();
+  return `<svg viewBox="0 0 18 16" width="18" height="16" aria-hidden="true">${body}</svg>`;
+}
+
+/**
+ * The look of a line: where it points, and how thick it is.
+ *
+ * Drawn rather than named because "終点" and "始点" read alike in a row of
+ * buttons, while an arrow pointing right and one pointing left do not.
+ */
+export function lineIcon(kind: string): string {
+  const stroke = (from: number, to: number, weight = 1.4): string =>
+    `<path d="M${from} 8 L${to} 8" fill="none" stroke="currentColor" stroke-width="${weight}"/>`;
+  const head = (at: number, towards: 1 | -1): string =>
+    `<polygon points="${at},8 ${at - 5 * towards},10.6 ${at - 5 * towards},5.4"`
+    + ` fill="currentColor"/>`;
+  const body = ((): string => {
+    switch (kind) {
+      case 'arrow-none': return stroke(2, 16);
+      case 'arrow-end': return stroke(2, 12) + head(16, 1);
+      case 'arrow-start': return stroke(6, 16) + head(2, -1);
+      case 'arrow-both': return stroke(6, 12) + head(16, 1) + head(2, -1);
+      case 'weight-1': return stroke(2, 16, 1.2);
+      case 'weight-2': return stroke(2, 16, 2.6);
+      default: return stroke(2, 16, 4.4);
     }
   })();
   return `<svg viewBox="0 0 18 16" width="18" height="16" aria-hidden="true">${body}</svg>`;
