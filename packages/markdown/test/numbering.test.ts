@@ -86,12 +86,16 @@ describe('サンプルの実ファイル', () => {
     expect(r.diagnostics.filter(d => d.severity === 'error')).toEqual([]);
     expect(hasError(r)).toBe(false);
 
-    // 図は 1..11、表は 1..3 の通し番号。画像も作図も部品の見本も同じ系列で数える
-    const figures = r.elements.filter(e => e.kind === 'figure');
-    const tables = r.elements.filter(e => e.kind === 'table');
-    expect(figures.map(f => f.number))
-      .toEqual(['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12']);
-    expect(tables.map(t => t.number)).toEqual(['1', '2', '3']);
+    // 図と表はそれぞれ 1 から続き番号。画像も作図も部品の見本も同じ系列で数える。
+    // 本数を書き写すと標本が育つたびに壊れるので、続いていることを見る。
+    const series = (kind: string): string[] =>
+      r.elements.filter(e => e.kind === kind).map(e => e.number!);
+    const consecutive = (numbers: string[]): boolean =>
+      numbers.every((value, i) => value === String(i + 1));
+    expect(series('figure').length).toBeGreaterThanOrEqual(8);
+    expect(consecutive(series('figure'))).toBe(true);
+    expect(series('table').length).toBeGreaterThanOrEqual(3);
+    expect(consecutive(series('table'))).toBe(true);
 
     // 企画時に手で「図 2」と書いていたものが、計算でも図 2 になる
     expect(r.byLabel.get('fig-login-flow')!.number).toBe('2');

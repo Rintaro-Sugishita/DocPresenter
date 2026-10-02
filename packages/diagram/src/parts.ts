@@ -10,7 +10,9 @@
 // the PPTX writer and the PDF all work unchanged: by the time they are handed
 // the drawing, a part is already an ordinary shape with an ordinary style.
 
-import { DEFAULT_LIBRARY, DEFAULT_PARTS } from './default-parts.js';
+import {
+  DEFAULT_LIBRARY, DEFAULT_PARTS, ICON_LIBRARY, iconParts,
+} from './default-parts.js';
 import { DiagramParseError, notationOf, parseDiagram } from './parse.js';
 import type { DiagramFile, Node, Part, Placement } from './model.js';
 
@@ -37,7 +39,9 @@ export function partsOf(diagram: DiagramFile, read: PartReader): ReadonlyMap<str
       }
       // `use "default"` names the set shipped with the tool. It is not a file,
       // so nothing is read for it and it is there in every shell.
-      const source = path === DEFAULT_LIBRARY ? DEFAULT_PARTS : read(path);
+      const source = path === DEFAULT_LIBRARY ? DEFAULT_PARTS
+        : path === ICON_LIBRARY ? iconParts()
+          : read(path);
       if (source === undefined) throw new DiagramParseError(`部品の定義が読めない: ${path}`, 1);
       open.push(path);
       gather(parseDiagram(source));
@@ -108,6 +112,14 @@ export function withParts(diagram: DiagramFile, read: PartReader): DiagramFile {
  */
 const SHOWN = { width: 320, height: 56 } as const;
 const ROW = { name: 130, written: 118, gap: 12, size: 76, lead: 10 } as const;
+/**
+ * How many parts go in one column before the sheet starts another.
+ *
+ * A figure is drawn whole or not at all, so a list long enough to outgrow the
+ * page is a list nobody sees. Twenty-odd parts is an ordinary size for a set
+ * that covers a system, so the sheet has to fold rather than the set stay small.
+ */
+const COLUMN = 14;
 
 /**
  * A parts library, as a drawing of itself.
@@ -128,8 +140,19 @@ export function specimenOf(library: DiagramFile, read: PartReader = () => undefi
   const style = new Map<string, ReadonlyMap<string, string>>();
   const span = { start: 0, end: 0 };
 
+  const all = [...parts.values()];
+  const columns = Math.ceil(all.length / COLUMN);
+  const rows = Math.ceil(all.length / columns);
+  const columnWidth = ROW.name + ROW.gap + ROW.written + ROW.gap
+    + SHOWN.width + ROW.gap + ROW.size + 36;
+
   let top = 0;
-  for (const part of parts.values()) {
+  let column = 0;
+  let placed = 0;
+  for (const part of all) {
+    if (placed === rows) { placed = 0; column += 1; top = 0; }
+    placed += 1;
+    const indent = column * columnWidth;
     const width = Math.min(part.width ?? SHOWN.width, SHOWN.width);
     const height = Math.min(part.height ?? SHOWN.height, SHOWN.height);
     const row = Math.max(height, 20);
@@ -142,7 +165,7 @@ export function specimenOf(library: DiagramFile, read: PartReader = () => undefi
         className: undefined, children: [], span,
       });
       layout.set(`${part.name}${suffix}`, {
-        x, y: top + (row - 16) / 2, width: w, height: 16, z: undefined, span,
+        x: indent + x, y: top + (row - 16) / 2, width: w, height: 16, z: undefined, span,
       });
       style.set(`${part.name}${suffix}`, declarations);
     };
@@ -159,7 +182,7 @@ export function specimenOf(library: DiagramFile, read: PartReader = () => undefi
       id: part.name, text: sampleOf(part.name), shape: part.shape,
       className: undefined, children: [], span,
     });
-    layout.set(part.name, { x: left, y: top, width, height, z: undefined, span });
+    layout.set(part.name, { x: indent + left, y: top, width, height, z: undefined, span });
     style.set(part.name, part.style);
 
     write('-size', `${part.width ?? '—'}×${part.height ?? '—'}`,
@@ -181,8 +204,9 @@ export function specimenOf(library: DiagramFile, read: PartReader = () => undefi
  * sample sentence in it is not a sample of anything.
  */
 function sampleOf(name: string): string {
-  if (/check|radio|frame|banner|alert|panel|icon/.test(name)) return '';
-  if (/button|primary|secondary/.test(name)) return 'ボタン';
-  if (/box|field|input|area/.test(name)) return '入力された文字';
+  if (/check|radio|frame|banner|alert|panel|icon|scroll|slider|image|net-|ui-/.test(name)) return '';
+  if (/^required$/.test(name)) return '*';
+  if (/button|primary|secondary|danger/.test(name)) return 'ボタン';
+  if (/box|field|input|area|select|spinner/.test(name)) return '入力された文字';
   return 'テキスト';
 }

@@ -1,3 +1,5 @@
+import { stencilParts } from './draw/stencil.js';
+
 // The parts every screen needs, shipped with the tool.
 //
 // A system's own look belongs in that system's own library — that is what
@@ -13,6 +15,26 @@
 
 /** The name a drawing writes to reach the set below. */
 export const DEFAULT_LIBRARY = 'default';
+
+/**
+ * The name a drawing writes to get one part per shipped picture.
+ *
+ * "What pictures are there" is a question best answered by showing them, and a
+ * library already draws itself. So the answer is a library: `use "icons"` in a
+ * file of its own, imported into the document, prints every picture with the
+ * name to write for it.
+ */
+export const ICON_LIBRARY = 'icons';
+
+/** That library, built from the pictures rather than written out beside them. */
+export function iconParts(): string {
+  const lines = stencilParts().map(part => {
+    const size = part.fit ?? { width: 24, height: 24 };
+    return `  ${part.name.replace(/\//g, '-')} [ ] `
+      + `{ icon: ${part.name} } ${size.width}x${size.height}`;
+  });
+  return `# 同梱の絵（自動生成）\n\nparts {\n${lines.join('\n')}\n}\n`;
+}
 
 export const DEFAULT_PARTS = `# 同梱の画面部品
 # 自分のシステムの見た目は、作業場の parts ファイルに書いて上書きする。

@@ -6,6 +6,7 @@
 
 import { lineText, parseRuns, type TextLine } from './inline.js';
 import { DEFAULT_SIZE, type DiagramFile, type Edge, type Node, type Point } from './model.js';
+import { textPlace } from './draw/stencil.js';
 import { textWidth, wrapRuns } from './text.js';
 
 export interface Box {
@@ -87,6 +88,11 @@ export function layOutDiagram(diagram: DiagramFile): LaidOutDiagram {
 
   const boxes = new Map<string, Box>();
   for (const node of plain) {
+    // P6: a scrollbar has nowhere to put words, so words written into one are
+    // not drawn. Saying so is the difference between a decision and a loss.
+    if (node.text !== '' && textPlace(diagram.style.get(node.id)?.get('icon')) === 'none') {
+      diagnostics.push(`この部品は文字を持たない。書いた文字は出ない: ${node.id}`);
+    }
     const size = sizes.get(node.id)!;
     const pin = diagram.layout.get(node.id);
     const at = pin ?? auto.positions.get(node.id);

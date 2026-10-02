@@ -24,6 +24,26 @@ export interface StencilPart {
    * on and are stretched onto the box.
    */
   readonly fit?: { readonly width: number; readonly height: number };
+  /**
+   * Where the shape's text goes.
+   *
+   * - `under` — a caption below the picture. A router is a thing with a name
+   *   written under it, and that is the default for a picture drawn square.
+   * - `inside` — in the picture, as in any other shape. A drop-down holds the
+   *   value chosen; the words are part of the control, not a caption for it.
+   * - `none` — it holds no text at all. A scrollbar has nothing to say.
+   */
+  readonly holds?: 'under' | 'inside' | 'none';
+}
+
+/** Where a picture puts the text of the shape it draws. */
+export function textPlace(icon: string | undefined): 'under' | 'inside' | 'none' {
+  if (icon === undefined) return 'inside';
+  const art = stencilArt(icon);
+  // A file the author pointed at is a picture with a caption under it, which is
+  // what every part did before controls existed.
+  if (!art) return 'under';
+  return art.holds ?? (art.fit ? 'inside' : 'under');
 }
 
 const LINE = 'fill="none" stroke="currentColor" stroke-width="1.6" '
@@ -119,19 +139,23 @@ const UI_MARK = '#2f6fb5';
 const CONTROLS: readonly StencilPart[] = [
   {
     name: 'ui/radio', label: 'ラジオ（未選択）',
+    holds: 'none',
     body: `<circle cx="12" cy="12" r="8" ${UI_FACE}/>`,
   },
   {
     name: 'ui/radio-on', label: 'ラジオ（選択）',
+    holds: 'none',
     body: `<circle cx="12" cy="12" r="8" ${UI_FACE}/>`
       + `<circle cx="12" cy="12" r="4" fill="${UI_MARK}"/>`,
   },
   {
     name: 'ui/check', label: 'チェック（未選択）',
+    holds: 'none',
     body: `<rect x="4" y="4" width="16" height="16" rx="2" ${UI_FACE}/>`,
   },
   {
     name: 'ui/check-on', label: 'チェック（選択）',
+    holds: 'none',
     body: `<rect x="4" y="4" width="16" height="16" rx="2" fill="${UI_MARK}" stroke="${UI_MARK}"/>`
       + `<path d="M7.5 12.5 l3 3 l6 -6" fill="none" stroke="#ffffff" stroke-width="2"`
       + ` stroke-linecap="round" stroke-linejoin="round"/>`,
@@ -140,6 +164,7 @@ const CONTROLS: readonly StencilPart[] = [
     // Drawn wide: a drop-down is a box with a chevron at its right end, and the
     // chevron must stay at the end however wide the box is.
     name: 'ui/select', label: 'ドロップダウン',
+    holds: 'inside',
     fit: { width: 160, height: 34 },
     body: `<rect x="0.7" y="0.7" width="158.6" height="32.6" rx="3" fill="#fbfbfc"`
       + ` stroke="#aeb4bd" stroke-width="1.3"/>`
@@ -147,6 +172,7 @@ const CONTROLS: readonly StencilPart[] = [
   },
   {
     name: 'ui/spinner', label: '数値入力（上下つき）',
+    holds: 'inside',
     fit: { width: 120, height: 34 },
     body: `<rect x="0.7" y="0.7" width="118.6" height="32.6" rx="3" fill="#fbfbfc"`
       + ` stroke="#aeb4bd" stroke-width="1.3"/>`
@@ -157,6 +183,7 @@ const CONTROLS: readonly StencilPart[] = [
   },
   {
     name: 'ui/scrollbar-v', label: 'スクロールバー（縦）',
+    holds: 'none',
     fit: { width: 12, height: 120 },
     body: `<rect x="0" y="0" width="12" height="120" fill="#f0f1f3"/>`
       + `<rect x="2.5" y="8" width="7" height="46" rx="3.5" fill="#aeb4bd"/>`
@@ -165,6 +192,7 @@ const CONTROLS: readonly StencilPart[] = [
   },
   {
     name: 'ui/scrollbar-h', label: 'スクロールバー（横）',
+    holds: 'none',
     fit: { width: 120, height: 12 },
     body: `<rect x="0" y="0" width="120" height="12" fill="#f0f1f3"/>`
       + `<rect x="8" y="2.5" width="46" height="7" rx="3.5" fill="#aeb4bd"/>`
@@ -173,6 +201,7 @@ const CONTROLS: readonly StencilPart[] = [
   },
   {
     name: 'ui/slider', label: 'スライダー',
+    holds: 'none',
     fit: { width: 160, height: 24 },
     body: `<path d="M4 12 h152" stroke="#d3d7dd" stroke-width="4" stroke-linecap="round"/>`
       + `<path d="M4 12 h58" stroke="${UI_MARK}" stroke-width="4" stroke-linecap="round"/>`
@@ -180,6 +209,7 @@ const CONTROLS: readonly StencilPart[] = [
   },
   {
     name: 'ui/image', label: '画像の枠',
+    holds: 'none',
     fit: { width: 120, height: 90 },
     body: `<rect x="0.7" y="0.7" width="118.6" height="88.6" fill="#f4f5f7"`
       + ` stroke="#aeb4bd" stroke-width="1.3"/>`

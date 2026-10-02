@@ -9,7 +9,7 @@ import { lineText, parseRuns, type TextLine } from '../inline.js';
 import { textWidth } from '../text.js';
 import type { DiagramFile, Node, Point, ShapeKind } from '../model.js';
 import { escapeAttr, escapeHtml } from '@docpresenter/base';
-import { isIconPath, stencilArt } from './stencil.js';
+import { isIconPath, stencilArt, textPlace } from './stencil.js';
 import {
   arrowHead as arrowCorners, border, cylinderRadius, labelLayout, n, shapeOutlines,
   LINE_HEIGHT, type Outline, type ShapePart,
@@ -87,12 +87,16 @@ function renderNode(
     ...styleClasses(diagram, node.id),
     ...(marks?.nodes.get(node.id) ? [`dp-diff-${marks.nodes.get(node.id)!}`] : []),
   ];
-  // A part is a picture with its name under it: the picture is the shape, so
-  // no outline is drawn around it.
+  // A part is a picture, so no outline is drawn around it. Where its words go
+  // is the picture's own business: under it for a thing with a name, inside it
+  // for a control that holds a value, nowhere for a scrollbar.
   const shape = icon ? picture(icon, box, url) : shapeElement(node.shape, box);
+  const place = textPlace(icon);
   const text = node.shape === 'group'
     ? groupLabel(box)
-    : label(box, diagram.style.get(node.id)?.get('align'), node.shape, icon !== undefined);
+    : place === 'none'
+      ? ''
+      : label(box, diagram.style.get(node.id)?.get('align'), node.shape, place === 'under');
   const colours = styleColours(diagram, node.id);
   const style = colours === '' ? '' : ` style="${escapeAttr(colours)}"`;
   return `<g class="${escapeAttr(classes.join(' '))}" data-node="${escapeAttr(node.id)}"${style}>`

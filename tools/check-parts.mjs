@@ -61,6 +61,52 @@ for (const [name, mark] of [
 check('長いものは長いまま描かれる', /scale\(1, 1\)/.test(search) || /scale\([\d.]+, [\d.]+\)/.test(search),
   (search.match(/scale\([^)]*\)/g) ?? []).slice(0, 3).join(' '));
 
+// --- 文字の置き場所 ---------------------------------------------------------
+// 絵によって、文字の行き先が違う。ドロップダウンは値を**中に**持ち、ルータは
+// 名前を**下に**置き、スクロールバーは**持たない**。
+const inside = (name, text) => {
+  const at = search.indexOf(`data-node="${name}"`);
+  if (at < 0) return undefined;
+  // 1 つの図形は入れ子の <g> でできているので、次の図形までを取る。
+  const next = search.indexOf('data-node="', at + 1);
+  const one = search.slice(at, next < 0 ? search.length : next);
+  // 絵は translate で置かれる。その y が外の座標系での上端で、tspan の y も
+  // 外の座標系なので、この 2 つだけが比べられる。
+  const y = /<tspan[^>]*y="([\d.]+)"/.exec(one);
+  const top = /transform="translate\([\d.-]+, ([\d.-]+)\)/.exec(one);
+  return { text: one.includes(text), y: y ? Number(y[1]) : undefined,
+    top: top ? Number(top[1]) : undefined };
+};
+const dropdown = inside('dept', '情報システム部');
+check('ドロップダウンの文字は中にある', dropdown?.text === true);
+// 「箱の中」では緩すぎる。下に寄せてもまだ箱の中なので、**中央に来ているか**を見る。
+check('ドロップダウンの文字は上下中央にある',
+  dropdown?.y !== undefined && dropdown.top !== undefined
+  && Math.abs(dropdown.y - (dropdown.top + 17)) <= 2,
+  `中央 ${(dropdown?.top ?? 0) + 17} / 文字 ${dropdown?.y}`);
+const spin = inside('age', '30');
+check('数値入力の文字も中にある', spin?.text === true);
+check('数値入力の文字も上下中央にある',
+  spin?.y !== undefined && spin.top !== undefined
+  && Math.abs(spin.y - (spin.top + 17)) <= 2,
+  `中央 ${(spin?.top ?? 0) + 17} / 文字 ${spin?.y}`);
+
+// 文字を持たない部品に文字を書いたら、黙って消さずに言う
+const quiet = `use "default"\n\nfree {\n  bar scrollbar:"ここに文字"\n}\n\n`
+  + `layout {\n  bar @ (0, 0)\n}\n`;
+const { parseDiagram, withParts, renderDiagram } = await import('@docpresenter/diagram');
+const drawn = renderDiagram(withParts(parseDiagram(quiet), () => undefined));
+check('スクロールバーに文字は出ない', !drawn.includes('ここに文字'));
+check('出ないことは黙らずに言う', drawn.includes('この部品は文字を持たない'),
+  (/<!--[^>]*-->/.exec(drawn) ?? [''])[0]);
+
+// --- どんな絵があるか -------------------------------------------------------
+const icons = figure('shared/icon-list.dgm');
+check('同梱の絵は一覧にできる', icons.includes('<svg'));
+for (const name of ['net/router', 'ui/radio-on', 'ui/slider', 'ui/scrollbar-v']) {
+  check(`一覧に ${name} が出る`, icons.includes(name));
+}
+
 // --- 一度直せば、全部が直る -------------------------------------------------
 const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' });
 const view = await browser.newPage({ viewport: { width: 1280, height: 900 } });

@@ -102,12 +102,15 @@ output: [html, pdf]
 
 再設定とロックの画面も同じ部品でできている。@fig-reset-screen と @fig-locked-screen に示す。
 入力部品を一通り使った画面を @fig-search-screen に示す。
+部品の `icon:` に書ける絵は @fig-icons のとおりで、これは製品が持っているものである。
 
 @import "auth-design/password-reset-screen.dgm" {#fig-reset-screen caption="パスワード再設定画面（画面設計）"}
 
 @import "auth-design/locked-screen.dgm" {#fig-locked-screen caption="アカウントロック画面（画面設計）"}
 
 @import "auth-design/search-screen.dgm" {#fig-search-screen caption="利用者検索画面（画面設計）"}
+
+@import "../shared/icon-list.dgm" {#fig-icons caption="同梱の絵（icon: に書ける名前）"}
 
 ---
 

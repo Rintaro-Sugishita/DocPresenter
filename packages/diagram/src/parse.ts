@@ -141,6 +141,9 @@ export function parseDiagram(source: string): DiagramFile {
     }
   }
 
+  // A file that only reaches for other libraries is a library too: it declares
+  // no parts of its own, and what it offers is what it was built on.
+  if (!mode && uses.length > 0) mode = 'parts';
   if (!mode) throw new DiagramParseError('free / flow / overlay のいずれのセクションも無い', 1);
   return {
     mode, comments, nodes, edges, body, layout, bends, layoutBlock, styleBlock,
