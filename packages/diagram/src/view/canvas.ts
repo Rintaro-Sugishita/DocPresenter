@@ -888,9 +888,12 @@ export function createCanvas(options: CanvasOptions): Canvas {
    * "四角" under a hundred routers.
    */
   function partItems(event?: MouseEvent): MenuItem[] {
+    // Grouped, because there are more of these than fit on a screen and a
+    // reader goes to the heading they want rather than down the whole list.
     return stencilParts().map(part => ({
       label: part.label,
       icon: partIcon(part.body),
+      group: part.group,
       run: () => addShape('text', event, part.name, part.label),
     }));
   }

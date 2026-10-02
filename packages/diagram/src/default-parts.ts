@@ -71,6 +71,11 @@ parts {
   secondary  ( ) { fill: #ffffff, line: #aeb4bd, color: #3a4048 } 320x38
   danger     ( ) { fill: #b3261e, line: #b3261e, color: #ffffff } 320x38
 
+  # --- 一覧 ---
+  # 行数や列数は画面ごとに違うので、絵は「表がここに入る」ことだけを言う。
+  # 中にほかの部品を置くのは、座標で重ねれば今でもできる。
+  grid       [ ] { icon: ui/grid }                               240x120
+
   # --- 飾り・見せるもの ---
   scrollbar  [ ] { icon: ui/scrollbar-v }                         12x120
   scrollbarH [ ] { icon: ui/scrollbar-h }                        120x12

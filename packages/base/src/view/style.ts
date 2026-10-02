@@ -45,7 +45,17 @@ export const BASE_STYLE = `
   background: #fff; border: 1px solid #c8ccd2; border-radius: 4px;
   box-shadow: 0 4px 14px rgba(0,0,0,.18); padding: 4px;
   font-family: system-ui, sans-serif; font-size: 13px;
+  /* 候補が増えても画面からはみ出さない。はみ出した先は誰にも押せない。
+     画面いっぱいまで伸ばすとメニューに見えなくなるので、そこで止めて送る。 */
+  max-height: min(70vh, 34em); overflow-y: auto; overscroll-behavior: contain;
 }
+/* 区分の見出し。送って見ている間も、いまどの区分かが分かるように貼り付く。 */
+.dp-menu-group {
+  position: sticky; top: -4px; z-index: 1;
+  background: #fff; color: #6b7280; font-size: 0.82em; font-weight: 600;
+  padding: 0.5em 0.8em 0.25em;
+}
+.dp-menu-group:first-child { padding-top: 0.25em; }
 .dp-menu button {
   display: block; width: 100%; text-align: left;
   border: none; background: transparent; color: #3a4048; cursor: pointer;

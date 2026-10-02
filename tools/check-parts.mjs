@@ -51,11 +51,14 @@ check('見本には下敷きの部品も出る', specimen.includes('spinner') &&
 // 「最低限のものは用意しておく」という指摘への答え。作業場に何も置かなくても
 // use "default" だけで一式が使える。
 const search = figure('docs/auth-design/search-screen.dgm');
+// 見本の頁には全部が出るので、探すのは文書全体にする——画面に出す部品を
+// 入れ替えるたびにここが壊れるのは、確かめたいこと（絵が描けること）ではない。
 for (const [name, mark] of [
   ['ドロップダウン', 'M143 14'], ['数値入力', 'M106.5 12.5'], ['スライダー', 'M4 12 h152'],
   ['スクロールバー', 'M3.6 4.4'], ['ラジオ（選択）', 'r="4"'], ['画像の枠', 'M12 68'],
+  ['表（一覧）', 'M80.7 0.7 v118.6'],
 ]) {
-  check(`${name}が絵として描かれている`, search.includes(mark));
+  check(`${name}が絵として描かれている`, page.includes(mark));
 }
 // 伸びる絵は、箱の形に合わせて伸びる（正方形に収めると、スクロールバーが点になる）
 check('長いものは長いまま描かれる', /scale\(1, 1\)/.test(search) || /scale\([\d.]+, [\d.]+\)/.test(search),
@@ -149,5 +152,61 @@ check('書き換えたのは部品のファイル 1 つ',
 check('部品を使う画面がすべて変わる',
   names.length >= 2 && names.every(path => changed[path]),
   names.map(path => `${path.split('/').pop()}:${changed[path] ? '変' : '不変'}`).join(' '));
+
+
+
+// --- 「＋ 部品」の一覧 -------------------------------------------------------
+//
+// 絵を 10 枚足したら、一覧が画面に収まらなくなった。収まらない先は誰にも押せない。
+// 見たいのは「区分で分かれていること」と「どの画面の高さでも全部が押せること」。
+const canvas = await browser.newPage({ viewport: { width: 1280, height: 760 } });
+canvas.on('pageerror', e => { console.log('✗ ページエラー:', e.message); process.exitCode = 1; });
+await canvas.goto('file://' + process.cwd() + '/out/editor.html');
+await canvas.waitForTimeout(500);
+await canvas.click('.dp-tab[data-index="2"]');
+await canvas.waitForTimeout(250);
+await canvas.locator('.dp-sheet:not([hidden]) .dp-figure-body').first().click();
+await canvas.waitForSelector('.dp-canvas-bar');
+await canvas.click('.dp-canvas-bar button:text("＋ 部品")');
+await canvas.waitForSelector('.dp-menu');
+
+const menu = await canvas.evaluate(() => {
+  const node = document.querySelector('.dp-menu');
+  const box = node.getBoundingClientRect();
+  return {
+    groups: [...node.querySelectorAll('.dp-menu-group')].map(one => one.textContent),
+    items: node.querySelectorAll('button').length,
+    top: box.top, bottom: box.bottom, view: window.innerHeight,
+    scrolls: node.scrollHeight > node.clientHeight,
+    // 見出しは送っている間も見えている
+    sticky: getComputedStyle(node.querySelector('.dp-menu-group')).position,
+  };
+});
+check('区分の見出しが出る', menu.groups.length >= 2, menu.groups.join(' / '));
+check('同梱の絵はすべて候補に出る', menu.items >= 20, `${menu.items} 件`);
+check('一覧は画面に収まっている',
+  menu.top >= 0 && menu.bottom <= menu.view,
+  `${Math.round(menu.top)}〜${Math.round(menu.bottom)} / 画面 ${menu.view}`);
+check('収まらないぶんは送って出せる', menu.scrolls === true);
+check('送っている間も区分が見える', menu.sticky === 'sticky');
+check('表の部品がある', (await canvas.textContent('.dp-menu')).includes('表（一覧）'));
+
+// 狭い画面でも同じこと
+const small = await browser.newPage({ viewport: { width: 1100, height: 520 } });
+await small.goto('file://' + process.cwd() + '/out/editor.html');
+await small.waitForTimeout(500);
+await small.click('.dp-tab[data-index="2"]');
+await small.waitForTimeout(250);
+await small.locator('.dp-sheet:not([hidden]) .dp-figure-body').first().click();
+await small.waitForSelector('.dp-canvas-bar');
+await small.click('.dp-canvas-bar button:text("＋ 部品")');
+await small.waitForSelector('.dp-menu');
+const narrow = await small.evaluate(() => {
+  const box = document.querySelector('.dp-menu').getBoundingClientRect();
+  return { top: box.top, bottom: box.bottom, view: window.innerHeight };
+});
+check('狭い画面でも収まっている',
+  narrow.top >= 0 && narrow.bottom <= narrow.view,
+  `${Math.round(narrow.top)}〜${Math.round(narrow.bottom)} / 画面 ${narrow.view}`);
 
 await browser.close();

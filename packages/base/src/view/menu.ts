@@ -13,6 +13,15 @@ export interface MenuItem {
   readonly run: () => void;
   /** A rule above this item, to group what belongs together. */
   readonly separated?: boolean;
+  /**
+   * The heading this item sits under.
+   *
+   * A list of a dozen is read; a list of fifty is searched. Headings turn the
+   * second back into the first — the reader goes to the heading they want and
+   * reads the handful under it. Consecutive items naming the same heading share
+   * one, so the caller only has to keep them together.
+   */
+  readonly group?: string;
   readonly disabled?: boolean;
 }
 
@@ -69,7 +78,12 @@ function buildMenu(owner: Document): Menu {
     close,
     open(x, y, items) {
       root.replaceChildren();
+      let heading: string | undefined;
       for (const item of items) {
+        if (item.group !== undefined && item.group !== heading) {
+          root.append(groupLabel(owner, item.group));
+          heading = item.group;
+        }
         if (item.separated) root.append(rule(owner));
         const button = owner.createElement('button');
         button.type = 'button';
@@ -98,10 +112,23 @@ function buildMenu(owner: Document): Menu {
       const width = view?.innerWidth ?? box.right;
       const height = view?.innerHeight ?? box.bottom;
       root.style.left = `${Math.max(4, Math.min(x, width - box.width - 4))}px`;
-      root.style.top = `${Math.max(4, Math.min(y, height - box.height - 4))}px`;
+      // A long list is taller than the screen, and clamping alone would push
+      // its top off the edge. It is pinned to the top and scrolls instead; the
+      // style caps the height, so the box measured here is already the capped
+      // one.
+      root.style.top = box.height + 8 >= height
+        ? '4px'
+        : `${Math.max(4, Math.min(y, height - box.height - 4))}px`;
       (root.firstElementChild as HTMLElement | null)?.focus();
     },
   };
+}
+
+function groupLabel(owner: Document, text: string): HTMLElement {
+  const label = owner.createElement('div');
+  label.className = 'dp-menu-group';
+  label.textContent = text;
+  return label;
 }
 
 function rule(owner: Document): HTMLElement {
