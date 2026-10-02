@@ -49,13 +49,10 @@ export const BASE_STYLE = `
      画面いっぱいまで伸ばすとメニューに見えなくなるので、そこで止めて送る。 */
   max-height: min(70vh, 34em); overflow-y: auto; overscroll-behavior: contain;
 }
-/* 区分の見出し。送って見ている間も、いまどの区分かが分かるように貼り付く。 */
-.dp-menu-group {
-  position: sticky; top: -4px; z-index: 1;
-  background: #fff; color: #6b7280; font-size: 0.82em; font-weight: 600;
-  padding: 0.5em 0.8em 0.25em;
-}
-.dp-menu-group:first-child { padding-top: 0.25em; }
+/* 区分は「開く行」にする。見出しを並べるだけでは、結局その下の全部を送って
+   見ることになる。開いた先は親の行の横に出て、親より高くまで使える——親は
+   上の段に戻るための短い一覧だから止めてよいが、こちらは一区分ぶんある。 */
+.dp-menu-sub { z-index: 21; max-height: min(92vh, 40em); }
 .dp-menu button {
   display: block; width: 100%; text-align: left;
   border: none; background: transparent; color: #3a4048; cursor: pointer;
@@ -63,6 +60,13 @@ export const BASE_STYLE = `
 }
 .dp-menu button:hover, .dp-menu button:focus { background: #eceef1; outline: none; }
 .dp-menu button:disabled { color: #b6bcc5; cursor: default; background: transparent; }
+/* 開く行。矢印は「ここから先がある」ことを言う。 */
+.dp-menu button.dp-menu-more { position: relative; padding-right: 1.7em; }
+.dp-menu button.dp-menu-more::after {
+  content: '\\203a'; position: absolute; right: 0.65em; top: 50%;
+  transform: translateY(-50%); color: #8b929c; font-size: 1.15em; line-height: 1;
+}
+.dp-menu button.dp-menu-more[aria-expanded="true"] { background: #eceef1; }
 /* A disabled first item is the explanation above a choice, not a choice. */
 .dp-menu button:disabled:first-child { color: #6b7280; font-size: 0.92em; }
 .dp-menu-icon {

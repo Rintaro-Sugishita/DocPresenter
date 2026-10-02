@@ -886,16 +886,25 @@ export function createCanvas(options: CanvasOptions): Canvas {
    * The parts library, on its own list. There are many of them and they are
    * pictures of particular things, so putting them among the shapes would bury
    * "四角" under a hundred routers.
+   *
+   * One row per kind, each opening the pictures of that kind. The whole set is
+   * longer than a screen, and a screen's worth of scrolling is what the reader
+   * pays whether the list is labelled or not; a row per kind is as long as the
+   * number of kinds, and only the kind that was picked is ever shown.
    */
   function partItems(event?: MouseEvent): MenuItem[] {
-    // Grouped, because there are more of these than fit on a screen and a
-    // reader goes to the heading they want rather than down the whole list.
-    return stencilParts().map(part => ({
-      label: part.label,
-      icon: partIcon(part.body),
-      group: part.group,
-      run: () => addShape('text', event, part.name, part.label),
-    }));
+    const kinds = new Map<string, MenuItem[]>();
+    for (const part of stencilParts()) {
+      const one: MenuItem = {
+        label: part.label,
+        icon: partIcon(part.body),
+        run: () => addShape('text', event, part.name, part.label),
+      };
+      const kind = kinds.get(part.group);
+      if (kind) kind.push(one);
+      else kinds.set(part.group, [one]);
+    }
+    return [...kinds].map(([group, items]): MenuItem => ({ label: group, items }));
   }
 
   function addShape(

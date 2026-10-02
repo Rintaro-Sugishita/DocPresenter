@@ -157,56 +157,145 @@ check('部品を使う画面がすべて変わる',
 
 // --- 「＋ 部品」の一覧 -------------------------------------------------------
 //
-// 絵を 10 枚足したら、一覧が画面に収まらなくなった。収まらない先は誰にも押せない。
-// 見たいのは「区分で分かれていること」と「どの画面の高さでも全部が押せること」。
+// 絵を 10 枚足したら、一覧が画面に収まらなくなった。見出しで区切っても、下まで
+// 見るには結局同じだけ送ることになる。だから区分は「開く行」にした。見たいのは
+// 上の段が送らずに読めること、開いた先も画面に収まること、そしてどの絵もどこかの
+// 区分から出せること——どれかが欠けると、押せない絵が生まれる。
+const { stencilParts } = await import('@docpresenter/diagram');
+
+const openMenu = async (view) => {
+  await view.goto('file://' + process.cwd() + '/out/editor.html');
+  await view.waitForTimeout(500);
+  await view.click('.dp-tab[data-index="2"]');
+  await view.waitForTimeout(250);
+  await view.locator('.dp-sheet:not([hidden]) .dp-figure-body').first().click();
+  await view.waitForSelector('.dp-canvas-bar');
+  await view.click('.dp-canvas-bar button:text("＋ 部品")');
+  await view.waitForSelector('.dp-menu');
+};
+
+/** 開いている段を測る。深さ 0 が区分の段、1 がその区分の絵。 */
+const measure = (view, depth) => view.evaluate(level => {
+  const panels = [document.querySelector('.dp-menu:not(.dp-menu-sub)'),
+    ...document.querySelectorAll('.dp-menu-sub')];
+  const node = panels[level];
+  if (!node) return undefined;
+  const box = node.getBoundingClientRect();
+  const rows = [...node.querySelectorAll('button')];
+  const parent = panels[level - 1]?.getBoundingClientRect();
+  return {
+    labels: rows.map(one => one.textContent.trim()),
+    opens: rows.filter(one => one.getAttribute('aria-haspopup') === 'menu').length,
+    top: box.top, bottom: box.bottom, view: window.innerHeight,
+    scrolls: node.scrollHeight > node.clientHeight, content: node.scrollHeight,
+    // 親の行の横（右、無理なら左）に出ている。重ねて出したら親が読めない。
+    beside: parent ? box.left >= parent.right - 6 || box.right <= parent.left + 6 : undefined,
+    panels: document.querySelectorAll('.dp-menu-sub').length,
+  };
+}, depth);
+
 const canvas = await browser.newPage({ viewport: { width: 1280, height: 760 } });
 canvas.on('pageerror', e => { console.log('✗ ページエラー:', e.message); process.exitCode = 1; });
-await canvas.goto('file://' + process.cwd() + '/out/editor.html');
-await canvas.waitForTimeout(500);
-await canvas.click('.dp-tab[data-index="2"]');
-await canvas.waitForTimeout(250);
-await canvas.locator('.dp-sheet:not([hidden]) .dp-figure-body').first().click();
-await canvas.waitForSelector('.dp-canvas-bar');
-await canvas.click('.dp-canvas-bar button:text("＋ 部品")');
-await canvas.waitForSelector('.dp-menu');
+await openMenu(canvas);
 
-const menu = await canvas.evaluate(() => {
-  const node = document.querySelector('.dp-menu');
-  const box = node.getBoundingClientRect();
-  return {
-    groups: [...node.querySelectorAll('.dp-menu-group')].map(one => one.textContent),
-    items: node.querySelectorAll('button').length,
-    top: box.top, bottom: box.bottom, view: window.innerHeight,
-    scrolls: node.scrollHeight > node.clientHeight,
-    // 見出しは送っている間も見えている
-    sticky: getComputedStyle(node.querySelector('.dp-menu-group')).position,
-  };
-});
-check('区分の見出しが出る', menu.groups.length >= 2, menu.groups.join(' / '));
-check('同梱の絵はすべて候補に出る', menu.items >= 20, `${menu.items} 件`);
-check('一覧は画面に収まっている',
-  menu.top >= 0 && menu.bottom <= menu.view,
-  `${Math.round(menu.top)}〜${Math.round(menu.bottom)} / 画面 ${menu.view}`);
-check('収まらないぶんは送って出せる', menu.scrolls === true);
-check('送っている間も区分が見える', menu.sticky === 'sticky');
-check('表の部品がある', (await canvas.textContent('.dp-menu')).includes('表（一覧）'));
+const kinds = await measure(canvas, 0);
+check('上の段は区分だけが並ぶ',
+  kinds.opens === kinds.labels.length && kinds.opens >= 2, kinds.labels.join(' / '));
+check('上の段は送らずに全部読める',
+  !kinds.scrolls && kinds.top >= 0 && kinds.bottom <= kinds.view,
+  `${Math.round(kinds.bottom - kinds.top)}px / 画面 ${kinds.view}`);
+
+// 区分を開く。開いた先は親の横に出て、そこだけで完結している。
+let found = 0;
+const kindRow = name => `.dp-menu:not(.dp-menu-sub) button:text("${name}")`;
+for (const name of kinds.labels) {
+  await canvas.hover(kindRow(name));
+  await canvas.waitForSelector('.dp-menu-sub');
+  // 開いているものから別の区分へ移るときは、ひと呼吸置いてから入れ替わる。
+  await canvas.waitForTimeout(350);
+  const sub = await measure(canvas, 1);
+  found += sub.labels.length;
+  check(`${name}を開くと、その区分の絵が出る`, sub.labels.length >= 8 && sub.opens === 0,
+    `${sub.labels.length} 件: ${sub.labels.slice(0, 3).join(' ')}…`);
+  check(`${name}は親の横に出る`, sub.beside === true);
+  check(`${name}も画面に収まる`,
+    !sub.scrolls && sub.top >= 0 && sub.bottom <= sub.view,
+    `${Math.round(sub.top)}〜${Math.round(sub.bottom)} / 画面 ${sub.view}`);
+  // ほかの区分に移ったら、前の区分は閉じている
+  check(`開くのは一度に一区分だけ`, sub.panels === 1, `${sub.panels} 枚`);
+}
+check('同梱の絵はどれかの区分から出せる', found === stencilParts().length,
+  `${found} / ${stencilParts().length} 件`);
+
+// 小窓へは斜めに手が動くので、途中で隣の行を通る。通った瞬間に入れ替わると
+// 開いた一覧が目の前で消えるので、ひと呼吸だけ待つ。
+const firstOf = async () => (await measure(canvas, 1)).labels[0];
+await canvas.hover(kindRow(kinds.labels[0]));
+await canvas.waitForTimeout(350);
+const held = await firstOf();
+await canvas.hover(kindRow(kinds.labels.at(-1)));
+await canvas.waitForTimeout(80);
+check('隣を通っただけでは入れ替わらない', (await firstOf()) === held, held);
+await canvas.waitForTimeout(400);
+check('留まれば入れ替わる', (await firstOf()) !== held, await firstOf());
+check('表の部品がある',
+  (await canvas.textContent('.dp-menu-sub')).includes('表（一覧）'));
+
+// 押せば本当に足される。候補を並べ替えても、ここは押した結果を見る——
+// 書き換わるのは図のファイルなので、見るのは描かれた絵と、書き換えの報せ。
+const figureNow = () => canvas.innerHTML('.dp-sheet:not([hidden]) .dp-figure');
+check('押す前は表が無い', !(await figureNow()).includes('M80.7 0.7'));
+await canvas.click('.dp-menu-sub button:text("表（一覧）")');
+await canvas.waitForTimeout(400);
+check('区分から選ぶと図に足される', (await figureNow()).includes('M80.7 0.7'),
+  await canvas.textContent('#status'));
+check('足したのは図のファイル', (await canvas.textContent('#status')).includes('.dgm'),
+  await canvas.textContent('#status'));
+check('選んだらメニューは閉じる', (await canvas.$$('.dp-menu-sub')).length === 0);
+
+// --- 鍵盤でも辿れる ---------------------------------------------------------
+//
+// 開き直しを挟む。上の段は開くたびに組み直されるので、鍵盤の受け口を組み立ての
+// たびに足していると、開いた回数ぶん一度に飛ぶ。
+for (let i = 0; i < 3; i++) {
+  await canvas.click('.dp-canvas-bar button:text("＋ 部品")');
+  await canvas.waitForSelector('.dp-menu button');
+  await canvas.keyboard.press('Escape');
+  await canvas.waitForTimeout(80);
+}
+await canvas.click('.dp-canvas-bar button:text("＋ 部品")');
+await canvas.waitForSelector('.dp-menu button');
+const onRow = () => canvas.evaluate(() => document.activeElement?.textContent?.trim());
+check('開いた直後は先頭の行にいる', (await onRow()) === kinds.labels[0], await onRow());
+await canvas.keyboard.press('ArrowDown');
+check('↓ は一行だけ動く', (await onRow()) === kinds.labels[1], await onRow());
+await canvas.keyboard.press('ArrowRight');
+await canvas.waitForSelector('.dp-menu-sub');
+const firstSub = (await measure(canvas, 1)).labels[0];
+check('→ で区分が開き、その先頭にいる', (await onRow()) === firstSub, await onRow());
+await canvas.keyboard.press('ArrowLeft');
+check('← で区分の段に戻る',
+  (await onRow()) === kinds.labels[1] && (await canvas.$$('.dp-menu-sub')).length === 0,
+  await onRow());
+await canvas.keyboard.press('Escape');
+check('上の段で Esc なら閉じる', !(await canvas.isVisible('.dp-menu')));
 
 // 狭い画面でも同じこと
 const small = await browser.newPage({ viewport: { width: 1100, height: 520 } });
-await small.goto('file://' + process.cwd() + '/out/editor.html');
-await small.waitForTimeout(500);
-await small.click('.dp-tab[data-index="2"]');
-await small.waitForTimeout(250);
-await small.locator('.dp-sheet:not([hidden]) .dp-figure-body').first().click();
-await small.waitForSelector('.dp-canvas-bar');
-await small.click('.dp-canvas-bar button:text("＋ 部品")');
-await small.waitForSelector('.dp-menu');
-const narrow = await small.evaluate(() => {
-  const box = document.querySelector('.dp-menu').getBoundingClientRect();
-  return { top: box.top, bottom: box.bottom, view: window.innerHeight };
-});
-check('狭い画面でも収まっている',
-  narrow.top >= 0 && narrow.bottom <= narrow.view,
+await openMenu(small);
+const narrow = await measure(small, 0);
+check('狭い画面でも区分の段は収まっている',
+  !narrow.scrolls && narrow.top >= 0 && narrow.bottom <= narrow.view,
   `${Math.round(narrow.top)}〜${Math.round(narrow.bottom)} / 画面 ${narrow.view}`);
+await small.hover(`.dp-menu:not(.dp-menu-sub) button:text("${narrow.labels.at(-1)}")`);
+await small.waitForSelector('.dp-menu-sub');
+const deep = await measure(small, 1);
+check('狭い画面でも開いた先が収まっている',
+  deep.top >= 0 && deep.bottom <= deep.view,
+  `${Math.round(deep.top)}〜${Math.round(deep.bottom)} / 画面 ${deep.view}`);
+// 送ることになっても、一画面ぶんを超えては送らない——「大量に送る」のが
+// やめたかったことなので、そこに線を引く。
+check('狭い画面でも送る量は一画面を超えない', deep.content <= deep.view,
+  `中身 ${deep.content}px / 画面 ${deep.view}`);
 
 await browser.close();

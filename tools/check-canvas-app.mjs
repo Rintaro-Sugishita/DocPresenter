@@ -56,7 +56,10 @@ check('図形を足せる', (await source()).includes('branch1 {図形}'),
 
 await page.click('.dp-canvas-bar button:text("＋ 部品")');
 await page.waitForSelector('.dp-menu button');
-await page.click('.dp-menu button:text-is("ルータ")');
+// 絵は区分ごとの小窓に入っている。区分を開いてから選ぶ。
+await page.hover('.dp-menu:not(.dp-menu-sub) button:text("ネットワーク")');
+await page.waitForSelector('.dp-menu-sub button');
+await page.click('.dp-menu-sub button:text-is("ルータ")');
 await page.waitForTimeout(400);
 check('部品も足せる', (await source()).includes('icon: net/router'),
   (await source()).split('\n').find(l => l.includes('icon:')));

@@ -410,13 +410,19 @@ check('折れ点の目印も消える', (await page.$$('.dp-canvas-bend')).lengt
 await openSheet(4);
 await page.click('.dp-sheet:not([hidden]) .dp-canvas-bar button:text("＋ 部品")');
 await page.waitForSelector('.dp-menu button');
-const parts = await page.$$eval('.dp-menu button', ns => ns.map(n => n.textContent));
-check('部品は別の一覧になっている', parts.includes('ルータ') && !parts.includes('四角'),
+// 絵は区分ごとの小窓に入っている。上の段に並ぶのは区分だけで、図形は無い。
+const kinds = await page.$$eval('.dp-menu button', ns => ns.map(n => n.textContent));
+check('部品は別の一覧になっている', kinds.includes('ネットワーク') && !kinds.includes('四角'),
+  kinds.join(' / '));
+await page.hover('.dp-menu:not(.dp-menu-sub) button:text("ネットワーク")');
+await page.waitForSelector('.dp-menu-sub button');
+const parts = await page.$$eval('.dp-menu-sub button', ns => ns.map(n => n.textContent));
+check('区分を開くと部品が出る', parts.includes('ルータ') && !parts.includes('四角'),
   parts.slice(0, 4).join(' / '));
-check('部品も絵で選ぶ', (await page.$$('.dp-menu button svg')).length === parts.length,
-  `${(await page.$$('.dp-menu button svg')).length} / ${parts.length}`);
+check('部品も絵で選ぶ', (await page.$$('.dp-menu-sub button svg')).length === parts.length,
+  `${(await page.$$('.dp-menu-sub button svg')).length} / ${parts.length}`);
 
-await page.click(item('ルータ'));
+await page.click(`.dp-menu-sub button:text-is("ルータ")`);
 await page.waitForTimeout(500);
 check('1 回の操作として書かれる', (await status()).includes('部品を追加'), await status());
 check('絵が描かれる', (await page.$$('.dp-canvas-stage .dp-part-art')).length === 1,
