@@ -218,6 +218,18 @@ function parseParts(body: readonly SourceLine[], out: Map<string, Part>): void {
   }
 }
 
+/**
+ * How a shape is written, with nothing in it: `[ ]`, `( )`, `" "`.
+ *
+ * The notation is the answer to "how do I make one of these", so a parts list
+ * that shows the look should show this beside it. Without it a reader sees
+ * three rectangles of different colours and cannot tell what decided that.
+ */
+export function notationOf(shape: ShapeKind): string {
+  const found = SHAPES.find(one => one.shape === shape);
+  return found ? `${found.open} ${found.close}` : shape;
+}
+
 /** The shape a bracket pair means, with nothing inside it. */
 function shapeOf(written: string): ShapeKind | undefined {
   for (const { open, close, shape } of SHAPES) {

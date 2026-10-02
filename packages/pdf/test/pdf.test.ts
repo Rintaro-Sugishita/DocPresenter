@@ -23,6 +23,40 @@ describe('パスの写し取り', () => {
       .toBe('M 0 24 A 80 24 0 0 1 160 24');
   });
 
+  it('相対コマンドは、いまの筆の位置から数える', () => {
+    // 大文字に揃えて絶対として読むと、同梱の絵がことごとく長い斜線になる。
+    expect(mapPathData('M 10 10 l 5 5 l 5 -5', same, 1)).toBe('M 10 10 L 15 15 L 20 10');
+    expect(mapPathData('m 10 10 l 5 0', same, 1)).toBe('M 10 10 L 15 10');
+  });
+
+  it('水平・垂直は直線として写す', () => {
+    // 読み飛ばすと線が消える。消えたことは誰にも分からない。
+    expect(mapPathData('M 0 12 h 17', same, 1)).toBe('M 0 12 L 17 12');
+    expect(mapPathData('M 0 12 v -4 H 20 V 0', same, 1))
+      .toBe('M 0 12 L 0 8 L 20 8 L 20 0');
+  });
+
+  it('曲線も残る', () => {
+    expect(mapPathData('M 0 0 C 1 2 3 4 5 6', same, 1)).toBe('M 0 0 C 1 2 3 4 5 6');
+    expect(mapPathData('M 0 0 c 1 2 3 4 5 6', same, 1)).toBe('M 0 0 C 1 2 3 4 5 6');
+  });
+
+  it('続きの数値は、同じコマンドの繰り返しである', () => {
+    expect(mapPathData('M 0 0 L 1 1 2 2', same, 1)).toBe('M 0 0 L 1 1 L 2 2');
+    // M のあとに続く組は L として読む（SVG の規則）
+    expect(mapPathData('M 0 0 1 1', same, 1)).toBe('M 0 0 L 1 1');
+  });
+
+  it('相対の円弧も終点だけが写る', () => {
+    expect(mapPathData('M 10 10 a 4 4 0 0 1 8 0', twice, 2))
+      .toBe('M 20 20 A 8 8 0 0 1 36 20');
+  });
+
+  it('閉じたあとは、始点から数え直す', () => {
+    expect(mapPathData('M 10 10 L 20 10 Z l 5 5', same, 1))
+      .toBe('M 10 10 L 20 10 Z L 15 15');
+  });
+
   it('閉じるコマンドは残る', () => {
     expect(mapPathData('M 0 0 L 10 0 Z', same, 1)).toBe('M 0 0 L 10 0 Z');
   });

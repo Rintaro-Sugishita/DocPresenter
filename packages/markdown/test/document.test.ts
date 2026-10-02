@@ -137,7 +137,7 @@ describe('サンプルの実ファイル', () => {
       'fig-architecture', 'fig-login-flow', 'fig-login-screen', 'fig-login-shot',
       'fig-login-design', 'tbl-screen-items', 'fig-login-sequence', 'fig-token-lifecycle',
       'fig-customer-domain', 'tbl-glossary',
-      'fig-ui-parts', 'fig-reset-screen', 'fig-locked-screen',
+      'fig-ui-parts', 'fig-reset-screen', 'fig-locked-screen', 'fig-search-screen',
       'tbl-error-codes',
       undefined,                                    // 改訂履歴。図表ではないのでラベルを持たない
     ]);

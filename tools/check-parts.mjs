@@ -41,7 +41,25 @@ check('画面は描かれている', login.includes('<svg'));
 check('書かれていない色が、描かれたものには付いている',
   login.includes('#2f6fb5'), '主ボタンの青');
 check('部品の既定の大きさが効いている', /width="320"/.test(login));
-check('見本も出る', figure('shared/ui-parts.dgm').includes('secondary'));
+// 見本には、下敷きにした既定の部品も出る——「ここで何が使えるか」の答えだから
+const specimen = figure('shared/ui-parts.dgm');
+check('見本も出る', specimen.includes('secondary'));
+check('見本には下敷きの部品も出る', specimen.includes('spinner') && specimen.includes('ui/slider'),
+  ['spinner', 'slider', 'radio'].filter(name => specimen.includes(name)).join(' '));
+
+// --- 同梱の部品 -------------------------------------------------------------
+// 「最低限のものは用意しておく」という指摘への答え。作業場に何も置かなくても
+// use "default" だけで一式が使える。
+const search = figure('docs/auth-design/search-screen.dgm');
+for (const [name, mark] of [
+  ['ドロップダウン', 'M143 14'], ['数値入力', 'M106.5 12.5'], ['スライダー', 'M4 12 h152'],
+  ['スクロールバー', 'M3.6 4.4'], ['ラジオ（選択）', 'r="4"'], ['画像の枠', 'M12 68'],
+]) {
+  check(`${name}が絵として描かれている`, search.includes(mark));
+}
+// 伸びる絵は、箱の形に合わせて伸びる（正方形に収めると、スクロールバーが点になる）
+check('長いものは長いまま描かれる', /scale\(1, 1\)/.test(search) || /scale\([\d.]+, [\d.]+\)/.test(search),
+  (search.match(/scale\([^)]*\)/g) ?? []).slice(0, 3).join(' '));
 
 // --- 一度直せば、全部が直る -------------------------------------------------
 const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' });
@@ -55,16 +73,18 @@ await view.waitForTimeout(300);
 check('部品の見本が画面にも出る',
   await view.isVisible('.dp-sheet:not([hidden]) .dp-figure[data-path$="ui-parts.dgm"] svg'));
 
-// 部品の色を変える。1 つのファイルを 1 回書き換えるだけである。変えるのは
-// **3 枚すべてが使っている部品**にする——主ボタンはロック画面に無いので、
-// それを変えても「全部に効く」ことの証明にはならない。
+// 部品を 1 つ上書きする。1 つのファイルを 1 回書き換えるだけである。上書きするのは
+// **どの画面も使っている部品**にする——主ボタンはロック画面に無いので、それを
+// 変えても「全部に効く」ことの証明にはならない。
 await view.locator('.dp-sheet:not([hidden]) .dp-figure[data-path$="ui-parts.dgm"] .dp-figure-body')
   .first().click();
 await view.waitForSelector('.dp-block-source');
 const before = await view.inputValue('.dp-block-source');
 check('部品のファイルが開く', before.includes('parts {'), before.slice(0, 12));
 await view.$eval('.dp-block-source', el => {
-  el.value = el.value.replace(/#d3d7dd/g, '#217a3c');   // frame の枠線
+  // 同梱の既定にある frame を、この作業場のものとして上書きする
+  el.value = el.value.replace(/^\}/m,
+    '  frame [ ] { fill: #ffffff, line: #217a3c } 380x300\n}');
 });
 await view.keyboard.press('Control+Enter');
 await view.waitForTimeout(500);

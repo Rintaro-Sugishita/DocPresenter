@@ -218,7 +218,10 @@ function renderKnown(
       used => options.loader.read(joinPath(path, used)));
     const marks = options.marks?.diagrams.get(path);
     // A library has nothing of its own to place, so what it draws is itself.
-    if (diagram.mode === 'parts') return renderDiagram(specimenOf(diagram), url, marks);
+    if (diagram.mode === 'parts') {
+      return renderDiagram(
+        specimenOf(diagram, used => options.loader.read(joinPath(path, used))), url, marks);
+    }
     if (diagram.mode !== 'overlay') return renderDiagram(diagram, url, marks);
     // The image is written relative to the diagram, not to the document.
     const image = diagram.image === undefined ? undefined : url(joinPath(path, diagram.image));

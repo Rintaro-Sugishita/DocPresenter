@@ -101,10 +101,13 @@ output: [html, pdf]
 @import "../shared/ui-parts.dgm" {#fig-ui-parts caption="画面部品テンプレート"}
 
 再設定とロックの画面も同じ部品でできている。@fig-reset-screen と @fig-locked-screen に示す。
+入力部品を一通り使った画面を @fig-search-screen に示す。
 
 @import "auth-design/password-reset-screen.dgm" {#fig-reset-screen caption="パスワード再設定画面（画面設計）"}
 
 @import "auth-design/locked-screen.dgm" {#fig-locked-screen caption="アカウントロック画面（画面設計）"}
+
+@import "auth-design/search-screen.dgm" {#fig-search-screen caption="利用者検索画面（画面設計）"}
 
 ---
 

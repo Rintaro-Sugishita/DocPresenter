@@ -15,6 +15,15 @@ export interface StencilPart {
   readonly name: string;
   readonly label: string;
   readonly body: string;
+  /**
+   * Drawn to fill the box rather than centred square in it.
+   *
+   * A router is a thing of a certain shape and is drawn square whatever box it
+   * is in. A scrollbar is not: it is as long as the list beside it, and a
+   * square scrollbar is not a scrollbar. Those declare the grid they were drawn
+   * on and are stretched onto the box.
+   */
+  readonly fit?: { readonly width: number; readonly height: number };
 }
 
 const LINE = 'fill="none" stroke="currentColor" stroke-width="1.6" '
@@ -90,11 +99,100 @@ const PARTS: readonly StencilPart[] = [
   },
 ];
 
-const BY_NAME = new Map(PARTS.map(part => [part.name, part]));
+
+// --- 画面部品の絵 -----------------------------------------------------------
+//
+// A screen's controls are pictures too, and pictures is what this file is for.
+// They are kept apart from the network set by their names: a drawing asks for
+// `ui/radio-on` the way it asks for `net/router`.
+//
+// Why these are pictures and not shapes: a radio button is a circle with a dot
+// in it, a slider is a line with a knob on it. Neither is one of the dozen
+// forms the notation has a bracket pair for, and neither is worth inventing a
+// bracket pair for — there are hundreds of controls and the list never stops.
+
+const UI_LINE = 'fill="none" stroke="#8b929c" stroke-width="1.3" '
+  + 'stroke-linejoin="round" stroke-linecap="round"';
+const UI_FACE = 'fill="#ffffff" stroke="#aeb4bd" stroke-width="1.3"';
+const UI_MARK = '#2f6fb5';
+
+const CONTROLS: readonly StencilPart[] = [
+  {
+    name: 'ui/radio', label: 'ラジオ（未選択）',
+    body: `<circle cx="12" cy="12" r="8" ${UI_FACE}/>`,
+  },
+  {
+    name: 'ui/radio-on', label: 'ラジオ（選択）',
+    body: `<circle cx="12" cy="12" r="8" ${UI_FACE}/>`
+      + `<circle cx="12" cy="12" r="4" fill="${UI_MARK}"/>`,
+  },
+  {
+    name: 'ui/check', label: 'チェック（未選択）',
+    body: `<rect x="4" y="4" width="16" height="16" rx="2" ${UI_FACE}/>`,
+  },
+  {
+    name: 'ui/check-on', label: 'チェック（選択）',
+    body: `<rect x="4" y="4" width="16" height="16" rx="2" fill="${UI_MARK}" stroke="${UI_MARK}"/>`
+      + `<path d="M7.5 12.5 l3 3 l6 -6" fill="none" stroke="#ffffff" stroke-width="2"`
+      + ` stroke-linecap="round" stroke-linejoin="round"/>`,
+  },
+  {
+    // Drawn wide: a drop-down is a box with a chevron at its right end, and the
+    // chevron must stay at the end however wide the box is.
+    name: 'ui/select', label: 'ドロップダウン',
+    fit: { width: 160, height: 34 },
+    body: `<rect x="0.7" y="0.7" width="158.6" height="32.6" rx="3" fill="#fbfbfc"`
+      + ` stroke="#aeb4bd" stroke-width="1.3"/>`
+      + `<path d="M143 14 l5 5 l5 -5" ${UI_LINE}/>`,
+  },
+  {
+    name: 'ui/spinner', label: '数値入力（上下つき）',
+    fit: { width: 120, height: 34 },
+    body: `<rect x="0.7" y="0.7" width="118.6" height="32.6" rx="3" fill="#fbfbfc"`
+      + ` stroke="#aeb4bd" stroke-width="1.3"/>`
+      + `<path d="M100.7 0.7 v32.6" stroke="#aeb4bd" stroke-width="1.3"/>`
+      + `<path d="M100.7 17 h18.6" stroke="#aeb4bd" stroke-width="1.3"/>`
+      + `<path d="M106.5 12.5 l3.7 -3.4 l3.7 3.4" ${UI_LINE}/>`
+      + `<path d="M106.5 21.5 l3.7 3.4 l3.7 -3.4" ${UI_LINE}/>`,
+  },
+  {
+    name: 'ui/scrollbar-v', label: 'スクロールバー（縦）',
+    fit: { width: 12, height: 120 },
+    body: `<rect x="0" y="0" width="12" height="120" fill="#f0f1f3"/>`
+      + `<rect x="2.5" y="8" width="7" height="46" rx="3.5" fill="#aeb4bd"/>`
+      + `<path d="M3.6 4.4 l2.4 -2.4 l2.4 2.4" ${UI_LINE}/>`
+      + `<path d="M3.6 115.6 l2.4 2.4 l2.4 -2.4" ${UI_LINE}/>`,
+  },
+  {
+    name: 'ui/scrollbar-h', label: 'スクロールバー（横）',
+    fit: { width: 120, height: 12 },
+    body: `<rect x="0" y="0" width="120" height="12" fill="#f0f1f3"/>`
+      + `<rect x="8" y="2.5" width="46" height="7" rx="3.5" fill="#aeb4bd"/>`
+      + `<path d="M4.4 3.6 l-2.4 2.4 l2.4 2.4" ${UI_LINE}/>`
+      + `<path d="M115.6 3.6 l2.4 2.4 l-2.4 2.4" ${UI_LINE}/>`,
+  },
+  {
+    name: 'ui/slider', label: 'スライダー',
+    fit: { width: 160, height: 24 },
+    body: `<path d="M4 12 h152" stroke="#d3d7dd" stroke-width="4" stroke-linecap="round"/>`
+      + `<path d="M4 12 h58" stroke="${UI_MARK}" stroke-width="4" stroke-linecap="round"/>`
+      + `<circle cx="62" cy="12" r="7" fill="#ffffff" stroke="${UI_MARK}" stroke-width="2"/>`,
+  },
+  {
+    name: 'ui/image', label: '画像の枠',
+    fit: { width: 120, height: 90 },
+    body: `<rect x="0.7" y="0.7" width="118.6" height="88.6" fill="#f4f5f7"`
+      + ` stroke="#aeb4bd" stroke-width="1.3"/>`
+      + `<path d="M12 68 l24 -28 l20 22 l14 -14 l30 32 z" fill="#c8ccd2"/>`
+      + `<circle cx="86" cy="26" r="8" fill="#c8ccd2"/>`,
+  },
+];
+
+const BY_NAME = new Map([...PARTS, ...CONTROLS].map(part => [part.name, part]));
 
 /** Everything the editor can offer, in the order it offers it. */
 export function stencilParts(): readonly StencilPart[] {
-  return PARTS;
+  return [...PARTS, ...CONTROLS];
 }
 
 /** One part's drawing, on its 24 by 24 grid, or nothing for an unknown name. */

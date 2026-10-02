@@ -135,6 +135,17 @@ function picture(icon: string, box: Box, url?: (path: string) => string): string
   const x = box.x + (box.width - size) / 2;
   const y = box.y + Math.max(0, (box.height - LINE_HEIGHT * box.lines.length - size) / 2);
 
+  // A control is as long as what it sits beside — a scrollbar is the height of
+  // its list — so these are drawn onto the whole box rather than square in the
+  // middle of it.
+  const stretched = stencilArt(icon);
+  if (stretched?.fit) {
+    const sx = box.width / stretched.fit.width;
+    const sy = box.height / stretched.fit.height;
+    return `<g class="dp-part-art" transform="translate(${n(box.x)}, ${n(box.y)})`
+      + ` scale(${n(sx)}, ${n(sy)})">${stretched.body}</g>`;
+  }
+
   if (isIconPath(icon)) {
     const href = url ? url(icon) : icon;
     return `<image class="dp-part-image" href="${escapeAttr(href)}" x="${n(x)}" y="${n(y)}"`

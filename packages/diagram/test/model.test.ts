@@ -293,8 +293,11 @@ describe('画面部品', () => {
   it('見本は、部品 1 つにつき 1 行で描ける', () => {
     const sheet = specimenOf(parseDiagram(LIBRARY));
     expect(sheet.mode).toBe('free');
-    // 名前・見本・寸法の 3 つで 1 行
-    expect(sheet.nodes.length).toBe(4 * 3);
+    // 名前・書き方・見本・寸法の 4 つで 1 行
+    expect(sheet.nodes.length).toBe(4 * 4);
+    // 「どう書けばこれになるか」が読めること（指摘: 見た目の決まり方が分からない）
+    expect(sheet.nodes.map(n => n.text)).toContain('[ ]');
+    expect(sheet.nodes.map(n => n.text)).toContain('( )');
     expect(sheet.nodes.map(n => n.id)).toContain('textbox');
     expect(sheet.nodes.map(n => n.text)).toContain('textbox');
     expect(sheet.nodes.map(n => n.text)).toContain('320×34');

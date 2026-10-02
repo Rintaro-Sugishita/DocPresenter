@@ -1,0 +1,64 @@
+# 利用者検索画面（画面設計）
+# kind: free — 4 枚目。入力部品の種類を一通り使う画面として描いた。
+
+use "../../shared/ui-parts.dgm"
+
+free {
+  frame      frame:
+  title      title:"利用者の検索"
+
+  deptLabel  label:"所属"
+  dept       select:"情報システム部"
+
+  roleLabel  label:"権限"
+  roleAdmin  selected:
+  roleAdminT label:"管理者"
+  roleUser   radio:
+  roleUserT  label:"一般"
+
+  ageLabel   label:"最終ログインからの日数"
+  age        spinner:"30"
+  ageSlider  slider:
+
+  lockedBox  checked:
+  lockedText label:"ロック中のみ"
+
+  listPanel  panel:
+  listBar    scrollbar:
+  avatar     image:
+
+  search     primary:"検索"
+  clear      secondary:"条件をクリア"
+}
+
+layout {
+  frame      @ ( 20,  20) 520x420
+  title      @ ( 50,  48) 300x24
+
+  deptLabel  @ ( 50,  92) 200x18
+  dept       @ ( 50, 112)
+
+  roleLabel  @ ( 50, 160) 200x18
+  roleAdmin  @ ( 50, 182)
+  roleAdminT @ ( 74, 182) 80x18
+  roleUser   @ (150, 182)
+  roleUserT  @ (174, 182) 80x18
+
+  ageLabel   @ ( 50, 220) 220x18
+  age        @ ( 50, 240)
+  ageSlider  @ (182, 245)
+
+  lockedBox  @ ( 50, 292)
+  lockedText @ ( 74, 292) 160x18
+
+  listPanel  @ (360,  92) 160x208
+  listBar    @ (508, 100)
+  avatar     @ (372, 104)
+
+  search     @ ( 50, 336) 200x38
+  clear      @ (270, 336) 200x38
+}
+
+style {
+  theme: default
+}

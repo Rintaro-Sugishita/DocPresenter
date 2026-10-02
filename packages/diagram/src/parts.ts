@@ -10,7 +10,8 @@
 // the PPTX writer and the PDF all work unchanged: by the time they are handed
 // the drawing, a part is already an ordinary shape with an ordinary style.
 
-import { DiagramParseError, parseDiagram } from './parse.js';
+import { DEFAULT_LIBRARY, DEFAULT_PARTS } from './default-parts.js';
+import { DiagramParseError, notationOf, parseDiagram } from './parse.js';
 import type { DiagramFile, Node, Part, Placement } from './model.js';
 
 /** Reads a file named by a `use` line, as written in the drawing. */
@@ -25,12 +26,27 @@ export type PartReader = (path: string) => string | undefined;
  */
 export function partsOf(diagram: DiagramFile, read: PartReader): ReadonlyMap<string, Part> {
   const found = new Map<string, Part>();
-  for (const path of diagram.uses) {
-    const source = read(path);
-    if (source === undefined) throw new DiagramParseError(`部品の定義が読めない: ${path}`, 1);
-    for (const [name, part] of parseDiagram(source).parts) found.set(name, part);
-  }
-  for (const [name, part] of diagram.parts) found.set(name, part);
+  const open: string[] = [];
+
+  // A library may rest on another: a system's own set says what it does
+  // differently and leaves the rest to the one it was built on.
+  const gather = (file: DiagramFile): void => {
+    for (const path of file.uses) {
+      if (open.includes(path)) {
+        throw new DiagramParseError(`部品の参照が循環している: ${[...open, path].join(' → ')}`, 1);
+      }
+      // `use "default"` names the set shipped with the tool. It is not a file,
+      // so nothing is read for it and it is there in every shell.
+      const source = path === DEFAULT_LIBRARY ? DEFAULT_PARTS : read(path);
+      if (source === undefined) throw new DiagramParseError(`部品の定義が読めない: ${path}`, 1);
+      open.push(path);
+      gather(parseDiagram(source));
+      open.pop();
+    }
+    for (const [name, part] of file.parts) found.set(name, part);
+  };
+
+  gather(diagram);
   return found;
 }
 
@@ -91,7 +107,7 @@ export function withParts(diagram: DiagramFile, read: PartReader): DiagramFile {
  * real measurements are printed beside each one either way.
  */
 const SHOWN = { width: 320, height: 56 } as const;
-const ROW = { name: 150, gap: 14, size: 76, lead: 10 } as const;
+const ROW = { name: 130, written: 118, gap: 12, size: 76, lead: 10 } as const;
 
 /**
  * A parts library, as a drawing of itself.
@@ -102,46 +118,52 @@ const ROW = { name: 150, gap: 14, size: 76, lead: 10 } as const;
  * wants from the page anyway, and it keeps the question of what a part looks
  * like answered by the same renderer that draws the screens.
  */
-export function specimenOf(library: DiagramFile): DiagramFile {
+export function specimenOf(library: DiagramFile, read: PartReader = () => undefined): DiagramFile {
+  // Everything this library offers, not only what it declares. A set built on
+  // another is mostly what it inherited, and a reader asking "what can I use
+  // here" means all of it.
+  const parts = partsOf(library, read);
   const nodes: Node[] = [];
   const layout = new Map<string, Placement>();
   const style = new Map<string, ReadonlyMap<string, string>>();
   const span = { start: 0, end: 0 };
 
   let top = 0;
-  for (const part of library.parts.values()) {
+  for (const part of parts.values()) {
     const width = Math.min(part.width ?? SHOWN.width, SHOWN.width);
     const height = Math.min(part.height ?? SHOWN.height, SHOWN.height);
     const row = Math.max(height, 20);
 
-    nodes.push({
-      id: `${part.name}-name`, text: part.name, shape: 'text',
-      className: undefined, children: [], span,
-    });
-    layout.set(`${part.name}-name`, {
-      x: 0, y: top + (row - 18) / 2, width: ROW.name, height: 18, z: undefined, span,
-    });
-    style.set(`${part.name}-name`, new Map([['color', '#3a4048'], ['align', 'left']]));
+    const quiet = new Map([['color', '#8b929c'], ['align', 'left']]);
+    const write = (suffix: string, text: string, x: number, w: number,
+      declarations: ReadonlyMap<string, string>): void => {
+      nodes.push({
+        id: `${part.name}${suffix}`, text, shape: 'text',
+        className: undefined, children: [], span,
+      });
+      layout.set(`${part.name}${suffix}`, {
+        x, y: top + (row - 16) / 2, width: w, height: 16, z: undefined, span,
+      });
+      style.set(`${part.name}${suffix}`, declarations);
+    };
 
+    write('-name', part.name, 0, ROW.name,
+      new Map([['color', '#3a4048'], ['align', 'left']]));
+    // How it is written. Three rectangles in three colours tell a reader
+    // nothing about what decided that; `[ ]` and `ui/radio-on` do.
+    write('-written', part.style.get('icon') ?? notationOf(part.shape),
+      ROW.name + ROW.gap, ROW.written, quiet);
+
+    const left = ROW.name + ROW.gap + ROW.written + ROW.gap;
     nodes.push({
       id: part.name, text: sampleOf(part.name), shape: part.shape,
       className: undefined, children: [], span,
     });
-    layout.set(part.name, {
-      x: ROW.name + ROW.gap, y: top, width, height, z: undefined, span,
-    });
+    layout.set(part.name, { x: left, y: top, width, height, z: undefined, span });
     style.set(part.name, part.style);
 
-    const measured = `${part.width ?? '—'}×${part.height ?? '—'}`;
-    nodes.push({
-      id: `${part.name}-size`, text: measured, shape: 'text',
-      className: undefined, children: [], span,
-    });
-    layout.set(`${part.name}-size`, {
-      x: ROW.name + ROW.gap + width + ROW.gap, y: top + (row - 16) / 2,
-      width: ROW.size, height: 16, z: undefined, span,
-    });
-    style.set(`${part.name}-size`, new Map([['color', '#8b929c'], ['align', 'left']]));
+    write('-size', `${part.width ?? '—'}×${part.height ?? '—'}`,
+      left + width + ROW.gap, ROW.size, quiet);
 
     top += row + ROW.lead;
   }

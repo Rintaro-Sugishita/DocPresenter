@@ -90,7 +90,7 @@ describe('サンプルの実ファイル', () => {
     const figures = r.elements.filter(e => e.kind === 'figure');
     const tables = r.elements.filter(e => e.kind === 'table');
     expect(figures.map(f => f.number))
-      .toEqual(['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11']);
+      .toEqual(['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12']);
     expect(tables.map(t => t.number)).toEqual(['1', '2', '3']);
 
     // 企画時に手で「図 2」と書いていたものが、計算でも図 2 になる
