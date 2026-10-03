@@ -219,9 +219,11 @@ await page.click(node('submit'));
 await page.waitForTimeout(150);
 check('並びに乗っているうちは、外す位置がまだ無い', await page.isDisabled(toBox));
 
-await drag(node('submit'), 16, -12);
+// 入れ物の外まで運ぶと、並びから外れてピンが付く。中で動かすのは並べ替えで、
+// それは check-parts が見る。
+await drag(node('submit'), 420, 40);
 check('動かした図形は消えない', await page.isVisible(node('submit')));
-check('動かすと入れ物から外れ、戻す口が出る', await page.isEnabled(toBox));
+check('入れ物の外に出すと、戻す口が出る', await page.isEnabled(toBox));
 const screen = await source();
 check('座標が書かれたのはその 1 つだけ', (screen.match(/@ \(/g) ?? []).length === 2,
   String((screen.match(/@ \(/g) ?? []).length));

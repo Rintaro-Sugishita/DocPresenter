@@ -187,17 +187,51 @@ const screenSource = async () => {
 };
 check('画面は入れ物で組まれている', (await screenSource()).includes('stack frame'));
 
+// --- 入れ物の中で動かす ＝ 並べ替え ---------------------------------------
+//
+// 中で動かすのは「どこに置くか」ではなく「何番目か」の変更なので、座標は 1 つも
+// 書かれない。書き換わるのは入れ物の 1 ブロックだけである。
+const order = text => (/stack frame[^}]*\}/s.exec(text) ?? [''])[0]
+  .split('\n').map(line => line.trim()).filter(line => /^\w+$/.test(line));
+const wasOrder = order(await screenSource());
+
+const grab = async (id, to, dy = 4) => {
+  const from = await view.locator(`.dp-canvas-stage [data-node="${id}"]`).boundingBox();
+  const onto = await view.locator(`.dp-canvas-stage [data-node="${to}"]`).boundingBox();
+  await view.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
+  await view.mouse.down();
+  await view.mouse.move(onto.x + onto.width / 2, onto.y + dy, { steps: 10 });
+  await view.waitForTimeout(150);
+  const marks = (await view.$$('.dp-canvas-drop')).length;
+  await view.mouse.up();
+  await view.waitForTimeout(400);
+  return marks;
+};
+const marked = await grab('forgot', 'submit');
+check('落とす先が引く前に見える', marked === 1, `${marked} 個`);
+const reordered = await screenSource();
+check('入れ物の中で動かすと並びが変わる',
+  order(reordered).join(' ') === wasOrder.filter(id => id !== 'forgot')
+    .flatMap(id => (id === 'submit' ? ['forgot', 'submit'] : [id])).join(' '),
+  order(reordered).join(' '));
+check('並べ替えで座標は 1 つも書かれない', (reordered.match(/@ \(/g) ?? []).length === 1,
+  `座標を持つ行 ${(reordered.match(/@ \(/g) ?? []).length} 本`);
+check('書き換わったのは入れ物の 1 ブロックだけ',
+  (await view.textContent('#status')).includes('並びを変える'),
+  await view.textContent('#status'));
+
+// --- 入れ物の外へ出す ＝ ピン ---------------------------------------------
 const button = view.locator('.dp-canvas-stage [data-node="submit"]');
 const where = await button.boundingBox();
 await view.mouse.move(where.x + where.width / 2, where.y + where.height / 2);
 await view.mouse.down();
-await view.mouse.move(where.x + where.width / 2 + 60, where.y + where.height / 2 + 30, { steps: 8 });
+await view.mouse.move(where.x + where.width / 2 + 420, where.y + where.height / 2 + 40, { steps: 8 });
 await view.mouse.up();
 await view.waitForTimeout(400);
 const moved = await screenSource();
-check('入れ物の中の図形も動かせる', /^\s*submit\s+@ \(/m.test(moved),
+check('入れ物の外に出すとピンが付く', /^\s*submit\s+@ \(/m.test(moved),
   (/^.*submit.*@.*$/m.exec(moved) ?? [''])[0].trim());
-check('動かしたのはその 1 つだけ', (moved.match(/@ \(/g) ?? []).length === 2,
+check('ピンが付いたのはその 1 つだけ', (moved.match(/@ \(/g) ?? []).length === 2,
   `座標を持つ行 ${(moved.match(/@ \(/g) ?? []).length} 本`);
 
 // ソースを見に行くと選択は外れるので、選び直してから戻す口を見る

@@ -3,8 +3,8 @@ import { applyEdit } from '@docpresenter/base';
 import { parseDiagram } from '@docpresenter/diagram';
 import {
   addNode, bendEdge, canUnpin, connectNodes, DiagramEditError, disconnectNodes, groupMembers,
-  groupNodes, moveCallout, pinNode, pinNodes, reconnect, removeNode, removeNodes, setNodeShape,
-  setNodeStyle, setNodeText, unpinNode,
+  dropInto, groupNodes, layOutDiagram, moveCallout, pinNode, pinNodes, reconnect, removeNode,
+  removeNodes, setContainerCells, setNodeShape, setNodeStyle, setNodeText, unpinNode,
 } from '../src/index.js';
 
 const FLOW = [
@@ -561,5 +561,82 @@ describe('入れ物からの削除', () => {
     const written = run(pinned, f => unpinNode(f, pinned, 'a'));
     expect(written).not.toContain('a @ (500, 500)');
     expect(written).toContain('    a ; b');
+  });
+});
+
+describe('入れ物の中での並べ替え', () => {
+  const HELD = [
+    'free {',
+    '  frame [ ]',
+    '  a [あ]',
+    '  b [い]',
+    '  c [う]',
+    '}',
+    '',
+    'layout {',
+    '  frame @ (0, 0) 300x400',
+    '',
+    '  stack frame (down; gap: 10; pad: 10) {',
+    '    a',
+    '    b',
+    '    c',
+    '  }',
+    '}',
+    '',
+  ].join('\n');
+
+  const at = (source: string, id: string, dy = 0) => {
+    const laid = layOutDiagram(parseDiagram(source));
+    const box = laid.boxes.get(id)!;
+    return { x: box.x + box.width / 2, y: box.y + dy };
+  };
+  const drop = (source: string, moving: string, to: { x: number; y: number }) => {
+    const file = parseDiagram(source);
+    const laid = layOutDiagram(file);
+    return dropInto(
+      file.containers.get('frame')!, laid.boxes.get('frame')!,
+      id => laid.boxes.get(id), moving, to);
+  };
+
+  it('上半分に落とせばその前、下半分なら後ろ', () => {
+    expect(drop(HELD, 'c', at(HELD, 'a', 2))?.cells).toEqual([['c'], ['a'], ['b']]);
+    expect(drop(HELD, 'a', at(HELD, 'c', 2))?.cells).toEqual([['b'], ['a'], ['c']]);
+  });
+
+  it('いまと同じ並びになる落とし方は、落とし先にしない', () => {
+    expect(drop(HELD, 'a', at(HELD, 'a', 2))).toBeUndefined();
+  });
+
+  it('grid は場所を交換する（穴を空けない）', () => {
+    const grid = HELD.replace(
+      /  stack frame[\s\S]*?\n  \}/,
+      '  grid frame (gap: 0 0; pad: 0) {\n    a ; b\n    c ; .\n  }');
+    const laid = layOutDiagram(parseDiagram(grid));
+    const b = laid.boxes.get('b')!;
+    const found = drop(grid, 'a', { x: b.x + 2, y: b.y + 2 });
+    expect(found?.cells).toEqual([['b', 'a'], ['c', '.']]);
+  });
+
+  it('書き換わるのは入れ物の 1 ブロックだけ', () => {
+    const file = parseDiagram(HELD);
+    const edit = setContainerCells(file, HELD, 'frame', [['c'], ['a'], ['b']]);
+    const written = applyEdit(HELD, edit);
+    expect(written).toContain('  stack frame (down; gap: 10; pad: 10) {\n    c\n    a\n    b\n  }');
+    // 図形の行も枠のピンも 1 文字も動かない
+    expect(written).toContain('  a [あ]');
+    expect(written).toContain('  frame @ (0, 0) 300x400');
+    expect(edit.description).toBe('並びを変える');
+  });
+
+  it('1 行で書かれた入れ物は 1 行のまま', () => {
+    const inline = HELD.replace(/  stack frame[\s\S]*?\n  \}/, '  stack frame (down) { a ; b ; c }');
+    const written = applyEdit(inline,
+      setContainerCells(parseDiagram(inline), inline, 'frame', [['b'], ['a'], ['c']]));
+    expect(written).toContain('stack frame (down) { b ; a ; c }');
+  });
+
+  it('同じ並びを書こうとしたら断る', () => {
+    expect(() => setContainerCells(parseDiagram(HELD), HELD, 'frame', [['a'], ['b'], ['c']]))
+      .toThrow(DiagramEditError);
   });
 });

@@ -13,7 +13,7 @@
 
 import type { Box } from './layout.js';
 import type { TextLine } from './inline.js';
-import type { Container, DiagramFile } from './model.js';
+import type { Container, DiagramFile, Point } from './model.js';
 
 /** An empty cell. Written as a full stop because there is nothing to name. */
 export const EMPTY_CELL = '.';
@@ -339,4 +339,71 @@ function place(
       boxes.set(cell, { ...spot, width, height, z: box.z, lines: sizeOf(cell).lines });
     }
   }
+}
+
+/**
+ * Where a shape dragged inside its own container would land, and the mark that
+ * says so.
+ *
+ * Reordering is the one gesture that changes an arrangement rather than
+ * escaping it, so it has to be visible before the pointer is let go: a list
+ * that silently reshuffles on release is a list nobody trusts. A stack takes
+ * the shape in between two of its members; a grid trades places with the one
+ * underneath, because its cells are a shape of their own and leaving holes in
+ * them is not what anybody dragging meant.
+ */
+export function dropInto(
+  container: Container, box: Box, boxOf: (id: string) => Box | undefined,
+  moving: string, at: Point,
+): { cells: string[][]; mark: Box } | undefined {
+  // A tab page is not one of a row: what would be reordered is the strip, and
+  // the strip is not what the pointer is on.
+  if (container.kind === 'tabs') return undefined;
+  const held = members(container);
+  if (!held.includes(moving)) return undefined;
+
+  if (container.kind === 'grid') {
+    const onto = held.find(id => id !== moving && covers(boxOf(id), at));
+    const target = onto === undefined ? undefined : boxOf(onto);
+    if (onto === undefined || !target) return undefined;
+    const cells = container.cells.map(row =>
+      row.map(cell => (cell === moving ? onto : cell === onto ? moving : cell)));
+    return { cells, mark: target };
+  }
+
+  const others = held.filter(id => id !== moving);
+  const down = container.flow === 'down';
+  const middleOf = (id: string): number => {
+    const one = boxOf(id);
+    if (!one) return Infinity;
+    return down ? one.y + one.height / 2 : one.x + one.width / 2;
+  };
+  const pointer = down ? at.y : at.x;
+  const index = others.findIndex(id => pointer < middleOf(id));
+  const landing = index < 0 ? others.length : index;
+  const next = [...others];
+  next.splice(landing, 0, moving);
+  if (next.join(' ') === held.join(' ')) return undefined;
+
+  // The mark sits in the gap the shape would drop into, across the whole of
+  // the container, so it reads as a place rather than as another shape.
+  const edge = others[landing];
+  const before = edge === undefined ? boxOf(others[others.length - 1]!) : boxOf(edge);
+  const along = before === undefined ? (down ? box.y : box.x)
+    : edge === undefined
+      ? (down ? before.y + before.height : before.x + before.width) + container.gap.y / 2
+      : (down ? before.y : before.x) - (down ? container.gap.y : container.gap.x) / 2;
+  const mark = down
+    ? { x: box.x + container.pad, y: along - 1.5, width: box.width - container.pad * 2, height: 3 }
+    : { x: along - 1.5, y: box.y + container.pad, width: 3, height: box.height - container.pad * 2 };
+  return {
+    cells: down ? next.map(one => [one]) : [next],
+    mark: { ...mark, z: box.z, lines: [] },
+  };
+}
+
+function covers(box: Box | undefined, at: Point): boolean {
+  return box !== undefined
+    && at.x >= box.x && at.x <= box.x + box.width
+    && at.y >= box.y && at.y <= box.y + box.height;
 }

@@ -7,15 +7,15 @@
 // of the three-layer model: the mouse is for the exceptions.
 
 import { layOutDiagram, type Box } from '../layout.js';
-import { containerOf } from '../arrange.js';
+import { containerOf, dropInto } from '../arrange.js';
 import type { DiagramFile, ShapeKind } from '../model.js';
 import { renderDiagram } from '../draw/render.js';
 import { stencilParts } from '../draw/stencil.js';
 import type { Edit } from '@docpresenter/base';
 import {
   addNode, bendEdge, canUnpin, connectNodes, disconnectNodes, groupMembers, groupNodes,
-  nextShapeId, pinNode, pinNodes, reconnect, removeNodes, setNodeShape, setNodeStyle, setNodeText,
-  unpinNode,
+  nextShapeId, pinNode, pinNodes, reconnect, removeNodes, setContainerCells, setNodeShape,
+  setNodeStyle, setNodeText, unpinNode,
 } from '../edits.js';
 import { toggleInline, type InlineMark } from '@docpresenter/base';
 import { createMenu, createToolbar, type MenuItem } from '@docpresenter/base';
@@ -252,6 +252,12 @@ export function createCanvas(options: CanvasOptions): Canvas {
       overlay.append(handle);
     }
 
+    if (dropping) {
+      const mark = shape('rect', 'dp-canvas-drop');
+      place(mark, dropping.mark);
+      overlay.append(mark);
+    }
+
     for (const guide of preview?.guides ?? []) {
       const line = shape('line', 'dp-canvas-guide');
       line.setAttribute('x1', String(guide.axis === 'x' ? guide.at : 0));
@@ -466,6 +472,12 @@ export function createCanvas(options: CanvasOptions): Canvas {
   let moving = new Set<string>();
   /** The rubber band, in the drawing's coordinates. */
   let band: { from: { x: number; y: number }; to: { x: number; y: number } } | undefined;
+  /**
+   * Where the shape being dragged would land inside its own container. Set
+   * while the pointer is still inside it; letting go anywhere else means the
+   * shape is leaving the arrangement, which is a pin.
+   */
+  let dropping: { container: string; cells: string[][]; mark: Box } | undefined;
   /** An end of the picked line being dragged onto another shape. */
   let reaching: { end: 'from' | 'to'; at: { x: number; y: number } } | undefined;
   /**
@@ -672,6 +684,7 @@ export function createCanvas(options: CanvasOptions): Canvas {
         // they land, which is why they fade rather than stretch.
         node?.setAttribute('transform', `translate(${current.by.x}, ${current.by.y})`);
       }
+      dropping = landing(current.id, pointOn(event));
     } else {
       // A line is allowed to be flat — that is what a horizontal rule is — so
       // the floor every other shape has would make one impossible to draw.
@@ -690,6 +703,10 @@ export function createCanvas(options: CanvasOptions): Canvas {
     const current = drag;
     if (!current) return;
     drag = undefined;
+    // Taken now so that every way out of this clears it: a mark left behind
+    // would say the next drag lands where the last one would have.
+    const landed = dropping;
+    dropping = undefined;
     drawing.classList.remove('dp-canvas-dragging');
     if (stage.hasPointerCapture(event.pointerId)) stage.releasePointerCapture(event.pointerId);
 
@@ -770,6 +787,15 @@ export function createCanvas(options: CanvasOptions): Canvas {
       }), [id]);
       return;
     }
+    // Dropped inside its own container: the arrangement changes and nothing
+    // gets a coordinate. One block of the file is rewritten.
+    if (landed) {
+      options.apply(
+        () => setContainerCells(file, source, landed.container, landed.cells), [current.id],
+      );
+      return;
+    }
+
     // The redraw that follows builds the canvas again, so the preview is left
     // in place: taking it off first would show the shapes jumping back.
     const by = current.by;
@@ -927,6 +953,28 @@ export function createCanvas(options: CanvasOptions): Canvas {
     if (!picked.includes(overShape)) pick([overShape]);
     menu.open(event.clientX, event.clientY, shapeItems(overShape));
   });
+
+  /**
+   * Where the dragged shape would land in the container that holds it.
+   *
+   * Only while the pointer is still inside that container, and only when one
+   * shape is being dragged: moving several at once is moving them somewhere
+   * else, which is what a pin is for.
+   */
+  function landing(
+    id: string, at: { x: number; y: number },
+  ): { container: string; cells: string[][]; mark: Box } | undefined {
+    if (picked.length !== 1) return undefined;
+    const name = containerOf(file).get(id);
+    const container = name === undefined ? undefined : file.containers.get(name);
+    const box = name === undefined ? undefined : laid.boxes.get(name);
+    if (!container || !box || name === undefined) return undefined;
+    if (at.x < box.x || at.x > box.x + box.width || at.y < box.y || at.y > box.y + box.height) {
+      return undefined;
+    }
+    const found = dropInto(container, box, one => laid.boxes.get(one), id, at);
+    return found ? { container: name, ...found } : undefined;
+  }
 
   /** Where a new shape goes: under the drawing, in the file's own numbers. */
   function emptySpot(): { x: number; y: number } {

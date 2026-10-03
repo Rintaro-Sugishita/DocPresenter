@@ -38,6 +38,8 @@ export const DIAGRAM_STYLE = `
 .dp-canvas-liners .dp-canvas-icon:nth-child(5) { margin-left: 7px; }
 .dp-canvas-liners[hidden] { display: none; }
 .dp-canvas-on { background: #dce6f2; border-color: #9cb4d0; }
+/* 入れ物の中で落とす先。隙間に出る帯と、入れ替える相手への被せ。 */
+.dp-canvas-drop { fill: #2f6fb5; opacity: 0.35; }
 .dp-canvas-stage { outline: none; position: relative; }
 /* The text box sits over the shape being renamed: an IME needs somewhere to
    compose from, the same reason the grid keeps one over the selected cell. */

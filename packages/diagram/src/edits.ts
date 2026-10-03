@@ -457,28 +457,52 @@ function removalOf(file: DiagramFile, source: string, ids: readonly string[]): C
       continue;
     }
     if (!members(container).some(name => going.has(name))) continue;
+    // A grid keeps its shape — a cell that lost its shape becomes an empty
+    // cell, because the ones beside it did not move — while a stack is a list,
+    // so the name simply goes.
+    const left = container.cells.map(row =>
+      row.map(cell => (going.has(cell) ? EMPTY_CELL : cell)));
     changes.push({
       span: container.span,
-      text: containerText(container, sliceBytes(source, container.span.start, container.span.end), going),
+      text: containerText(
+        container, sliceBytes(source, container.span.start, container.span.end), left),
     });
   }
   return changes;
 }
 
 /**
- * The container's own text with the shapes that are going taken out of it.
+ * Puts a container's cells in a new order — what dragging one of the shapes it
+ * holds to another place in it comes to.
  *
- * A grid keeps its shape — a cell that lost its shape becomes an empty cell,
- * because the ones beside it did not move — while a stack is a list, so the
- * name simply goes. The settings and the way it was written are kept: this is
- * a deletion, not a reformatting.
+ * One line of the file, or one block of it: the shapes themselves are not
+ * touched, because nothing about them changed. Where they sit was the
+ * container's to say and it is still the container saying it.
  */
-function containerText(container: Container, text: string, going: ReadonlySet<string>): string {
+export function setContainerCells(
+  file: DiagramFile, source: string, id: string, cells: readonly (readonly string[])[],
+): Edit {
+  const container = file.containers.get(id);
+  if (!container) throw new DiagramEditError(`入れ物が見つからない: ${id}`);
+  const text = sliceBytes(source, container.span.start, container.span.end);
+  const written = containerText(container, text, cells);
+  if (written === text) throw new DiagramEditError('並びは既にそうなっている');
+  return { span: container.span, text: written, description: '並びを変える' };
+}
+
+/**
+ * The container's own text with another set of cells in it.
+ *
+ * The settings and the way it was written are kept — one line stays one line,
+ * a block stays a block at its own indent: this is a move, not a reformatting.
+ */
+function containerText(
+  container: Container, text: string, cells: readonly (readonly string[])[],
+): string {
   const open = text.indexOf('{');
   const head = text.slice(0, open + 1);
-  const rows = container.cells.map(row =>
-    row.map(cell => (going.has(cell) ? EMPTY_CELL : cell))
-      .filter(cell => container.kind === 'grid' || cell !== EMPTY_CELL))
+  const rows = cells
+    .map(row => row.filter(cell => container.kind === 'grid' || cell !== EMPTY_CELL))
     .filter(row => row.length > 0 && row.some(cell => cell !== EMPTY_CELL));
 
   if (!text.includes('\n')) return `${head} ${rows.map(row => row.join(' ; ')).join(' ; ')} }`;

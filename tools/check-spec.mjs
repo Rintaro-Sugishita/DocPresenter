@@ -10,6 +10,7 @@ import { parseDiagram } from '../packages/diagram/dist/parse.js';
 import { layOutDiagram } from '../packages/diagram/dist/layout.js';
 import { renderDiagram, diagramDiagnostics } from '../packages/diagram/dist/draw/render.js';
 import { withParts } from '../packages/diagram/dist/parts.js';
+import { dropInto } from '../packages/diagram/dist/arrange.js';
 import { parseRuns } from '../packages/diagram/dist/inline.js';
 import { parseTable } from '../packages/markdown/dist/table/parse.js';
 import { cellAt as coverAt } from '../packages/markdown/dist/table/model.js';
@@ -128,6 +129,20 @@ check('dgm §3 L2', 'scroll は入りきらない行を描かない',
   cut.boxes.has('a') && !cut.boxes.has('c'));
 check('dgm §3 L2', '切れているのは間違いではないので注記しない',
   cut.diagnostics.length === 0, cut.diagnostics.join(' / '));
+
+// §3 L2 入れ物の中での並べ替え
+const heldDrop = dgm('free {', '  frame [ ]', '  a [あ]', '  b [い]', '  c [う]', '}',
+  'layout {', '  frame @ (0, 0) 300x400',
+  '  stack frame (down; gap: 10; pad: 10) { a ; b ; c }', '}');
+const heldLaid = layOutDiagram(heldDrop);
+const onA = heldLaid.boxes.get('a');
+const landed = dropInto(heldDrop.containers.get('frame'), heldLaid.boxes.get('frame'),
+  id => heldLaid.boxes.get(id), 'c', { x: onA.x + 5, y: onA.y + 2 });
+check('dgm §3 L2', '入れ物の中で落とすと並びが変わる',
+  JSON.stringify(landed?.cells) === JSON.stringify([['c'], ['a'], ['b']]),
+  JSON.stringify(landed?.cells));
+check('dgm §3 L2', '落とす先は引いている間に見える（印が出る）',
+  landed?.mark !== undefined && landed.mark.height > 0);
 
 // §10.2 行を持つ部品（ツリー・リスト・メニュー）
 const listed = dgm('use "default"', '', 'free {', '  nav tree: {',
