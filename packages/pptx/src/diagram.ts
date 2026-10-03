@@ -99,6 +99,15 @@ export function drawingOf(diagram: DiagramFile, options: DrawingOptions = {}): D
       // is said out loud rather than drawn as an empty box.
       options.diagnostics?.push(`部品の絵は PPTX にまだ出せない: ${id}`);
     }
+    // What a container draws of itself — the headings of a tab control, the bar
+    // down a list that is cut off — is drawn by the SVG renderer and not here.
+    // The arrangement itself does arrive: the boxes were computed in common.
+    const container = diagram.containers.get(id);
+    if (container?.kind === 'tabs') {
+      options.diagnostics?.push(`タブの見出しは PPTX にまだ出せない: ${id}`);
+    } else if (container && container.scroll !== 'none') {
+      options.diagnostics?.push(`スクロールの印は PPTX にまだ出せない: ${id}`);
+    }
 
     const marked = options.marks?.get(id);
     shapes.push({

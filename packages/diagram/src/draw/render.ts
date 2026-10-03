@@ -10,6 +10,7 @@ import { textWidth } from '../text.js';
 import type { DiagramFile, Node, Point, ShapeKind } from '../model.js';
 import { escapeAttr, escapeHtml } from '@docpresenter/base';
 import { isIconPath, stencilArt, textPlace } from './stencil.js';
+import { members, shownPage, tabPages, SCROLL_BAR, TAB_STRIP } from '../arrange.js';
 import {
   arrowHead as arrowCorners, border, cylinderRadius, labelLayout, n, shapeOutlines,
   LINE_HEIGHT, PLAIN_LINE, type LineLook, type Outline, type ShapePart,
@@ -96,14 +97,68 @@ function renderNode(
   const place = textPlace(icon);
   const text = node.shape === 'group'
     ? groupLabel(box)
-    : place === 'none' || node.shape === 'line'
+    : place === 'none' || node.shape === 'line' || tabPages(diagram).has(node.id)
       ? ''
       : label(box, diagram.style.get(node.id)?.get('align'), node.shape, place === 'under');
   const colours = styleColours(diagram, node.id);
   const style = colours === '' ? '' : ` style="${escapeAttr(colours)}"`;
   return `<g class="${escapeAttr(classes.join(' '))}" data-node="${escapeAttr(node.id)}"${style}>`
-    + `${shape}${text}</g>`;
+    + `${shape}${furniture(node, box, diagram)}${text}</g>`;
 }
+
+/**
+ * What a container draws of itself: the headings of a tab control, the bar
+ * down the edge of an area that is cut off.
+ *
+ * Neither is a shape anyone wrote, and neither is decoration: the headings are
+ * the pages this screen has, and the bar is how a reader knows the list goes
+ * on. They sit in a group of their own so the theme can style them apart from
+ * the outline they are drawn on.
+ */
+function furniture(node: Node, box: Box, diagram: DiagramFile): string {
+  const container = diagram.containers.get(node.id);
+  if (!container) return '';
+  const byId = new Map(diagram.nodes.map(one => [one.id, one]));
+  const marks: string[] = [];
+
+  if (container.kind === 'tabs') {
+    const shown = shownPage(container);
+    let x = box.x + container.pad;
+    for (const page of members(container)) {
+      const label = byId.get(page)?.text ?? page;
+      const width = textWidth(label, TAB_FONT) + TAB_PAD * 2;
+      marks.push(`<rect class="dp-page-tab${page === shown ? ' dp-page-tab-on' : ''}"`
+        + ` x="${n(x)}" y="${n(box.y + container.pad)}"`
+        + ` width="${n(width)}" height="${TAB_STRIP}" rx="3"/>`
+        + `<text class="dp-page-tab-label" x="${n(x + width / 2)}"`
+        + ` y="${n(box.y + container.pad + TAB_STRIP / 2)}"`
+        + ` text-anchor="middle" dominant-baseline="central">${escapeHtml(label)}</text>`);
+      x += width + 2;
+    }
+    return `<g class="dp-page-tabs">${marks.join('')}</g>`;
+  }
+
+  if (container.scroll === 'none') return '';
+  // The thumb says "there is more", not how much: the drawing knows what is
+  // cut off, and a bar drawn to scale would be a measurement nobody wrote.
+  const down = container.scroll === 'down';
+  const track = down
+    ? { x: box.x + box.width - SCROLL_BAR, y: box.y, width: SCROLL_BAR, height: box.height }
+    : { x: box.x, y: box.y + box.height - SCROLL_BAR, width: box.width, height: SCROLL_BAR };
+  const thumb = down
+    ? { x: track.x + 2.5, y: track.y + 3, width: SCROLL_BAR - 5, height: track.height * 0.5 }
+    : { x: track.x + 3, y: track.y + 2.5, width: track.width * 0.5, height: SCROLL_BAR - 5 };
+  return '<g class="dp-scroll">'
+    + `<rect class="dp-scroll-track" x="${n(track.x)}" y="${n(track.y)}"`
+    + ` width="${n(track.width)}" height="${n(track.height)}"/>`
+    + `<rect class="dp-scroll-thumb" x="${n(thumb.x)}" y="${n(thumb.y)}"`
+    + ` width="${n(thumb.width)}" height="${n(thumb.height)}" rx="${(SCROLL_BAR - 5) / 2}"/>`
+    + '</g>';
+}
+
+/** The headings of a tab control are set smaller than a label, like a tab. */
+const TAB_FONT = 12;
+const TAB_PAD = 14;
 
 /** `#abc` or `#aabbcc`. Anything else is not a colour and is not emitted. */
 const COLOUR = /^#[0-9a-fA-F]{3}([0-9a-fA-F]{3})?$/;

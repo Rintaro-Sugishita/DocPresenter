@@ -118,6 +118,36 @@ describe('単独の線', () => {
   });
 });
 
+describe('入れ物が自分で描くもの', () => {
+  it('タブの見出しは全部出る。中身は選んだ頁だけ', () => {
+    const svg = renderDiagram(parseDiagram(
+      'free {\n  main [ ]\n  one "基本"\n  two "住所"\n  a [あ]\n}\n'
+      + 'layout {\n  main @ (0,0) 300x200\n  tabs main (show: two) { one ; two }\n'
+      + '  stack one (down; pad: 0) { a }\n}\n'));
+    expect(svg).toContain('class="dp-page-tab-label"');
+    expect(svg).toContain('基本');
+    expect(svg).toContain('住所');
+    expect(svg).toContain('dp-page-tab-on');
+    expect(svg).not.toContain('data-node="a"');
+  });
+
+  it('頁の名前は見出しであって、頁の中には書かれない', () => {
+    const svg = renderDiagram(parseDiagram(
+      'free {\n  main [ ]\n  one "基本"\n}\nlayout {\n  main @ (0,0) 300x200\n'
+      + '  tabs main { one }\n}\n'));
+    // 「基本」は見出しの text に 1 回だけ出る
+    expect((svg.match(/基本/g) ?? []).length).toBe(1);
+  });
+
+  it('切れている一覧には、縁にバーが出る', () => {
+    const svg = renderDiagram(parseDiagram(
+      'free {\n  list [ ]\n  a [あ]\n  b [い]\n}\n'
+      + 'layout {\n  list @ (0,0) 200x60\n  stack list (down; pad: 0; scroll) { a ; b }\n}\n'));
+    expect(svg).toContain('class="dp-scroll-track"');
+    expect(svg).toContain('class="dp-scroll-thumb"');
+  });
+});
+
 describe('画像注釈のレンダリング', () => {
   it('画像と注釈と凡例を出す', () => {
     const diagram = parseDiagram(

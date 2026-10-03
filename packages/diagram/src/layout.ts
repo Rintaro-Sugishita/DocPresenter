@@ -123,10 +123,12 @@ export function layOutDiagram(diagram: DiagramFile): LaidOutDiagram {
 
   // What the containers hold, in the room the containers have. Before parking,
   // because a shape a container placed is not a shape with nowhere to be.
-  arrangeContainers(
+  const hidden = arrangeContainers(
     diagram, id => sizes.get(id) ?? { width: 0, height: 0, lines: [] }, boxes, diagnostics,
   );
-  park(plain.filter(node => !boxes.has(node.id)), sizes, boxes);
+  // A tab page nobody is shown, and anything cut off by a scrolling area, is
+  // deliberately not drawn — so it is not a shape with nowhere to be.
+  park(plain.filter(node => !boxes.has(node.id) && !hidden.has(node.id)), sizes, boxes);
 
   for (const group of groups) {
     // A group that arranges its own contents already has its box: it decided

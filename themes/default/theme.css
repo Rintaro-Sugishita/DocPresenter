@@ -238,6 +238,14 @@ code { font-family: var(--font-mono); font-size: 0.9em; background: var(--fill-t
 /* A line standing on its own. It has no inside, so it is stroke and nothing
    else; its arrowheads take the line's own colour rather than the fill every
    other shape's marks get. */
+/* 入れ物が自分で描くもの：タブの見出しと、切れている印のバー。図形の輪郭とは
+   別の群れに入っているので、上の既定（白塗り・輪郭線）は当たらない。 */
+.dp-diagram .dp-page-tab { fill: #eceef1; stroke: #c8ccd2; stroke-width: 1; }
+.dp-diagram .dp-page-tab-on { fill: #ffffff; stroke: #aeb4bd; }
+.dp-diagram .dp-page-tab-label { font-size: 12px; fill: #3a4048; }
+.dp-diagram .dp-scroll-track { fill: #f2f3f5; stroke: none; }
+.dp-diagram .dp-scroll-thumb { fill: #c8ccd2; stroke: none; }
+
 .dp-diagram .dp-shape-line > path { fill: none; }
 .dp-diagram .dp-shape-line > polygon {
   fill: var(--dp-line, #3a4048); stroke: none;

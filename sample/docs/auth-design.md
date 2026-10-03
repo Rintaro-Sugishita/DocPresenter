@@ -101,7 +101,7 @@ output: [html, pdf]
 @import "../shared/ui-parts.dgm" {#fig-ui-parts caption="画面部品テンプレート"}
 
 再設定とロックの画面も同じ部品でできている。@fig-reset-screen と @fig-locked-screen に示す。
-入力部品を一通り使った画面を @fig-search-screen に示す。
+入力部品を一通り使った画面を @fig-search-screen に、タブを使った画面を @fig-detail-screen に示す。
 部品の `icon:` に書ける絵は @fig-icons のとおりで、これは製品が持っているものである。
 
 @import "auth-design/password-reset-screen.dgm" {#fig-reset-screen caption="パスワード再設定画面（画面設計）"}
@@ -109,6 +109,11 @@ output: [html, pdf]
 @import "auth-design/locked-screen.dgm" {#fig-locked-screen caption="アカウントロック画面（画面設計）"}
 
 @import "auth-design/search-screen.dgm" {#fig-search-screen caption="利用者検索画面（画面設計）"}
+
+タブと、枠より長い一覧を持つ画面を @fig-detail-screen に示す。**見出しは全部描き、中身は
+選んだ 1 枚だけを描く**。一覧は枠に入りきらない行を描かず、縁のバーで続きがあることを示す。
+
+@import "auth-design/detail-screen.dgm" {#fig-detail-screen caption="利用者詳細画面（画面設計）"}
 
 @import "../shared/icon-list.dgm" {#fig-icons caption="同梱の絵（icon: に書ける名前）"}
 

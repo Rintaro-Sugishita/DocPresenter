@@ -20,6 +20,10 @@ export const EMPTY_CELL = '.';
 
 /** The room a group's own label takes at the top of its box. */
 const GROUP_HEADER = 18;
+/** The row of headings across the top of a tab control. */
+export const TAB_STRIP = 26;
+/** The bar down the edge of an area that is cut off. */
+export const SCROLL_BAR = 12;
 
 export interface Size {
   readonly width: number;
@@ -36,6 +40,34 @@ export function containerOf(diagram: DiagramFile): ReadonlyMap<string, string> {
     }
   }
   return held;
+}
+
+/**
+ * The page a tabbed container draws: the one it names, or the first.
+ *
+ * The others are not drawn at all. That is what a tab control is — the reader
+ * sees every heading and one page — and a drawing that showed them all at once
+ * would be a drawing of something that cannot happen.
+ */
+export function shownPage(container: Container): string | undefined {
+  const pages = members(container);
+  return container.show !== undefined && pages.includes(container.show)
+    ? container.show : pages[0];
+}
+
+/**
+ * The shapes that are pages of a tab control.
+ *
+ * Their own words are the heading in the strip, so they are not also drawn
+ * inside the page — a title written twice is a title someone will edit once.
+ */
+export function tabPages(diagram: DiagramFile): ReadonlySet<string> {
+  const pages = new Set<string>();
+  for (const container of diagram.containers.values()) {
+    if (container.kind !== 'tabs') continue;
+    for (const page of members(container)) pages.add(page);
+  }
+  return pages;
 }
 
 /** The ids a container holds, each once, in reading order. */
@@ -58,8 +90,9 @@ export function members(container: Container): readonly string[] {
 export function arrangeContainers(
   diagram: DiagramFile, sizeOf: (id: string) => Size,
   boxes: Map<string, Box>, diagnostics: string[],
-): void {
-  if (diagram.containers.size === 0) return;
+): ReadonlySet<string> {
+  const hidden = new Set<string>();
+  if (diagram.containers.size === 0) return hidden;
   const byId = new Map(diagram.nodes.map(node => [node.id, node]));
   const held = new Map<string, string>();
 
@@ -93,17 +126,39 @@ export function arrangeContainers(
       return sizeOf(id);
     }
     open.add(id);
+    // Pages are shown one at a time, so a tab control is as big as its biggest
+    // page — not as big as all of them side by side.
+    const pages = container.kind === 'tabs' ? members(container).map(intrinsic) : [];
     const widths = columnWidths(container, undefined, intrinsic);
     const heights = rowHeights(container, intrinsic);
     open.delete(id);
-    const size: Size = {
-      width: sum(widths) + container.gap.x * Math.max(0, widths.length - 1) + container.pad * 2,
-      height: sum(heights) + container.gap.y * Math.max(0, heights.length - 1)
-        + container.pad * 2 + header(byId.get(id)?.shape),
+    const size: Size = container.kind === 'tabs' ? {
+      width: Math.max(0, ...pages.map(one => one.width)) + container.pad * 2,
+      height: Math.max(0, ...pages.map(one => one.height)) + container.pad * 2 + TAB_STRIP,
+      lines: sizeOf(id).lines,
+    } : {
+      // An area that scrolls is as big as it was given, not as big as what is
+      // in it: being longer than its room is the thing it is saying.
+      width: container.scroll === 'right' ? sizeOf(id).width
+        : sum(widths) + container.gap.x * Math.max(0, widths.length - 1) + container.pad * 2
+          + (container.scroll === 'down' ? SCROLL_BAR : 0),
+      height: container.scroll === 'down' ? sizeOf(id).height
+        : sum(heights) + container.gap.y * Math.max(0, heights.length - 1)
+          + container.pad * 2 + header(byId.get(id)?.shape)
+          + (container.scroll === 'right' ? SCROLL_BAR : 0),
       lines: sizeOf(id).lines,
     };
     wanted.set(id, size);
     return size;
+  };
+
+  // A page nobody is shown, and everything inside it, is deliberately not
+  // drawn. It has to be said here so that nothing parks it under the drawing.
+  const hide = (id: string): void => {
+    if (hidden.has(id)) return;
+    hidden.add(id);
+    const inside = diagram.containers.get(id);
+    if (inside) for (const child of members(inside)) hide(child);
   };
 
   // Then outwards, from the containers that know where they are. A container
@@ -112,16 +167,17 @@ export function arrangeContainers(
   for (let again = true; again;) {
     again = false;
     for (const container of diagram.containers.values()) {
-      if (done.has(container.id)) continue;
+      if (done.has(container.id) || hidden.has(container.id)) continue;
       const box = boxes.get(container.id);
       if (!box) continue;
       done.add(container.id);
       again = true;
-      place(container, box, byId.get(container.id)?.shape, diagram, intrinsic, sizeOf, boxes);
+      place(container, box, byId.get(container.id)?.shape, diagram, intrinsic, sizeOf, boxes, hide);
       // What does not fit is drawn anyway — hiding it would hide the mistake —
-      // but a frame too small for its own contents is said out loud.
+      // but a frame too small for its own contents is said out loud. An area
+      // that scrolls is not too small: being cut off is what it says.
       const needs = intrinsic(container.id);
-      if (needs.height > box.height + 1) {
+      if (container.scroll === 'none' && needs.height > box.height + 1) {
         diagnostics.push(
           `入れ物に中身が入りきらない: ${container.id}`
           + `（${Math.round(box.height)} に ${Math.round(needs.height)} ぶん）`);
@@ -129,10 +185,11 @@ export function arrangeContainers(
     }
   }
   for (const container of diagram.containers.values()) {
-    if (!done.has(container.id) && byId.has(container.id)) {
+    if (!done.has(container.id) && !hidden.has(container.id) && byId.has(container.id)) {
       diagnostics.push(`入れ物の置き場所がない: ${container.id}`);
     }
   }
+  return hidden;
 }
 
 /** A group writes its own name across the top, so its contents start below it. */
@@ -220,10 +277,33 @@ function rowHeights(container: Container, intrinsic: (id: string) => Size): numb
 function place(
   container: Container, box: Box, shape: string | undefined, diagram: DiagramFile,
   intrinsic: (id: string) => Size, sizeOf: (id: string) => Size, boxes: Map<string, Box>,
+  hide: (id: string) => void,
 ): void {
+  // One page under the headings; the rest are not drawn.
+  if (container.kind === 'tabs') {
+    const page = shownPage(container);
+    for (const other of members(container)) if (other !== page) hide(other);
+    if (page === undefined || diagram.layout.has(page)) return;
+    boxes.set(page, {
+      x: box.x + container.pad,
+      y: box.y + container.pad + TAB_STRIP,
+      width: box.width - container.pad * 2,
+      height: box.height - container.pad * 2 - TAB_STRIP,
+      z: box.z, lines: sizeOf(page).lines,
+    });
+    return;
+  }
+
   const left = box.x + container.pad;
   const top = box.y + container.pad + header(shape);
-  const widths = columnWidths(container, box.width - container.pad * 2, intrinsic);
+  // A bar down the edge takes room from what it is beside.
+  const bar = { x: container.scroll === 'down' ? SCROLL_BAR : 0,
+    y: container.scroll === 'right' ? SCROLL_BAR : 0 };
+  const fold = {
+    x: box.x + box.width - container.pad - bar.x,
+    y: box.y + box.height - container.pad - bar.y,
+  };
+  const widths = columnWidths(container, box.width - container.pad * 2 - bar.x, intrinsic);
   const heights = rowHeights(container, intrinsic);
   const at = (sizes: readonly number[], index: number, gap: number): number =>
     sizes.slice(0, index).reduce((total, one) => total + one + gap, 0);
@@ -245,11 +325,18 @@ function place(
       // of the row. A text box in a tall row should not become a tall text box.
       const size = intrinsic(cell);
       const height = diagram.containers.has(cell) ? rowHeight : Math.min(size.height, rowHeight);
-      boxes.set(cell, {
+      const spot = {
         x: left + at(widths, where.col, container.gap.x),
         y: top + at(heights, where.row, container.gap.y) + (rowHeight - height) / 2,
-        width, height, z: box.z, lines: sizeOf(cell).lines,
-      });
+      };
+      // Past the fold of an area that scrolls: there, but not on screen. The
+      // bar beside it is what says there is more.
+      if ((container.scroll === 'down' && spot.y >= fold.y)
+        || (container.scroll === 'right' && spot.x >= fold.x)) {
+        hide(cell);
+        continue;
+      }
+      boxes.set(cell, { ...spot, width, height, z: box.z, lines: sizeOf(cell).lines });
     }
   }
 }

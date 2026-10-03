@@ -1,0 +1,74 @@
+# 利用者の詳細画面（画面設計）
+# kind: free — 5 枚目。タブと、切れている一覧を使う画面として描いた。
+#
+# タブは「見出しは全部・中身は 1 枚」である。どの頁を描くかは show: で言う。
+# 一覧は枠より長いので、入りきらない行は描かれず、代わりに縁にバーが出る。
+
+use "../../shared/ui-parts.dgm"
+
+free {
+  frame     frame:
+  title     title:"利用者の詳細"
+  detail    frame:
+
+  # --- 頁 1：基本情報（この図では描かれない）---
+  basic     "基本情報"
+  bNameRow  ""
+  bName     label:"氏名"
+  bNameBox  textbox:"山田 太郎"
+
+  # --- 頁 2：住所（同上）---
+  addr      "住所"
+  aZipRow   ""
+  aZip      label:"郵便番号"
+  aZipBox   textbox:"100-0001"
+
+  # --- 頁 3：権限（この図が描く頁）---
+  perm      "権限"
+  permLead  label:"この利用者に許可された操作"
+  permList  panel:
+
+  row1      ""
+  box1      checked:
+  text1     label:"利用者の検索"
+  row2      ""
+  box2      checked:
+  text2     label:"利用者の登録・変更"
+  row3      ""
+  box3      checkbox:
+  text3     label:"利用者の削除"
+  row4      ""
+  box4      checkbox:
+  text4     label:"権限の付け替え"
+  row5      ""
+  box5      checkbox:
+  text5     label:"監査ログの閲覧"
+
+  save      primary:"保存"
+  back      link:"一覧に戻る"
+}
+
+layout {
+  frame @ ( 20,  20) 400x396
+
+  stack frame (down; gap: 18; pad: 24) { title ; detail ; save ; back }
+
+  tabs detail (show: perm) { basic ; addr ; perm }
+
+  stack basic (down; gap: 2; pad: 14) { bNameRow }
+  stack bNameRow (down; gap: 2; pad: 0) { bName ; bNameBox }
+  stack addr (down; gap: 2; pad: 14) { aZipRow }
+  stack aZipRow (down; gap: 2; pad: 0) { aZip ; aZipBox }
+
+  stack perm (down; gap: 8; pad: 14) { permLead ; permList }
+  stack permList (down; gap: 10; pad: 10; scroll) { row1 ; row2 ; row3 ; row4 ; row5 }
+  stack row1 (right; gap: 8; pad: 0) { box1 ; text1 }
+  stack row2 (right; gap: 8; pad: 0) { box2 ; text2 }
+  stack row3 (right; gap: 8; pad: 0) { box3 ; text3 }
+  stack row4 (right; gap: 8; pad: 0) { box4 ; text4 }
+  stack row5 (right; gap: 8; pad: 0) { box5 ; text5 }
+}
+
+style {
+  theme: default
+}

@@ -109,6 +109,25 @@ check('dgm §3 L2', '入れ物は 1 つのバイト範囲',
   dgm('free {', '  f [ ]', '  a [A]', '}', 'layout {', '  stack f (down) {', '    a', '  }', '}')
     .containers.get('f').span.end > 0);
 
+const tabbed = laidOut(
+  'free {', '  main [ ]', '  one [い]', '  two [に]', '  a [あ]', '}',
+  'layout {', '  main @ (0, 0) 300x200', '  tabs main (show: two) { one ; two }',
+  '  stack one (down; pad: 0) { a }', '}');
+check('dgm §3 L2', 'tabs は選んだ頁だけを描く',
+  tabbed.boxes.has('two') && !tabbed.boxes.has('one'));
+check('dgm §3 L2', '描かれない頁は下に並べられたりしない',
+  !tabbed.boxes.has('a') && tabbed.diagnostics.length === 0,
+  tabbed.diagnostics.join(' / '));
+
+const cut = laidOut(
+  'free {', '  list [ ]', '  a [あ]', '  b [い]', '  c [う]', '}',
+  'layout {', '  list @ (0, 0) 200x60',
+  '  stack list (down; gap: 0; pad: 0; scroll) { a ; b ; c }', '}');
+check('dgm §3 L2', 'scroll は入りきらない行を描かない',
+  cut.boxes.has('a') && !cut.boxes.has('c'));
+check('dgm §3 L2', '切れているのは間違いではないので注記しない',
+  cut.diagnostics.length === 0, cut.diagnostics.join(' / '));
+
 // §10.1 単独の線
 const lone = (written, style = '') => {
   const file = dgm('free {', `  rule1 ${written}`, '}',

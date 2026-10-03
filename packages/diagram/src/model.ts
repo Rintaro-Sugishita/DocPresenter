@@ -142,9 +142,24 @@ export interface Callout {
 export interface Container {
   /** The shape whose inside is being arranged — a frame, a panel, a group. */
   readonly id: string;
-  readonly kind: 'stack' | 'grid';
+  /**
+   * How it arranges: in a line, in rows and columns, or one page of several.
+   *
+   * `tabs` is a kind of its own rather than a setting because it is the one
+   * that does not show everything it holds — a reader sees the headings and
+   * one page, which is what a tab control is.
+   */
+  readonly kind: 'stack' | 'grid' | 'tabs';
   /** `stack` only: down the page or across it. */
   readonly flow: 'down' | 'right';
+  /**
+   * Which way it runs out of room, if it does. A scrolling area's job in a
+   * design document is to say "this is cut off and there is more", so what
+   * does not fit is left undrawn and a bar is drawn down the edge.
+   */
+  readonly scroll: 'none' | 'down' | 'right';
+  /** `tabs` only: which page this drawing shows. The first, unless it says. */
+  readonly show: string | undefined;
   /**
    * How wide each column is: a number of units, `1fr` for a share of what is
    * left, or `auto` for as wide as its widest member. Empty means an even

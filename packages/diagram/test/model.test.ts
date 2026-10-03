@@ -361,6 +361,60 @@ describe('入れ物', () => {
     expect(laid.diagnostics.join(' / ')).toContain('入れ物の置き場所がない: frame');
   });
 
+  it('tabs：見出しは全部、中身は 1 枚だけ', () => {
+    const laid = lay(
+      'free {', '  main [ ]', '  one [い]', '  two [に]', '  a [あ]', '  b [び]', '}',
+      'layout {',
+      '  main @ (0, 0) 300x200',
+      '  tabs main (show: two) { one ; two }',
+      '  stack one (down; pad: 0) { a }',
+      '  stack two (down; pad: 0) { b }',
+      '}');
+    expect(laid.boxes.has('two')).toBe(true);
+    expect(laid.boxes.has('b')).toBe(true);
+    // 描かれない頁は、置き場所の無い図形として下に並べられたりもしない
+    expect(laid.boxes.has('one')).toBe(false);
+    expect(laid.boxes.has('a')).toBe(false);
+    expect(laid.diagnostics).toEqual([]);
+  });
+
+  it('tabs：show を書かなければ先頭の頁', () => {
+    const laid = lay(
+      'free {', '  main [ ]', '  one [い]', '  two [に]', '}',
+      'layout {', '  main @ (0, 0) 300x200', '  tabs main { one ; two }', '}');
+    expect(laid.boxes.has('one')).toBe(true);
+    expect(laid.boxes.has('two')).toBe(false);
+  });
+
+  it('tabs：頁は見出しの下に置かれる', () => {
+    const laid = lay(
+      'free {', '  main [ ]', '  one [い]', '}',
+      'layout {', '  main @ (0, 0) 300x200', '  tabs main { one }', '}');
+    expect(laid.boxes.get('one').y - laid.boxes.get('main').y).toBe(26);
+  });
+
+  it('scroll：入りきらない行は描かれない。入れ物は注記を出さない', () => {
+    const laid = lay(
+      'free {', '  list [ ]', '  a [あ]', '  b [い]', '  c [う]', '}',
+      'layout {',
+      '  list @ (0, 0) 200x60',
+      '  stack list (down; gap: 0; pad: 0; scroll) { a ; b ; c }',
+      '}');
+    expect(laid.boxes.has('a')).toBe(true);
+    expect(laid.boxes.has('c')).toBe(false);
+    expect(laid.diagnostics).toEqual([]);
+  });
+
+  it('scroll：バーのぶんだけ中身は狭くなる', () => {
+    const wide = lay(
+      'free {', '  list [ ]', '  a [あ]', '}',
+      'layout {', '  list @ (0, 0) 200x200', '  stack list (down; pad: 0) { a }', '}');
+    const cut = lay(
+      'free {', '  list [ ]', '  a [あ]', '}',
+      'layout {', '  list @ (0, 0) 200x200', '  stack list (down; pad: 0; scroll) { a }', '}');
+    expect(wide.boxes.get('a').width - cut.boxes.get('a').width).toBe(12);
+  });
+
   it('設定の綴りが違えば断る', () => {
     expect(() => parseDiagram('free {\n  f [ ]\n}\nlayout {\n  stack f (gpa: 4) { f }\n}'))
       .toThrow(DiagramParseError);

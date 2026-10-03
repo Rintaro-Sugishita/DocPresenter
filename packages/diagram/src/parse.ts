@@ -368,7 +368,7 @@ function parseCallouts(body: readonly SourceLine[], out: Callout[]): void {
  * The settings are optional: a container with none is an even share of the
  * room, which is what a form of labels and fields wants.
  */
-const CONTAINER = /^(stack|grid)\s+([A-Za-z0-9_぀-鿿-]+)\s*(?:\(([^)]*)\))?\s*\{\s*(.*)$/;
+const CONTAINER = /^(stack|grid|tabs)\s+([A-Za-z0-9_぀-鿿-]+)\s*(?:\(([^)]*)\))?\s*\{\s*(.*)$/;
 const DEFAULT_GAP = 12;
 const DEFAULT_PAD = 16;
 
@@ -434,17 +434,24 @@ function parseLayout(
 function readContainer(
   found: RegExpExecArray, rows: readonly string[], line: number,
 ): Omit<Container, 'span'> {
-  const kind = found[1] as 'stack' | 'grid';
+  const kind = found[1] as 'stack' | 'grid' | 'tabs';
   const id = found[2]!;
   let flow: 'down' | 'right' = 'down';
   let cols: string[] = [];
   let gap = { x: DEFAULT_GAP, y: DEFAULT_GAP };
-  let pad = DEFAULT_PAD;
+  // A tab control is a frame around pages, not a padded box: its pages bring
+  // their own padding, the way they do in every toolkit.
+  let pad = kind === 'tabs' ? 0 : DEFAULT_PAD;
+  let scroll: 'none' | 'down' | 'right' = 'none';
+  let show: string | undefined;
 
   for (const setting of (found[3] ?? '').split(';')) {
     const written = setting.trim();
     if (written === '') continue;
     if (written === 'down' || written === 'right') { flow = written; continue; }
+    // `scroll` on its own runs the way the container does; a tabbed area or a
+    // grid has no flow of its own, so there it means down the page.
+    if (written === 'scroll') { scroll = kind === 'stack' ? flow : 'down'; continue; }
     const kv = /^([\w-]+)\s*:\s*(.+?)$/.exec(written);
     // A misspelt setting is refused rather than ignored: a gap nobody applied
     // is a drawing that silently disagrees with its own file.
@@ -452,6 +459,13 @@ function readContainer(
     const value = kv[2]!.trim();
     if (kv[1] === 'cols') cols = value.split(',').map(one => one.trim()).filter(one => one !== '');
     else if (kv[1] === 'pad') pad = Number(value);
+    else if (kv[1] === 'show') show = value;
+    else if (kv[1] === 'scroll') {
+      if (value !== 'down' && value !== 'right') {
+        throw new DiagramParseError(`スクロールの向きは down か right: ${value}`, line);
+      }
+      scroll = value;
+    }
     else if (kv[1] === 'gap') {
       // `gap: 8 12` is the rows then the columns, as CSS writes it.
       const two = value.split(/\s+/).map(Number);
@@ -469,12 +483,18 @@ function readContainer(
   if (kind === 'stack') {
     const members = cells.flat();
     return {
-      id, kind, flow, gap, pad,
+      id, kind, flow, gap, pad, scroll, show,
       cols: flow === 'down' ? ['1fr'] : members.map(() => 'auto'),
       cells: flow === 'down' ? members.map(one => [one]) : [members],
     };
   }
-  return { id, kind, flow, gap, pad, cols, cells };
+  // The pages of a tab control are a list, like a stack's members: they are
+  // side by side in the strip and one at a time underneath it.
+  if (kind === 'tabs') {
+    const pages = cells.flat();
+    return { id, kind, flow, gap, pad, scroll, show, cols: ['1fr'], cells: [pages] };
+  }
+  return { id, kind, flow, gap, pad, scroll, show, cols, cells };
 }
 
 function parseStyle(
