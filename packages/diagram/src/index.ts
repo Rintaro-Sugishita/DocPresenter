@@ -8,6 +8,7 @@ export * from './default-parts.js';
 export * from './inline.js';
 export * from './text.js';
 export * from './layout.js';
+export * from './arrange.js';
 export * from './draw/geometry.js';
 export * from './draw/render.js';
 export * from './draw/overlay.js';

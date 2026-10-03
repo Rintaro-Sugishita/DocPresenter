@@ -192,8 +192,8 @@ await page.waitForTimeout(400);
 const back = await source();
 check('削除すれば図形の行もピンの行も消える', !back.includes('box1'),
   back.split('\n').filter(l => l.includes('box1')).join(' / '));
-check('ほかのピンは 1 文字も動かない', back.includes('  frame    @ ( 40,  20) 380x330'),
-  back.split('\n').find(l => l.includes('frame')));
+check('ほかのピンは 1 文字も動かない', back.includes('  frame @ ( 40,  20) 380x392'),
+  back.split('\n').find(l => l.includes('frame @')));
 
 await page.screenshot({ path: 'out/canvas-shapes.png' });
 

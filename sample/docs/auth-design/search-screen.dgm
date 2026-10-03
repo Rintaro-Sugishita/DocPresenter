@@ -1,5 +1,8 @@
 # 利用者検索画面（画面設計）
 # kind: free — 4 枚目。入力部品の種類を一通り使う画面として描いた。
+#
+# 2 列の画面なので、枠の中は grid が決める。書いてあるのは「どのセルに何が」
+# だけで、列の幅も行の高さも計算の結果である。飾りの線だけがピンを持つ。
 
 use "../../shared/ui-parts.dgm"
 
@@ -7,67 +10,70 @@ free {
   frame      frame:
   title      title:"利用者の検索"
   titleRule  divider:
-  columnRule dividerV:
 
+  # --- 左の列：絞り込み ---
+  filters    ""
+  deptField  ""
   deptLabel  label:"所属"
   dept       select:"情報システム部"
 
+  roleField  ""
   roleLabel  label:"権限"
+  roleRow    ""
   roleAdmin  selected:
   roleAdminT label:"管理者"
   roleUser   radio:
   roleUserT  label:"一般"
 
+  ageField   ""
   ageLabel   label:"最終ログインからの日数"
+  ageRow     ""
   age        spinner:"30"
   ageSlider  slider:
 
+  lockRow    ""
   lockedBox  checked:
   lockedText label:"ロック中のみ"
 
+  # --- 右の列：結果 ---
+  results    ""
   listLabel  label:"検索結果"
+  listRow    ""
   list       grid:
   listBar    scrollbar:
+  listNote   hint:"※ 表示は 50 件まで"
 
   search     primary:"検索"
   clear      secondary:"条件をクリア"
 
-  # 注記と、それが指すもの。線は繋ぐためだけのものではない。
-  listNote   hint:"※ 表示は 50 件まで"
+  # 飾り。入れ物の外に重ねるものなので、これだけが座標を持つ。
+  columnRule dividerV:
   noteArrow  pointer:
 }
 
 layout {
-  frame      @ ( 20,  20) 540x420
-  title      @ ( 50,  48) 300x24
-  titleRule  @ ( 50,  80) 480x0
-  columnRule @ (282,  92)   0x228
+  frame @ ( 20,  20) 540x382
 
-  deptLabel  @ ( 50,  92) 200x18
-  dept       @ ( 50, 112)
+  grid frame (cols: 1fr, 1fr; gap: 16 40; pad: 30) {
+    title     ; title
+    titleRule ; titleRule
+    filters   ; results
+    search    ; clear
+  }
 
-  roleLabel  @ ( 50, 160) 200x18
-  roleAdmin  @ ( 50, 182)
-  roleAdminT @ ( 74, 182) 80x18
-  roleUser   @ (150, 182)
-  roleUserT  @ (174, 182) 80x18
+  stack filters (down; gap: 16; pad: 0) { deptField ; roleField ; ageField ; lockRow }
+  stack deptField (down; gap: 2; pad: 0) { deptLabel ; dept }
+  stack roleField (down; gap: 2; pad: 0) { roleLabel ; roleRow }
+  stack roleRow (right; gap: 6; pad: 0) { roleAdmin ; roleAdminT ; roleUser ; roleUserT }
+  stack ageField (down; gap: 2; pad: 0) { ageLabel ; ageRow }
+  stack ageRow (right; gap: 10; pad: 0) { age ; ageSlider }
+  stack lockRow (right; gap: 8; pad: 0) { lockedBox ; lockedText }
 
-  ageLabel   @ ( 50, 220) 220x18
-  age        @ ( 50, 240)
-  ageSlider  @ (182, 245)
+  stack results (down; gap: 6; pad: 0) { listLabel ; listRow ; listNote }
+  stack listRow (right; gap: 0; pad: 0) { list ; listBar }
 
-  lockedBox  @ ( 50, 292)
-  lockedText @ ( 74, 292) 160x18
-
-  listLabel  @ (300,  92) 200x18
-  list       @ (300, 112) 228x120
-  listBar    @ (528, 112)
-
-  search     @ ( 50, 336) 200x38
-  clear      @ (270, 336) 200x38
-
-  listNote   @ (300, 268) 228x16
-  noteArrow  @ (330, 240)  60x24
+  columnRule @ (300,  96)   0x232
+  noteArrow  @ (464, 252)  60x28
 }
 
 style {

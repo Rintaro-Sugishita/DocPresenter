@@ -4,6 +4,7 @@
 // automatic layout that moved a shape someone had placed by hand would make
 // the pin meaningless.
 
+import { arrangeContainers, containerOf } from './arrange.js';
 import { lineText, parseRuns, type TextLine } from './inline.js';
 import { DEFAULT_SIZE, type DiagramFile, type Edge, type Node, type Point } from './model.js';
 import { textPlace } from './draw/stencil.js';
@@ -87,6 +88,7 @@ export function layOutDiagram(diagram: DiagramFile): LaidOutDiagram {
     : { positions: new Map<string, { x: number; y: number }>(), rank: new Map<string, number>() };
 
   const boxes = new Map<string, Box>();
+  const inside = containerOf(diagram);
   for (const node of plain) {
     // P6: a scrollbar has nowhere to put words, and neither has a line, so
     // words written into one are not drawn. Saying so is the difference
@@ -102,7 +104,12 @@ export function layOutDiagram(diagram: DiagramFile): LaidOutDiagram {
     const pin = diagram.layout.get(node.id);
     const at = pin ?? auto.positions.get(node.id);
     if (!at) {
-      diagnostics.push(`配置がない: ${node.id}`);
+      // A shape in a container is placed by the container, not by a pin; a
+      // container with nowhere to be is reported by the arranging pass, which
+      // can say the useful thing about it.
+      if (!inside.has(node.id) && !diagram.containers.has(node.id)) {
+        diagnostics.push(`配置がない: ${node.id}`);
+      }
       continue;
     }
     boxes.set(node.id, {
@@ -114,9 +121,17 @@ export function layOutDiagram(diagram: DiagramFile): LaidOutDiagram {
     });
   }
 
+  // What the containers hold, in the room the containers have. Before parking,
+  // because a shape a container placed is not a shape with nowhere to be.
+  arrangeContainers(
+    diagram, id => sizes.get(id) ?? { width: 0, height: 0, lines: [] }, boxes, diagnostics,
+  );
   park(plain.filter(node => !boxes.has(node.id)), sizes, boxes);
 
   for (const group of groups) {
+    // A group that arranges its own contents already has its box: it decided
+    // where they went, so it cannot also be whatever shape they ended up in.
+    if (diagram.containers.has(group.id)) continue;
     const box = groupBox(group, diagram, boxes, diagnostics);
     if (box) boxes.set(group.id, box);
   }
@@ -367,8 +382,12 @@ function measure(
   // as long as the default width and flat, until a pin says otherwise.
   if (node.shape === 'line') return { width: DEFAULT_SIZE.width, height: 0, lines: [] };
   const pin = diagram.layout.get(node.id);
-  const inner = pin?.width !== undefined
-    ? pin.width - TEXT_PAD
+  // The size a part gives, for a shape with no pin to carry one — a shape in a
+  // container is placed without a pin, and a text box is 34 tall because the
+  // library says so.
+  const given = diagram.partSizes.get(node.id);
+  const inner = (pin?.width ?? given?.width) !== undefined
+    ? (pin?.width ?? given!.width) - TEXT_PAD
     : Math.min(MAX_NODE_WIDTH, Math.max(DEFAULT_SIZE.width, textWidth(node.text, FONT) + TEXT_PAD)) - TEXT_PAD;
   const lines = wrapRuns(parseRuns(node.text), inner, FONT);
   const widest = lines.reduce((w, line) => Math.max(w, textWidth(lineText(line), FONT)), 0);
@@ -378,6 +397,15 @@ function measure(
   // A part is a picture with its name under it, so it needs the picture's room
   // on top of the room the name takes.
   const art = diagram.style.get(node.id)?.has('icon') ? PART_ART : 0;
+  // The library's height is what one line of this part is. Words that had to
+  // wrap need more than that, and a part is a starting point rather than a cap.
+  if (given) {
+    return {
+      width: given.width,
+      height: lines.length > 1 ? Math.max(given.height, lines.length * LINE_HEIGHT) : given.height,
+      lines,
+    };
+  }
   return {
     width: Math.max(DEFAULT_SIZE.width, Math.ceil(widest) + TEXT_PAD),
     height: Math.max(DEFAULT_SIZE.height, lines.length * LINE_HEIGHT + TEXT_PAD + lid + art),
@@ -564,9 +592,21 @@ function normalize(
   const height = ys.length ? Math.max(...ys) + PAD : PAD * 2;
 
   const declared = new Map(diagram.nodes.map((n, i) => [n.id, i]));
+  // A container is drawn before what it holds, whatever order the file names
+  // them in: it is the surface they sit on, and a surface painted afterwards
+  // covers them. Depth does this for any nesting; `z` still decides first,
+  // because that is the author's own say.
+  const held = containerOf(diagram);
+  const depthOf = (id: string): number => {
+    let depth = 0;
+    for (let at = held.get(id); at !== undefined && depth < 32; at = held.get(at)) depth += 1;
+    return depth;
+  };
   const order = [...shifted.keys()].sort((a, b) => {
     const dz = shifted.get(a)!.z - shifted.get(b)!.z;
-    return dz !== 0 ? dz : declared.get(a)! - declared.get(b)!;
+    if (dz !== 0) return dz;
+    const dd = depthOf(a) - depthOf(b);
+    return dd !== 0 ? dd : declared.get(a)! - declared.get(b)!;
   });
 
   return {

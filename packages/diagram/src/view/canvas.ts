@@ -7,6 +7,7 @@
 // of the three-layer model: the mouse is for the exceptions.
 
 import { layOutDiagram, type Box } from '../layout.js';
+import { containerOf } from '../arrange.js';
 import type { DiagramFile, ShapeKind } from '../model.js';
 import { renderDiagram } from '../draw/render.js';
 import { stencilParts } from '../draw/stencil.js';
@@ -1328,10 +1329,16 @@ export function createCanvas(options: CanvasOptions): Canvas {
     const at = primary();
     if (release) {
       release.disabled = picked.length !== 1 || at === undefined || !canUnpin(file, at);
+      // A shape a container holds has somewhere to go back to, and saying
+      // "the layout engine" about a form's own frame would mean nothing.
+      const inContainer = at !== undefined && containerOf(file).has(at);
+      release.textContent = inContainer ? '入れ物に戻す' : '自動配置に戻す';
       release.title = picked.length === 1 && at !== undefined && !canUnpin(file, at)
         && file.mode !== 'flow'
         ? '自由配置の図では外せない（外すと置き場所が無くなる）'
-        : '手で決めた位置を捨て、レイアウトエンジンに返す';
+        : inContainer
+          ? '手で決めた位置を捨て、入れ物の並びに返す'
+          : '手で決めた位置を捨て、レイアウトエンジンに返す';
     }
     if (aligners) aligners.hidden = picked.length < 2;
     for (const button of spreaders) button.disabled = picked.length < 3;

@@ -1,5 +1,6 @@
 # アカウントロック画面（画面設計）
 # kind: free — 警告の面と文字だけが、ほかの 2 枚と違う部品である。
+# 警告文は面の「中」に置く——座標で重ねるのではなく、面が中身を持つ。
 
 use "../../shared/ui-parts.dgm"
 
@@ -10,6 +11,8 @@ free {
   message   error:"連続して 5 回ログインに失敗したため、このアカウントは一時的に利用できません。"
 
   contact   label:"解除をご希望の場合は、システム管理者にご連絡ください。"
+
+  deskField ""
   deskLabel label:"問い合わせ先"
   deskBox   textbox:"情報システム部　内線 4120"
 
@@ -18,17 +21,19 @@ free {
 }
 
 layout {
-  frame     @ ( 40,  20) 380x290
-  title     @ ( 70,  50)
-  banner    @ ( 70,  84)
-  message   @ ( 82,  94) 296x36
+  frame @ ( 40,  20) 380x392
 
-  contact   @ ( 70, 152)
-  deskLabel @ ( 70, 182)
-  deskBox   @ ( 70, 202)
+  stack frame (down; gap: 20; pad: 30) {
+    title
+    banner
+    contact
+    deskField
+    back
+    help
+  }
 
-  back      @ ( 70, 246)
-  help      @ ( 70, 292)
+  stack banner (down; gap: 0; pad: 10) { message }
+  stack deskField (down; gap: 2; pad: 0) { deskLabel ; deskBox }
 }
 
 style {

@@ -1,6 +1,9 @@
 # ログイン画面（画面設計）
 # kind: free — 画面はすべて座標が意味を持つので自由配置。
 # 見た目は部品テンプレートが持つ。この file に残るのは「何が、どこに」だけである。
+#
+# 並びは入れ物が決める。座標を書いてあるのは枠だけで、中身は「縦に積む・
+# 間隔はいくつ」から計算される——項目を 1 つ足しても、下の全部は動かない。
 
 use "../../shared/ui-parts.dgm"
 
@@ -8,13 +11,16 @@ free {
   frame    frame:
   title    title:"サービスにログイン"
 
+  idField  ""
   idLabel  label:"ログイン ID"
   idBox    textbox:"yamada@example.co.jp"
   idHint   hint:"社員番号を入力してください"
 
+  pwField  ""
   pwLabel  label:"パスワード"
   pwBox    textbox:
 
+  keepRow  ""
   keepBox  checkbox:
   keepText label:"ログイン状態を保持する"
 
@@ -23,21 +29,21 @@ free {
 }
 
 layout {
-  frame    @ ( 40,  20) 380x330
-  title    @ ( 70,  50)
+  frame @ ( 40,  20) 380x392
 
-  idLabel  @ ( 70,  96)
-  idBox    @ ( 70, 116)
-  idHint   @ ( 70, 152)
+  stack frame (down; gap: 22; pad: 30) {
+    title
+    idField
+    pwField
+    keepRow
+    submit
+    forgot
+  }
 
-  pwLabel  @ ( 70, 182)
-  pwBox    @ ( 70, 202)
-
-  keepBox  @ ( 70, 250)
-  keepText @ ( 96, 250) 200x16
-
-  submit   @ ( 70, 284)
-  forgot   @ ( 70, 330)
+  # 見出しと入力欄はひと組なので、間隔を詰めて束ねる
+  stack idField (down; gap: 2; pad: 0) { idLabel ; idBox ; idHint }
+  stack pwField (down; gap: 2; pad: 0) { pwLabel ; pwBox }
+  stack keepRow (right; gap: 8; pad: 0) { keepBox ; keepText }
 }
 
 style {

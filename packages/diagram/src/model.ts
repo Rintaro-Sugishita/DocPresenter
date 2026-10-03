@@ -130,6 +130,41 @@ export interface Callout {
   readonly span: ByteSpan;
 }
 
+/**
+ * An arrangement: a shape that decides where the shapes it holds go.
+ *
+ * The layout layer used to hold pins and nothing else, which meant a form of
+ * eight fields was eight coordinates — when the facts were "down the page, 12
+ * apart, full width". Those three are what a container says; the coordinates
+ * are computed from them. A pin still wins, so one field can be put somewhere
+ * else without giving up the arrangement for the rest.
+ */
+export interface Container {
+  /** The shape whose inside is being arranged — a frame, a panel, a group. */
+  readonly id: string;
+  readonly kind: 'stack' | 'grid';
+  /** `stack` only: down the page or across it. */
+  readonly flow: 'down' | 'right';
+  /**
+   * How wide each column is: a number of units, `1fr` for a share of what is
+   * left, or `auto` for as wide as its widest member. Empty means an even
+   * share each, which is what a form of labels and fields wants.
+   */
+  readonly cols: readonly string[];
+  /** Between the rows and between the columns. */
+  readonly gap: { readonly x: number; readonly y: number };
+  /** Between the container's edge and what it holds. */
+  readonly pad: number;
+  /**
+   * What is in each cell, row by row. `.` is an empty cell, and a name written
+   * in two neighbouring cells occupies both — the way `grid-template-areas`
+   * says it, so the written shape is the shape on the screen.
+   */
+  readonly cells: readonly (readonly string[])[];
+  /** The whole block, so one gesture rewrites one byte range. */
+  readonly span: ByteSpan;
+}
+
 export interface DiagramFile {
   readonly mode: DiagramMode;
   readonly comments: readonly string[];
@@ -162,6 +197,16 @@ export interface DiagramFile {
   readonly parts: ReadonlyMap<string, Part>;
   /** Which part each shape was written as, for the ones that name one. */
   readonly partOf: ReadonlyMap<string, string>;
+  /**
+   * The size a part gives a shape, for the shapes that are not pinned.
+   *
+   * A pin carries its own size and wins; a shape inside a container has no pin
+   * at all, and "how big is a textbox here" is a question only the library can
+   * answer. Filled in when the parts are applied, empty before that.
+   */
+  readonly partSizes: ReadonlyMap<string, { readonly width: number; readonly height: number }>;
+  /** How each container arranges what it holds, by the container's id. */
+  readonly containers: ReadonlyMap<string, Container>;
   /** The `parts { … }` section, for adding one. */
   readonly partsBlock: Section | undefined;
 }

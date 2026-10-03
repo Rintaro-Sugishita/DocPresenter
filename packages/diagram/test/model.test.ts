@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
+import { sliceBytes } from '@docpresenter/base';
 import {
-  layOutDiagram, parseDiagram, parseRuns, specimenOf, withParts, wrapRuns, wrapText,
+  DiagramParseError, layOutDiagram, parseDiagram, parseRuns, specimenOf, withParts, wrapRuns,
+  wrapText,
 } from '../src/index.js';
 
 const read = (path: string): string => readFileSync(path, 'utf8');
@@ -239,6 +241,137 @@ describe('単独の線', () => {
     expect(laid.diagnostics.join(' / ')).toContain('arrow に書けるのは');
     expect(laid.diagnostics.join(' / ')).toContain('太さは正の数で書く');
     expect(laid.diagnostics.join(' / ')).toContain('線だけが arrow を持つ: box1');
+  });
+});
+
+describe('入れ物', () => {
+  const box = (laid: ReturnType<typeof layOutDiagram>, id: string) => laid.boxes.get(id)!;
+  const lay = (...lines: string[]) => layOutDiagram(parseDiagram(lines.join('\n')));
+
+  it('縦に積む：間隔は 1 回だけ書き、座標は計算される', () => {
+    const laid = lay(
+      'free {', '  frame [ ]', '  a [あ]', '  b [い]', '  c [う]', '}',
+      'layout {',
+      '  frame @ (0, 0) 300x400',
+      '  stack frame (down; gap: 10; pad: 20) { a ; b ; c }',
+      '}');
+    const [first, second, third] = [box(laid, 'a'), box(laid, 'b'), box(laid, 'c')];
+    expect(second.y - (first.y + first.height)).toBe(10);
+    expect(third.y - (second.y + second.height)).toBe(10);
+    // 交差軸は伸びる：3 つとも枠いっぱいの同じ幅になる
+    expect([first.width, second.width, third.width]).toEqual([260, 260, 260]);
+    expect(first.x).toBe(box(laid, 'frame').x + 20);
+  });
+
+  it('横に並べる：主軸は部品のままの大きさ', () => {
+    const laid = lay(
+      'free {', '  row [ ]', '  a [あ]', '  b [い]', '}',
+      'layout {',
+      '  row @ (0, 0) 600x100',
+      '  stack row (right; gap: 8; pad: 0) { a ; b }',
+      '}');
+    expect(box(laid, 'b').x - (box(laid, 'a').x + box(laid, 'a').width)).toBe(8);
+    expect(box(laid, 'a').width).toBe(box(laid, 'b').width);   // 同じ中身なので同じ
+    expect(box(laid, 'a').width).toBeLessThan(600);
+  });
+
+  it('grid：列の幅は宣言どおり、残りは 1fr が分け合う', () => {
+    const laid = lay(
+      'free {', '  form [ ]', '  l1 [ラベル]', '  f1 [入力]', '}',
+      'layout {',
+      '  form @ (0, 0) 400x200',
+      '  grid form (cols: 100, 1fr; gap: 0 20; pad: 10) {',
+      '    l1 ; f1',
+      '  }',
+      '}');
+    expect(box(laid, 'l1').width).toBe(100);
+    expect(box(laid, 'f1').width).toBe(400 - 20 - 20 - 100);   // pad*2, gap, ラベル列
+    expect(box(laid, 'f1').x - box(laid, 'l1').x).toBe(120);
+  });
+
+  it('同じ名前を並べるとセルをまたぐ。. は空のセル', () => {
+    const laid = lay(
+      'free {', '  form [ ]', '  wide [見出し]', '  one [左]', '}',
+      'layout {',
+      '  form @ (0, 0) 400x200',
+      '  grid form (gap: 0 0; pad: 0) {',
+      '    wide ; wide',
+      '    one  ; .',
+      '  }',
+      '}');
+    expect(box(laid, 'wide').width).toBe(400);
+    expect(box(laid, 'one').width).toBe(200);
+  });
+
+  it('入れ物は入れ子にできる。深さは名前で繋ぐので、ブロックは平らなまま', () => {
+    const laid = lay(
+      'free {', '  form [ ]', '  row [ ]', '  a [あ]', '  b [い]', '}',
+      'layout {',
+      '  form @ (0, 0) 300x200',
+      '  stack form (down; gap: 0; pad: 0) { row }',
+      '  stack row (right; gap: 0; pad: 0) { a ; b }',
+      '}');
+    expect(box(laid, 'row').width).toBe(300);
+    expect(box(laid, 'a').y).toBe(box(laid, 'row').y);
+    expect(box(laid, 'b').x).toBeGreaterThan(box(laid, 'a').x);
+  });
+
+  it('ピンが勝つ：置き場所を書いた図形は入れ物から出る', () => {
+    const laid = lay(
+      'free {', '  frame [ ]', '  a [あ]', '  b [い]', '}',
+      'layout {',
+      '  frame @ (0, 0) 300x400',
+      '  b @ (500, 500) 80x20',
+      '  stack frame (down; gap: 0; pad: 0) { a ; b }',
+      '}');
+    expect([box(laid, 'b').width, box(laid, 'b').height]).toEqual([80, 20]);
+    expect(box(laid, 'b').x).toBeGreaterThan(box(laid, 'frame').x + 300);
+  });
+
+  it('読めないものは黙って捨てない', () => {
+    const laid = lay(
+      'free {', '  frame [ ]', '  a [あ]', '}',
+      'layout {',
+      '  frame @ (0, 0) 300x40',
+      '  stack frame (down; gap: 0; pad: 0) { a ; いない }',
+      '  stack どこにもない (down) { a }',
+      '}');
+    const said = laid.diagnostics.join(' / ');
+    expect(said).toContain('入れ物の中身が見つからない: いない');
+    expect(said).toContain('入れ物が見つからない: どこにもない');
+  });
+
+  it('枠に入りきらない中身は、描いたうえで言う', () => {
+    const laid = lay(
+      'free {', '  frame [ ]', '  a [あ]', '  b [い]', '}',
+      'layout {',
+      '  frame @ (0, 0) 300x60',
+      '  stack frame (down; gap: 10; pad: 10) { a ; b }',
+      '}');
+    expect(laid.diagnostics.join(' / ')).toContain('入れ物に中身が入りきらない: frame');
+    expect(laid.boxes.has('b')).toBe(true);       // 隠さない
+  });
+
+  it('入れ物の置き場所が無ければ、そう言う', () => {
+    const laid = lay(
+      'free {', '  frame [ ]', '  a [あ]', '}',
+      'layout {',
+      '  stack frame (down) { a }',
+      '}');
+    expect(laid.diagnostics.join(' / ')).toContain('入れ物の置き場所がない: frame');
+  });
+
+  it('設定の綴りが違えば断る', () => {
+    expect(() => parseDiagram('free {\n  f [ ]\n}\nlayout {\n  stack f (gpa: 4) { f }\n}'))
+      .toThrow(DiagramParseError);
+  });
+
+  it('入れ物は 1 つのバイト範囲として読める', () => {
+    const text = 'free {\n  f [ ]\n  a [あ]\n}\nlayout {\n  stack f (down) {\n    a\n  }\n}\n';
+    const container = parseDiagram(text).containers.get('f')!;
+    // バイト範囲なので、文字数ではなくバイトで切る（あ は 3 バイト）
+    expect(sliceBytes(text, container.span.start, container.span.end))
+      .toBe('stack f (down) {\n    a\n  }');
   });
 });
 

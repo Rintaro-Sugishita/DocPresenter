@@ -205,19 +205,35 @@ await page.click('.dp-sheet:not([hidden]) .dp-figure-body');
 await page.waitForTimeout(300);
 await page.screenshot({ path: 'out/canvas.png' });
 
-// --- 画面設計（自由配置。戻す先の自動レイアウトが無い図）------------------
+// --- 画面設計（自由配置。戻す先は自動レイアウトではなく入れ物）-------------
 await openSheet(3, 'login-screen.dgm');
-const button = '.dp-sheet:not([hidden]) .dp-canvas-bar button:text("自動配置に戻す")';
+const toLayout = '.dp-sheet:not([hidden]) .dp-canvas-bar button:text("自動配置に戻す")';
+const toBox = '.dp-sheet:not([hidden]) .dp-canvas-bar button:text("入れ物に戻す")';
+// 枠そのものは誰にも並べられていないので、戻す先が無い。中身が上に乗って
+// いるので、枠は余白のところ（左上の角）を押す。
+await page.click(node('frame'), { position: { x: 6, y: 6 } });
+await page.waitForTimeout(150);
+check('戻す先の無い図形では押せない', await page.isDisabled(toLayout));
+
 await page.click(node('submit'));
 await page.waitForTimeout(150);
-check('自由配置の図では「自動配置に戻す」は押せない', await page.isDisabled(button));
+check('並びに乗っているうちは、外す位置がまだ無い', await page.isDisabled(toBox));
 
 await drag(node('submit'), 16, -12);
 check('動かした図形は消えない', await page.isVisible(node('submit')));
-check('動かしても押せないまま', await page.isDisabled(button));
+check('動かすと入れ物から外れ、戻す口が出る', await page.isEnabled(toBox));
 const screen = await source();
-check('図形の数は変わらない', (screen.match(/@ \(/g) ?? []).length === 11,
+check('座標が書かれたのはその 1 つだけ', (screen.match(/@ \(/g) ?? []).length === 2,
   String((screen.match(/@ \(/g) ?? []).length));
+
+// ソースを見に行くと選択は外れるので、選び直してから戻す
+await page.click(node('submit'));
+await page.waitForTimeout(200);
+await page.click(toBox);
+await page.waitForTimeout(400);
+const returned = await source();
+check('戻せば座標ごと消える', (returned.match(/@ \(/g) ?? []).length === 1,
+  String((returned.match(/@ \(/g) ?? []).length));
 
 // --- 画面キャプチャへの注釈 ---------------------------------------------
 await openSheet(3, 'login-screen-overlay.dgm');

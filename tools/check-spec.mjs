@@ -71,6 +71,44 @@ for (const [written, line, arrow] of [
 }
 check('dgm §3.2', '接続のラベルを読む', edge('a -> b "HTTPS"')?.label === 'HTTPS');
 
+// §3「L2 は『ピン』だけではない」— 入れ物
+const laidOut = (...lines) => layOutDiagram(dgm(...lines));
+const held = laidOut(
+  'free {', '  frame [ ]', '  a [あ]', '  b [い]', '  c [う]', '}',
+  'layout {',
+  '  frame @ (0, 0) 300x400',
+  '  stack frame (down; gap: 10; pad: 20) { a ; b ; c }',
+  '}');
+check('dgm §3 L2', 'stack は間隔を 1 回書けば座標は計算される',
+  held.boxes.get('b').y - (held.boxes.get('a').y + held.boxes.get('a').height) === 10);
+check('dgm §3 L2', '縦に積むと幅が揃う（交差軸は伸びる）',
+  held.boxes.get('a').width === 260 && held.boxes.get('c').width === 260,
+  `${held.boxes.get('a').width} / ${held.boxes.get('c').width}`);
+
+const spanned = laidOut(
+  'free {', '  form [ ]', '  wide [見出し]', '  one [左]', '}',
+  'layout {',
+  '  form @ (0, 0) 400x200',
+  '  grid form (gap: 0 0; pad: 0) {', '    wide ; wide', '    one  ; .', '  }',
+  '}');
+check('dgm §3 L2', '同じ名前を並べるとセルをまたぐ', spanned.boxes.get('wide').width === 400);
+check('dgm §3 L2', '. は空のセル', spanned.boxes.get('one').width === 200);
+
+const escaped = laidOut(
+  'free {', '  frame [ ]', '  a [あ]', '}',
+  'layout {', '  frame @ (0, 0) 300x400', '  a @ (500, 500) 80x20',
+  '  stack frame (down) { a }', '}');
+check('dgm §3 L2', '入れ物の中でもピンが勝つ',
+  escaped.boxes.get('a').width === 80 && escaped.boxes.get('a').x > 300);
+check('dgm §3 L2', '入りきらない中身は描いたうえで言う',
+  laidOut('free {', '  frame [ ]', '  a [あ]', '  b [い]', '}',
+    'layout {', '  frame @ (0, 0) 300x40',
+    '  stack frame (down; gap: 10; pad: 10) { a ; b }', '}')
+    .diagnostics.join(' ').includes('入りきらない'));
+check('dgm §3 L2', '入れ物は 1 つのバイト範囲',
+  dgm('free {', '  f [ ]', '  a [A]', '}', 'layout {', '  stack f (down) {', '    a', '  }', '}')
+    .containers.get('f').span.end > 0);
+
 // §10.1 単独の線
 const lone = (written, style = '') => {
   const file = dgm('free {', `  rule1 ${written}`, '}',

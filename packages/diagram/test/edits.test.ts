@@ -515,3 +515,51 @@ describe('見た目を変える', () => {
     expect(written).toContain('rule1 @ (60, 300)');
   });
 });
+
+describe('入れ物からの削除', () => {
+  const HELD = [
+    'free {',
+    '  frame [ ]',
+    '  a [あ]',
+    '  b [い]',
+    '  c [う]',
+    '}',
+    '',
+    'layout {',
+    '  frame @ (0, 0) 300x400',
+    '',
+    '  grid frame (cols: 1fr, 1fr; pad: 10) {',
+    '    a ; b',
+    '    c ; .',
+    '  }',
+    '}',
+    '',
+  ].join('\n');
+
+  it('消した図形の名前は入れ物からも消える。grid は形を保つ', () => {
+    const written = run(HELD, f => removeNodes(f, HELD, ['b']));
+    expect(written).toContain('    a ; .');
+    expect(written).toContain('    c ; .');
+    expect(written).not.toContain('b [い]');
+  });
+
+  it('stack は並びなので、名前ごと抜ける', () => {
+    const stacked = HELD.replace(/  grid frame[\s\S]*?\n  \}/, '  stack frame (down) { a ; b ; c }');
+    const written = run(stacked, f => removeNodes(f, stacked, ['b']));
+    expect(written).toContain('stack frame (down) { a ; c }');
+  });
+
+  it('入れ物そのものを消せば、並べ方の行も消える', () => {
+    const written = run(HELD, f => removeNodes(f, HELD, ['frame']));
+    expect(written).not.toContain('grid frame');
+    expect(written).toContain('a [あ]');
+  });
+
+  it('入れ物の中の図形は、ピンを外して並びに戻せる', () => {
+    const pinned = HELD.replace('  frame @ (0, 0) 300x400', '  frame @ (0, 0) 300x400\n  a @ (500, 500)');
+    expect(canUnpin(parseDiagram(pinned), 'a')).toBe(true);
+    const written = run(pinned, f => unpinNode(f, pinned, 'a'));
+    expect(written).not.toContain('a @ (500, 500)');
+    expect(written).toContain('    a ; b');
+  });
+});

@@ -100,7 +100,17 @@ export function withParts(diagram: DiagramFile, read: PartReader): DiagramFile {
     });
   }
 
-  return { ...diagram, nodes, style, layout };
+  // The same size, for the shapes that have no pin to carry it. A shape in a
+  // container is placed by the container and pinned nowhere, and "how big is a
+  // textbox in this system" is a question only the library can answer.
+  const partSizes = new Map<string, { width: number; height: number }>();
+  for (const [id, name] of diagram.partOf) {
+    const part = parts.get(name);
+    if (part?.width === undefined || part.height === undefined) continue;
+    partSizes.set(id, { width: part.width, height: part.height });
+  }
+
+  return { ...diagram, nodes, style, layout, partSizes };
 }
 
 /**

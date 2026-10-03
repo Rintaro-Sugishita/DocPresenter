@@ -29,6 +29,16 @@ check('どの画面も同じ部品を使う',
 const library = readFileSync('sample/shared/ui-parts.dgm', 'utf8');
 check('部品は共有に置く（文書ごとのものではない）', /parts\s*\{/.test(library));
 
+// 並びは入れ物が決める。座標を持つのは枠だけで、中身は 1 つも座標を持たない——
+// 持っていたら、項目を 1 つ足すたびに下の全部が書き換わるということである。
+check('どの画面も入れ物で並べている',
+  sources.every(text => /^\s*stack\s+\w+\s*\(/m.test(text)));
+const pinned = SCREENS.map((path, i) => [path, (sources[i].match(/^\s*(\w+)\s+@ \(/gm) ?? [])
+  .map(line => line.trim().split(/\s/)[0])]);
+check('座標を持つのは枠だけ',
+  pinned.every(([, ids]) => ids.length === 1 && ids[0] === 'frame'),
+  pinned.map(([path, ids]) => `${path.split('/').pop()}:${ids.join(',')}`).join(' '));
+
 // --- 紙の側 -----------------------------------------------------------------
 execFileSync('node', ['tools/build.mjs', '--in', 'sample'], { encoding: 'utf8' });
 const page = readFileSync('out/build/auth-design.html', 'utf8');
@@ -154,6 +164,54 @@ check('部品を使う画面がすべて変わる',
   names.map(path => `${path.split('/').pop()}:${changed[path] ? '変' : '不変'}`).join(' '));
 
 
+
+// --- 入れ物から出す・戻す ---------------------------------------------------
+//
+// 入れ物の中の図形も動かせる。動かせば、その 1 つだけがピンを持って入れ物から
+// 外れる（既存の「ピンが勝つ」規則）。戻せばまた並びに乗る。
+await view.click('.dp-tab:has-text("ログイン機能")');
+await view.waitForTimeout(300);
+await view.locator('.dp-sheet:not([hidden]) .dp-figure[data-path$="login-screen.dgm"] .dp-figure-body')
+  .first().click();
+await view.waitForSelector('.dp-canvas-bar');
+const screenSource = async () => {
+  await view.click('.dp-sheet:not([hidden]) .dp-canvas-bar button:text("ソース")');
+  await view.waitForSelector('.dp-block-source');
+  const text = await view.inputValue('.dp-block-source');
+  await view.keyboard.press('Escape');
+  await view.waitForTimeout(250);
+  await view.locator('.dp-sheet:not([hidden]) .dp-figure[data-path$="login-screen.dgm"] .dp-figure-body')
+    .first().click();
+  await view.waitForSelector('.dp-canvas-bar');
+  return text;
+};
+check('画面は入れ物で組まれている', (await screenSource()).includes('stack frame'));
+
+const button = view.locator('.dp-canvas-stage [data-node="submit"]');
+const where = await button.boundingBox();
+await view.mouse.move(where.x + where.width / 2, where.y + where.height / 2);
+await view.mouse.down();
+await view.mouse.move(where.x + where.width / 2 + 60, where.y + where.height / 2 + 30, { steps: 8 });
+await view.mouse.up();
+await view.waitForTimeout(400);
+const moved = await screenSource();
+check('入れ物の中の図形も動かせる', /^\s*submit\s+@ \(/m.test(moved),
+  (/^.*submit.*@.*$/m.exec(moved) ?? [''])[0].trim());
+check('動かしたのはその 1 つだけ', (moved.match(/@ \(/g) ?? []).length === 2,
+  `座標を持つ行 ${(moved.match(/@ \(/g) ?? []).length} 本`);
+
+// ソースを見に行くと選択は外れるので、選び直してから戻す口を見る
+await view.click('.dp-canvas-stage [data-node="submit"]');
+await view.waitForTimeout(200);
+check('戻す口が「入れ物に戻す」になり、押せる',
+  (await view.textContent('.dp-sheet:not([hidden]) .dp-canvas-bar')).includes('入れ物に戻す')
+  && await view.isEnabled('.dp-sheet:not([hidden]) .dp-canvas-bar button:text("入れ物に戻す")'),
+  await view.textContent('.dp-sheet:not([hidden]) .dp-canvas-where'));
+await view.click('.dp-sheet:not([hidden]) .dp-canvas-bar button:text("入れ物に戻す")');
+await view.waitForTimeout(400);
+const back = await screenSource();
+check('戻せば並びに乗る', !/^\s*submit\s+@ \(/m.test(back),
+  (back.match(/@ \(/g) ?? []).length + ' 本');
 
 // --- 「＋ 部品」の一覧 -------------------------------------------------------
 //

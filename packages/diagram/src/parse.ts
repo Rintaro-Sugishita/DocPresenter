@@ -5,7 +5,7 @@
 import { byteLength, type ByteSpan } from '@docpresenter/base';
 import type {
   ArrowStyle, Bend, Callout, DiagramFile, DiagramMode, Edge, EdgeStyle, LayoutBlock, Node,
-  Part, Placement, Point, Section, ShapeKind,
+  Container, Part, Placement, Point, Section, ShapeKind,
 } from './model.js';
 
 /** One source line, trimmed, with the bytes it occupies. */
@@ -98,6 +98,7 @@ export function parseDiagram(source: string): DiagramFile {
   const edges: Edge[] = [];
   const layout = new Map<string, Placement>();
   const bends = new Map<string, Bend>();
+  const containers = new Map<string, Container>();
   const style = new Map<string, ReadonlyMap<string, string>>();
   const styleSpans = new Map<string, ByteSpan>();
   const callouts: Callout[] = [];
@@ -153,7 +154,7 @@ export function parseDiagram(source: string): DiagramFile {
       image = quoted[1]!;
       parseCallouts(inner, callouts);
     } else if (kind === 'layout') {
-      parseLayout(inner, layout, bends);
+      parseLayout(inner, layout, bends, containers);
       layoutBlock = blockOf(lines, raw, start, i, inner);
     } else {
       theme = parseStyle(inner, style, styleSpans) ?? theme;
@@ -166,8 +167,9 @@ export function parseDiagram(source: string): DiagramFile {
   if (!mode && uses.length > 0) mode = 'parts';
   if (!mode) throw new DiagramParseError('free / flow / overlay のいずれのセクションも無い', 1);
   return {
-    mode, comments, nodes, edges, body, layout, bends, layoutBlock, styleBlock,
-    theme, style, styleSpans, image, callouts, uses, parts, partOf, partsBlock,
+    mode, comments, nodes, edges, body, layout, bends, containers, layoutBlock, styleBlock,
+    theme, style, styleSpans, image, callouts, uses, parts, partOf, partSizes: new Map(),
+    partsBlock,
   };
 }
 
@@ -360,12 +362,47 @@ function parseCallouts(body: readonly SourceLine[], out: Callout[]): void {
   });
 }
 
+/**
+ * `grid form (cols: 120, 1fr; gap: 8 12) {` — a container and how it arranges.
+ *
+ * The settings are optional: a container with none is an even share of the
+ * room, which is what a form of labels and fields wants.
+ */
+const CONTAINER = /^(stack|grid)\s+([A-Za-z0-9_぀-鿿-]+)\s*(?:\(([^)]*)\))?\s*\{\s*(.*)$/;
+const DEFAULT_GAP = 12;
+const DEFAULT_PAD = 16;
+
 function parseLayout(
   body: readonly SourceLine[], out: Map<string, Placement>, bends: Map<string, Bend>,
+  containers: Map<string, Container>,
 ): void {
-  body.forEach(source => {
+  for (let i = 0; i < body.length; i++) {
+    const source = body[i]!;
     const text = source.text;
-    if (text === '' || text.startsWith('#')) return;
+    if (text === '' || text.startsWith('#')) continue;
+
+    const container = CONTAINER.exec(text);
+    if (container) {
+      // A container may be written on one line or spread over several; the
+      // rows of a grid are its lines, so the written shape is the shape drawn.
+      const rows: string[] = [];
+      let last = source;
+      const tail = container[4]!;
+      if (tail.includes('}')) rows.push(tail.slice(0, tail.indexOf('}')));
+      else {
+        while (++i < body.length) {
+          last = body[i]!;
+          if (last.text === '}') break;
+          if (last.text !== '' && !last.text.startsWith('#')) rows.push(last.text);
+        }
+        if (last.text !== '}') {
+          throw new DiagramParseError(`'${container[1]}' が閉じられていない`, source.number);
+        }
+      }
+      const one = readContainer(container, rows, source.number);
+      containers.set(one.id, { ...one, span: { start: source.span.start, end: last.span.end } });
+      continue;
+    }
 
     const bend = BEND.exec(text);
     if (bend) {
@@ -390,7 +427,54 @@ function parseLayout(
       z: m[6] ? Number(m[6]) : undefined,
       span: source.span,
     });
-  });
+  }
+}
+
+/** The settings in the brackets, and the cells in the braces. */
+function readContainer(
+  found: RegExpExecArray, rows: readonly string[], line: number,
+): Omit<Container, 'span'> {
+  const kind = found[1] as 'stack' | 'grid';
+  const id = found[2]!;
+  let flow: 'down' | 'right' = 'down';
+  let cols: string[] = [];
+  let gap = { x: DEFAULT_GAP, y: DEFAULT_GAP };
+  let pad = DEFAULT_PAD;
+
+  for (const setting of (found[3] ?? '').split(';')) {
+    const written = setting.trim();
+    if (written === '') continue;
+    if (written === 'down' || written === 'right') { flow = written; continue; }
+    const kv = /^([\w-]+)\s*:\s*(.+?)$/.exec(written);
+    // A misspelt setting is refused rather than ignored: a gap nobody applied
+    // is a drawing that silently disagrees with its own file.
+    if (!kv) throw new DiagramParseError(`入れ物の設定が読めない: ${written}`, line);
+    const value = kv[2]!.trim();
+    if (kv[1] === 'cols') cols = value.split(',').map(one => one.trim()).filter(one => one !== '');
+    else if (kv[1] === 'pad') pad = Number(value);
+    else if (kv[1] === 'gap') {
+      // `gap: 8 12` is the rows then the columns, as CSS writes it.
+      const two = value.split(/\s+/).map(Number);
+      gap = { y: two[0] ?? DEFAULT_GAP, x: two[1] ?? two[0] ?? DEFAULT_GAP };
+    } else throw new DiagramParseError(`入れ物の設定が読めない: ${written}`, line);
+  }
+
+  const cells = rows
+    .map(row => row.split(';').map(cell => cell.trim()).filter(cell => cell !== ''))
+    .filter(row => row.length > 0);
+  if (cells.length === 0) throw new DiagramParseError(`入れ物の中身が無い: ${id}`, line);
+
+  // A stack is a grid of one column — or, laid across, one row. Saying it this
+  // way means one arrangement to compute rather than two.
+  if (kind === 'stack') {
+    const members = cells.flat();
+    return {
+      id, kind, flow, gap, pad,
+      cols: flow === 'down' ? ['1fr'] : members.map(() => 'auto'),
+      cells: flow === 'down' ? members.map(one => [one]) : [members],
+    };
+  }
+  return { id, kind, flow, gap, pad, cols, cells };
 }
 
 function parseStyle(

@@ -5,7 +5,8 @@
 // grows is a layout nobody can hand back to the engine.
 
 import { byteLength, sliceBytes, type ByteSpan, type Edit } from '@docpresenter/base';
-import type { DiagramFile, Node, ShapeKind } from './model.js';
+import { containerOf, members, EMPTY_CELL } from './arrange.js';
+import type { Container, DiagramFile, Node, ShapeKind } from './model.js';
 
 export class DiagramEditError extends Error {
   constructor(message: string) {
@@ -170,7 +171,9 @@ export function unpinNode(file: DiagramFile, source: string, id: string): Edit {
 export function canUnpin(file: DiagramFile, id: string): boolean {
   if (!file.layout.has(id)) return false;
   const node = file.nodes.find(n => n.id === id);
-  return file.mode === 'flow' || node?.shape === 'group';
+  // A shape a container holds has somewhere to go back to, even in a drawing
+  // placed by hand: the container will put it where it belongs.
+  return file.mode === 'flow' || node?.shape === 'group' || containerOf(file).has(id);
 }
 
 /** Where a callout's marker sits and what it points at, in image pixels. */
@@ -445,7 +448,43 @@ function removalOf(file: DiagramFile, source: string, ids: readonly string[]): C
     const bend = file.bends.get(`${edge.from}->${edge.to}`);
     if (bend) changes.push(whole(source, bend.span, ''));
   }
+  // A container naming a shape that is gone is a container nobody can read.
+  // The same rule as a group's membership and a connection's ends: deleting
+  // means deleting what pointed at it.
+  for (const container of file.containers.values()) {
+    if (going.has(container.id)) {
+      changes.push(whole(source, container.span, ''));
+      continue;
+    }
+    if (!members(container).some(name => going.has(name))) continue;
+    changes.push({
+      span: container.span,
+      text: containerText(container, sliceBytes(source, container.span.start, container.span.end), going),
+    });
+  }
   return changes;
+}
+
+/**
+ * The container's own text with the shapes that are going taken out of it.
+ *
+ * A grid keeps its shape — a cell that lost its shape becomes an empty cell,
+ * because the ones beside it did not move — while a stack is a list, so the
+ * name simply goes. The settings and the way it was written are kept: this is
+ * a deletion, not a reformatting.
+ */
+function containerText(container: Container, text: string, going: ReadonlySet<string>): string {
+  const open = text.indexOf('{');
+  const head = text.slice(0, open + 1);
+  const rows = container.cells.map(row =>
+    row.map(cell => (going.has(cell) ? EMPTY_CELL : cell))
+      .filter(cell => container.kind === 'grid' || cell !== EMPTY_CELL))
+    .filter(row => row.length > 0 && row.some(cell => cell !== EMPTY_CELL));
+
+  if (!text.includes('\n')) return `${head} ${rows.map(row => row.join(' ; ')).join(' ; ')} }`;
+  const indent = /\n(\s*)\S/.exec(text)?.[1] ?? '  ';
+  const close = /\n(\s*)\}$/.exec(text)?.[1] ?? '';
+  return `${head}\n${rows.map(row => indent + row.join(' ; ')).join('\n')}\n${close}}`;
 }
 
 /**
