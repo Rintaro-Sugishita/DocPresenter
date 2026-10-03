@@ -67,6 +67,30 @@ export function lineIcon(kind: string): string {
   return `<svg viewBox="0 0 18 16" width="18" height="16" aria-hidden="true">${body}</svg>`;
 }
 
+/**
+ * The operations on one row of a tree, a list or a menu.
+ *
+ * Drawn rather than named for the same reason the alignment row is: six short
+ * words in a row read as a wall, six marks read as a set of choices.
+ */
+export function rowIcon(kind: string): string {
+  const stroke = 'fill="none" stroke="currentColor" stroke-width="1.5"'
+    + ' stroke-linejoin="round" stroke-linecap="round"';
+  const body = ((): string => {
+    switch (kind) {
+      case 'add': return `<path d="M9 3.5 V12.5 M4.5 8 H13.5" ${stroke}/>`;
+      case 'drop': return `<path d="M5 4 L13 12 M13 4 L5 12" ${stroke}/>`;
+      case 'in': return `<path d="M3 4 H9 M3 8 H15 M3 12 H9" ${stroke}/>`
+        + `<path d="M12 5.5 L15 8 L12 10.5" ${stroke}/>`;
+      case 'out': return `<path d="M9 4 H15 M3 8 H15 M9 12 H15" ${stroke}/>`
+        + `<path d="M6 5.5 L3 8 L6 10.5" ${stroke}/>`;
+      case 'pick': return '<circle cx="9" cy="8" r="4" fill="currentColor"/>';
+      default: return `<path d="M6.5 4 L11 8 L6.5 12" ${stroke}/>`;
+    }
+  })();
+  return `<svg viewBox="0 0 18 16" width="18" height="16" aria-hidden="true">${body}</svg>`;
+}
+
 /** What each alignment command does, drawn as three little shapes. */
 export function alignIcon(kind: string): string {
   const bar = (x: number, y: number, w: number, h: number): string =>

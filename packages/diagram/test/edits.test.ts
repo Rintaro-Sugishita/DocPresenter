@@ -4,8 +4,9 @@ import { parseDiagram } from '@docpresenter/diagram';
 import {
   addNode, bendEdge, canUnpin, connectNodes, DiagramEditError, disconnectNodes, groupMembers,
   dropInto, groupNodes, layOutDiagram, moveCallout, pinNode, pinNodes, reconnect, removeNode,
-  removeNodes, setContainerCells, setNodeShape, setNodeStyle, setNodeText, unpinNode,
+  removeNodes, setContainerCells, setItems, setNodeShape, setNodeStyle, setNodeText, unpinNode,
 } from '../src/index.js';
+import type { Item } from '../src/model.js';
 
 const FLOW = [
   '# 流れ',
@@ -637,6 +638,84 @@ describe('入れ物の中での並べ替え', () => {
 
   it('同じ並びを書こうとしたら断る', () => {
     expect(() => setContainerCells(parseDiagram(HELD), HELD, 'frame', [['a'], ['b'], ['c']]))
+      .toThrow(DiagramEditError);
+  });
+});
+
+describe('一覧の行を変える', () => {
+  const ROWS = [
+    'use "default"',
+    '',
+    'free {',
+    '  nav tree: {',
+    '    - 全社',
+    '      - 営業',
+    '      - 管理 *',
+    '  }',
+    '  bare list:',
+    '  plain [ふつうの図形]',
+    '}',
+    '',
+  ].join('\n');
+
+  const rowsOf = (text: string, id = 'nav'): readonly Item[] =>
+    parseDiagram(text).nodes.find(one => one.id === id)!.items;
+  const write = (text: string, id: string, items: readonly Item[]): string =>
+    applyEdit(text, setItems(parseDiagram(text), text, id, items));
+
+  it('行を足しても、書き換わるのはその一覧だけ', () => {
+    const items = rowsOf(ROWS);
+    const edit = setItems(parseDiagram(ROWS), ROWS, 'nav', [
+      ...items.slice(0, 2),
+      { text: '新しい行', depth: 1, closed: false, picked: false },
+      items[2]!,
+    ]);
+    const written = applyEdit(ROWS, edit);
+    expect(edit.description).toBe('一覧を変える');
+    expect(written).toContain('      - 営業\n      - 新しい行\n      - 管理 *');
+    // ほかの行は 1 文字も動かない
+    expect(written).toContain('  bare list:');
+    expect(written).toContain('  plain [ふつうの図形]');
+  });
+
+  it('字下げの幅は、書かれているものに合わせる', () => {
+    const wide = ROWS.replace('      - 営業', '        - 営業').replace('      - 管理 *', '        - 管理 *');
+    const items = rowsOf(wide);
+    expect(items.map(one => one.depth)).toEqual([0, 1, 1]);
+    const written = write(wide, 'nav', [...items,
+      { text: '総務', depth: 1, closed: false, picked: false }]);
+    expect(written).toContain('        - 総務');
+  });
+
+  it('印は印として書き戻される', () => {
+    const items = rowsOf(ROWS);
+    const written = write(ROWS, 'nav', items.map((one, i) => (
+      i === 1 ? { ...one, closed: true, picked: true } : { ...one, picked: false })));
+    expect(written).toContain('      + 営業 *');
+    expect(written).toContain('      - 管理\n');
+  });
+
+  it('行の無い部品にも書ける。書いたらブロックができる', () => {
+    const written = write(ROWS, 'bare',
+      [{ text: '最初の行', depth: 0, closed: false, picked: true }]);
+    expect(written).toContain('  bare list: {\n    - 最初の行 *\n  }');
+    expect(rowsOf(written, 'bare').map(one => one.text)).toEqual(['最初の行']);
+  });
+
+  it('空にしたら、ブロックごと消える', () => {
+    const written = write(ROWS, 'nav', []);
+    expect(written).toContain('  nav tree:\n');
+    expect(written).not.toContain('全社');
+    expect(rowsOf(written).length).toBe(0);
+  });
+
+  it('同じ行を書こうとしたら断る', () => {
+    expect(() => setItems(parseDiagram(ROWS), ROWS, 'nav', rowsOf(ROWS)))
+      .toThrow(DiagramEditError);
+  });
+
+  it('無い図形には書けない', () => {
+    expect(() => setItems(parseDiagram(ROWS), ROWS, 'nope', []))
       .toThrow(DiagramEditError);
   });
 });

@@ -13,6 +13,7 @@ export * from './draw/geometry.js';
 export * from './draw/render.js';
 export * from './draw/overlay.js';
 export * from './draw/stencil.js';
+export * from './draw/listing.js';
 export * from './edits.js';
 export * from './view/style.js';
 export * from './view/shape-icon.js';

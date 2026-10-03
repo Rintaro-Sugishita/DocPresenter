@@ -54,6 +54,11 @@ check('部品の既定の大きさが効いている', /width="320"/.test(login)
 // 見本には、下敷きにした既定の部品も出る——「ここで何が使えるか」の答えだから
 const specimen = figure('shared/ui-parts.dgm');
 check('見本も出る', specimen.includes('secondary'));
+// 閉じた枝の中身は、画面でも紙でも出ない——出るなら印が嘘になる。
+const detailFigure = figure('docs/auth-design/detail-screen.dgm');
+check('紙でも閉じた枝の中身は描かれない',
+  detailFigure.includes('営業本部') && !detailFigure.includes('第一営業部'),
+  detailFigure.includes('第一営業部') ? '描かれている' : '');
 check('見本には下敷きの部品も出る', specimen.includes('spinner') && specimen.includes('ui/slider'),
   ['spinner', 'slider', 'radio'].filter(name => specimen.includes(name)).join(' '));
 
@@ -246,6 +251,127 @@ await view.waitForTimeout(400);
 const back = await screenSource();
 check('戻せば並びに乗る', !/^\s*submit\s+@ \(/m.test(back),
   (back.match(/@ \(/g) ?? []).length + ' 本');
+
+// --- 一覧の行を GUI で変える -------------------------------------------------
+//
+// ツリーの中身は行であって図形ではないので、押す相手が無い——行の位置は絵と
+// 同じ計算から出す。見たいのは「押した行が選ばれる」「その行だけが変わる」
+// 「書き換わるのは一覧の 1 ブロック」で、どれかが欠けると編集できない行が残る。
+await view.click('.dp-tab:has-text("画面部品")');
+await view.waitForTimeout(300);
+const detail = view.locator(
+  '.dp-sheet:not([hidden]) .dp-figure[data-path$="detail-screen.dgm"] .dp-figure-body');
+await detail.first().click();
+await view.waitForSelector('.dp-canvas-bar');
+
+// 行 i の真ん中。帯の高さは行を選ぶと変わるので、押すたびに測り直す——
+// 一度測った座標を使い回すと、2 回目は隣の行を押すことになる。
+const ROW_TOP = 119;      // 枠 (32,112) ＋ 余白 7
+const pressRow = async (i) => {
+  const svg = await view.locator(
+    '.dp-sheet:not([hidden]) [data-path$="detail-screen.dgm"] svg.dp-diagram').boundingBox();
+  await view.mouse.click(svg.x + 92, svg.y + ROW_TOP + i * 22 + 11);
+  await view.waitForTimeout(200);
+  return svg;
+};
+const rowMark = () => view.evaluate(() =>
+  document.querySelector('.dp-canvas-row')?.getAttribute('y'));
+const detailSource = async () => {
+  await view.click('.dp-sheet:not([hidden]) .dp-canvas-bar button:text("ソース")');
+  await view.waitForSelector('.dp-block-source');
+  const text = await view.inputValue('.dp-block-source');
+  await view.keyboard.press('Escape');
+  await view.waitForTimeout(250);
+  await detail.first().click();
+  await view.waitForSelector('.dp-canvas-bar');
+  return text;
+};
+const rowsOf = text => (/tree:\s*\{([^}]*)\}/s.exec(text) ?? ['', ''])[1]
+  .split('\n').map(line => line.trim()).filter(Boolean);
+const pressButton = async (title) => {
+  await view.click(`.dp-sheet:not([hidden]) .dp-canvas-rows button[title="${title}"]`);
+  await view.waitForTimeout(350);
+};
+
+const wasRows = rowsOf(await detailSource());
+// 8 行のうち 2 行は閉じた枝の中にあり、描かれるのは 6 行である。
+check('ツリーは行で書かれている', wasRows.length === 8, wasRows.join(' / '));
+
+await pressRow(2);
+check('行を押すと、その行が選ばれる', (await rowMark()) === String(ROW_TOP + 2 * 22),
+  `y=${await rowMark()}`);
+check('行を選ぶと行のボタンが出る',
+  (await view.getAttribute('.dp-sheet:not([hidden]) .dp-canvas-rows', 'hidden')) === null
+  && (await view.$$('.dp-sheet:not([hidden]) .dp-canvas-rows button')).length === 6,
+  `${(await view.$$('.dp-sheet:not([hidden]) .dp-canvas-rows button')).length} 個`);
+
+// 文字はその行の上で直す。1 行の入力欄で足りるのは、変えるのが 1 行だからである。
+const at = await pressRow(2);
+await view.mouse.dblclick(at.x + 92, at.y + ROW_TOP + 2 * 22 + 11);
+await view.waitForTimeout(250);
+const typing = await view.evaluate(() => {
+  const input = document.querySelector('.dp-canvas-row-text');
+  if (!input) return undefined;
+  const svg = document.querySelector('.dp-canvas-stage svg').getBoundingClientRect();
+  const box = input.getBoundingClientRect();
+  return { value: input.value, top: Math.round(box.top - svg.top) };
+});
+check('行をダブルクリックすると、その行の上に入力欄が出る',
+  typing?.value === '管理本部' && typing.top === ROW_TOP + 2 * 22,
+  JSON.stringify(typing));
+await view.keyboard.press('Control+a');
+await view.keyboard.type('管理統括本部');
+await view.keyboard.press('Enter');
+await view.waitForTimeout(400);
+check('書き換わるのは一覧の 1 ブロックだけ',
+  (await view.textContent('#status')).includes('一覧を変える'),
+  await view.textContent('#status'));
+const renamed = await detailSource();
+check('変わったのはその行だけ',
+  rowsOf(renamed).join(' / ') === wasRows.map(line => line.replace('管理本部', '管理統括本部')).join(' / '),
+  rowsOf(renamed).join(' / '));
+check('行を変えても座標は増えない', (renamed.match(/@ \(/g) ?? []).length === 1,
+  `座標を持つ行 ${(renamed.match(/@ \(/g) ?? []).length} 本`);
+
+// 足す・消すは**枝ごと**。行だけを動かすと、下にぶら下がっていたものが別の親に
+// 付け替わる——誰も頼んでいない木になる。
+await pressRow(2);
+await pressButton('下に行を足す');
+const added = rowsOf(await detailSource());
+check('足した行は、その枝の下に入る',
+  added.length === 9 && added[7] === '- 項目', added.join(' / '));
+await pressRow(2);
+await pressButton('この行を消す');
+const dropped = rowsOf(await detailSource());
+check('消すと枝ごと消える',
+  dropped.length === 6 && !dropped.some(line => line.includes('情報システム部')),
+  dropped.join(' / '));
+
+// 閉じた枝の中身は描かれない。印が「この下にまだある」と言っているからである。
+await pressRow(0);
+await pressButton('枝を開く / 閉じる');
+const shut = await detailSource();
+check('閉じれば印が変わる', rowsOf(shut)[0] === '+ 全社', rowsOf(shut)[0]);
+check('閉じた枝の中身は絵から消える',
+  !(await view.innerHTML(
+    '.dp-sheet:not([hidden]) [data-path$="detail-screen.dgm"] svg.dp-diagram'))
+    .includes('製造本部'),
+  rowsOf(shut).join(' / '));
+check('中身は消えていない（ファイルには残る）',
+  rowsOf(shut).some(line => line.includes('製造本部')));
+// 見えなくなった行は選べない——選んだままにすると、見えない行をボタンが動かす
+await pressRow(0);
+await pressButton('枝を開く / 閉じる');
+check('開けばまた描かれる',
+  (await view.innerHTML(
+    '.dp-sheet:not([hidden]) [data-path$="detail-screen.dgm"] svg.dp-diagram'))
+    .includes('製造本部'));
+
+// 行を持たない図形に行のボタンは出ない
+await view.click('.dp-canvas-stage [data-node="title"]');
+await view.waitForTimeout(250);
+check('行を持たない図形では行のボタンは出ない',
+  (await view.getAttribute('.dp-sheet:not([hidden]) .dp-canvas-rows', 'hidden')) !== null);
 
 // --- 「＋ 部品」の一覧 -------------------------------------------------------
 //

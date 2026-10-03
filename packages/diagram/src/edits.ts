@@ -6,7 +6,7 @@
 
 import { byteLength, sliceBytes, type ByteSpan, type Edit } from '@docpresenter/base';
 import { containerOf, members, EMPTY_CELL } from './arrange.js';
-import type { Container, DiagramFile, Node, ShapeKind } from './model.js';
+import type { Container, DiagramFile, Item, Node, ShapeKind } from './model.js';
 
 export class DiagramEditError extends Error {
   constructor(message: string) {
@@ -597,6 +597,47 @@ function styleGap(file: DiagramFile, source: string, id: string): string {
   if (!span) return ' ';
   const line = sliceBytes(source, span.start, span.end);
   return new RegExp(`^${id}(\\s+)\\{`).exec(line)?.[1] ?? ' ';
+}
+
+/**
+ * Rewrites the rows of a tree, a list or a menu.
+ *
+ * The rows are the one thing in this format that a single shape spans several
+ * lines for, so they are written back together: the block from the `{` to the
+ * `}` is one byte range, and a diff still shows only the lines that changed.
+ * How the author indented is kept — two spaces or four, this is an edit, not a
+ * reformatting.
+ */
+export function setItems(
+  file: DiagramFile, source: string, id: string, items: readonly Item[],
+): Edit {
+  const node = find(file, id);
+  const text = sliceBytes(source, node.span.start, node.span.end);
+  const open = text.indexOf('{');
+  const head = open < 0 ? `${text.trimEnd()} {` : text.slice(0, open + 1);
+  // A list with nothing in it is written without a block at all: an empty pair
+  // of braces is a thing someone would have to read and then ignore.
+  if (items.length === 0) {
+    const bare = head.replace(/\s*\{$/, '');
+    if (bare === text) throw new DiagramEditError('一覧は既に空である');
+    return { span: node.span, text: bare, description: '一覧を変える' };
+  }
+
+  const lines = text.split('\n');
+  const rows = lines.slice(1, -1).filter(one => one.trim() !== '');
+  const indents = [...new Set(rows.map(one => one.length - one.trimStart().length))].sort(
+    (a, b) => a - b);
+  const own = /[ \t]*$/.exec(sliceBytes(source, 0, node.span.start))?.[0] ?? '';
+  const base = indents[0] ?? own.length + 2;
+  const step = (indents[1] ?? base + 2) - base;
+  const close = lines.length > 1 ? /^\s*/.exec(lines[lines.length - 1] ?? '')?.[0] ?? own : own;
+
+  const written = items.map(item =>
+    ' '.repeat(base + Math.max(0, item.depth) * Math.max(1, step))
+    + `${item.closed ? '+' : '-'} ${item.text}${item.picked ? ' *' : ''}`);
+  const next = `${head}\n${written.join('\n')}\n${close}}`;
+  if (next === text) throw new DiagramEditError('一覧は既にそうなっている');
+  return { span: node.span, text: next, description: '一覧を変える' };
 }
 
 /** Rewrites which shape it is, by changing the brackets around the text. */

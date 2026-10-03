@@ -8,20 +8,30 @@
 
 import { layOutDiagram, type Box } from '../layout.js';
 import { containerOf, dropInto } from '../arrange.js';
-import type { DiagramFile, ShapeKind } from '../model.js';
+import type { DiagramFile, Item, ShapeKind } from '../model.js';
 import { renderDiagram } from '../draw/render.js';
 import { stencilParts } from '../draw/stencil.js';
 import type { Edit } from '@docpresenter/base';
 import {
   addNode, bendEdge, canUnpin, connectNodes, disconnectNodes, groupMembers, groupNodes,
-  nextShapeId, pinNode, pinNodes, reconnect, removeNodes, setContainerCells, setNodeShape,
-  setNodeStyle, setNodeText, unpinNode,
+  nextShapeId, pinNode, pinNodes, reconnect, removeNodes, setContainerCells, setItems,
+  setNodeShape, setNodeStyle, setNodeText, unpinNode,
 } from '../edits.js';
 import { toggleInline, type InlineMark } from '@docpresenter/base';
 import { createMenu, createToolbar, type MenuItem } from '@docpresenter/base';
-import { alignIcon, lineIcon, partIcon, shapeIcon } from './shape-icon.js';
+import { alignIcon, lineIcon, partIcon, rowIcon, shapeIcon } from './shape-icon.js';
+import { isListing, rowBoxes, rowTextAt, type Listing } from '../draw/listing.js';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
+/**
+ * The row of a listing that was picked, kept per document.
+ *
+ * Every edit builds the canvas again, and the selection the host remembers is
+ * a list of shapes — it has no room for "the third row of the tree". Keeping it
+ * here means pressing "add a row" twice adds two rows, which is what anybody
+ * pressing it twice meant.
+ */
+const rowPicks = new WeakMap<Document, { id: string; index: number }>();
 /** How far a shape's edge may be from another's to be pulled into line. */
 const SNAP = 5;
 /** What a free coordinate is rounded to, so a diff shows round numbers. */
@@ -103,6 +113,33 @@ export function createCanvas(options: CanvasOptions): Canvas {
   const lineOf = (name: string | undefined) =>
     laid.routes.find(r => nameOf(r.edge) === name);
 
+  /** Which rows a shape holds, if it is a tree, a list or a menu. */
+  const listingOf = (
+    id: string | undefined,
+  ): { icon: Listing; items: readonly Item[] } | undefined => {
+    if (id === undefined) return undefined;
+    const node = file.nodes.find(one => one.id === id);
+    const icon = file.style.get(id)?.get('icon');
+    return node && isListing(icon) && node.items.length > 0 ? { icon, items: node.items } : undefined;
+  };
+  /**
+   * The row picked before the last edit, if that row is still there. A row
+   * that is no longer drawn — the list was shortened, or a branch above it was
+   * closed — is not picked either: the buttons would be acting on something
+   * nobody can see.
+   */
+  let row = ((): { id: string; index: number } | undefined => {
+    const kept = rowPicks.get(owner);
+    const held = listingOf(kept?.id);
+    const box = kept && laid.boxes.get(kept.id);
+    if (!kept || !held || !box || !picked.includes(kept.id)) return undefined;
+    return rowBoxes(held.icon, box, held.items)[kept.index] ? kept : undefined;
+  })();
+  const pickRow = (next: { id: string; index: number } | undefined): void => {
+    row = next;
+    if (next) rowPicks.set(owner, next); else rowPicks.delete(owner);
+  };
+
   // Declared up here because the bar is built before the code below runs, and
   // a `let` reached early is an error rather than an empty box.
   let where: HTMLElement | undefined;
@@ -112,6 +149,8 @@ export function createCanvas(options: CanvasOptions): Canvas {
   let hint: HTMLElement | undefined;
   let spreaders: readonly HTMLButtonElement[] = [];
   let lookButtons: readonly HTMLButtonElement[] = [];
+  let rowButtons: readonly HTMLButtonElement[] = [];
+  let rows: HTMLElement | undefined;
 
   const root = element('div', 'dp-canvas');
   const stage = element('div', 'dp-canvas-stage');
@@ -250,6 +289,17 @@ export function createCanvas(options: CanvasOptions): Canvas {
       handle.setAttribute('width', String(size));
       handle.setAttribute('height', String(size));
       overlay.append(handle);
+    }
+
+    const held = listingOf(row?.id);
+    const listBox = boxOf(row?.id);
+    if (row && held && listBox) {
+      const one = rowBoxes(held.icon, listBox, held.items)[row.index];
+      if (one) {
+        const mark = shape('rect', 'dp-canvas-row');
+        place(mark, one);
+        overlay.append(mark);
+      }
     }
 
     if (dropping) {
@@ -432,6 +482,7 @@ export function createCanvas(options: CanvasOptions): Canvas {
   function pick(ids: readonly string[]): void {
     if (line === undefined && ids.length === picked.length
       && ids.every((id, i) => picked[i] === id)) return;
+    if (row && !ids.includes(row.id)) pickRow(undefined);
     picked = [...ids];
     line = undefined;
     options.select(picked, undefined);
@@ -583,6 +634,12 @@ export function createCanvas(options: CanvasOptions): Canvas {
     // Pressing something already picked keeps the rest of the selection: that
     // is how a group of shapes is dragged as one.
     if (!picked.includes(id)) pick([id]);
+    // A press inside a tree or a list is also a press on one of its rows. The
+    // shape stays picked — it still moves and resizes — and the row becomes
+    // what the row buttons act on.
+    const onRow = rowAt(id, pointOn(event));
+    pickRow(onRow === undefined ? undefined : { id, index: onRow });
+    describe();
 
     const box = boxOf(id);
     if (!box) return;
@@ -837,6 +894,11 @@ export function createCanvas(options: CanvasOptions): Canvas {
     const id = target?.closest('[data-node]')?.getAttribute('data-node');
     if (id === null || id === undefined) return;
     event.preventDefault();
+    // A tree holds rows rather than one label, so a double click on a row is
+    // about that row. Which row is the one under the pointer, not the one that
+    // happened to be picked: people aim at what they want to change.
+    const onRow = rowAt(id, pointOn(event));
+    if (onRow !== undefined) { beginRow(id, onRow); return; }
     beginText(id);
   });
 
@@ -951,6 +1013,9 @@ export function createCanvas(options: CanvasOptions): Canvas {
       return;
     }
     if (!picked.includes(overShape)) pick([overShape]);
+    // Right clicking a row is about that row, the same as pressing it.
+    const onRow = rowAt(overShape, pointOn(event));
+    if (onRow !== undefined) { pickRow({ id: overShape, index: onRow }); paint(); describe(); }
     menu.open(event.clientX, event.clientY, shapeItems(overShape));
   });
 
@@ -974,6 +1039,59 @@ export function createCanvas(options: CanvasOptions): Canvas {
     }
     const found = dropInto(container, box, one => laid.boxes.get(one), id, at);
     return found ? { container: name, ...found } : undefined;
+  }
+
+  /** Which row of a listing the pointer is on, if any. */
+  function rowAt(id: string, at: { x: number; y: number }): number | undefined {
+    const held = listingOf(id);
+    const box = boxOf(id);
+    if (!held || !box) return undefined;
+    // The far edge belongs to the next row, not to both: rows touch, and a
+    // press on the line between two of them has to mean one of them.
+    const found = rowBoxes(held.icon, box, held.items)
+      .findIndex(one => one !== undefined
+        && at.x >= one.x && at.x < one.x + one.width
+        && at.y >= one.y && at.y < one.y + one.height);
+    return found < 0 ? undefined : found;
+  }
+
+  /**
+   * Where the branch starting at a row ends: the first row after it that is
+   * not nested under it. A row with nothing under it is a branch of one.
+   */
+  function branch(items: readonly Item[], at: number): number {
+    const depth = items[at]?.depth ?? 0;
+    let end = at + 1;
+    while (end < items.length && items[end]!.depth > depth) end += 1;
+    return end;
+  }
+
+  /** Moves a whole branch one step in or out, keeping its own shape. */
+  function deepen(items: Item[], at: number, by: number): Item[] {
+    const end = branch(items, at);
+    for (let i = at; i < end; i += 1) {
+      items[i] = { ...items[i]!, depth: items[i]!.depth + by };
+    }
+    return items;
+  }
+
+  /**
+   * One change to the rows of the picked listing. The whole list is handed to
+   * the edit, which writes the block back as one byte range; what the author
+   * is told is "the list changed", because that is what happened.
+   */
+  function changeRows(
+    make: (items: Item[], at: number) => { items: Item[]; at: number } | undefined,
+  ): void {
+    const current = row;
+    const held = listingOf(current?.id);
+    if (!current || !held) return;
+    const next = make([...held.items], current.index);
+    if (!next) return;
+    pickRow(next.items.length === 0
+      ? undefined
+      : { id: current.id, index: Math.max(0, Math.min(next.at, next.items.length - 1)) });
+    options.apply(() => setItems(file, source, current.id, next.items), [current.id]);
   }
 
   /** Where a new shape goes: under the drawing, in the file's own numbers. */
@@ -1064,14 +1182,16 @@ export function createCanvas(options: CanvasOptions): Canvas {
         run: () => options.apply(() => groupNodes(file, source, ids, 'グループ'), ids),
       });
     }
+    // A shape that holds rows has no label of its own: what the menu offers is
+    // the row that is picked, and only once one is.
+    const held = listingOf(id);
+    const onRow = held && row?.id === id ? row.index : undefined;
     items.push(
       // A line holds no words, so there is nothing for a text box to edit.
       {
-        label: '文字を変える',
-        run: () => beginText(id),
-        // A line holds no words; a tree holds rows, which a one-line box
-        // cannot edit. Both are changed in the source for now.
-        disabled: node?.shape === 'line' || (node?.items.length ?? 0) > 0,
+        label: held ? '行の文字を変える' : '文字を変える',
+        run: () => (onRow === undefined ? beginText(id) : beginRow(id, onRow)),
+        disabled: node?.shape === 'line' || (held !== undefined && onRow === undefined),
       },
       {
         label: connecting === undefined ? '線を引く' : '線を引く（引き先を選ぶ）',
@@ -1201,6 +1321,60 @@ export function createCanvas(options: CanvasOptions): Canvas {
         event.preventDefault();
         applyMark('italic');
       }
+    });
+  }
+
+  /**
+   * Opens a text box over one row of a tree, a list or a menu.
+   *
+   * The row has no id, so there is no shape to place the box over: it goes
+   * where `rowTextAt` says the words are drawn, which is the only way the box
+   * and the picture can agree. Confirming writes the whole block back, because
+   * one row is not a byte range the file has a line of its own for.
+   */
+  function beginRow(id: string, index: number): void {
+    const held = listingOf(id);
+    const box = boxOf(id);
+    const item = held?.items[index];
+    if (!held || !box || !item) return;
+    const at = rowTextAt(held.icon, box, held.items, index);
+    const rect = drawing.getBoundingClientRect();
+    const stageAt = stage.getBoundingClientRect();
+    const factor = scale();
+
+    const input = owner.createElement('input');
+    input.className = 'dp-canvas-text dp-canvas-row-text';
+    input.value = item.text;
+    input.spellcheck = false;
+    input.style.left = `${rect.left - stageAt.left + at.x * factor}px`;
+    input.style.top = `${rect.top - stageAt.top + at.y * factor}px`;
+    input.style.width = `${Math.max(40, at.width * factor)}px`;
+    input.style.height = `${at.height * factor}px`;
+    stage.append(input);
+    input.focus();
+    input.select();
+
+    let done = false;
+    const finish = (keep: boolean): void => {
+      if (done) return;
+      done = true;
+      const text = input.value.trim();
+      input.remove();
+      stage.focus({ preventScroll: true });
+      // Emptying the box is not how a row is removed — the button next to it
+      // is — so an empty box leaves the row as it was rather than writing a
+      // bullet with nothing after it.
+      if (!keep || text === '' || text === item.text) return;
+      const rows = held.items.map((one, i) => (i === index ? { ...one, text } : one));
+      options.apply(() => setItems(file, source, id, rows), [id]);
+    };
+    input.addEventListener('blur', () => finish(true));
+    input.addEventListener('keydown', event => {
+      // Every key here belongs to the text, including the ones the canvas uses.
+      event.stopPropagation();
+      if (event.isComposing) return;
+      if (event.key === 'Enter') { event.preventDefault(); finish(true); }
+      if (event.key === 'Escape') { event.preventDefault(); finish(false); }
     });
   }
 
@@ -1399,6 +1573,11 @@ export function createCanvas(options: CanvasOptions): Canvas {
     for (const button of spreaders) button.disabled = picked.length < 3;
     const alone = picked.length === 1 ? file.nodes.find(n => n.id === picked[0]) : undefined;
     if (liners) liners.hidden = alone?.shape !== 'line';
+    const inRow = listingOf(row?.id);
+    if (rows) rows.hidden = row === undefined || inRow === undefined;
+    for (const button of rowButtons) {
+      button.disabled = button.dataset.rowOnly === 'tree' && inRow?.icon !== 'ui/tree';
+    }
     for (const button of lookButtons) {
       const [property, value] = (button.dataset.look ?? '=').split('=');
       button.classList.toggle('dp-canvas-on',
@@ -1420,9 +1599,14 @@ export function createCanvas(options: CanvasOptions): Canvas {
       return;
     }
     if (hint) {
-      hint.textContent = alone?.shape === 'line'
-        ? 'ドラッグで移動 / 右下で長さと向き / 左のボタンで矢印と太さ'
-        : HINT;
+      // A row is picked inside a shape, so the line about the shape would be
+      // answering a question nobody asked. The buttons are small pictures;
+      // this is where they are named.
+      hint.textContent = row !== undefined
+        ? '行：ダブルクリックで文字 / 左のボタンで足す・消す・深さ・選択・開閉'
+        : alone?.shape === 'line'
+          ? 'ドラッグで移動 / 右下で長さと向き / 左のボタンで矢印と太さ'
+          : HINT;
     }
     if (picked.length > 1) {
       where.textContent = `${picked.length} 個を選択`;
@@ -1529,6 +1713,70 @@ export function createCanvas(options: CanvasOptions): Canvas {
     look(lineIcon('weight-4'), '太い線', 'weight', '4');
     lookButtons = looks;
     node.append(liners);
+
+    // The rows of a tree, a list or a menu. One row at a time, because that is
+    // how they are read and how they are written.
+    rows = element('span', 'dp-canvas-rows');
+    const rowed: HTMLButtonElement[] = [];
+    const onRow = (
+      picture: string, title: string, run: () => void, only?: 'tree',
+    ): void => {
+      const button = owner.createElement('button');
+      button.type = 'button';
+      button.className = 'dp-canvas-icon';
+      button.innerHTML = picture;
+      button.title = title;
+      if (only) button.dataset.rowOnly = only;
+      button.addEventListener('mousedown', event => {
+        event.preventDefault();
+        event.stopPropagation();
+        run();
+      });
+      rows?.append(button);
+      rowed.push(button);
+    };
+    // Every one of these acts on the branch, not on the line: a row and what
+    // is nested under it are one thing on the screen, and moving or removing
+    // the row alone would leave its children hanging off whatever came before
+    // — a different tree than the one anybody asked for, and sometimes one
+    // with a gap in its depths that cannot be drawn at all.
+    onRow(rowIcon('add'), '下に行を足す', () => changeRows((items, at) => {
+      const after = branch(items, at);
+      items.splice(after, 0, {
+        text: '項目', depth: items[at]?.depth ?? 0, closed: false, picked: false,
+      });
+      return { items, at: after };
+    }));
+    onRow(rowIcon('drop'), 'この行を消す', () => changeRows((items, at) => {
+      items.splice(at, branch(items, at) - at);
+      return { items, at: Math.max(0, at - 1) };
+    }));
+    onRow(rowIcon('in'), '一段深くする', () => changeRows((items, at) => {
+      // A row can only be as deep as one step past the row above it: a gap in
+      // the depths is a tree nobody can draw.
+      const most = at === 0 ? 0 : (items[at - 1]?.depth ?? 0) + 1;
+      const one = items[at];
+      if (!one || one.depth >= most) return undefined;
+      return { items: deepen(items, at, 1), at };
+    }), 'tree');
+    onRow(rowIcon('out'), '一段浅くする', () => changeRows((items, at) => {
+      const one = items[at];
+      if (!one || one.depth === 0) return undefined;
+      return { items: deepen(items, at, -1), at };
+    }), 'tree');
+    onRow(rowIcon('pick'), '選択中にする', () => changeRows((items, at) => {
+      const was = items[at]?.picked ?? false;
+      // One row at a time is chosen, as on the screen being drawn.
+      return { items: items.map((one, i) => ({ ...one, picked: i === at && !was })), at };
+    }));
+    onRow(rowIcon('fold'), '枝を開く / 閉じる', () => changeRows((items, at) => {
+      const one = items[at];
+      if (!one) return undefined;
+      items[at] = { ...one, closed: !one.closed };
+      return { items, at };
+    }), 'tree');
+    rowButtons = rowed;
+    node.append(rows);
 
     add('＋ 部品', 'ルータやサーバなどの絵を足す', () => {
       const at = bar.getBoundingClientRect();

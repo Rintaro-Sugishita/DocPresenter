@@ -181,6 +181,23 @@ describe('行から描かれる部品', () => {
     expect(svg).toContain('#c8ccd2');      // つまみ
   });
 
+  // 閉じている枝の中身は描かれない。印が「この下にまだある」と言っているので、
+  // 中身まで見えていたら印が嘘になる。
+  it('閉じた枝の中身は描かれない', () => {
+    const shut = draw3('  one tree: {\n    + 親\n      - 子\n  }');
+    expect(shut).toContain('親');
+    expect(shut).not.toContain('子');
+    expect(draw3('  one tree: {\n    - 親\n      - 子\n  }')).toContain('子');
+  });
+
+  it('閉じた枝の次の行は、閉じた枝の真下に描かれる', () => {
+    const svg = draw3('  one tree: {\n    + 親\n      - 子\n    - 隣\n  }');
+    const ys = [...svg.matchAll(/<text[^>]*y="([\d.]+)"[^>]*>(親|隣)</g)]
+      .map(found => Number(found[1]));
+    expect(ys).toHaveLength(2);
+    expect(ys[1]! - ys[0]!).toBe(22);
+  });
+
   it('行が無ければ、同梱の絵がそのまま出る', () => {
     expect(draw3('  one tree:')).toContain('dp-part-art');
   });

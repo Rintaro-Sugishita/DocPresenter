@@ -11,6 +11,9 @@ import { layOutDiagram } from '../packages/diagram/dist/layout.js';
 import { renderDiagram, diagramDiagnostics } from '../packages/diagram/dist/draw/render.js';
 import { withParts } from '../packages/diagram/dist/parts.js';
 import { dropInto } from '../packages/diagram/dist/arrange.js';
+import { rowBoxes, rowTextAt } from '../packages/diagram/dist/draw/listing.js';
+import { setItems } from '../packages/diagram/dist/edits.js';
+import { applyEdit } from '../packages/base/dist/index.js';
 import { parseRuns } from '../packages/diagram/dist/inline.js';
 import { parseTable } from '../packages/markdown/dist/table/parse.js';
 import { cellAt as coverAt } from '../packages/markdown/dist/table/model.js';
@@ -157,6 +160,46 @@ check('dgm §10.2', '図形の範囲は一覧ごと覆う',
 const drawnTree = renderDiagram(withParts(listed, () => undefined));
 check('dgm §10.2', '行の数だけ描かれる',
   ['マスタ管理', '社員', '部署', '伝票'].every(one => drawnTree.includes(one)));
+
+// 閉じた枝の中身は描かれない。印が「この下にまだある」と言っているので、
+// 中身まで見えていたら印が嘘になる。ファイルからは消えない。
+const FOLDED = ['use "default"', '', 'free {', '  nav tree: {',
+  '    + マスタ管理', '      - 社員', '    - 伝票', '  }', '}',
+  'layout {', '  nav @ (0, 0) 200x240', '}'].join(NL);
+const folded = parseDiagram(FOLDED);
+const drawnFold = renderDiagram(withParts(folded, () => undefined));
+check('dgm §10.2', '閉じた枝の中身は描かれない',
+  drawnFold.includes('マスタ管理') && !drawnFold.includes('社員')
+  && drawnFold.includes('伝票'));
+check('dgm §10.2', '描かれなくても行は消えない',
+  node(folded, 'nav').items.length === 3);
+
+// 行の場所は 1 か所が決める。絵と GUI が別に計算したら、押せない行が生まれる。
+const navBox = layOutDiagram(folded).boxes.get('nav');
+const slots = rowBoxes('ui/tree', navBox, node(folded, 'nav').items);
+check('dgm §10.2', '行の場所は行番号で引ける（描かれない行は無い）',
+  slots.length === 3 && slots[0] !== undefined && slots[1] === undefined
+  && slots[2] !== undefined);
+check('dgm §10.2', '閉じた枝の次の行は、その真下に来る',
+  slots[2].y - slots[0].y === 22, `${slots[2].y - slots[0].y}`);
+check('dgm §10.2', '文字の口は行の中、深さのぶん右から始まる',
+  rowTextAt('ui/tree', navBox, node(folded, 'nav').items, 2).x > slots[2].x);
+
+// GUI の 1 操作 ＝ 1 つのバイト範囲。行に id は無いので、範囲は一覧ごとである。
+const rowEdit = setItems(folded, FOLDED, 'nav', [
+  ...node(folded, 'nav').items.slice(0, 1),
+  { text: '社員名簿', depth: 1, closed: false, picked: false },
+  ...node(folded, 'nav').items.slice(2),
+]);
+check('dgm §10.2', '行を変えるのは一覧ごとの 1 つのバイト範囲',
+  rowEdit.description === '一覧を変える'
+  && rowEdit.span.start >= node(folded, 'nav').span.start
+  && rowEdit.span.end <= node(folded, 'nav').span.end,
+  `${rowEdit.span.start}〜${rowEdit.span.end}`);
+check('dgm §10.2', '書き換わるのはその一覧だけ',
+  applyEdit(FOLDED, rowEdit).includes('      - 社員名簿' + NL + '    - 伝票')
+  && applyEdit(FOLDED, rowEdit).includes('  nav @ (0, 0) 200x240'),
+  applyEdit(FOLDED, rowEdit).split(NL).slice(3, 8).join(' / '));
 
 // §10.1 単独の線
 const lone = (written, style = '') => {

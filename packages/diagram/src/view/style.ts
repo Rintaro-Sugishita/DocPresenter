@@ -38,6 +38,12 @@ export const DIAGRAM_STYLE = `
 .dp-canvas-liners .dp-canvas-icon:nth-child(5) { margin-left: 7px; }
 .dp-canvas-liners[hidden] { display: none; }
 .dp-canvas-on { background: #dce6f2; border-color: #9cb4d0; }
+/* 一覧の行のボタン。行が選ばれているときだけ出る。 */
+.dp-canvas-rows { display: inline-flex; gap: 1px; align-items: center; }
+/* 深さの 2 つと状態の 2 つは別のことを決めるので、間を空ける。 */
+.dp-canvas-rows .dp-canvas-icon:nth-child(3) { margin-left: 7px; }
+.dp-canvas-rows .dp-canvas-icon:nth-child(5) { margin-left: 7px; }
+.dp-canvas-rows[hidden] { display: none; }
 /* 入れ物の中で落とす先。隙間に出る帯と、入れ替える相手への被せ。 */
 .dp-canvas-drop { fill: #2f6fb5; opacity: 0.35; }
 .dp-canvas-stage { outline: none; position: relative; }
@@ -51,12 +57,20 @@ export const DIAGRAM_STYLE = `
   text-align: center; border: 1.5px solid #1f5fa8; border-radius: 2px;
   background: #fff; color: #1c1f24; padding: 0 0.3em; min-width: 4em;
 }
+/* 行の文字は左から始まるので、行の入力欄だけは中央寄せをやめる。 */
+.dp-canvas-row-text { text-align: left; min-width: 2em; }
 .dp-canvas-stage:focus-visible { box-shadow: 0 0 0 2px #cfe0f5; }
 .dp-canvas-stage [data-node] { cursor: move; }
 .dp-canvas-outline {
   fill: rgba(31, 95, 168, 0.12); stroke: #1f5fa8; stroke-width: 1.5; pointer-events: none;
 }
 .dp-canvas-handle { fill: #fff; stroke: #1f5fa8; stroke-width: 1.5; cursor: nwse-resize; }
+/* The picked row of a tree, a list or a menu. An outline and no fill: the row
+   is still part of the picture, and the words under it have to stay readable. */
+.dp-canvas-row {
+  fill: none; stroke: #1f5fa8; stroke-width: 1.4; stroke-dasharray: 4 2;
+  pointer-events: none;
+}
 /* Pink and dashed, so a guide never reads as part of the drawing. */
 .dp-canvas-guide { stroke: #e0439b; stroke-width: 1; stroke-dasharray: 3 3; pointer-events: none; }
 .dp-canvas-edge-picked {
