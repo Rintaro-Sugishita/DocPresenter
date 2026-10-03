@@ -7,6 +7,7 @@
 import { arrangeContainers, containerOf } from './arrange.js';
 import { lineText, parseRuns, type TextLine } from './inline.js';
 import { DEFAULT_SIZE, type DiagramFile, type Edge, type Node, type Point } from './model.js';
+import { isListing } from './draw/listing.js';
 import { textPlace } from './draw/stencil.js';
 import { textWidth, wrapRuns } from './text.js';
 
@@ -99,6 +100,11 @@ export function layOutDiagram(diagram: DiagramFile): LaidOutDiagram {
     }
     for (const problem of lookProblems(node, diagram.style.get(node.id))) {
       diagnostics.push(problem);
+    }
+    // P6 again: rows written into a part that does not draw rows are rows
+    // nobody sees. A tree holds them; a text box has nowhere to put them.
+    if (node.items.length > 0 && !isListing(diagram.style.get(node.id)?.get('icon'))) {
+      diagnostics.push(`この部品は一覧を持たない。書いた行は出ない: ${node.id}`);
     }
     const size = sizes.get(node.id)!;
     const pin = diagram.layout.get(node.id);

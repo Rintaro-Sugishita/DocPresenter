@@ -1,14 +1,35 @@
 # 利用者の詳細画面（画面設計）
-# kind: free — 5 枚目。タブと、切れている一覧を使う画面として描いた。
+# kind: free — 5 枚目。タブ・ツリー・メニューバーと、切れている一覧を使う。
 #
 # タブは「見出しは全部・中身は 1 枚」である。どの頁を描くかは show: で言う。
 # 一覧は枠より長いので、入りきらない行は描かれず、代わりに縁にバーが出る。
+# ツリーとメニューの中身は**行**であって図形ではない——項目定義が要るのは
+# ツリーそのもの 1 つなので、行に id は与えない。
 
 use "../../shared/ui-parts.dgm"
 
 free {
   frame     frame:
+
+  bar       menu: {
+    - ファイル
+    - 編集 *
+    - 表示
+    - ヘルプ
+  }
+
   title     title:"利用者の詳細"
+
+  body      ""
+  nav       tree: {
+    - 全社
+      + 営業本部
+      - 管理本部
+        - 情報システム部 *
+        - 総務部
+      + 製造本部
+  }
+
   detail    frame:
 
   # --- 頁 1：基本情報（この図では描かれない）---
@@ -49,10 +70,11 @@ free {
 }
 
 layout {
-  frame @ ( 20,  20) 400x396
+  frame @ ( 20,  20) 460x434
 
-  stack frame (down; gap: 18; pad: 24) { title ; detail ; save ; back }
+  stack frame (down; gap: 14; pad: 16) { bar ; title ; body ; save ; back }
 
+  grid body (cols: 150, 1fr; gap: 0 14; pad: 0) { nav ; detail }
   tabs detail (show: perm) { basic ; addr ; perm }
 
   stack basic (down; gap: 2; pad: 14) { bNameRow }

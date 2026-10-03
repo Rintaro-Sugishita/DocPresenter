@@ -16,10 +16,33 @@ export type ShapeKind =
   // written as an edge, which exists to say that two shapes are related.
   | 'line';
 
+/**
+ * One row of a shape that holds a list rather than a sentence — a tree, a list
+ * box, a menu bar.
+ *
+ * These are not shapes of their own. A screen's tree has twenty rows and
+ * nobody writes a specification for each one: what the item list needs a line
+ * for is the tree, so the rows are text the shape holds, not shapes with ids.
+ */
+export interface Item {
+  readonly text: string;
+  /** How far in it sits. Zero is the top level. */
+  readonly depth: number;
+  /** A branch drawn closed, written `+` rather than `-`. */
+  readonly closed: boolean;
+  /** The row that is chosen, written with a `*` after it. */
+  readonly picked: boolean;
+}
+
 export interface Node {
   readonly id: string;
   readonly text: string;
   readonly shape: ShapeKind;
+  /**
+   * The rows of a tree, a list or a menu, when the shape is one of those.
+   * Empty for every other shape.
+   */
+  readonly items: readonly Item[];
   /** Style class from `:::name`, resolved by the theme. */
   readonly className: string | undefined;
   /** Ids contained by a group. */

@@ -9,6 +9,7 @@
 import { parseDiagram } from '../packages/diagram/dist/parse.js';
 import { layOutDiagram } from '../packages/diagram/dist/layout.js';
 import { renderDiagram, diagramDiagnostics } from '../packages/diagram/dist/draw/render.js';
+import { withParts } from '../packages/diagram/dist/parts.js';
 import { parseRuns } from '../packages/diagram/dist/inline.js';
 import { parseTable } from '../packages/markdown/dist/table/parse.js';
 import { cellAt as coverAt } from '../packages/markdown/dist/table/model.js';
@@ -127,6 +128,20 @@ check('dgm §3 L2', 'scroll は入りきらない行を描かない',
   cut.boxes.has('a') && !cut.boxes.has('c'));
 check('dgm §3 L2', '切れているのは間違いではないので注記しない',
   cut.diagnostics.length === 0, cut.diagnostics.join(' / '));
+
+// §10.2 行を持つ部品（ツリー・リスト・メニュー）
+const listed = dgm('use "default"', '', 'free {', '  nav tree: {',
+  '    - マスタ管理', '      - 社員', '      - 部署 *', '    + 伝票', '  }', '}',
+  'layout {', '  nav @ (0, 0) 200x240', '}');
+check('dgm §10.2', '行は字下げで深さ、* で選択、+ で閉じた枝',
+  JSON.stringify(node(listed, 'nav').items.map(one => [one.depth, one.picked, one.closed]))
+  === JSON.stringify([[0, false, false], [1, false, false], [1, true, false], [0, false, true]]));
+check('dgm §10.2', '行は図形ではない（id を持たない）', listed.nodes.length === 1);
+check('dgm §10.2', '図形の範囲は一覧ごと覆う',
+  node(listed, 'nav').span.end > node(listed, 'nav').span.start + 20);
+const drawnTree = renderDiagram(withParts(listed, () => undefined));
+check('dgm §10.2', '行の数だけ描かれる',
+  ['マスタ管理', '社員', '部署', '伝票'].every(one => drawnTree.includes(one)));
 
 // §10.1 単独の線
 const lone = (written, style = '') => {

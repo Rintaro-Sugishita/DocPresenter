@@ -429,6 +429,65 @@ describe('入れ物', () => {
   });
 });
 
+describe('行を持つ部品', () => {
+  const TREE = [
+    'use "default"',
+    '',
+    'free {',
+    '  nav tree: {',
+    '    - マスタ管理',
+    '      - 社員',
+    '      - 部署 *',
+    '    + 伝票',
+    '  }',
+    '}',
+    '',
+    'layout {',
+    '  nav @ (0, 0) 200x240',
+    '}',
+    '',
+  ].join('\n');
+
+  it('行は図形ではない。深さと状態だけを持つ', () => {
+    const nav = parseDiagram(TREE).nodes[0]!;
+    expect(nav.items.map(one => [one.text, one.depth, one.closed, one.picked])).toEqual([
+      ['マスタ管理', 0, false, false],
+      ['社員', 1, false, false],
+      ['部署', 1, false, true],
+      ['伝票', 0, true, false],
+    ]);
+  });
+
+  it('行に id は与えない——項目定義が要るのはツリー 1 つ', () => {
+    const file = parseDiagram(TREE);
+    expect(file.nodes.map(node => node.id)).toEqual(['nav']);
+  });
+
+  it('深さは字下げの入れ子で決まる（空白の数を決め打ちしない）', () => {
+    const wide = parseDiagram(
+      'free {\n  t list: {\n        - あ\n            - い\n        - う\n  }\n}\n');
+    expect(wide.nodes[0]!.items.map(one => one.depth)).toEqual([0, 1, 0]);
+  });
+
+  it('図形の範囲は一覧ごと覆う', () => {
+    const nav = parseDiagram(TREE).nodes[0]!;
+    expect(sliceBytes(TREE, nav.span.start, nav.span.end).endsWith('}')).toBe(true);
+    expect(sliceBytes(TREE, nav.span.start, nav.span.end)).toContain('伝票');
+  });
+
+  it('読めない行は断る', () => {
+    expect(() => parseDiagram('free {\n  t list: {\n    あ\n  }\n}\n'))
+      .toThrow(DiagramParseError);
+  });
+
+  it('一覧を持たない部品に書いた行は、黙って消えない', () => {
+    const laid = layOutDiagram(withParts(parseDiagram(
+      'use "default"\n\nfree {\n  box textbox: {\n    - あ\n  }\n}\n'
+      + 'layout {\n  box @ (0,0)\n}\n'), () => undefined));
+    expect(laid.diagnostics.join(' ')).toContain('この部品は一覧を持たない');
+  });
+});
+
 describe('画面部品', () => {
   const LIBRARY = `parts {
   textbox   [ ] { fill: #fbfbfc, line: #aeb4bd, align: left } 320x34

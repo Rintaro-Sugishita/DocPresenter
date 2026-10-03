@@ -148,6 +148,44 @@ describe('入れ物が自分で描くもの', () => {
   });
 });
 
+describe('行から描かれる部品', () => {
+  const draw3 = (body: string, size = '200x240'): string => renderDiagram(withParts(parseDiagram(
+    `use "default"\n\nfree {\n${body}\n}\n\nlayout {\n  one @ (0, 0) ${size}\n}\n`),
+  () => undefined));
+
+  it('ツリーは行の数だけ描かれ、深さが字下げになる', () => {
+    const svg = draw3('  one tree: {\n    - 親\n      - 子\n  }');
+    const xs = [...svg.matchAll(/<text[^>]*x="([\d.]+)"[^>]*>(親|子)</g)]
+      .map(found => Number(found[1]));
+    expect(xs).toHaveLength(2);
+    expect(xs[1]).toBeGreaterThan(xs[0]!);
+  });
+
+  it('閉じた枝と開いた枝は印が違う', () => {
+    const open = draw3('  one tree: {\n    - 親\n      - 子\n  }');
+    const shut = draw3('  one tree: {\n    + 親\n  }');
+    expect(open).toContain('<path d="M');
+    expect(shut).toContain('<path d="M');
+    expect(open).not.toBe(shut);
+  });
+
+  it('選んだ行には帯が敷かれる', () => {
+    expect(draw3('  one list: {\n    - あ *\n  }')).toContain('#dce6f2');
+    expect(draw3('  one list: {\n    - あ\n  }')).not.toContain('#dce6f2');
+  });
+
+  it('入りきらない行は描かず、縁にバーを出す', () => {
+    const many = Array.from({ length: 20 }, (_, i) => `    - 行${i}`).join('\n');
+    const svg = draw3(`  one list: {\n${many}\n  }`, '200x100');
+    expect(svg).not.toContain('行19');
+    expect(svg).toContain('#c8ccd2');      // つまみ
+  });
+
+  it('行が無ければ、同梱の絵がそのまま出る', () => {
+    expect(draw3('  one tree:')).toContain('dp-part-art');
+  });
+});
+
 describe('画像注釈のレンダリング', () => {
   it('画像と注釈と凡例を出す', () => {
     const diagram = parseDiagram(

@@ -1018,7 +1018,13 @@ export function createCanvas(options: CanvasOptions): Canvas {
     }
     items.push(
       // A line holds no words, so there is nothing for a text box to edit.
-      { label: '文字を変える', run: () => beginText(id), disabled: node?.shape === 'line' },
+      {
+        label: '文字を変える',
+        run: () => beginText(id),
+        // A line holds no words; a tree holds rows, which a one-line box
+        // cannot edit. Both are changed in the source for now.
+        disabled: node?.shape === 'line' || (node?.items.length ?? 0) > 0,
+      },
       {
         label: connecting === undefined ? '線を引く' : '線を引く（引き先を選ぶ）',
         run: () => { connecting = id; describe(); },
@@ -1034,6 +1040,7 @@ export function createCanvas(options: CanvasOptions): Canvas {
         // keep them. So it is offered for a shape that has none, and a shape
         // with words is left to be emptied first — rather than quietly emptied.
         disabled: node?.shape === shape || node?.shape === 'group'
+          || (node?.items.length ?? 0) > 0
           || (shape === 'line' && (node?.text ?? '') !== ''),
         run: () => options.apply(() => setNodeShape(file, id, shape), [id]),
       });
@@ -1074,7 +1081,7 @@ export function createCanvas(options: CanvasOptions): Canvas {
   function beginText(id: string): void {
     const node = file.nodes.find(n => n.id === id);
     const box = boxOf(id);
-    if (!node || !box || node.shape === 'line') return;
+    if (!node || !box || node.shape === 'line' || node.items.length > 0) return;
     const rect = drawing.getBoundingClientRect();
     const stageAt = stage.getBoundingClientRect();
     const factor = scale();

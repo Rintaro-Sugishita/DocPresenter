@@ -5,12 +5,14 @@
 import { byteLength, type ByteSpan } from '@docpresenter/base';
 import type {
   ArrowStyle, Bend, Callout, DiagramFile, DiagramMode, Edge, EdgeStyle, LayoutBlock, Node,
-  Container, Part, Placement, Point, Section, ShapeKind,
+  Container, Item, Part, Placement, Point, Section, ShapeKind,
 } from './model.js';
 
 /** One source line, trimmed, with the bytes it occupies. */
 interface SourceLine {
   readonly text: string;
+  /** How far it was indented, in characters — the depth of a tree's rows. */
+  readonly indent: number;
   readonly span: { readonly start: number; readonly end: number };
   /** 1-based, for error messages. */
   readonly number: number;
@@ -85,7 +87,9 @@ export function parseDiagram(source: string): DiagramFile {
     const lead = line.length - line.trimStart().length;
     const start = at + byteLength(line.slice(0, lead));
     const text = line.trim();
-    lines.push({ text, span: { start, end: start + byteLength(text) }, number: index + 1 });
+    lines.push({
+      text, indent: lead, span: { start, end: start + byteLength(text) }, number: index + 1,
+    });
     at += byteLength(line) + 1;
   });
 
@@ -268,14 +272,24 @@ function shapeOf(written: string): ShapeKind | undefined {
 
 /** `idBox textbox:"yamada@example.co.jp"` — a shape written as a part. */
 const PART_USE = /^([A-Za-z0-9_-]+):\s*(?:"([^"]*)")?$/;
+/**
+ * `nav tree: {` — a part that holds a list of rows rather than a sentence.
+ *
+ * The rows are written as a markdown bullet list, which is what a tree looks
+ * like written down: `-` for a row, `+` for a branch drawn closed, and a `*`
+ * at the end for the one that is chosen. Indentation is the depth.
+ */
+const PART_ITEMS = /^([A-Za-z0-9_-]+):\s*\{\s*(.*)$/;
+const ITEM = /^([-+])\s+(.*)$/;
 
 function parseBody(
   body: readonly SourceLine[], nodes: Node[], edges: Edge[], partOf: Map<string, string>,
 ): void {
-  body.forEach(source => {
-    const span = source.span;
+  for (let i = 0; i < body.length; i++) {
+    const source = body[i]!;
+    let span = source.span;
     const text = source.text;
-    if (text === '' || text.startsWith('#')) return;
+    if (text === '' || text.startsWith('#')) continue;
     const line = source.number;
 
     const group = GROUP.exec(text);
@@ -284,20 +298,20 @@ function parseBody(
         id: group[1]!,
         text: group[2] ?? group[1]!,
         shape: 'group',
-        className: undefined,
+        className: undefined, items: [],
         children: group[3]!.split(';').map(s => s.trim()).filter(s => s !== ''),
         span,
       });
-      return;
+      continue;
     }
 
     const alone = LINE_NODE.exec(text);
     if (alone) {
       nodes.push({
         id: alone[1]!, text: '', shape: 'line',
-        className: undefined, children: [], span,
+        className: undefined, children: [], items: [], span,
       });
-      return;
+      continue;
     }
 
     const edge = EDGE.exec(text);
@@ -306,7 +320,7 @@ function parseBody(
       const line: EdgeStyle = connector.includes('.') ? 'dashed' : 'solid';
       const arrow: ArrowStyle = connector.endsWith('>') ? 'arrow' : 'none';
       edges.push({ from: edge[1]!, to: edge[3]!, label: edge[4], line, arrow, span });
-      return;
+      continue;
     }
 
     const node = NODE.exec(text);
@@ -315,26 +329,82 @@ function parseBody(
       // A shape written as a part carries no shape of its own: the part says
       // what it looks like. Resolution happens later, so the parser keeps the
       // name and leaves a plain rectangle in its place until then.
+      // A part that holds rows: the block that follows is its list, and the
+      // shape's own range covers all of it so that deleting it deletes it all.
+      const listed = PART_ITEMS.exec(written);
+      if (listed) {
+        const rows: SourceLine[] = [];
+        let last = source;
+        const tail = listed[2]!;
+        if (tail.includes('}')) {
+          if (tail.slice(0, tail.indexOf('}')).trim() !== '') {
+            throw new DiagramParseError(`一覧は行ごとに書く: ${text}`, line);
+          }
+        } else {
+          while (++i < body.length) {
+            last = body[i]!;
+            if (last.text === '}') break;
+            if (last.text !== '' && !last.text.startsWith('#')) rows.push(last);
+          }
+          if (last.text !== '}') {
+            throw new DiagramParseError(`'${listed[1]}' の一覧が閉じられていない`, line);
+          }
+        }
+        span = { start: source.span.start, end: last.span.end };
+        partOf.set(node[1]!, listed[1]!);
+        nodes.push({
+          id: node[1]!, text: '', shape: 'rect', className: node[3],
+          children: [], items: readItems(rows), span,
+        });
+        continue;
+      }
+
       const used = PART_USE.exec(written);
       if (used) {
         partOf.set(node[1]!, used[1]!);
         nodes.push({
           id: node[1]!, text: used[2] ?? '', shape: 'rect', className: node[3],
-          children: [], span,
+          children: [], items: [], span,
         });
-        return;
+        continue;
       }
       const shaped = readShape(written);
       if (!shaped) throw new DiagramParseError(`図形の記法が読めない: ${text}`, line);
       nodes.push({
         id: node[1]!, text: shaped.text, shape: shaped.shape, className: node[3],
-        children: [], span,
+        children: [], items: [], span,
       });
-      return;
+      continue;
     }
 
     throw new DiagramParseError(`解釈できない行: ${text}`, line);
-  });
+  }
+}
+
+/**
+ * The rows written inside a `{ … }` after a part's name.
+ *
+ * Depth comes from the indent, by how the indents nest rather than by a fixed
+ * number of spaces: two files that agree with themselves are both readable.
+ */
+function readItems(rows: readonly SourceLine[]): Item[] {
+  const items: Item[] = [];
+  const steps: number[] = [];
+  for (const row of rows) {
+    const found = ITEM.exec(row.text);
+    if (!found) throw new DiagramParseError(`一覧の行が読めない: ${row.text}`, row.number);
+    while (steps.length > 0 && row.indent < steps[steps.length - 1]!) steps.pop();
+    if (steps.length === 0 || row.indent > steps[steps.length - 1]!) steps.push(row.indent);
+    const written = found[2]!.trim();
+    const picked = written.endsWith('*');
+    items.push({
+      text: (picked ? written.slice(0, -1) : written).trim(),
+      depth: steps.length - 1,
+      closed: found[1] === '+',
+      picked,
+    });
+  }
+  return items;
 }
 
 function readShape(text: string): { text: string; shape: ShapeKind } | undefined {

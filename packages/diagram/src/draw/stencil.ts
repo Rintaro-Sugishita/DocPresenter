@@ -234,6 +234,40 @@ const CONTROLS: readonly StencilPart[] = [
       + `<path d="M4 12 h58" stroke="${UI_MARK}" stroke-width="4" stroke-linecap="round"/>`
       + `<circle cx="62" cy="12" r="7" fill="#ffffff" stroke="${UI_MARK}" stroke-width="2"/>`,
   },
+  // The three whose picture is their own contents. The artwork here is what
+  // the menu shows and what a part with no rows falls back to; the real
+  // drawing is worked out from the rows (draw/listing.ts).
+  {
+    name: 'ui/tree', label: 'ツリー',
+    group: '画面部品',
+    fit: { width: 160, height: 120 },
+    holds: 'none',
+    body: `<rect x="0.7" y="0.7" width="158.6" height="118.6" ${UI_FACE}/>`
+      + `<path d="M10 14 l5 5 l-5 5" ${UI_LINE}/>`
+      + `<path d="M26 19 h60 M38 43 h48 M38 67 h54 M26 91 h50" stroke="#c8ccd2"`
+      + ` stroke-width="3" stroke-linecap="round"/>`
+      + `<path d="M22 38 l5 5 l5 -5" ${UI_LINE}/>`,
+  },
+  {
+    name: 'ui/list', label: 'リスト',
+    group: '画面部品',
+    fit: { width: 160, height: 100 },
+    holds: 'none',
+    body: `<rect x="0.7" y="0.7" width="158.6" height="98.6" ${UI_FACE}/>`
+      + `<rect x="3" y="26" width="153" height="22" fill="#dce6f2"/>`
+      + `<path d="M12 15 h70 M12 37 h86 M12 59 h60 M12 81 h78" stroke="#c8ccd2"`
+      + ` stroke-width="3" stroke-linecap="round"/>`,
+  },
+  {
+    name: 'ui/menu', label: 'メニューバー',
+    group: '画面部品',
+    fit: { width: 240, height: 28 },
+    holds: 'none',
+    body: `<rect x="0.7" y="0.7" width="238.6" height="26.6" ${UI_FACE}/>`
+      + `<rect x="4" y="3" width="56" height="22" rx="2" fill="#dce6f2"/>`
+      + `<path d="M16 14 h32 M76 14 h28 M120 14 h36" stroke="#8b929c"`
+      + ` stroke-width="3" stroke-linecap="round"/>`,
+  },
   {
     // A table is the one control that is a thing of a certain size: how many
     // rows and columns it has is a property of the screen, not of the picture.

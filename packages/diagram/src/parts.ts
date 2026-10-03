@@ -172,7 +172,7 @@ export function specimenOf(library: DiagramFile, read: PartReader = () => undefi
       declarations: ReadonlyMap<string, string>): void => {
       nodes.push({
         id: `${part.name}${suffix}`, text, shape: 'text',
-        className: undefined, children: [], span,
+        className: undefined, children: [], items: [], span,
       });
       layout.set(`${part.name}${suffix}`, {
         x: indent + x, y: top + (row - 16) / 2, width: w, height: 16, z: undefined, span,
@@ -190,7 +190,7 @@ export function specimenOf(library: DiagramFile, read: PartReader = () => undefi
     const left = ROW.name + ROW.gap + ROW.written + ROW.gap;
     nodes.push({
       id: part.name, text: sampleOf(part.name, part.shape), shape: part.shape,
-      className: undefined, children: [], span,
+      className: undefined, children: [], items: [], span,
     });
     // Centred in its row rather than sitting at the top of it: a part shorter
     // than a row — a checkbox, a line — should line up with its own name.

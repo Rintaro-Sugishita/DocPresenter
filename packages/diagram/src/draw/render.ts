@@ -7,9 +7,10 @@
 import { EDGE_LABEL, layOutDiagram, type Box, type EdgeRoute } from '../layout.js';
 import { lineText, parseRuns, type TextLine } from '../inline.js';
 import { textWidth } from '../text.js';
-import type { DiagramFile, Node, Point, ShapeKind } from '../model.js';
+import type { DiagramFile, Item, Node, Point, ShapeKind } from '../model.js';
 import { escapeAttr, escapeHtml } from '@docpresenter/base';
 import { isIconPath, stencilArt, textPlace } from './stencil.js';
+import { isListing, listingArt } from './listing.js';
 import { members, shownPage, tabPages, SCROLL_BAR, TAB_STRIP } from '../arrange.js';
 import {
   arrowHead as arrowCorners, border, cylinderRadius, labelLayout, n, shapeOutlines,
@@ -92,7 +93,7 @@ function renderNode(
   // is the picture's own business: under it for a thing with a name, inside it
   // for a control that holds a value, nowhere for a scrollbar.
   const shape = icon
-    ? picture(icon, box, url)
+    ? picture(icon, box, url, node.items)
     : shapeElement(node.shape, box, lineLook(diagram.style.get(node.id)));
   const place = textPlace(icon);
   const text = node.shape === 'group'
@@ -209,7 +210,14 @@ function artSize(box: Box): number {
  * a file extension is a file the author pointed at; anything else is one of the
  * pictures shipped with the tool.
  */
-function picture(icon: string, box: Box, url?: (path: string) => string): string {
+function picture(
+  icon: string, box: Box, url?: (path: string) => string, items: readonly Item[] = [],
+): string {
+  // Three pictures are drawn from what the shape holds rather than from fixed
+  // artwork: a tree with twenty rows is not the same drawing as one with four.
+  if (isListing(icon) && items.length > 0) {
+    return `<g class="dp-part-art dp-listing">${listingArt(icon, box, items)}</g>`;
+  }
   const size = artSize(box);
   const x = box.x + (box.width - size) / 2;
   const y = box.y + Math.max(0, (box.height - LINE_HEIGHT * box.lines.length - size) / 2);
