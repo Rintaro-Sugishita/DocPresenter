@@ -134,6 +134,14 @@ export interface Part {
   readonly height: number | undefined;
   /** The part's own line, so editing one part rewrites one line. */
   readonly span: ByteSpan;
+  /**
+   * The heading this part was written under (`# --- ボタン ---`), if any.
+   *
+   * A library of forty parts is read by its headings, not by its order, and
+   * the author already wrote them. So a menu of the parts can be grouped the
+   * way the file is, instead of inventing a grouping of its own.
+   */
+  readonly group: string | undefined;
 }
 
 /**
@@ -235,6 +243,14 @@ export interface DiagramFile {
   readonly parts: ReadonlyMap<string, Part>;
   /** Which part each shape was written as, for the ones that name one. */
   readonly partOf: ReadonlyMap<string, string>;
+  /**
+   * Every part this drawing can reach — what it uses, under what it declares.
+   *
+   * `parts` is what the file itself says; this is what a writer of the file
+   * may choose from, which is the question the editor asks. Filled in when the
+   * parts are applied, empty before that.
+   */
+  readonly library: ReadonlyMap<string, Part>;
   /**
    * The size a part gives a shape, for the shapes that are not pinned.
    *

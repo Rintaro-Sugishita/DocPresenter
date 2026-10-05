@@ -10,12 +10,12 @@ import { layOutDiagram, type Box } from '../layout.js';
 import { containerOf, dropInto } from '../arrange.js';
 import type { DiagramFile, Item, ShapeKind } from '../model.js';
 import { renderDiagram } from '../draw/render.js';
-import { stencilParts } from '../draw/stencil.js';
+import { stencilArt, stencilParts } from '../draw/stencil.js';
 import type { Edit } from '@docpresenter/base';
 import {
   addNode, bendEdge, canUnpin, connectNodes, disconnectNodes, groupMembers, groupNodes,
   nextShapeId, pinNode, pinNodes, reconnect, removeNodes, setContainerCells, setItems,
-  setNodeShape, setNodeStyle, setNodeText, unpinNode,
+  putIntoContainer, setNodePart, setNodeShape, setNodeStyle, setNodeText, unpinNode,
 } from '../edits.js';
 import { toggleInline, type InlineMark } from '@docpresenter/base';
 import { createMenu, createToolbar, type MenuItem } from '@docpresenter/base';
@@ -32,6 +32,11 @@ const SVG_NS = 'http://www.w3.org/2000/svg';
  * pressing it twice meant.
  */
 const rowPicks = new WeakMap<Document, { id: string; index: number }>();
+/** A shape that draws itself from rows, and the rows it draws. */
+interface Held {
+  readonly icon: Listing;
+  readonly items: readonly Item[];
+}
 /** How far a shape's edge may be from another's to be pulled into line. */
 const SNAP = 5;
 /** What a free coordinate is rounded to, so a diff shows round numbers. */
@@ -114,13 +119,11 @@ export function createCanvas(options: CanvasOptions): Canvas {
     laid.routes.find(r => nameOf(r.edge) === name);
 
   /** Which rows a shape holds, if it is a tree, a list or a menu. */
-  const listingOf = (
-    id: string | undefined,
-  ): { icon: Listing; items: readonly Item[] } | undefined => {
+  const listingOf = (id: string | undefined): Held | undefined => {
     if (id === undefined) return undefined;
     const node = file.nodes.find(one => one.id === id);
     const icon = file.style.get(id)?.get('icon');
-    return node && isListing(icon) && node.items.length > 0 ? { icon, items: node.items } : undefined;
+    return node && isListing(icon) ? { icon, items: node.items } : undefined;
   };
   /**
    * The row picked before the last edit, if that row is still there. A row
@@ -135,6 +138,12 @@ export function createCanvas(options: CanvasOptions): Canvas {
     if (!kept || !held || !box || !picked.includes(kept.id)) return undefined;
     return rowBoxes(held.icon, box, held.items)[kept.index] ? kept : undefined;
   })();
+  /** The listing being worked on, whether or not one of its rows is picked. */
+  const listingNow = (): { id: string; held: Held } | undefined => {
+    const id = row?.id ?? (picked.length === 1 ? picked[0] : undefined);
+    const held = listingOf(id);
+    return id !== undefined && held ? { id, held } : undefined;
+  };
   const pickRow = (next: { id: string; index: number } | undefined): void => {
     row = next;
     if (next) rowPicks.set(owner, next); else rowPicks.delete(owner);
@@ -528,7 +537,7 @@ export function createCanvas(options: CanvasOptions): Canvas {
    * while the pointer is still inside it; letting go anywhere else means the
    * shape is leaving the arrangement, which is a pin.
    */
-  let dropping: { container: string; cells: string[][]; mark: Box } | undefined;
+  let dropping: { container: string; cells: string[][]; mark: Box; into: boolean } | undefined;
   /** An end of the picked line being dragged onto another shape. */
   let reaching: { end: 'from' | 'to'; at: { x: number; y: number } } | undefined;
   /**
@@ -633,11 +642,16 @@ export function createCanvas(options: CanvasOptions): Canvas {
     if (event.shiftKey) { toggle(id); return; }
     // Pressing something already picked keeps the rest of the selection: that
     // is how a group of shapes is dragged as one.
+    // Where the press landed, read before anything is picked: picking changes
+    // what the bar above the drawing holds, the bar's height moves the drawing
+    // down the page, and a point worked out after that is a point off by the
+    // difference — which, for a row of a tree, is a different row.
+    const at = pointOn(event);
     if (!picked.includes(id)) pick([id]);
     // A press inside a tree or a list is also a press on one of its rows. The
     // shape stays picked — it still moves and resizes — and the row becomes
     // what the row buttons act on.
-    const onRow = rowAt(id, pointOn(event));
+    const onRow = rowAt(id, at);
     pickRow(onRow === undefined ? undefined : { id, index: onRow });
     describe();
 
@@ -847,8 +861,12 @@ export function createCanvas(options: CanvasOptions): Canvas {
     // Dropped inside its own container: the arrangement changes and nothing
     // gets a coordinate. One block of the file is rewritten.
     if (landed) {
+      const id = current.id;
       options.apply(
-        () => setContainerCells(file, source, landed.container, landed.cells), [current.id],
+        () => (landed.into
+          ? putIntoContainer(file, source, landed.container, landed.cells, id)
+          : setContainerCells(file, source, landed.container, landed.cells)),
+        [id],
       );
       return;
     }
@@ -1028,17 +1046,56 @@ export function createCanvas(options: CanvasOptions): Canvas {
    */
   function landing(
     id: string, at: { x: number; y: number },
-  ): { container: string; cells: string[][]; mark: Box } | undefined {
+  ): { container: string; cells: string[][]; mark: Box; into: boolean } | undefined {
     if (picked.length !== 1) return undefined;
-    const name = containerOf(file).get(id);
+    const held = containerOf(file).get(id);
+    // Its own container while it is in one — dropping inside is reordering.
+    // Otherwise whichever container the pointer is over: that gesture is how
+    // a shape gets into an arrangement in the first place.
+    const name = held ?? openTo(id, at);
     const container = name === undefined ? undefined : file.containers.get(name);
     const box = name === undefined ? undefined : laid.boxes.get(name);
     if (!container || !box || name === undefined) return undefined;
     if (at.x < box.x || at.x > box.x + box.width || at.y < box.y || at.y > box.y + box.height) {
       return undefined;
     }
-    const found = dropInto(container, box, one => laid.boxes.get(one), id, at);
-    return found ? { container: name, ...found } : undefined;
+    const found = dropInto(container, box, one => laid.boxes.get(one), id, at, laid.holes);
+    return found ? { container: name, ...found, into: held === undefined } : undefined;
+  }
+
+  /**
+   * The container a shape would be dropped into: the innermost one under the
+   * pointer that is not the shape itself, nor anything the shape holds.
+   *
+   * Innermost because that is the one the pointer is actually over — every
+   * container of a screen sits inside the frame, and "into the frame" is never
+   * what somebody aiming at a row of a form meant. A container cannot go into
+   * itself, and a tab control takes nothing this way: what the pointer is over
+   * there is the page, not the strip.
+   */
+  function openTo(id: string, at: { x: number; y: number }): string | undefined {
+    const held = containerOf(file);
+    const inside = (name: string): boolean => {
+      for (let one: string | undefined = name, depth = 0; one !== undefined && depth < 32; depth++) {
+        if (one === id) return true;
+        one = held.get(one);
+      }
+      return false;
+    };
+    const depthOf = (name: string): number => {
+      let depth = 0;
+      for (let one = held.get(name); one !== undefined && depth < 32; one = held.get(one)) depth++;
+      return depth;
+    };
+    let found: string | undefined;
+    for (const [name, container] of file.containers) {
+      if (container.kind === 'tabs' || name === id || inside(name)) continue;
+      const box = laid.boxes.get(name);
+      if (!box || at.x < box.x || at.x > box.x + box.width) continue;
+      if (at.y < box.y || at.y > box.y + box.height) continue;
+      if (found === undefined || depthOf(name) > depthOf(found)) found = name;
+    }
+    return found;
   }
 
   /** Which row of a listing the pointer is on, if any. */
@@ -1094,6 +1151,26 @@ export function createCanvas(options: CanvasOptions): Canvas {
     options.apply(() => setItems(file, source, current.id, next.items), [current.id]);
   }
 
+  /**
+   * A row at the end of a listing, when no row is pressed.
+   *
+   * A listing with no rows draws the picture it came with and has nothing to
+   * press, so without this there is no way to write the first row from the
+   * canvas at all. The new row takes the depth of the one above it: a flat
+   * list is the same either way, and in a tree it carries on the branch the
+   * reader was just looking at rather than starting a new one.
+   */
+  function addRow(): void {
+    const now = listingNow();
+    if (!now) return;
+    const items: Item[] = [...now.held.items, {
+      text: '項目', depth: now.held.items[now.held.items.length - 1]?.depth ?? 0,
+      closed: false, picked: false,
+    }];
+    pickRow({ id: now.id, index: items.length - 1 });
+    options.apply(() => setItems(file, source, now.id, items), [now.id]);
+  }
+
   /** Where a new shape goes: under the drawing, in the file's own numbers. */
   function emptySpot(): { x: number; y: number } {
     const boxes = [...laid.boxes.values()];
@@ -1123,7 +1200,21 @@ export function createCanvas(options: CanvasOptions): Canvas {
    * pays whether the list is labelled or not; a row per kind is as long as the
    * number of kinds, and only the kind that was picked is ever shown.
    */
+  /**
+   * What can be put on this drawing, as a menu.
+   *
+   * A drawing that uses a parts library is written in that library's words —
+   * `textbox`, `primary`, `checked` — so that is what the menu offers. The
+   * pictures shipped with the tool are the answer only for a drawing with no
+   * library to speak of, such as a network diagram.
+   */
   function partItems(event?: MouseEvent): MenuItem[] {
+    return file.library.size > 0
+      ? libraryItems(name => addPart(name, event))
+      : stencilItems(event);
+  }
+
+  function stencilItems(event?: MouseEvent): MenuItem[] {
     const kinds = new Map<string, MenuItem[]>();
     for (const part of stencilParts()) {
       const one: MenuItem = {
@@ -1138,21 +1229,82 @@ export function createCanvas(options: CanvasOptions): Canvas {
     return [...kinds].map(([group, items]): MenuItem => ({ label: group, items }));
   }
 
+  /**
+   * The library's parts, under the headings the library wrote them under.
+   *
+   * Forty parts in one list is a list nobody reads to the end, and the author
+   * of the library already divided them — the same answer the picture menu
+   * gives, taken from the file instead of from this code.
+   */
+  function libraryItems(run: (name: string) => void, current?: string): MenuItem[] {
+    const kinds = new Map<string, MenuItem[]>();
+    for (const [name, part] of file.library) {
+      const icon = part.style.get('icon');
+      const drawn = icon === undefined ? undefined : stencilArt(icon);
+      const one: MenuItem = {
+        label: name,
+        icon: drawn ? partIcon(drawn.body) : shapeIcon(part.shape),
+        disabled: name === current,
+        run: () => run(name),
+      };
+      const kind = kinds.get(part.group ?? 'その他');
+      if (kind) kind.push(one);
+      else kinds.set(part.group ?? 'その他', [one]);
+    }
+    return [...kinds].map(([group, items]): MenuItem => ({ label: group, items }));
+  }
+
+  /** Adds a shape written as one of the library's parts. */
+  function addPart(name: string, event?: MouseEvent): void {
+    const into = beside();
+    const at = file.mode === 'free' && !into
+      ? (event ? pointIn(event) : emptySpot())
+      : undefined;
+    options.apply(
+      () => addNode(file, source, { shape: 'rect', text: '', at, part: name, into }),
+      [nextShapeId(file, 'part')],
+    );
+  }
+
   function addShape(
     shape: ShapeKind, event?: MouseEvent, icon?: string, text = '図形',
   ): void {
+    const into = beside();
     // A freely placed drawing has no engine to decide where a shape goes, so
     // the new one is pinned: at the pointer if it came from the drawing, and
-    // under the drawing otherwise.
-    const at = file.mode === 'free'
+    // under the drawing otherwise. Unless something in an arrangement is
+    // picked — then the arrangement is the engine, and it says where.
+    const at = file.mode === 'free' && !into
       ? (event ? pointIn(event) : emptySpot())
       : undefined;
     // Selected as soon as it exists, so the next gesture — dragging it, or
     // typing over its text — lands on the shape just added.
     options.apply(
-      () => addNode(file, source, { shape, text, at, icon }),
+      () => addNode(file, source, { shape, text, at, icon, into }),
       [nextShapeId(file, icon === undefined ? shape : 'part')],
     );
+  }
+
+  /**
+   * Where a new shape goes when something is picked: into the same container,
+   * next to it.
+   *
+   * Somebody who picked the third field of a form and asked for another one
+   * wants a fourth field, not a shape pinned on top of the drawing that then
+   * has to be dragged in. A container picked itself takes it at the end —
+   * that is the one gesture there is for "put something in here".
+   */
+  function beside(): { container: string; after?: string } | undefined {
+    const one = picked.length === 1 ? picked[0] : undefined;
+    if (one === undefined || file.mode !== 'free') return undefined;
+    if (file.containers.has(one) && file.containers.get(one)?.kind !== 'tabs') {
+      return { container: one };
+    }
+    const held = containerOf(file).get(one);
+    // A shape with a pin was taken out of the arrangement on purpose; what is
+    // added beside it belongs where it is, not where it came from.
+    return held !== undefined && !file.layout.has(one)
+      ? { container: held, after: one } : undefined;
   }
 
   /**
@@ -1211,6 +1363,15 @@ export function createCanvas(options: CanvasOptions): Canvas {
           || (node?.items.length ?? 0) > 0
           || (shape === 'line' && (node?.text ?? '') !== ''),
         run: () => options.apply(() => setNodeShape(file, id, shape), [id]),
+      });
+    }
+    if (file.library.size > 0 && node?.shape !== 'group') {
+      items.push({
+        label: file.partOf.has(id) ? '部品を変える' : '部品にする',
+        separated: true,
+        items: libraryItems(
+          name => options.apply(() => setNodePart(file, source, id, name), [id]),
+          file.partOf.get(id)),
       });
     }
     items.push({
@@ -1573,10 +1734,18 @@ export function createCanvas(options: CanvasOptions): Canvas {
     for (const button of spreaders) button.disabled = picked.length < 3;
     const alone = picked.length === 1 ? file.nodes.find(n => n.id === picked[0]) : undefined;
     if (liners) liners.hidden = alone?.shape !== 'line';
-    const inRow = listingOf(row?.id);
-    if (rows) rows.hidden = row === undefined || inRow === undefined;
+    const inRow = listingNow()?.held;
+    if (rows) rows.hidden = inRow === undefined;
     for (const button of rowButtons) {
-      button.disabled = button.dataset.rowOnly === 'tree' && inRow?.icon !== 'ui/tree';
+      const adds = button.dataset.rowAdd === 'add';
+      // Everything but adding needs a row to act on. Adding is what is left
+      // when there is none — otherwise an empty list has no way back.
+      button.disabled = (button.dataset.rowOnly === 'tree' && inRow?.icon !== 'ui/tree')
+        || (row === undefined && !adds);
+      if (adds) {
+        button.title = row !== undefined ? '下に行を足す'
+          : (inRow?.items.length ?? 0) === 0 ? '最初の行を足す' : 'いちばん下に行を足す';
+      }
     }
     for (const button of lookButtons) {
       const [property, value] = (button.dataset.look ?? '=').split('=');
@@ -1719,7 +1888,7 @@ export function createCanvas(options: CanvasOptions): Canvas {
     rows = element('span', 'dp-canvas-rows');
     const rowed: HTMLButtonElement[] = [];
     const onRow = (
-      picture: string, title: string, run: () => void, only?: 'tree',
+      picture: string, title: string, run: () => void, only?: 'tree', marks?: 'add',
     ): void => {
       const button = owner.createElement('button');
       button.type = 'button';
@@ -1727,6 +1896,7 @@ export function createCanvas(options: CanvasOptions): Canvas {
       button.innerHTML = picture;
       button.title = title;
       if (only) button.dataset.rowOnly = only;
+      if (marks) button.dataset.rowAdd = marks;
       button.addEventListener('mousedown', event => {
         event.preventDefault();
         event.stopPropagation();
@@ -1740,13 +1910,18 @@ export function createCanvas(options: CanvasOptions): Canvas {
     // the row alone would leave its children hanging off whatever came before
     // — a different tree than the one anybody asked for, and sometimes one
     // with a gap in its depths that cannot be drawn at all.
-    onRow(rowIcon('add'), '下に行を足す', () => changeRows((items, at) => {
-      const after = branch(items, at);
-      items.splice(after, 0, {
-        text: '項目', depth: items[at]?.depth ?? 0, closed: false, picked: false,
+    onRow(rowIcon('add'), '下に行を足す', () => {
+      // With no row pressed there is nothing to be under — and a listing with
+      // no rows at all has nothing to press, which is how one gets its first.
+      if (row === undefined) { addRow(); return; }
+      changeRows((items, at) => {
+        const after = branch(items, at);
+        items.splice(after, 0, {
+          text: '項目', depth: items[at]?.depth ?? 0, closed: false, picked: false,
+        });
+        return { items, at: after };
       });
-      return { items, at: after };
-    }));
+    }, undefined, 'add');
     onRow(rowIcon('drop'), 'この行を消す', () => changeRows((items, at) => {
       items.splice(at, branch(items, at) - at);
       return { items, at: Math.max(0, at - 1) };

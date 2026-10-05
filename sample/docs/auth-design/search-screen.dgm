@@ -38,9 +38,18 @@ free {
   # --- 右の列：結果 ---
   results    ""
   listLabel  label:"検索結果"
-  listRow    ""
-  list       grid:
-  listBar    scrollbar:
+  # 一覧の中身は行である。50 件のうち枠に入るぶんだけが描かれ、残りは
+  # 縁のバーが言う——画面がそうなるので、図もそうなる。
+  list       list: {
+    - 山田 太郎（情報システム部）*
+    - 鈴木 花子（情報システム部）
+    - 佐藤 一郎（総務部）
+    - 高橋 二郎（経理部）
+    - 田中 三郎（営業一部）
+    - 伊藤 四郎（営業二部）
+    - 渡辺 五郎（製造部）
+    - 中村 六郎（品質保証部）
+  }
   listNote   hint:"※ 表示は 50 件まで"
 
   search     primary:"検索"
@@ -69,11 +78,10 @@ layout {
   stack ageRow (right; gap: 10; pad: 0) { age ; ageSlider }
   stack lockRow (right; gap: 8; pad: 0) { lockedBox ; lockedText }
 
-  stack results (down; gap: 6; pad: 0) { listLabel ; listRow ; listNote }
-  stack listRow (right; gap: 0; pad: 0) { list ; listBar }
+  stack results (down; gap: 6; pad: 0) { listLabel ; list ; listNote }
 
   columnRule @ (300,  96)   0x232
-  noteArrow  @ (464, 252)  60x28
+  noteArrow  @ (466, 292)  58x26
 }
 
 style {

@@ -173,6 +173,9 @@ export function parseDiagram(source: string): DiagramFile {
   return {
     mode, comments, nodes, edges, body, layout, bends, containers, layoutBlock, styleBlock,
     theme, style, styleSpans, image, callouts, uses, parts, partOf, partSizes: new Map(),
+    // What the file can reach is known only once the parts are applied, which
+    // needs a reader of other files. Until then a drawing offers nothing.
+    library: new Map(),
     partsBlock,
   };
 }
@@ -209,13 +212,28 @@ function countChar(text: string, char: string): number {
  * system's input boxes are all one height long before anyone argues about it.
  */
 const PART_NAME = /^([A-Za-z0-9_-]+)\s+(.*)$/;
+/**
+ * `# --- ボタン ---` — a heading over a run of parts.
+ *
+ * Comments are not data anywhere else in this format, and they are not data
+ * here either: nothing is read from the words. What is read is that a heading
+ * was written, and which parts come under it, so that a list of forty can be
+ * shown the way its author already divided it.
+ */
+const PART_GROUP = /^#\s*-{2,}\s*(.+?)\s*-{2,}\s*$/;
 const PART_STYLE = /\{([^}]*)\}/;
 const PART_SIZE = /(\d+)x(\d+)\s*$/;
 
 function parseParts(body: readonly SourceLine[], out: Map<string, Part>): void {
+  let group: string | undefined;
   for (const source of body) {
     const text = source.text;
-    if (text === '' || text.startsWith('#')) continue;
+    if (text.startsWith('#')) {
+      const heading = PART_GROUP.exec(text);
+      if (heading) group = heading[1];
+      continue;
+    }
+    if (text === '') continue;
     const named = PART_NAME.exec(text);
     if (!named) throw new DiagramParseError(`部品として読めない行: ${text}`, source.number);
 
@@ -242,7 +260,7 @@ function parseParts(body: readonly SourceLine[], out: Map<string, Part>): void {
       name: named[1]!, shape, style,
       width: sized === null ? undefined : Number(sized[1]),
       height: sized === null ? undefined : Number(sized[2]),
-      span: source.span,
+      span: source.span, group,
     });
   }
 }

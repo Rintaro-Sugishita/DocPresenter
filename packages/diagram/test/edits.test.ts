@@ -4,7 +4,8 @@ import { parseDiagram } from '@docpresenter/diagram';
 import {
   addNode, bendEdge, canUnpin, connectNodes, DiagramEditError, disconnectNodes, groupMembers,
   dropInto, groupNodes, layOutDiagram, moveCallout, pinNode, pinNodes, reconnect, removeNode,
-  removeNodes, setContainerCells, setItems, setNodeShape, setNodeStyle, setNodeText, unpinNode,
+  putIntoContainer, removeNodes, setContainerCells, setItems, setNodeShape, setNodeStyle,
+  setNodePart, setNodeText, unpinNode, withParts,
 } from '../src/index.js';
 import type { Item } from '../src/model.js';
 
@@ -596,8 +597,44 @@ describe('入れ物の中での並べ替え', () => {
     const laid = layOutDiagram(file);
     return dropInto(
       file.containers.get('frame')!, laid.boxes.get('frame')!,
-      id => laid.boxes.get(id), moving, to);
+      id => laid.boxes.get(id), moving, to, laid.holes);
   };
+
+  // 外から入れるのも同じ手つき。入れ物に入れる口はこれしかないので、
+  // これが効かないと「足したものを入れ物に入れる」方法が無くなる。
+  describe('外から入れる', () => {
+    const OUT = HELD.replace('  c [う]', '  c [う]\n  loose [はぐれ]')
+      .replace('  frame @ (0, 0) 300x400', '  frame @ (0, 0) 300x400\n  loose @ (500, 500) 80x20');
+
+    it('並びの中に落とせば、その場所に入る', () => {
+      expect(drop(OUT, 'loose', at(OUT, 'b', 2))?.cells).toEqual([['a'], ['loose'], ['b'], ['c']]);
+    });
+
+    it('格子は空いているセルにだけ入る', () => {
+      const grid = OUT
+        .replace(/  stack frame[\s\S]*?\n  \}/, '  grid frame (cols: 1fr, 1fr) {\n    a ; b\n    c ; .\n  }');
+      const laid = layOutDiagram(parseDiagram(grid));
+      const hole = laid.holes[0]!;
+      expect(laid.holes.length).toBe(1);
+      const into = drop(grid, 'loose', { x: hole.box.x + 4, y: hole.box.y + 4 });
+      expect(into?.cells).toEqual([['a', 'b'], ['c', 'loose']]);
+      // 埋まっているセルの上では何も起きない——相手を押し出すことになる
+      expect(drop(grid, 'loose', at(grid, 'b'))).toBeUndefined();
+    });
+
+    it('空のセルは、入れ物が置いた場所にある', () => {
+      const grid = OUT
+        .replace(/  stack frame[\s\S]*?\n  \}/, '  grid frame (cols: 1fr, 1fr) {\n    a ; b\n    c ; .\n  }');
+      const laid = layOutDiagram(parseDiagram(grid));
+      const hole = laid.holes[0]!;
+      const b = laid.boxes.get('b')!;
+      const c = laid.boxes.get('c')!;
+      expect(hole.row).toBe(1);
+      expect(hole.col).toBe(1);
+      expect(Math.round(hole.box.x)).toBe(Math.round(b.x));
+      expect(Math.round(hole.box.y)).toBe(Math.round(c.y));
+    });
+  });
 
   it('上半分に落とせばその前、下半分なら後ろ', () => {
     expect(drop(HELD, 'c', at(HELD, 'a', 2))?.cells).toEqual([['c'], ['a'], ['b']]);
@@ -717,5 +754,124 @@ describe('一覧の行を変える', () => {
   it('無い図形には書けない', () => {
     expect(() => setItems(parseDiagram(ROWS), ROWS, 'nope', []))
       .toThrow(DiagramEditError);
+  });
+});
+
+describe('部品を変える', () => {
+  const SCREEN = [
+    'use "default"',
+    '',
+    'free {',
+    '  dept   select:"情報システム部"',
+    '  nav    tree: {',
+    '    - 全社',
+    '  }',
+    '  plain  [ふつうの箱]',
+    '  tagged [色つき]:::warn',
+    '}',
+    '',
+  ].join('\n');
+  const write = (text: string, id: string, part: string): string =>
+    applyEdit(text, setNodePart(parseDiagram(text), text, id, part));
+
+  it('書き換わるのは部品の名前だけ', () => {
+    const written = write(SCREEN, 'dept', 'checkbox');
+    expect(written).toContain('  dept   checkbox:"情報システム部"');
+    expect(written).toContain('  plain  [ふつうの箱]');
+  });
+
+  it('行を持つ部品は、行ごと残る', () => {
+    const written = write(SCREEN, 'nav', 'list');
+    expect(written).toContain('  nav    list: {\n    - 全社\n  }');
+  });
+
+  it('部品でない図形は、部品になる（文字はそのまま）', () => {
+    expect(write(SCREEN, 'plain', 'textbox')).toContain('  plain  textbox:"ふつうの箱"');
+  });
+
+  it('クラスは落とさない', () => {
+    const written = write(SCREEN, 'tagged', 'label');
+    expect(written).toContain('  tagged label:"色つき":::warn');
+    expect(parseDiagram(written).nodes.find(one => one.id === 'tagged')?.className).toBe('warn');
+  });
+
+  it('同じ部品にはできない', () => {
+    expect(() => setNodePart(parseDiagram(SCREEN), SCREEN, 'dept', 'select'))
+      .toThrow(DiagramEditError);
+  });
+
+  // 図形の種類を変えると部品ではなくなる。消えるのは絵の出どころなので、
+  // 何が起きたかを名前で言う——黙って捨てないため。
+  it('図形の種類を変えると、部品をやめたと言う', () => {
+    const file = parseDiagram(SCREEN);
+    expect(setNodeShape(file, 'dept', 'ellipse').description).toBe('部品をやめて図形にする');
+    expect(setNodeShape(file, 'plain', 'ellipse').description).toBe('図形の種類を変更');
+  });
+
+  it('行を持つ部品の種類は変えられない（行ごと消えるため）', () => {
+    expect(() => setNodeShape(parseDiagram(SCREEN), 'nav', 'ellipse')).toThrow(DiagramEditError);
+  });
+
+  it('使える部品は、使っているライブラリが決める', () => {
+    const library = withParts(parseDiagram(SCREEN), () => undefined);
+    expect(library.library.get('textbox')).toBeDefined();
+    // 見出し（# --- 入力 ---）はそのまま区分になる
+    expect(library.library.get('textbox')?.group).toBe('入力');
+    expect(library.library.get('primary')?.group).toBe('ボタン');
+  });
+});
+
+describe('入れ物に入れる', () => {
+  const HOLDS = [
+    'use "default"',
+    '',
+    'free {',
+    '  frame [ ]',
+    '  a [あ]',
+    '  b [い]',
+    '  loose [はぐれ]',
+    '}',
+    '',
+    'layout {',
+    '  frame @ (0, 0) 300x400',
+    '  loose @ (500, 500) 80x20',
+    '  stack frame (down; gap: 10; pad: 10) { a ; b }',
+    '}',
+    '',
+  ].join('\n');
+
+  it('名前が並びに入り、ピンの行は消える', () => {
+    const file = parseDiagram(HOLDS);
+    const edit = putIntoContainer(file, HOLDS, 'frame', [['a'], ['loose'], ['b']], 'loose');
+    const written = applyEdit(HOLDS, edit);
+    expect(edit.description).toBe('入れ物に入れる');
+    expect(written).toContain('{ a ; loose ; b }');
+    expect(written).not.toContain('loose @');
+    expect(written).toContain('  frame @ (0, 0) 300x400');
+  });
+
+  it('既に中にいるものは入れ直せない', () => {
+    expect(() => putIntoContainer(parseDiagram(HOLDS), HOLDS, 'frame', [['a']], 'a'))
+      .toThrow(DiagramEditError);
+  });
+
+  it('足すものは、選んだものの次に入る', () => {
+    const written = applyEdit(HOLDS, addNode(parseDiagram(HOLDS), HOLDS,
+      { shape: 'rect', text: '', part: 'textbox', into: { container: 'frame', after: 'a' } }));
+    expect(written).toContain('{ a ; part1 ; b }');
+    expect(written).toContain('  part1 textbox:');
+    // 入れ物が置くので、座標は 1 つも増えない
+    expect((written.match(/@ \(/g) ?? []).length).toBe(2);
+  });
+
+  it('格子は空いているセルに入れ、空きが無ければ 1 行増やす', () => {
+    const grid = HOLDS.replace('stack frame (down; gap: 10; pad: 10) { a ; b }',
+      'grid frame (cols: 1fr, 1fr) {\n    a ; .\n  }');
+    const once = applyEdit(grid, addNode(parseDiagram(grid), grid,
+      { shape: 'rect', text: '', part: 'textbox', into: { container: 'frame' } }));
+    expect(once).toContain('a ; part1');
+    const twice = applyEdit(once, addNode(parseDiagram(once), once,
+      { shape: 'rect', text: '', part: 'label', into: { container: 'frame' } }));
+    expect(twice).toContain('a ; part1\n    part2 ; .');
   });
 });

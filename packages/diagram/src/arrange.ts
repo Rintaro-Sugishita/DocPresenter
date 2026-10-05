@@ -18,6 +18,21 @@ import type { Container, DiagramFile, Point } from './model.js';
 /** An empty cell. Written as a full stop because there is nothing to name. */
 export const EMPTY_CELL = '.';
 
+/**
+ * An empty cell of a grid: a place in an arrangement with nothing in it.
+ *
+ * A cell written `.` is room somebody kept on purpose, and the only place an
+ * incoming shape can go in a grid — its cells are a shape of their own, so a
+ * shape dropped onto an occupied one would have to push somebody out. Nothing
+ * is drawn for a hole; it is where the pointer may aim.
+ */
+export interface Hole {
+  readonly container: string;
+  readonly row: number;
+  readonly col: number;
+  readonly box: Box;
+}
+
 /** The room a group's own label takes at the top of its box. */
 const GROUP_HEADER = 18;
 /** The row of headings across the top of a tab control. */
@@ -89,7 +104,7 @@ export function members(container: Container): readonly string[] {
  */
 export function arrangeContainers(
   diagram: DiagramFile, sizeOf: (id: string) => Size,
-  boxes: Map<string, Box>, diagnostics: string[],
+  boxes: Map<string, Box>, diagnostics: string[], holes?: Hole[],
 ): ReadonlySet<string> {
   const hidden = new Set<string>();
   if (diagram.containers.size === 0) return hidden;
@@ -172,7 +187,8 @@ export function arrangeContainers(
       if (!box) continue;
       done.add(container.id);
       again = true;
-      place(container, box, byId.get(container.id)?.shape, diagram, intrinsic, sizeOf, boxes, hide);
+      place(container, box, byId.get(container.id)?.shape, diagram,
+        intrinsic, sizeOf, boxes, hide, holes);
       // What does not fit is drawn anyway — hiding it would hide the mistake —
       // but a frame too small for its own contents is said out loud. An area
       // that scrolls is not too small: being cut off is what it says.
@@ -277,7 +293,7 @@ function rowHeights(container: Container, intrinsic: (id: string) => Size): numb
 function place(
   container: Container, box: Box, shape: string | undefined, diagram: DiagramFile,
   intrinsic: (id: string) => Size, sizeOf: (id: string) => Size, boxes: Map<string, Box>,
-  hide: (id: string) => void,
+  hide: (id: string) => void, holes?: Hole[],
 ): void {
   // One page under the headings; the rest are not drawn.
   if (container.kind === 'tabs') {
@@ -309,36 +325,48 @@ function place(
     sizes.slice(0, index).reduce((total, one) => total + one + gap, 0);
 
   const placed = new Set<string>();
-  for (const row of container.cells) {
-    for (const cell of row) {
-      if (cell === EMPTY_CELL || placed.has(cell)) continue;
-      placed.add(cell);
-      // A pin wins, as everywhere else in this format: the shape is drawn
-      // where someone put it, and its cell is left empty.
-      if (diagram.layout.has(cell)) continue;
-      const where = area(container, cell);
-      const width = sum(widths.slice(where.col, where.col + where.cols))
-        + container.gap.x * (where.cols - 1);
-      const rowHeight = sum(heights.slice(where.row, where.row + where.rows))
-        + container.gap.y * (where.rows - 1);
-      // The cell gives its width; the height is the shape's own, in the middle
-      // of the row. A text box in a tall row should not become a tall text box.
-      const size = intrinsic(cell);
-      const height = diagram.containers.has(cell) ? rowHeight : Math.min(size.height, rowHeight);
-      const spot = {
-        x: left + at(widths, where.col, container.gap.x),
-        y: top + at(heights, where.row, container.gap.y) + (rowHeight - height) / 2,
-      };
-      // Past the fold of an area that scrolls: there, but not on screen. The
-      // bar beside it is what says there is more.
-      if ((container.scroll === 'down' && spot.y >= fold.y)
-        || (container.scroll === 'right' && spot.x >= fold.x)) {
-        hide(cell);
-        continue;
-      }
-      boxes.set(cell, { ...spot, width, height, z: box.z, lines: sizeOf(cell).lines });
+  container.cells.forEach((cells, r) => cells.forEach((cell, c) => {
+    if (cell === EMPTY_CELL) {
+      // Where the empty cell is, for whoever wants to put something there.
+      // Worked out here because this is where a cell's place is worked out:
+      // a second answer from somewhere else is a second answer to disagree.
+      holes?.push({
+        container: container.id, row: r, col: c,
+        box: {
+          x: left + at(widths, c, container.gap.x),
+          y: top + at(heights, r, container.gap.y),
+          width: widths[c] ?? 0, height: heights[r] ?? 0, z: box.z, lines: [],
+        },
+      });
+      return;
     }
-  }
+    if (placed.has(cell)) return;
+    placed.add(cell);
+    // A pin wins, as everywhere else in this format: the shape is drawn
+    // where someone put it, and its cell is left empty.
+    if (diagram.layout.has(cell)) return;
+    const where = area(container, cell);
+    const width = sum(widths.slice(where.col, where.col + where.cols))
+      + container.gap.x * (where.cols - 1);
+    const rowHeight = sum(heights.slice(where.row, where.row + where.rows))
+      + container.gap.y * (where.rows - 1);
+    // The cell gives its width; the height is the shape's own, in the middle
+    // of the row. A text box in a tall row should not become a tall text box.
+    const size = intrinsic(cell);
+    const height = diagram.containers.has(cell) ? rowHeight : Math.min(size.height, rowHeight);
+    const spot = {
+      x: left + at(widths, where.col, container.gap.x),
+      y: top + at(heights, where.row, container.gap.y) + (rowHeight - height) / 2,
+    };
+    // Past the fold of an area that scrolls: there, but not on screen. The
+    // bar beside it is what says there is more.
+    if ((container.scroll === 'down' && spot.y >= fold.y)
+      || (container.scroll === 'right' && spot.x >= fold.x)) {
+      hide(cell);
+      return;
+    }
+    boxes.set(cell, { ...spot, width, height, z: box.z, lines: sizeOf(cell).lines });
+  }));
 }
 
 /**
@@ -351,18 +379,30 @@ function place(
  * the shape in between two of its members; a grid trades places with the one
  * underneath, because its cells are a shape of their own and leaving holes in
  * them is not what anybody dragging meant.
+ *
+ * The same gesture brings a shape in from outside, which is how one is put
+ * into an arrangement at all. A stack opens a gap for it like any other; a
+ * grid takes it only into an empty cell, since there is nobody to trade with
+ * — the one it landed on would have to be pushed out of the grid altogether.
  */
 export function dropInto(
   container: Container, box: Box, boxOf: (id: string) => Box | undefined,
-  moving: string, at: Point,
+  moving: string, at: Point, holes: readonly Hole[] = [],
 ): { cells: string[][]; mark: Box } | undefined {
   // A tab page is not one of a row: what would be reordered is the strip, and
   // the strip is not what the pointer is on.
   if (container.kind === 'tabs') return undefined;
   const held = members(container);
-  if (!held.includes(moving)) return undefined;
+  const inside = held.includes(moving);
 
   if (container.kind === 'grid') {
+    if (!inside) {
+      const hole = holes.find(one => one.container === container.id && covers(one.box, at));
+      if (!hole) return undefined;
+      const cells = container.cells.map((row, r) =>
+        row.map((cell, c) => (r === hole.row && c === hole.col ? moving : cell)));
+      return { cells, mark: hole.box };
+    }
     const onto = held.find(id => id !== moving && covers(boxOf(id), at));
     const target = onto === undefined ? undefined : boxOf(onto);
     if (onto === undefined || !target) return undefined;
@@ -383,7 +423,7 @@ export function dropInto(
   const landing = index < 0 ? others.length : index;
   const next = [...others];
   next.splice(landing, 0, moving);
-  if (next.join(' ') === held.join(' ')) return undefined;
+  if (inside && next.join(' ') === held.join(' ')) return undefined;
 
   // The mark sits in the gap the shape would drop into, across the whole of
   // the container, so it reads as a place rather than as another shape.

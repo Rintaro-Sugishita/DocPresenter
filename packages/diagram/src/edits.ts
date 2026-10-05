@@ -323,6 +323,18 @@ export interface NewShape {
    * path to an image file. It is a look, so it goes in the style section.
    */
   readonly icon?: string | undefined;
+  /**
+   * A part of the library to write it as — `idBox textbox:"…"`.
+   *
+   * Not the same thing as an icon: a part says the shape, the look and the
+   * size in one word the library owns, so nothing of it is written here.
+   */
+  readonly part?: string | undefined;
+  /**
+   * The container to put it in, instead of a pin: the arrangement decides
+   * where it goes, the way it decides for everything else already in there.
+   */
+  readonly into?: { readonly container: string; readonly after?: string | undefined } | undefined;
 }
 
 /**
@@ -333,20 +345,35 @@ export interface NewShape {
  */
 export function addNode(file: DiagramFile, source: string, shape: NewShape): Edit {
   if (!file.body) throw new DiagramEditError('図形を書くセクションが無い');
-  const id = nextShapeId(file, shape.icon === undefined ? shape.shape : 'part');
+  const named = shape.part !== undefined;
+  const id = nextShapeId(file, shape.icon === undefined && !named ? shape.shape : 'part');
   const [open, close] = BRACKETS[shape.shape];
   // A line has nowhere to keep words, so it is written with none — whatever
   // placeholder the caller hands every other shape.
   const text = shape.shape === 'line' ? '' : shape.text;
+  const written = named
+    ? `${shape.part}:${text === '' ? '' : `"${text}"`}`
+    : `${open}${text}${close}`;
   const changes: Change[] = [{
     span: { start: file.body.insertAt, end: file.body.insertAt },
-    text: `\n${file.body.indent}${id} ${open}${text}${close}`,
+    text: `\n${file.body.indent}${id} ${written}`,
   }];
   // Sections the file does not have yet are written once, after everything
   // else: two separate appends would both claim the end of the file.
   const tail: string[] = [];
 
-  if (shape.at) {
+  // Into an arrangement, or at a coordinate — never both: a pin would win
+  // over the container that was just asked to place it.
+  if (shape.into) {
+    const container = file.containers.get(shape.into.container);
+    if (!container) throw new DiagramEditError(`入れ物が見つからない: ${shape.into.container}`);
+    changes.push({
+      span: container.span,
+      text: containerText(container,
+        sliceBytes(source, container.span.start, container.span.end),
+        joined(container, id, shape.into.after)),
+    });
+  } else if (shape.at) {
     const line = formatPlacement(id, shape.at, undefined, idWidth(file));
     if (file.layoutBlock) {
       changes.push({
@@ -377,7 +404,8 @@ export function addNode(file: DiagramFile, source: string, shape: NewShape): Edi
       text: `\n\n${tail.join('\n\n')}\n`,
     });
   }
-  return splice(source, changes, shape.icon === undefined ? '図形を追加' : '部品を追加');
+  return splice(source, changes,
+    shape.icon === undefined && !named ? '図形を追加' : '部品を追加');
 }
 
 /** Removes several shapes as one change. */
@@ -488,6 +516,69 @@ export function setContainerCells(
   const written = containerText(container, text, cells);
   if (written === text) throw new DiagramEditError('並びは既にそうなっている');
   return { span: container.span, text: written, description: '並びを変える' };
+}
+
+/**
+ * The cells with one more name in them.
+ *
+ * A stack takes it after the one that was picked, which is where somebody
+ * looking at that one expects the next thing to appear. A grid takes it into
+ * the first cell nobody is using; with none free the grid grows by a row,
+ * because the alternative is refusing to add anything at all to a full one.
+ */
+function joined(
+  container: Container, id: string, after: string | undefined,
+): readonly (readonly string[])[] {
+  if (container.kind === 'grid') {
+    const row = container.cells.findIndex(cells => cells.includes(EMPTY_CELL));
+    if (row < 0) {
+      const width = Math.max(1, ...container.cells.map(cells => cells.length));
+      return [...container.cells,
+        [id, ...Array.from({ length: width - 1 }, () => EMPTY_CELL)]];
+    }
+    const col = container.cells[row]!.indexOf(EMPTY_CELL);
+    return container.cells.map((cells, r) =>
+      cells.map((cell, c) => (r === row && c === col ? id : cell)));
+  }
+  const held = [...members(container)];
+  const at = after === undefined ? -1 : held.indexOf(after);
+  held.splice(at < 0 ? held.length : at + 1, 0, id);
+  return container.flow === 'down' ? held.map(one => [one]) : [held];
+}
+
+/**
+ * Puts a shape into a container: its name joins the cells, and its pin goes.
+ *
+ * The two go together or not at all. A name in the cells with a pin still on
+ * the shape is the rule "a pin wins" applied to a shape somebody just dropped
+ * into a row — it would land in the arrangement and be drawn somewhere else.
+ */
+export function putIntoContainer(
+  file: DiagramFile, source: string, name: string,
+  cells: readonly (readonly string[])[], id: string,
+): Edit {
+  const container = file.containers.get(name);
+  if (!container) throw new DiagramEditError(`入れ物が見つからない: ${name}`);
+  find(file, id);
+  if (containerOf(file).get(id) === name) throw new DiagramEditError(`${id} は既に ${name} の中`);
+  const text = sliceBytes(source, container.span.start, container.span.end);
+  const changes: Change[] = [
+    { span: container.span, text: containerText(container, text, cells) },
+  ];
+  const pin = file.layout.get(id);
+  if (pin) {
+    // The indent goes with the line, as everywhere else: leaving it behind
+    // would push whatever follows sideways.
+    const indent = /[ \t]*$/.exec(sliceBytes(source, 0, pin.span.start))?.[0] ?? '';
+    changes.push({
+      span: {
+        start: pin.span.start - indent.length,
+        end: Math.min(pin.span.end + 1, byteLength(source)),
+      },
+      text: '',
+    });
+  }
+  return splice(source, changes, '入れ物に入れる');
 }
 
 /**
@@ -644,7 +735,50 @@ export function setItems(
 export function setNodeShape(file: DiagramFile, id: string, shape: ShapeKind): Edit {
   const node = find(file, id);
   if (node.shape === 'group') throw new DiagramEditError('グループの種類は変えられない');
-  return { span: node.span, text: nodeLine(node, shape, node.text), description: '図形の種類を変更' };
+  // The shape's range covers the rows as well, so writing one line over it
+  // would take them with it. Rows belong to a part; stop rather than drop.
+  if (node.items.length > 0) throw new DiagramEditError('行を持つ部品の種類は変えられない');
+  // A shape written as a part stops being one: the part said what it looked
+  // like, and what it looks like is what was just chosen. Said in the
+  // description, because an edit that quietly drops a word is one nobody finds.
+  return {
+    span: node.span, text: nodeLine(node, shape, node.text),
+    description: file.partOf.has(id) ? '部品をやめて図形にする' : '図形の種類を変更',
+  };
+}
+
+/**
+ * Rewrites which part a shape is written as — `select:` becomes `checkbox:`.
+ *
+ * One token on one line, so the words, the rows, the class and everything in
+ * the other two layers stay exactly as they were. A shape that was not written
+ * as a part becomes one, keeping its words: that is the same question asked
+ * from the other side ("make this box a text field").
+ */
+export function setNodePart(file: DiagramFile, source: string, id: string, name: string): Edit {
+  const node = find(file, id);
+  if (node.shape === 'group') throw new DiagramEditError('グループは部品にできない');
+  if (file.partOf.get(id) === name) throw new DiagramEditError(`${id} は既に ${name} である`);
+
+  const whole = sliceBytes(source, node.span.start, node.span.end);
+  const head = whole.slice(0, whole.indexOf('\n') < 0 ? whole.length : whole.indexOf('\n'));
+  const written = head.slice(node.id.length);
+  const gap = /^\s*/.exec(written)?.[0] ?? ' ';
+  const rest = written.slice(gap.length);
+
+  // A part is named by the one token before the colon, so changing it is
+  // changing that token — whatever follows it (a label, the brace that opens
+  // the rows) is this shape's own and stays.
+  const token = file.partOf.has(id) ? /^[A-Za-z0-9_-]+:/.exec(rest) : undefined;
+  const line = token
+    ? `${node.id}${gap}${name}:${rest.slice(token[0].length)}`
+    : `${node.id}${gap}${name}:${node.text === '' ? '' : `"${node.text}"`}`
+      + (node.className === undefined ? '' : `:::${node.className}`);
+  return {
+    span: { start: node.span.start, end: node.span.start + byteLength(head) },
+    text: line,
+    description: token ? '部品を変える' : '部品にする',
+  };
 }
 
 /** Draws a connection. One line at the end of the semantics section. */

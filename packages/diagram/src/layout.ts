@@ -4,7 +4,7 @@
 // automatic layout that moved a shape someone had placed by hand would make
 // the pin meaningless.
 
-import { arrangeContainers, containerOf } from './arrange.js';
+import { arrangeContainers, containerOf, type Hole } from './arrange.js';
 import { lineText, parseRuns, type TextLine } from './inline.js';
 import { DEFAULT_SIZE, type DiagramFile, type Edge, type Node, type Point } from './model.js';
 import { isListing } from './draw/listing.js';
@@ -54,6 +54,14 @@ export interface LaidOutDiagram {
    * the pointer landed on back into a pin the file can hold.
    */
   readonly origin: Point;
+  /**
+   * The empty cells of the grids, in the drawing's own coordinates.
+   *
+   * Nothing is drawn for one. They are here because a cell kept empty is a
+   * place something can be put, and an editor has no other way to find a
+   * place that holds nothing.
+   */
+  readonly holes: readonly Hole[];
 }
 
 const PAD = 16;          // margin around the drawing
@@ -129,8 +137,9 @@ export function layOutDiagram(diagram: DiagramFile): LaidOutDiagram {
 
   // What the containers hold, in the room the containers have. Before parking,
   // because a shape a container placed is not a shape with nowhere to be.
+  const holes: Hole[] = [];
   const hidden = arrangeContainers(
-    diagram, id => sizes.get(id) ?? { width: 0, height: 0, lines: [] }, boxes, diagnostics,
+    diagram, id => sizes.get(id) ?? { width: 0, height: 0, lines: [] }, boxes, diagnostics, holes,
   );
   // A tab page nobody is shown, and anything cut off by a scrolling area, is
   // deliberately not drawn — so it is not a shape with nowhere to be.
@@ -156,7 +165,7 @@ export function layOutDiagram(diagram: DiagramFile): LaidOutDiagram {
   }
 
   const routes = route(diagram, boxes, auto.rank);
-  return normalize(boxes, routes, diagram, diagnostics);
+  return normalize(boxes, routes, diagram, diagnostics, holes);
 }
 
 /**
@@ -568,7 +577,7 @@ function spread(boxes: readonly Box[], axis: 'x' | 'y'): number {
 /** Shifts everything into positive coordinates and reports the canvas size. */
 function normalize(
   boxes: Map<string, Box>, routes: readonly EdgeRoute[],
-  diagram: DiagramFile, diagnostics: string[],
+  diagram: DiagramFile, diagnostics: string[], holes: readonly Hole[],
 ): LaidOutDiagram {
   // Detouring connections and their labels run outside the shapes, so they
   // move the origin and stretch the canvas too.
@@ -621,5 +630,10 @@ function normalize(
     boxes: shifted, routes: shiftedRoutes,
     width: Math.ceil(width), height: Math.ceil(height), order, diagnostics,
     origin: { x: -minX + PAD, y: -minY + PAD },
+    // The same shift the boxes took: an empty cell sits among them, so it has
+    // to be measured in the same numbers.
+    holes: holes.map(hole => ({
+      ...hole, box: { ...hole.box, ...move({ x: hole.box.x, y: hole.box.y }) },
+    })),
   };
 }

@@ -12,7 +12,9 @@ import { renderDiagram, diagramDiagnostics } from '../packages/diagram/dist/draw
 import { withParts } from '../packages/diagram/dist/parts.js';
 import { dropInto } from '../packages/diagram/dist/arrange.js';
 import { rowBoxes, rowTextAt } from '../packages/diagram/dist/draw/listing.js';
-import { setItems } from '../packages/diagram/dist/edits.js';
+import {
+  addNode, putIntoContainer, setItems, setNodePart, setNodeShape,
+} from '../packages/diagram/dist/edits.js';
 import { applyEdit } from '../packages/base/dist/index.js';
 import { parseRuns } from '../packages/diagram/dist/inline.js';
 import { parseTable } from '../packages/markdown/dist/table/parse.js';
@@ -132,6 +134,77 @@ check('dgm §3 L2', 'scroll は入りきらない行を描かない',
   cut.boxes.has('a') && !cut.boxes.has('c'));
 check('dgm §3 L2', '切れているのは間違いではないので注記しない',
   cut.diagnostics.length === 0, cut.diagnostics.join(' / '));
+
+// §3 L2 入れ物に外から入れる
+//
+// 入れ物から出す口（ピン）はあっても、入れる口が無ければ、足した部品は一生
+// 入れ物の外にいることになる。だから同じ手つきで入る。
+const OUTSIDE = ['use "default"', '', 'free {', '  frame [ ]', '  a [あ]', '  b [い]',
+  '  loose [はぐれ]', '}', 'layout {', '  frame @ (0, 0) 300x400',
+  '  loose @ (500, 500) 80x20', '  stack frame (down; gap: 10; pad: 10) { a ; b }',
+  '}'].join(NL);
+const outside = parseDiagram(OUTSIDE);
+const outsideLaid = layOutDiagram(outside);
+const onB = outsideLaid.boxes.get('b');
+const came = dropInto(outside.containers.get('frame'), outsideLaid.boxes.get('frame'),
+  id => outsideLaid.boxes.get(id), 'loose', { x: onB.x + 5, y: onB.y + 2 }, outsideLaid.holes);
+check('dgm §3 L2', '外の図形も入れ物に落とせる',
+  JSON.stringify(came?.cells) === JSON.stringify([['a'], ['loose'], ['b']]),
+  JSON.stringify(came?.cells));
+const cameIn = applyEdit(OUTSIDE,
+  putIntoContainer(outside, OUTSIDE, 'frame', came.cells, 'loose'));
+check('dgm §3 L2', '入れたらピンは消える（並びが置くので）',
+  cameIn.includes('{ a ; loose ; b }') && !/loose\s+@/.test(cameIn));
+check('dgm §3 L2', '入れるのは 1 つのバイト範囲',
+  putIntoContainer(outside, OUTSIDE, 'frame', came.cells, 'loose').span.end > 0);
+
+const GRID = OUTSIDE.replace('stack frame (down; gap: 10; pad: 10) { a ; b }',
+  'grid frame (cols: 1fr, 1fr) { a ; . }');
+const gridded = parseDiagram(GRID);
+const gridLaid = layOutDiagram(gridded);
+check('dgm §3 L2', '格子の空セルは置き場所として分かる',
+  gridLaid.holes.length === 1 && gridLaid.holes[0].col === 1,
+  JSON.stringify(gridLaid.holes.map(one => [one.row, one.col])));
+const intoHole = (at) => dropInto(gridded.containers.get('frame'),
+  gridLaid.boxes.get('frame'), id => gridLaid.boxes.get(id), 'loose', at, gridLaid.holes);
+const hole = gridLaid.holes[0].box;
+check('dgm §3 L2', '格子は空セルに入れる',
+  JSON.stringify(intoHole({ x: hole.x + 4, y: hole.y + 4 })?.cells)
+  === JSON.stringify([['a', 'loose']]));
+check('dgm §3 L2', '格子は埋まったセルには入れない（押し出すことになる）',
+  intoHole({ x: gridLaid.boxes.get('a').x + 4, y: gridLaid.boxes.get('a').y + 4 }) === undefined);
+
+// 足すものは選んだものの次に入る。入れ物が置くので座標は書かれない。
+const grown = applyEdit(OUTSIDE, addNode(outside, OUTSIDE,
+  { shape: 'rect', text: '', part: 'textbox', into: { container: 'frame', after: 'a' } }));
+check('dgm §3 L2', '足した部品は選んだものの次に入る', grown.includes('{ a ; part1 ; b }'),
+  (/\{ a[^}]*\}/.exec(grown) ?? [''])[0]);
+check('dgm §3 L2', '入れ物に足しても座標は増えない',
+  (grown.match(/@ \(/g) ?? []).length === (OUTSIDE.match(/@ \(/g) ?? []).length);
+
+// §3.5 部品を変える
+const WRITTEN = ['use "default"', '', 'free {', '  dept select:"情報システム部"', '}',
+  'layout {', '  dept @ (0, 0)', '}'].join(NL);
+const written = parseDiagram(WRITTEN);
+check('dgm §3.5', '部品を変えるのは名前 1 つの書き換え',
+  applyEdit(WRITTEN, setNodePart(written, WRITTEN, 'dept', 'checkbox'))
+    .includes('  dept checkbox:"情報システム部"'));
+check('dgm §3.5', '部品でない図形は部品になる',
+  applyEdit(WRITTEN.replace('dept select:"情報システム部"', 'dept [情報システム部]'),
+    setNodePart(parseDiagram(WRITTEN.replace('dept select:"情報システム部"', 'dept [情報システム部]')),
+      WRITTEN.replace('dept select:"情報システム部"', 'dept [情報システム部]'), 'dept', 'textbox'))
+    .includes('dept textbox:"情報システム部"'));
+check('dgm §3.5', '図形の種類を変えると部品ではなくなる、と言う',
+  setNodeShape(written, 'dept', 'ellipse').description === '部品をやめて図形にする',
+  setNodeShape(written, 'dept', 'ellipse').description);
+const reachable = withParts(written, () => undefined);
+check('dgm §3.5', '選べる部品は使っているライブラリが決める',
+  reachable.library.size > 20 && reachable.library.has('textbox'),
+  `${reachable.library.size} 個`);
+check('dgm §3.5', 'ライブラリの見出しがそのまま区分になる',
+  reachable.library.get('textbox')?.group === '入力'
+  && reachable.library.get('primary')?.group === 'ボタン',
+  `${reachable.library.get('textbox')?.group} / ${reachable.library.get('primary')?.group}`);
 
 // §3 L2 入れ物の中での並べ替え
 const heldDrop = dgm('free {', '  frame [ ]', '  a [あ]', '  b [い]', '  c [う]', '}',

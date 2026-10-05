@@ -373,6 +373,131 @@ await view.waitForTimeout(250);
 check('行を持たない図形では行のボタンは出ない',
   (await view.getAttribute('.dp-sheet:not([hidden]) .dp-canvas-rows', 'hidden')) !== null);
 
+// --- 部品を変える・入れ物に入れる -------------------------------------------
+//
+// 画面は部品で組み、部品は入れ物で並べる。だから GUI に要るのは 3 つ——別の
+// 部品にする、入れ物に入れる、入れ物の中に足す。どれが欠けてもソースに戻る。
+const screen = view.locator(
+  '.dp-sheet:not([hidden]) .dp-figure[data-path$="search-screen.dgm"] .dp-figure-body');
+await screen.first().click();
+await view.waitForSelector('.dp-canvas-bar');
+const searchSource = async () => {
+  await view.click('.dp-sheet:not([hidden]) .dp-canvas-bar button:text("ソース")');
+  await view.waitForSelector('.dp-block-source');
+  const text = await view.inputValue('.dp-block-source');
+  await view.keyboard.press('Escape');
+  await view.waitForTimeout(250);
+  await screen.first().click();
+  await view.waitForSelector('.dp-canvas-bar');
+  return text;
+};
+/**
+ * 開いたメニューを辿って 1 つ選ぶ。途中の行はホバーで開き、最後だけ押す。
+ * 読み取るのは「最後に開いた一覧」と「その 1 つ前」——区分と、その中身。
+ */
+const rowsOfPanel = (level) => view.evaluate(back => {
+  const panels = [...document.querySelectorAll('.dp-menu')];
+  const one = panels[panels.length - 1 - back];
+  return one === undefined ? [] : [...one.querySelectorAll('button')]
+    .map(button => `${button.textContent.trim()}${button.disabled ? '(×)' : ''}`);
+}, level);
+const chooseFrom = async (opener, path, part) => {
+  await opener();
+  await view.waitForSelector('.dp-menu button');
+  for (const step of path) {
+    await view.hover(`.dp-menu button:text("${step}")`);
+    await view.waitForTimeout(450);
+  }
+  const parts = await rowsOfPanel(0);
+  const groups = await rowsOfPanel(1);
+  await view.click(`.dp-menu button:text("${part}")`);
+  await view.waitForTimeout(450);
+  return { groups, parts };
+};
+
+const rightOn = async (id) => {
+  const box = await view.locator(`.dp-canvas-stage [data-node="${id}"]`).boundingBox();
+  await view.mouse.click(box.x + box.width / 2, box.y + box.height / 2, { button: 'right' });
+  await view.waitForTimeout(250);
+};
+const swapMenu = await chooseFrom(() => rightOn('dept'), ['部品を変える', '入力'], 'textarea');
+check('部品の一覧は、使っているライブラリの見出しで分かれている',
+  swapMenu.groups.includes('入力') && swapMenu.groups.includes('ボタン'),
+  swapMenu.groups.join(' / '));
+check('いま使っている部品は押せない（変わらないので）',
+  swapMenu.parts.includes('select(×)'), swapMenu.parts.join(' '));
+const swapped = await searchSource();
+check('部品を変えると、書き換わるのは名前 1 つ',
+  /^\s*dept\s+textarea:"情報システム部"\s*$/m.test(swapped),
+  (/^\s*dept\s.*$/m.exec(swapped) ?? [''])[0].trim());
+check('書き換えの報せも「部品を変える」', (await view.textContent('#status')).includes('部品を変える'),
+  await view.textContent('#status'));
+
+// 入れ物の中のものを選んで足すと、その次に入る——ピンは付かない
+await view.click('.dp-canvas-stage [data-node="dept"]');
+await view.waitForTimeout(200);
+await chooseFrom(
+  () => view.click('.dp-sheet:not([hidden]) .dp-canvas-bar button:text("＋ 部品")'),
+  ['入力'], 'checkbox');
+const grown = await searchSource();
+check('足した部品は、選んだものの次に入る',
+  /\{ deptLabel ; dept ; part1 \}/.test(grown),
+  (/stack deptField[^}]*\}/.exec(grown) ?? [''])[0]);
+check('入れ物に足しても座標は増えない',
+  (grown.match(/@ \(/g) ?? []).length === 3,
+  `座標を持つ行 ${(grown.match(/@ \(/g) ?? []).length} 本`);
+
+// 外にあるものをドラッグで入れ物に入れる
+// 飾りの矢印は斜めの線なので、押せるのは箱の真ん中——そこを線が通っている。
+const ruleFrom = await view.locator('.dp-canvas-stage [data-node="noteArrow"]').boundingBox();
+const ontoAge = await view.locator('.dp-canvas-stage [data-node="ageLabel"]').boundingBox();
+await view.mouse.move(ruleFrom.x + ruleFrom.width / 2, ruleFrom.y + ruleFrom.height / 2);
+await view.mouse.down();
+await view.mouse.move(ontoAge.x + ontoAge.width / 2, ontoAge.y + 2, { steps: 12 });
+await view.waitForTimeout(200);
+check('入れ物に入る先も、落とす前に見える', (await view.$$('.dp-canvas-drop')).length === 1);
+await view.mouse.up();
+await view.waitForTimeout(450);
+check('入れたと報せる', (await view.textContent('#status')).includes('入れ物に入れる'),
+  await view.textContent('#status'));
+const putIn = await searchSource();
+check('入れ物に入れると、名前が並びに入る',
+  /\{ deptField ; roleField ; noteArrow ; ageField ; lockRow \}/.test(putIn),
+  (/stack filters[^}]*\}/.exec(putIn) ?? [''])[0]);
+check('入れたらピンの行は消える', !/^\s*noteArrow\s+@/m.test(putIn),
+  `座標を持つ行 ${(putIn.match(/@ \(/g) ?? []).length} 本`);
+
+// --- 空の一覧に最初の 1 行 ---------------------------------------------------
+//
+// 行が 0 本の一覧には押す行が無い。足す口まで消すと、GUI からは一生書けない。
+const listRows = text => (/list:\s*\{([^}]*)\}/s.exec(text) ?? ['', ''])[1]
+  .split('\n').map(one => one.trim()).filter(Boolean);
+const pressListRow = async () => {
+  const box = await view.locator('.dp-canvas-stage [data-node="list"]').boundingBox();
+  await view.mouse.click(box.x + 40, box.y + 18);
+  await view.waitForTimeout(200);
+};
+await pressListRow();
+check('リストボックスの行も押せる',
+  (await view.getAttribute('.dp-sheet:not([hidden]) .dp-canvas-rows', 'hidden')) === null);
+for (let i = 0; i < 8; i++) {
+  await view.click('.dp-sheet:not([hidden]) .dp-canvas-rows button[title="この行を消す"]');
+  await view.waitForTimeout(320);
+}
+const emptied = await searchSource();
+check('行は全部消せる', listRows(emptied).length === 0 && /list\s+list:\s*$/m.test(emptied),
+  (/^\s*list\s.*$/m.exec(emptied) ?? [''])[0].trim());
+await view.click('.dp-canvas-stage [data-node="list"]');
+await view.waitForTimeout(250);
+check('行が無くても、足す口だけは出ている',
+  (await view.getAttribute('.dp-sheet:not([hidden]) .dp-canvas-rows', 'hidden')) === null
+  && await view.isEnabled('.dp-sheet:not([hidden]) .dp-canvas-rows button[title="最初の行を足す"]')
+  && !(await view.isEnabled('.dp-sheet:not([hidden]) .dp-canvas-rows button[title="この行を消す"]')));
+await view.click('.dp-sheet:not([hidden]) .dp-canvas-rows button[title="最初の行を足す"]');
+await view.waitForTimeout(400);
+check('押せば最初の 1 行が書かれる', listRows(await searchSource()).length === 1,
+  listRows(await searchSource()).join(' / '));
+
 // --- 「＋ 部品」の一覧 -------------------------------------------------------
 //
 // 絵を 10 枚足したら、一覧が画面に収まらなくなった。見出しで区切っても、下まで

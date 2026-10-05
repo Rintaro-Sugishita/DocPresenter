@@ -47,7 +47,14 @@ export function partsOf(diagram: DiagramFile, read: PartReader): ReadonlyMap<str
       gather(parseDiagram(source));
       open.pop();
     }
-    for (const [name, part] of file.parts) found.set(name, part);
+    for (const [name, part] of file.parts) {
+      // A library that overrides one part writes only what differs, heading
+      // and all. Keeping the heading it had means the part stays where a
+      // reader of the set expects it rather than falling out of its group.
+      const was = found.get(name);
+      found.set(name, part.group === undefined && was?.group !== undefined
+        ? { ...part, group: was.group } : part);
+    }
   };
 
   gather(diagram);
@@ -110,7 +117,7 @@ export function withParts(diagram: DiagramFile, read: PartReader): DiagramFile {
     partSizes.set(id, { width: part.width, height: part.height });
   }
 
-  return { ...diagram, nodes, style, layout, partSizes };
+  return { ...diagram, nodes, style, layout, partSizes, library: parts };
 }
 
 /**
