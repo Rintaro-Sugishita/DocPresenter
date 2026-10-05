@@ -19,6 +19,17 @@ Git の差分がレビューになる設計書のための道具。文章は Mar
 
 ## 動かす
 
+Node 22 以上。**PDF を書くときだけ**、この機械の Chromium 系ブラウザ（Chrome / Edge /
+Chromium のどれか）と日本語フォントを使う——組版はブラウザにさせ、字は PDF に埋め込む
+ためである。どちらも既定の置き場所を順に探し、見つからなければ**どこを探したかを言って
+HTML と PPTX だけを書く**（黙って PDF を落とさない）。別の場所にあるなら名前で渡す。
+
+```
+node tools/build.mjs --in sample --chromium "C:\Program Files\Google\Chrome\Application\chrome.exe"
+node tools/build.mjs --in sample --font "C:\Windows\Fonts\YuGothR.ttc"
+# 環境変数 DOCPRESENTER_CHROMIUM / DOCPRESENTER_FONT でも同じ
+```
+
 ```
 npm install
 npm test                        # 単体テスト

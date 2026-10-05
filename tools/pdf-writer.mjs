@@ -4,14 +4,84 @@
 // to a writer and takes back bytes. This writer opens the same HTML the HTML
 // artifact is made of, lets Chromium lay it out, reads the result as a page
 // plan, and writes the PDF from that. See design/pdf-engine.md §6.
-import { readFileSync, mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, mkdirSync, writeFileSync } from 'node:fs';
+import { platform } from 'node:process';
 import { chromium } from 'playwright-core';
 import { rolldown } from 'rolldown';
 import { renderPage } from '../packages/build/dist/index.js';
 import { createRequire } from 'node:module';
 import { createSubsetter, writePdf } from '../packages/pdf/dist/index.js';
 
-const CHROMIUM = '/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
+/**
+ * Where to find a Chromium to measure with.
+ *
+ * The browser is not ours to ship — playwright-core carries no binary — so the
+ * answer is whatever this machine already has. Tried in order, and the first
+ * that exists wins; `--chromium` on the command line beats all of them.
+ *
+ * A path that is wrong is better than a silent fallback: when none is found
+ * the error names the flag, because "PDF 出力に失敗" with no path in it is a
+ * message nobody can act on.
+ */
+const CHROMIUM_PATHS = {
+  linux: [
+    '/opt/pw-browsers/chromium-1194/chrome-linux/chrome',
+    '/usr/bin/chromium', '/usr/bin/chromium-browser', '/usr/bin/google-chrome',
+    '/snap/bin/chromium',
+  ],
+  darwin: [
+    '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+    '/Applications/Chromium.app/Contents/MacOS/Chromium',
+    '/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge',
+  ],
+  win32: [
+    'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+    'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
+    'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
+    'C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe',
+  ],
+};
+
+/**
+ * Japanese faces to embed, when the ones the theme names are not installed.
+ *
+ * The PDF carries its own fonts (design/pdf-engine.md), so a machine with no
+ * Japanese face cannot write one at all. Every desktop has one; they are just
+ * called different things.
+ */
+const FALLBACK_PATHS = {
+  linux: [
+    '/usr/share/fonts/truetype/fonts-japanese-gothic.ttf',
+    '/usr/share/fonts/opentype/ipafont-gothic/ipagp.ttf',
+    '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',
+  ],
+  darwin: [
+    '/System/Library/Fonts/ヒラギノ角ゴシック W3.ttc',
+    '/System/Library/Fonts/Hiragino Sans GB.ttc',
+    '/Library/Fonts/Arial Unicode.ttf',
+  ],
+  win32: [
+    'C:\\Windows\\Fonts\\YuGothR.ttc',
+    'C:\\Windows\\Fonts\\meiryo.ttc',
+    'C:\\Windows\\Fonts\\msgothic.ttc',
+  ],
+};
+
+/** The first of a list that is actually on this machine. */
+function firstThere(paths) {
+  return paths.find(path => existsSync(path));
+}
+
+export function findChromium(override) {
+  const found = override ?? process.env.DOCPRESENTER_CHROMIUM
+    ?? firstThere(CHROMIUM_PATHS[platform] ?? CHROMIUM_PATHS.linux);
+  if (!found) {
+    throw new Error('PDF を書くための Chromium が見つからない。'
+      + 'Chrome か Edge を入れるか、--chromium <path> で場所を教えてください'
+      + '（環境変数 DOCPRESENTER_CHROMIUM でも可）');
+  }
+  return found;
+}
 /**
  * The measuring code runs inside the page, so it is bundled once and injected.
  * It is the same module the browser and VS Code paths will use.
@@ -48,10 +118,8 @@ const FACES = {
   // theme means by --font-mono.
   mono:        { file: `${NOTO}/NotoSansCJK-Regular.ttc`,  index: 5, name: 'NotoSansMonoCJKjp-Regular' },
 };
-/** When the product's own fonts are not installed. TrueType, so no subsetter is needed. */
-const FALLBACK_FILE = '/usr/share/fonts/truetype/fonts-japanese-gothic.ttf';
-
-function fonts(override) {
+function fonts(given) {
+  const override = given ?? process.env.DOCPRESENTER_FONT;
   const read = path => { try { return new Uint8Array(readFileSync(path)); } catch { return undefined; } };
   const set = {};
   const cache = new Map();
@@ -60,14 +128,25 @@ function fonts(override) {
     const path = override ?? face.file;
     if (!cache.has(path)) cache.set(path, read(path));
     const bytes = cache.get(path);
+    // A font that was named and cannot be read is a mistake, not a reason to
+    // quietly write the PDF in some other face: the writing would come out in
+    // a font nobody chose, and the report would be the only hint.
+    if (bytes === undefined && override !== undefined) {
+      throw new Error(`指定されたフォントが読めない: ${override}`);
+    }
     if (bytes === undefined) { missing = true; break; }
     set[style] = { bytes, name: face.name, faceIndex: override ? 0 : face.index };
   }
   if (!missing) return { set, name: override ?? 'Noto CJK JP' };
 
-  const bytes = read(FALLBACK_FILE);
-  if (!bytes) throw new Error('埋め込むフォントが見つからない');
-  const one = { bytes, name: FALLBACK_FILE.slice(FALLBACK_FILE.lastIndexOf('/') + 1) };
+  const fallback = firstThere(FALLBACK_PATHS[platform] ?? FALLBACK_PATHS.linux);
+  const bytes = fallback === undefined ? undefined : read(fallback);
+  if (!bytes) {
+    throw new Error('PDF に埋め込む日本語フォントが見つからない。'
+      + '--font <ttf/ttc のパス> で指定してください'
+      + '（環境変数 DOCPRESENTER_FONT でも可）');
+  }
+  const one = { bytes, name: fallback.slice(Math.max(fallback.lastIndexOf('/'), fallback.lastIndexOf('\\')) + 1) };
   return {
     set: { body: one, bodyBold: one, heading: one, headingBold: one, mono: one },
     name: one.name,
@@ -86,7 +165,7 @@ async function subsetter() {
 
 export async function createPdfWriter(options = {}) {
   const script = await measureScript();
-  const browser = await chromium.launch({ executablePath: options.chromium ?? CHROMIUM });
+  const browser = await chromium.launch({ executablePath: findChromium(options.chromium) });
   const { set, name } = fonts(options.font);
   const subset = await subsetter();
 

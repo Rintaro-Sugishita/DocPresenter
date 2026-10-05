@@ -3,6 +3,11 @@
 // over a directory handle.
 //
 // Usage: node tools/build.mjs [--in <workspace>] [--out <dir>] [root.md ...]
+//                             [--chromium <path>] [--font <ttf/ttc>]
+//
+// The PDF is laid out by a browser and carries its own fonts, so those two are
+// this machine's business rather than the document's: both are found by
+// looking in the usual places, and named here when they are somewhere else.
 //
 // The workspace is the directory the documents live in, and every path the
 // build sees is relative to it. Ours is `sample`; a real one is the repository
@@ -30,6 +35,9 @@ const outDir = option('--out', 'out/build');
 // 何と比べるか。コミット・タグ・ブランチ、またはフォルダ（design/diff-marking.md §2）
 const diffFrom = option('--diff-from', undefined);
 const showRemoved = option('--show-removed', undefined);
+// PDF を書くのに要る、この機械のもの。見つからなければ既定の置き場所を順に探す。
+const chromiumAt = option('--chromium', undefined);
+const fontAt = option('--font', undefined);
 const inside = path => join(root, path);
 
 const files = [];
@@ -107,7 +115,19 @@ const commit = (() => {
 
 const wantsPdf = files.some(path => /\.md$/i.test(path)
   && (workspace.read(path) ?? '').includes('pdf'));
-const pdf = wantsPdf ? await createPdfWriter() : undefined;
+// A machine with no browser or no Japanese font can still build the HTML and
+// the PPTX. Saying why the PDF is missing, and failing the run, beats both
+// stopping everything and quietly leaving one format out.
+const pdf = await (async () => {
+  if (!wantsPdf) return undefined;
+  try {
+    return await createPdfWriter({ chromium: chromiumAt, font: fontAt });
+  } catch (error) {
+    console.log(`  ✗ PDF は書けない: ${error.message}`);
+    process.exitCode = 1;
+    return undefined;
+  }
+})();
 
 const only = argv.map(path => relative(root, resolve(path)).split('\\').join('/'));
 const result = await build(workspace, {
