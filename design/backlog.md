@@ -40,7 +40,7 @@ PDF の読み返し 21 項目（ブラウザ生成の読み返し 14 項目を�
 | 8 | ~~**ビルドパイプライン**~~ → **実装済み**（[§6.5](build-model.md)）。残りは出力形式を足すだけ | [ビルドモデル](build-model.md) | R4〜R6 | ルート探索・参照閉包・診断・HTML の書き出し・文書の取り込み |
 | 9 | **CLI** | [提供形態](platforms.md) | R8 | サーバ無しで全機能が動く経路 |
 | 10 | **app-web** | [提供形態 §3](platforms.md) | R8 | フォルダを開く / ZIP で持ち帰る / 認証中継越しのリモート Git。**PDF はデモ画面のボタンで既に出せる**（[§7.7](pdf-engine.md)） |
-| 11 | **app-vscode** | [提供形態](platforms.md) / [設定モデル](settings-model.md) | R8 | 設定は `contributes.configuration` に寄せる |
+| 11 | **app-vscode**：**v1 実装済み**（カスタムエディタ・ビルドのコマンド・`contributes.configuration`）。残りは **WebView で組版して PDF**と、設定の追加 | [提供形態](platforms.md) / [設定モデル](settings-model.md) | R8 | 編集は `WorkspaceEdit`。VS Code の取り消し・未保存・git がそのまま効く |
 | 11b | **作図単独の器（Web / VS Code）** | [パッケージ分割 §6](packaging.md) | R2 R8 | パッケージは分離済み。公開名・ライセンス・器が未決 |
 | 12 | **コメント収集サーバ** | [サーバの位置づけ §8](server-architecture.md) | R10 | 認証中継と同じバイナリ。後から足せる |
 | 13 | **表の残り**：セル内改行 | [表モデル §7.6](table-model.md) | R7 | 結合・範囲選択・クリップボードは実装済み |

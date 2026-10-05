@@ -1,0 +1,54 @@
+{
+  "name": "docpresenter",
+  "displayName": "DocPresenter",
+  "description": "Git の差分がレビューになる設計書を、VS Code の中で書く",
+  "version": "0.1.0",
+  "publisher": "docpresenter",
+  "private": true,
+  "license": "SEE LICENSE IN legal/LICENSE.draft.md",
+  "engines": { "vscode": "^1.95.0" },
+  "categories": ["Other"],
+  "main": "./media/extension.cjs",
+  "contributes": {
+    "customEditors": [
+      {
+        "viewType": "docpresenter.sheets",
+        "displayName": "DocPresenter",
+        "selector": [{ "filenamePattern": "*.md" }],
+        "priority": "option"
+      }
+    ],
+    "commands": [
+      { "command": "docpresenter.openEditor", "title": "DocPresenter: この文書を開く", "category": "DocPresenter" },
+      { "command": "docpresenter.build", "title": "DocPresenter: ビルド（HTML / PPTX）", "category": "DocPresenter" }
+    ],
+    "menus": {
+      "editor/title": [
+        { "command": "docpresenter.openEditor", "when": "resourceExtname == .md", "group": "navigation" }
+      ]
+    },
+    "configuration": {
+      "title": "DocPresenter",
+      "properties": {
+        "docpresenter.commitKey": {
+          "type": "string",
+          "enum": ["ctrl-enter", "enter", "shift-enter", "alt-enter"],
+          "default": "ctrl-enter",
+          "description": "開いているブロックを確定するキー。ほかの Enter は改行になる。"
+        },
+        "docpresenter.outDir": {
+          "type": "string",
+          "default": "out/build",
+          "description": "ビルドの成果物を書くフォルダ（作業場からの相対）。"
+        }
+      }
+    }
+  },
+  "dependencies": {
+    "@docpresenter/base": "*",
+    "@docpresenter/build": "*",
+    "@docpresenter/diagram": "*",
+    "@docpresenter/editor": "*",
+    "@docpresenter/markdown": "*"
+  }
+}

@@ -16,6 +16,7 @@ Git の差分がレビューになる設計書のための道具。文章は Mar
 | `packages/pptx` | PPTX：デッキ・DrawingML・書庫 | 製品の一部 |
 | `packages/build` | ビルド：ルート探索・参照閉包・診断・成果物の書き出し | 製品の一部 |
 | `packages/editor` | 設計書の編集 UI：シート・本文ブロック・表のグリッド | 製品の一部 |
+| `packages/app-vscode` | VS Code 拡張：カスタムエディタ・ビルドのコマンド | 製品の一部 |
 
 ## 動かす
 
@@ -42,9 +43,25 @@ node tools/build.mjs --in sample   # サンプルをビルド     → out/build/
 node tools/build.mjs --in sample --diff-from HEAD~3   # 前の版からの変更に印を付ける
 node tools/pptx-back.mjs out/build/auth-overview.pptx --in sample   # 直された図を読み戻す
 
+node tools/build-vscode.mjs        # VS Code 拡張             → packages/app-vscode/media/
+
 node tools/check-spec.mjs          # 仕様と実装が一致しているか
 for f in tools/check-*.mjs; do node "$f"; done   # 全検証（上の 3 つを先に走らせておく）
 ```
+
+## VS Code で使う
+
+```
+npx tsc --build && node tools/build-vscode.mjs
+cd packages/app-vscode && npx @vscode/vsce package --no-dependencies
+code --install-extension docpresenter-0.1.0.vsix
+```
+
+`.md` を開いて「DocPresenter: この文書を開く」。編集は **1 操作 ＝ 1 つのバイト範囲**の
+`WorkspaceEdit` として渡すので、**取り消し・未保存の点・git の差分は VS Code のものがそのまま効く**。
+開発中はリポジトリを VS Code で開いて **F5**（`tools/build-vscode.mjs` が `.vscode/launch.json` も作る）。
+この版の PDF は CLI（`node tools/build.mjs`）が書く。詳しくは
+[`packages/app-vscode/README.md`](packages/app-vscode/README.md)。
 
 `out/canvas-app.html` は base ＋ diagram だけで作られている。文書エンジンは 1 バイトも入っていない
 （`out/canvas/index.html` はそれを 1 枚に畳んだもの）。
