@@ -5,9 +5,9 @@
 //
 // **Nothing the author already has is overwritten.** A file that exists is
 // left alone and named in the report; the files an agent reads its
-// instructions from (`CLAUDE.md`, `AGENTS.md`), `.gitignore` and
-// `.gitattributes` are appended to, once — each checks for what it would add,
-// so running the command again adds nothing.
+// instructions from (`CLAUDE.md`, `AGENTS.md`) and `.gitignore` are appended
+// to, once — each checks for what it would add, so running the command again
+// adds nothing.
 
 export interface ScaffoldAnswers {
   /** The first document's file name, without `.md`: `auth-design`. */
@@ -82,27 +82,10 @@ export function planScaffold(
   const top = answers.outDir.replace(/^\.?\/+/, '').split('/')[0]!;
   append('.gitignore', `# DocPresenter の書き出し\n${top}/\n`,
     text => text.split(/\r?\n/).some(line => line.trim().replace(/^\/|\/$/g, '') === top));
-  // A CRLF checkout (core.autocrlf on Windows) shifts the byte ranges the
-  // editor writes back, so the files it edits are checked out with LF.
-  append('.gitattributes', LINE_ENDINGS, text => {
-    const lf = text.split(/\r?\n/)
-      .map(line => line.trim().split(/\s+/))
-      .filter(parts => parts.includes('eol=lf'))
-      .map(parts => parts[0]);
-    return lf.includes('*') || LF_KINDS.every(kind => lf.includes(`*.${kind}`));
-  });
 
   return { files, kept, document };
 }
 
-/** The kinds the editor writes back into by byte range. */
-const LF_KINDS = ['md', 'dgm', 'table', 'mmd'];
-
-const LINE_ENDINGS = [
-  '# DocPresenter: 編集の位置がずれないよう、設計書は LF で取り出す',
-  ...LF_KINDS.map(kind => `${`*.${kind}`.padEnd(8)}text eol=lf`),
-  '',
-].join('\n');
 
 function firstDocument(answers: ScaffoldAnswers): string {
   return [

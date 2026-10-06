@@ -34,7 +34,6 @@ describe('作業場の初期化', () => {
       '.docpresenter/guide.md',
       '.docpresenter/spec/dgm.md',
       '.docpresenter/spec/table.md',
-      '.gitattributes',
       '.gitignore',
       'AGENTS.md',
       'CLAUDE.md',
@@ -82,19 +81,6 @@ describe('作業場の初期化', () => {
     const again = plan(once);
     expect(again.files.filter(file => file.mode === 'append')).toEqual([]);
     expect(again.kept).toEqual(expect.arrayContaining(['CLAUDE.md', 'AGENTS.md', '.gitignore']));
-  });
-
-  it('設計書を LF で取り出すよう .gitattributes に足す', () => {
-    const once = after({ '.gitattributes': '*.png binary\n' });
-    expect(once['.gitattributes']).toMatch(/^\*\.png binary\n\n# DocPresenter/);
-    for (const kind of ['md', 'dgm', 'table', 'mmd']) {
-      expect(once['.gitattributes']).toMatch(new RegExp(`^\\*\\.${kind}\\s+text eol=lf$`, 'm'));
-    }
-    expect(plan(once).kept).toContain('.gitattributes');
-  });
-
-  it('既に全体が LF なら、.gitattributes に足さない', () => {
-    expect(plan({ '.gitattributes': '* text=auto eol=lf\n' }).kept).toContain('.gitattributes');
   });
 
   it('書き出し先が既に Git から外れていれば、.gitignore に足さない', () => {

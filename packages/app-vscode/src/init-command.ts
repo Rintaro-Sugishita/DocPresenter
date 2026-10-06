@@ -60,7 +60,7 @@ export async function initWorkspace(context: vscode.ExtensionContext): Promise<v
   const candidates = [
     `docs/${name}.md`, `docs/${name}/revision.md`, 'docs/assets/.gitkeep', 'shared/glossary.table',
     '.docpresenter/guide.md', ...SPECS.map(spec => `.docpresenter/spec/${spec}`),
-    'CLAUDE.md', 'AGENTS.md', '.gitignore', '.gitattributes',
+    'CLAUDE.md', 'AGENTS.md', '.gitignore',
   ];
   const existing = new Map<string, string>();
   for (const path of candidates) {

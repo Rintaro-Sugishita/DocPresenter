@@ -16,11 +16,9 @@ shared/glossary.table          複数の文書から引く用語集
 .docpresenter/spec/            .dgm・.table・ラベル内書式の形式の仕様
 CLAUDE.md / AGENTS.md          guide.md を読むよう指示する節を追記（無ければ作る）
 .gitignore                     書き出し先（out/）を追記
-.gitattributes                 .md・.dgm・.table・.mmd を LF で取り出す設定を追記
 ```
 
-追記は一度だけなので、もう一度実行しても増えない。`.gitattributes` は、Windows の `core.autocrlf` で
-設計書が CRLF になると、編集を書き戻す位置がずれるためである。
+追記は一度だけなので、もう一度実行しても増えない。
 
 ## 開く
 
