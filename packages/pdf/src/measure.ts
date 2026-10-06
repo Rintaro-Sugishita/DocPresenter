@@ -115,6 +115,8 @@ interface MeasuredBlock {
   readonly forced: boolean;
   /** Front matter: its pages are numbered apart from the body's. */
   readonly front: boolean;
+  /** The cover: a page that carries no foot. */
+  readonly cover: boolean;
   readonly items: readonly Held[];
   readonly fragments: readonly Fragment[];
 }
@@ -246,6 +248,10 @@ function layOut(root: HTMLElement, options: MeasureOptions): LaidOut {
   let bodyAt = 0;
   const labels = isFront.map(front => front ? roman(++frontAt) : String(++bodyAt));
   const feet = isFront.map((front, i) => front ? labels[i]! : `${labels[i]} / ${bodyTotal}`);
+  // A cover is counted, as a book counts it, but no number is printed on it.
+  const coverBlocks = new Set(blocks.filter(block => block.cover).map(block => block.index));
+  const isCover = sheets.map(sheet => sheet.fragments.length > 0
+    && sheet.fragments.every(one => coverBlocks.has(one.block)));
 
   const byBlock = new Map(blocks.map(block => [block.index, block]));
   // How the theme writes "continued". Empty means the theme does not want it.
@@ -273,7 +279,10 @@ function layOut(root: HTMLElement, options: MeasureOptions): LaidOut {
     });
 
     return {
-      items: [...placed.map(toPoints2), foot(setup, feet[index]!, options)],
+      items: [
+        ...placed.map(toPoints2),
+        ...(isCover[index] ? [] : [foot(setup, feet[index]!, options)]),
+      ],
       ...(sheet.orientation === 'landscape'
         ? { width: setup.width, height: setup.height } : {}),
     };
@@ -389,6 +398,9 @@ function pass(
   root.style.maxWidth = 'none';
   root.style.margin = '0';
   root.style.padding = '0';
+  // Said to the theme, so it can lay out what only paper has — a cover that
+  // fills its page — without the screen getting one too.
+  root.classList.add('dp-paged');
 
   const origin = root.getBoundingClientRect();
   const left = origin.left + window.scrollX;
@@ -407,8 +419,12 @@ function pass(
       measured.push({
         index: at,
         orientation,
-        forced: boundary && n === 0 && at > 0,
+        // A sheet starts a page; so does anything the theme says starts one —
+        // the contents after the cover, for one.
+        forced: (boundary && n === 0 && at > 0)
+          || (at > 0 && getComputedStyle(element).breakBefore === 'page'),
         front: section.classList.contains('dp-front'),
+        cover: element.classList.contains('dp-cover'),
         items: collect(element, left, top, orientation === 'portrait' ? diagnostics : [])
           .map(({ item, top: y, cell }) => ({
             item, top: y, bottom: y + heightOf(item), ...(cell ? { cell } : {}),
@@ -585,6 +601,11 @@ function lineBoxes(element: Element, left: number, top: number): { top: number; 
   for (const node of textNodes(element)) {
     const range = document.createRange();
     for (let i = 0; i < node.length; i++) {
+      // Only what is drawn says where a line is. The line break at the end of
+      // a line of code is measured where the next line starts, and taken for a
+      // line of its own it cut the block between the glyphs and their baseline:
+      // the background of the next piece was then painted over the text.
+      if (/\s/.test(node.data[i]!)) continue;
       range.setStart(node, i);
       range.setEnd(node, i + 1);
       const rect = range.getBoundingClientRect();

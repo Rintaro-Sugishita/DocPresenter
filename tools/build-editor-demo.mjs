@@ -94,6 +94,7 @@ import { renderDocument } from '@docpresenter/markdown';
 import { renderPage } from '@docpresenter/build';
 import { measure, writePdf } from '@docpresenter/pdf';
 import { COMMIT_KEYS, COMMIT_KEY_LABEL, DEFAULT_SETTINGS, mountSheetView } from '@docpresenter/editor';
+import { drawMermaid } from '@docpresenter/editor/mermaid';
 
 const FILES = ${JSON.stringify(files)};
 const IMAGES = ${JSON.stringify(images)};
@@ -170,6 +171,7 @@ const view = mountSheetView({
     say(where + edit.description + '　' + edit.span.start + '〜' + edit.span.end + ' バイトを書き換え', 'ok');
   },
   onError: message => say(message, 'refused'),
+  decorate: page => { void drawMermaid(page); },
 });
 document.getElementById('source').textContent = view.source;
 
@@ -355,6 +357,8 @@ pdfButton.addEventListener('click', async () => {
     const open = page.indexOf('<body>') + '<body>'.length;
     stage.innerHTML = page.slice(open, page.lastIndexOf('</body>'));
     document.body.append(stage);
+    // Mermaid は描き終わってから測る。測ってから描くと、図の場所が空白のまま組まれる。
+    await drawMermaid(stage);
 
     const raw = doc.frontmatter.raw;
     const foot = [raw.document, raw.version && ('版 ' + raw.version)].filter(Boolean).join('　');

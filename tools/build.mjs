@@ -17,6 +17,7 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import { dirname, join, relative, resolve } from 'node:path';
 import { build } from '../packages/build/dist/index.js';
 import { createPdfWriter } from './pdf-writer.mjs';
+import { createMermaidPainter, mermaidScript } from './mermaid-script.mjs';
 
 const SKIP = new Set(['node_modules', '.git', 'dist', 'out']);
 const BINARY = /\.(png|jpe?g|gif|webp)$/i;
@@ -115,13 +116,29 @@ const commit = (() => {
 
 const wantsPdf = files.some(path => /\.md$/i.test(path)
   && (workspace.read(path) ?? '').includes('pdf'));
+// Mermaid is drawn by the page itself; the script is carried only by the pages
+// that have a Mermaid block. A slide needs it drawn as a picture, here.
+const hasMermaid = files.some(path => /\.(mmd|mermaid)$/i.test(path)
+  || (/\.md$/i.test(path) && /^ {0,3}(`{3,}|~{3,})\s*mermaid/m.test(workspace.read(path) ?? '')));
+const script = hasMermaid ? await mermaidScript() : undefined;
+const wantsPptx = files.some(path => /\.md$/i.test(path)
+  && (workspace.read(path) ?? '').includes('pptx'));
+const painter = await (async () => {
+  if (!script || !wantsPptx) return undefined;
+  try {
+    return await createMermaidPainter({ chromium: chromiumAt, script });
+  } catch (error) {
+    console.log(`  ! Mermaid の図をスライドに描けない: ${error.message}`);
+    return undefined;
+  }
+})();
 // A machine with no browser or no Japanese font can still build the HTML and
 // the PPTX. Saying why the PDF is missing, and failing the run, beats both
 // stopping everything and quietly leaving one format out.
 const pdf = await (async () => {
   if (!wantsPdf) return undefined;
   try {
-    return await createPdfWriter({ chromium: chromiumAt, font: fontAt });
+    return await createPdfWriter({ chromium: chromiumAt, font: fontAt, mermaidScript: script });
   } catch (error) {
     console.log(`  ✗ PDF は書けない: ${error.message}`);
     process.exitCode = 1;
@@ -132,6 +149,8 @@ const pdf = await (async () => {
 const only = argv.map(path => relative(root, resolve(path)).split('\\').join('/'));
 const result = await build(workspace, {
   ...(pdf ? { writers: { pdf: pdf.write } } : {}),
+  ...(script ? { mermaidScript: script } : {}),
+  ...(painter ? { mermaidPicture: painter.picture } : {}),
   outDir,
   // The workspace's own theme wins; otherwise the one the product ships.
   style: theme => workspace.read(`themes/${theme}/theme.css`)
@@ -161,5 +180,6 @@ for (const artifact of result.artifacts) {
   for (const message of artifact.report?.diagnostics ?? []) console.log(`  ! ${message}`);
 }
 await pdf?.close();
+await painter?.close();
 console.log(`ルート ${result.graph.roots.length} 件 / 成果物 ${result.artifacts.length} 件`);
 if (result.diagnostics.some(d => d.severity === 'error')) process.exitCode = 1;

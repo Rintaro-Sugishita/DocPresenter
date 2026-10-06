@@ -5,7 +5,7 @@
 // `shapes.ts` for why.
 
 import { zipSync, strToU8 } from 'fflate';
-import { EMU_PER_INCH, SLIDE, type Block, type Deck, type Slide } from './model.js';
+import { EMU_PER_INCH, EMU_PER_PT, SLIDE, type Block, type Deck, type Slide } from './model.js';
 import {
   drawing, picture, resetIds, table, textBox, type Frame, type Placement,
 } from './shapes.js';
@@ -103,15 +103,16 @@ function slideBody(
   }
 
   // One thing per slide is the shape this output is for; when a slide carries
-  // more, they share the height in the order they were written.
+  // more, they share the height in the order they were written — text as much
+  // as its lines need, and a picture, a drawing or a table the rest.
   const blocks = slide.blocks;
+  const heights = shares(blocks, frame.height);
   let y = frame.y;
   for (const [index, block] of blocks.entries()) {
-    const height = Math.round(frame.height / blocks.length);
+    const height = heights[index]!;
     const own: Frame = { x: frame.x, y, width: frame.width, height };
     parts.push(blockXml(block, own, used, media, placements));
     y += height;
-    void index;
   }
 
   const foot = slide.foot ? `${slide.foot}　${number} / ${total}` : `${number} / ${total}`;
@@ -123,12 +124,53 @@ function slideBody(
   return parts.join('');
 }
 
+/** The point size text is set in: prose at 14, code a size smaller. */
+const PROSE_SIZE = 14;
+const CODE_SIZE = 11;
+/** The least a block that is not text keeps, as a share of the slide. */
+const FIGURE_SHARE = 0.4;
+
+function isCode(block: Block): boolean {
+  return block.kind === 'text' && block.paragraphs.length > 0
+    && block.paragraphs.every(runs => runs.length === 0 || runs.every(run => run.code));
+}
+
+/** The height a block of text needs at its own size, in EMU. */
+function needed(block: Block): number | undefined {
+  if (block.kind !== 'text') return undefined;
+  const size = isCode(block) ? CODE_SIZE : PROSE_SIZE;
+  return Math.round((block.paragraphs.length * size * 1.3 + 10) * EMU_PER_PT);
+}
+
+/**
+ * How the height of a slide is shared. Text takes what its lines need; what is
+ * left goes to the pictures, drawings and tables in equal parts — but never so
+ * little that a figure becomes a thumbnail, in which case the text gives way.
+ */
+function shares(blocks: readonly Block[], height: number): number[] {
+  const wants = blocks.map(needed);
+  const figures = wants.filter(want => want === undefined).length;
+  const text = wants.reduce<number>((sum, want) => sum + (want ?? 0), 0);
+  const room = figures === 0 ? height : height * (1 - FIGURE_SHARE);
+  const scale = text > room ? room / text : 1;
+  const textHeights = wants.map(want => (want === undefined ? 0 : Math.round(want * scale)));
+  const left = height - textHeights.reduce((a, b) => a + b, 0);
+  return wants.map((want, i) => (want === undefined ? Math.round(left / figures) : textHeights[i]!));
+}
+
 function blockXml(
   block: Block, frame: Frame, used: { id: number; target: string }[], media: Media,
   placements: Placement[],
 ): string {
   switch (block.kind) {
-    case 'text':   return textBox(block, frame, 14);
+    case 'text': {
+      // Text given less room than it needs is set smaller rather than spilling
+      // over whatever is placed below it.
+      const size = isCode(block) ? CODE_SIZE : PROSE_SIZE;
+      const want = needed(block) ?? frame.height;
+      const fitted = want > frame.height ? Math.max(7, size * (frame.height / want)) : size;
+      return textBox(block, frame, Math.round(fitted * 2) / 2);
+    }
     case 'table':  return table(block, frame, 10);
     case 'drawing': return drawing(block, frame, placement => placements.push(placement));
     case 'picture': {

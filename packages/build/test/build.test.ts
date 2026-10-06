@@ -302,3 +302,55 @@ describe('web 上の画像', () => {
     expect(page).not.toContain('style="width');
   });
 });
+
+describe('書き出しのボタン（文書と形式を名指しする）', () => {
+  it('output: の無い文書も、形式を言えば書ける', async () => {
+    const result = await build(workspace({ 'note.md': '# メモ\n', ...THEME }), {
+      only: ['note.md'], formats: ['html'],
+    });
+    expect(result.artifacts.map(a => a.path)).toEqual(['dist/note.html']);
+  });
+
+  it('形式を言えば output: より優先する', async () => {
+    const result = await build(workspace({ 'a.md': root('# A', '[html, pptx]'), ...THEME }), {
+      only: ['a.md'], formats: ['pptx'],
+    });
+    expect(result.artifacts.map(a => a.format)).toEqual(['pptx']);
+  });
+
+  it('形式を言わなければ、これまでどおりルートでない文書は断る', async () => {
+    const result = await build(workspace({ 'note.md': '# メモ\n', ...THEME }), { only: ['note.md'] });
+    expect(result.diagnostics.some(d => d.message.includes('ビルドルートではない'))).toBe(true);
+  });
+});
+
+describe('Mermaid', () => {
+  const doc = root(['```mermaid', 'flowchart TD', '  A --> B', '```', '',
+    '```mermaid {view="code"}', 'flowchart TD', '  C --> D', '```'].join('\n'), '[html, pptx]');
+
+  it('HTML は描くスクリプトを持つ（Mermaid が無い文書は持たない）', async () => {
+    const result = await build(workspace({ 'a.md': doc, 'b.md': root('# B'), ...THEME }), {
+      mermaidScript: 'window.__drawn = true;',
+    });
+    const html = (path: string) => result.artifacts.find(a => a.path === path)?.text ?? '';
+    expect(html('dist/a.html')).toContain('<script>window.__drawn = true;</script>');
+    expect(html('dist/b.html')).not.toContain('<script>');
+  });
+
+  it('スクリプトが無ければ、コードのまま出ると言う', async () => {
+    const result = await build(workspace({ 'a.md': doc, ...THEME }), { formats: ['html'] });
+    expect(result.diagnostics.some(d => d.message.includes('Mermaid を描くスクリプト'))).toBe(true);
+  });
+
+  it('スライドには図を絵として載せ、コード指定のものは描かない', async () => {
+    const drawn: string[] = [];
+    await build(workspace({ 'a.md': doc, ...THEME }), {
+      formats: ['pptx'],
+      mermaidPicture: async source => {
+        drawn.push(source);
+        return { data: 'data:image/png;base64,iVBORw0KGgo=', width: 10, height: 10 };
+      },
+    });
+    expect(drawn).toEqual(['flowchart TD\n  A --> B']);
+  });
+});

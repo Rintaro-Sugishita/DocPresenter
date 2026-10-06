@@ -10,7 +10,7 @@ import { parseTable } from '../table/parse.js';
 import { sheetsOf } from '../document/sheets.js';
 import type { Block, DocumentFile, Import } from '../document/model.js';
 import type { NumberedElement, ResolvedDocument } from '../numbering/model.js';
-import { markdown } from './markdown.js';
+import { markdown, mermaidFigure, viewOf, type RenderEnv } from './markdown.js';
 import { joinPath } from './path.js';
 import { legend, markClass, markOf, type DiffMarks } from './diff.js';
 import { escapeAttr, escapeHtml, renderTable, selectRows } from './table.js';
@@ -80,7 +80,7 @@ function renderBlock(
     }
     case 'prose':
       return `<div class="dp-prose${markClass(markOf(options.marks, block.doc, block.span))}"${span}>`
-        + `${markdown.render(substitute(block.text, block.span.start, resolved))}</div>`;
+        + `${markdown.render(substitute(block.text, block.span.start, resolved), proseEnv(block))}</div>`;
     case 'import':
       return renderImport(block, elementByBlock.get(block), options);
     case 'separator':
@@ -210,6 +210,11 @@ function renderKnown(
     }
     return renderTable(selected, marks);
   }
+  if (/\.(mmd|mermaid)$/i.test(path)) {
+    // The choice between the drawing and its code is on the `@import` line,
+    // which is the range the figure already carries.
+    return mermaidFigure(source, viewOf(attributes.get('view')), undefined);
+  }
   if (path.toLowerCase().endsWith('.dgm')) {
     // Parts are resolved before anything looks at the drawing, so everything
     // downstream sees ordinary shapes. The library is named relative to the
@@ -241,8 +246,11 @@ const REFERENCE = /@(?:([A-Za-z0-9][\w.-]*):)?((?:fig|tbl|sec|req|des|tst)-[A-Za
  * back to the `@label` in the source rather than to the substituted number.
  */
 function substitute(text: string, baseOffset: number, resolved: ResolvedDocument): string {
+  // Code is shown as it was written: `@fig-a` in a code block is text.
+  const code = codeRanges(text);
   REFERENCE.lastIndex = 0;
   return text.replace(REFERENCE, (whole, _document: string | undefined, label: string, index: number) => {
+    if (code.some(([from, to]) => index >= from && index < to)) return whole;
     const target = resolved.byLabel.get(label);
     if (!target || target.number === undefined) return whole;
     const start = baseOffset + byteLength(text.slice(0, index));
@@ -250,6 +258,50 @@ function substitute(text: string, baseOffset: number, resolved: ResolvedDocument
     return `<a class="dp-ref" href="#${escapeAttr(label)}" data-ref="${escapeAttr(label)}"`
       + ` data-span="${start},${end}">${escapeHtml(describe(target))}</a>`;
   });
+}
+
+/** Where the fenced code blocks of a prose block are, by character. */
+function codeRanges(text: string): [number, number][] {
+  const ranges: [number, number][] = [];
+  let at = 0;
+  let open: { fence: string; from: number } | undefined;
+  for (const line of text.split('\n')) {
+    const marker = /^ {0,3}(`{3,}|~{3,})(.*)$/.exec(line.replace(/\r$/, ''));
+    if (open === undefined && marker) open = { fence: marker[1]!, from: at };
+    else if (open !== undefined && marker && marker[1]![0] === open.fence[0]
+      && marker[1]!.length >= open.fence.length && marker[2]!.trim() === '') {
+      ranges.push([open.from, at + line.length]);
+      open = undefined;
+    }
+    at += line.length + 1;
+  }
+  if (open !== undefined) ranges.push([open.from, text.length]);
+  return ranges;
+}
+
+/**
+ * Where each line of a prose block is in the file, for the parts of it an
+ * editor can change without opening the text — the view of a Mermaid block.
+ * A block pulled in from another document has no range in this one.
+ */
+function proseEnv(block: Extract<Block, { kind: 'prose' }>): RenderEnv {
+  if (block.doc !== undefined) return {};
+  const lines = block.text.split('\n');
+  const starts: number[] = [];
+  let offset = block.span.start;
+  for (const line of lines) {
+    starts.push(offset);
+    offset += byteLength(line) + 1;
+  }
+  return {
+    lineSpan: line => {
+      const start = starts[line];
+      const text = lines[line];
+      return start === undefined || text === undefined
+        ? undefined
+        : { start, end: start + byteLength(text.replace(/\r$/, '')) };
+    },
+  };
 }
 
 function inline(text: string, baseOffset: number, resolved: ResolvedDocument): string {

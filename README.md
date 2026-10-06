@@ -60,7 +60,11 @@ code --install-extension docpresenter-0.1.0.vsix
 `.md` を開いて「DocPresenter: この文書を開く」。編集は **1 操作 ＝ 1 つのバイト範囲**の
 `WorkspaceEdit` として渡すので、**取り消し・未保存の点・git の差分は VS Code のものがそのまま効く**。
 開発中はリポジトリを VS Code で開いて **F5**（起動の前に `npm run build:vscode` が走る）。
-この版の PDF は CLI（`node tools/build.mjs`）が書く。詳しくは
+開いた文書の上にある **「書き出し: HTML / PDF / PPTX」** のボタンで、その文書を `out/build` に書き出せる。
+`output:` を持つ文書をまとめて書き出すコマンド（各文書の指定どおり／形式を選んで）もある。
+エクスプローラーで `.md`・`.dgm` を右クリックすると「DocPresenter で開く」が出る。
+コードブロックは言語名で色が付き、` ```mermaid ` は図になる（見本は
+[`sample/docs/code-and-mermaid.md`](sample/docs/code-and-mermaid.md)）。詳しくは
 [`packages/app-vscode/README.md`](packages/app-vscode/README.md)。
 
 `out/canvas-app.html` は base ＋ diagram だけで作られている。文書エンジンは 1 バイトも入っていない

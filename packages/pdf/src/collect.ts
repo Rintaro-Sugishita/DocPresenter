@@ -78,8 +78,13 @@ function walk(node: Element, at: Offset, items: Placed[], diagnostics: string[])
       if (child instanceof Element) walk(child, at, items, diagnostics);
       else if (child instanceof Text) {
         const cell = mergedCell(node, at);
+        // Where the line starts, which is where the run was placed from. The
+        // size is not the ascent: taken for it, a run in a face with a short
+        // ascent started above its own line, was handed to the piece before,
+        // and that piece's neighbour then painted its background over it.
+        const ascent = ascentOf(getComputedStyle(node));
         for (const run of textRuns(child, node, at)) {
-          items.push({ item: run, top: run.y - run.size, ...(cell ? { cell } : {}) });
+          items.push({ item: run, top: run.y - ascent, ...(cell ? { cell } : {}) });
         }
       }
     }

@@ -9,11 +9,12 @@
 
 import { parseDiagram, parseRuns, withParts, type Run } from '@docpresenter/diagram';
 import {
-  cellAt, describe, joinPath, parseTable, selectRows, sheetsOf,
+  cellAt, describe, fencesOf, joinPath, parseTable, selectRows, sheetsOf, viewOf,
   type Block as DocBlock, type Cell, type DiffMarks, type DocumentFile,
-  type NumberedElement, type ResolvedDocument, type TableFile,
+  type MermaidView, type NumberedElement, type ResolvedDocument, type TableFile,
 } from '@docpresenter/markdown';
 import { drawingOf, type Block, type Deck, type Slide, type TableCell } from '@docpresenter/pptx';
+import type { MermaidPicture } from './build.js';
 import type { Workspace } from './workspace.js';
 
 export interface DeckOptions {
@@ -24,6 +25,8 @@ export interface DeckOptions {
   readonly foot?: string;
   /** What changed since another version, when the build was told to compare. */
   readonly marks?: DiffMarks;
+  /** Mermaid drawings as pictures, by source. A drawing not here is shown as code. */
+  readonly pictures?: ReadonlyMap<string, MermaidPicture>;
 }
 
 export function deckOf(options: DeckOptions): Deck {
@@ -39,7 +42,8 @@ export function deckOf(options: DeckOptions): Deck {
     for (const block of sheet.blocks) {
       if (block === heading) continue;
       const made = blockOf(block, options, byBlock, diagnostics);
-      if (made) blocks.push(made);
+      if (Array.isArray(made)) blocks.push(...made);
+      else if (made) blocks.push(made);
     }
     if (blocks.length === 0 && heading === undefined) continue;
 
@@ -63,13 +67,8 @@ function titleOf(heading: DocBlock, byBlock: ReadonlyMap<unknown, NumberedElemen
 function blockOf(
   block: DocBlock, options: DeckOptions,
   byBlock: ReadonlyMap<unknown, NumberedElement>, diagnostics: string[],
-): Block | undefined {
-  if (block.kind === 'prose') {
-    return {
-      kind: 'text',
-      paragraphs: block.text.split('\n').map(line => parseRuns(substitute(line, options.resolved))),
-    };
-  }
+): Block | Block[] | undefined {
+  if (block.kind === 'prose') return proseBlocks(block.text, options);
   if (block.kind !== 'import') return undefined;
 
   const source = options.workspace.read(block.path);
@@ -126,6 +125,14 @@ function blockOf(
     return { kind: 'picture', data, width: 1600, height: 900 };
   }
 
+  if (/\.(mmd|mermaid)$/i.test(block.path)) {
+    if (source === undefined) {
+      diagnostics.push(`参照先が見つからない: ${block.path}`);
+      return undefined;
+    }
+    return mermaidBlocks(source, viewOf(block.attributes.get('view')), options);
+  }
+
   diagnostics.push(`スライドにできない参照: ${block.path}${caption ? `（${caption}）` : ''}`);
   return undefined;
 }
@@ -135,6 +142,57 @@ function captionOf(
 ): string | undefined {
   const element = byBlock.get(block);
   return element ? describe(element) : undefined;
+}
+
+/**
+ * Prose, with its code blocks set as code and its Mermaid blocks shown the way
+ * the author chose. A drawing goes on the slide as a picture: Mermaid has no
+ * shapes PowerPoint could hand back, unlike a `.dgm`.
+ */
+function proseBlocks(text: string, options: DeckOptions): Block[] {
+  const lines = text.split('\n').map(line => line.replace(/\r$/, ''));
+  const blocks: Block[] = [];
+  let paragraphs: (readonly Run[])[] = [];
+  const flush = (): void => {
+    if (paragraphs.length > 0) blocks.push({ kind: 'text', paragraphs });
+    paragraphs = [];
+  };
+  const prose = (line: string): readonly Run[] => parseRuns(substitute(line, options.resolved));
+  let at = 0;
+  for (const fence of fencesOf(text)) {
+    for (; at < fence.from; at++) paragraphs.push(prose(lines[at]!));
+    if (fence.language === 'mermaid') {
+      flush();
+      blocks.push(...mermaidBlocks(fence.content, viewOf(fence.attributes.get('view')), options));
+    } else {
+      paragraphs.push(...codeLines(fence.content));
+    }
+    at = fence.to + 1;
+  }
+  for (; at < lines.length; at++) paragraphs.push(prose(lines[at]!));
+  flush();
+  return blocks;
+}
+
+/** Code, one paragraph per line, set in the code face and never parsed. */
+function codeLines(content: string): (readonly Run[])[] {
+  return content.replace(/\n$/, '').split('\n').map(line => [{
+    text: line.replace(/\r$/, ''), bold: false, italic: false, code: true, colour: undefined,
+  }]);
+}
+
+/**
+ * A Mermaid block on a slide: the picture, its code, or both. A drawing that
+ * could not be made is shown as its code — the build has already said why.
+ */
+function mermaidBlocks(source: string, view: MermaidView, options: DeckOptions): Block[] {
+  const picture = view === 'code' ? undefined : options.pictures?.get(source);
+  const blocks: Block[] = [];
+  if (picture) {
+    blocks.push({ kind: 'picture', data: picture.data, width: picture.width, height: picture.height });
+  }
+  if (view !== 'diagram' || !picture) blocks.push({ kind: 'text', paragraphs: codeLines(source) });
+  return blocks;
 }
 
 /** `@fig-x` reads as its number on a slide, the same as it does in the document. */

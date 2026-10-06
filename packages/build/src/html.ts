@@ -27,6 +27,11 @@ export interface PageOptions {
   readonly marks?: DiffMarks;
   /** Pictures from the web, already fetched, keyed by the address written. */
   readonly inlined?: ReadonlyMap<string, string>;
+  /**
+   * The script that draws Mermaid in the page. Written in only when the
+   * document has a Mermaid block; without it such a block shows its source.
+   */
+  readonly mermaidScript?: string;
 }
 
 export function renderPage(options: PageOptions): string {
@@ -60,8 +65,18 @@ export function renderPage(options: PageOptions): string {
     '</head><body>',
     front(options),
     body,
+    ...(options.mermaidScript !== undefined && hasMermaid(body)
+      // Inline, like the theme: the page still opens with no network. The one
+      // sequence that would end the element early is broken up.
+      ? [`<script>${options.mermaidScript.replace(/<\/script/gi, '<\\/script')}</script>`]
+      : []),
     '</body></html>',
   ].join('\n');
+}
+
+/** Whether a rendered page has a Mermaid block to draw. */
+export function hasMermaid(body: string): boolean {
+  return body.includes('class="dp-mermaid"');
 }
 
 /**
@@ -104,8 +119,18 @@ function cover(options: PageOptions): string {
   ];
   const shown = fields.filter((f): f is [string, string] => f[1] !== undefined && f[1] !== '');
   if (shown.length === 0) return '';
+  // The title is for paper. On screen the document's own first heading says it
+  // a line below, and the theme shows this one only on a page of its own.
+  const title = text(raw['title']);
+  const number = text(raw['document']);
   return [
     '<header class="dp-cover">',
+    ...(title === undefined ? [] : [
+      '<div class="dp-cover-head">',
+      ...(number === undefined ? [] : [`<p class="dp-cover-number">${escape(number)}</p>`]),
+      `<p class="dp-cover-title">${escape(title)}</p>`,
+      '</div>',
+    ]),
     '<dl class="dp-cover-fields">',
     ...shown.map(([name, value]) =>
       `<dt>${escape(name)}</dt><dd>${escape(value)}</dd>`),

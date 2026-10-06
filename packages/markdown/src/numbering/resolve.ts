@@ -11,6 +11,8 @@ import {
 /** Attributes an import may carry. Anything else is a mistake worth reporting. */
 const KNOWN_ATTRIBUTES = new Set([
   '#', 'alt', 'caption', 'page', 'rows', 'keep-together', 'slide', 'width', 'height', 'align',
+  // A Mermaid file: its drawing, its code, or both.
+  'view',
 ]);
 
 /** Extensions that decide the kind of an unlabelled import. */

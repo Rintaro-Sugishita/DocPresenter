@@ -72,6 +72,29 @@ export const EDITOR_STYLE = `
 .dp-figure-body .dp-block-source {
   font-family: ui-monospace, monospace; font-size: 12px; line-height: 1.6;
 }
+/* Mermaid: which of the drawing and its code the reader sees. Shown on the
+   block the pointer is over, and always while one of them is focused. */
+.dp-mermaid { position: relative; }
+.dp-mermaid-switch {
+  position: absolute; top: 4px; right: 4px; z-index: 2; display: flex;
+  font-family: system-ui, sans-serif; font-size: 12px;
+  background: #fff; border: 1px solid #c9ced6; border-radius: 4px; overflow: hidden;
+  opacity: 0; transition: opacity 0.12s;
+}
+.dp-mermaid:hover > .dp-mermaid-switch, .dp-mermaid-switch:focus-within { opacity: 1; }
+.dp-mermaid-choice {
+  border: 0; background: none; padding: 3px 9px; cursor: pointer; color: #3a4048; font: inherit;
+}
+.dp-mermaid-choice + .dp-mermaid-choice { border-left: 1px solid #c9ced6; }
+.dp-mermaid-choice[aria-pressed="true"] { background: #1f5fa8; color: #fff; }
+.dp-mermaid-choice:focus-visible { outline: 2px solid #1f5fa8; outline-offset: -2px; }
+/* Copying a code block. In its header, beside the language. */
+.dp-code-copy {
+  margin-left: auto; font: 11px system-ui, sans-serif; color: #3a4048; cursor: pointer;
+  background: #fff; border: 1px solid #c9ced6; border-radius: 3px; padding: 1px 8px;
+}
+.dp-code-copy:hover { border-color: #1f5fa8; color: #1f5fa8; }
+.dp-code-copy:focus-visible { outline: 2px solid #1f5fa8; outline-offset: 1px; }
 
 /* The grid editor. It is editor chrome, not the document: the printed table
    is styled by the theme, and this is the thing you type into. */

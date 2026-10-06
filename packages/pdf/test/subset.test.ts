@@ -122,3 +122,30 @@ describe('サブセット', () => {
     expect(bytes.byteLength).toBeLessThan(200 * 1024);   // 埋め込んだのはサブセット
   });
 });
+
+describe('同じフォントを複数の書体に使う', () => {
+  // Windows では日本語の書体が 1 つしか見つからないことが多く、本文・太字・
+  // コードのすべてに同じファイルが渡る。書体ごとに別々に削って同じ名前で
+  // 3 回埋めると、読み手は最初の 1 つの字形番号で残りも描き、本文以外が白紙になった。
+  it('1 つのフォントとして埋め、どの書体の字も描ける', async () => {
+    const plan: PagePlan = {
+      width: 200, height: 100,
+      pages: [{ items: [
+        { kind: 'text', text: '認証', x: 0, y: 20, size: 10, bold: false, italic: false, family: 'body', colour: '#000' },
+        { kind: 'text', text: '設計', x: 0, y: 40, size: 10, bold: true, italic: false, family: 'body', colour: '#000' },
+        { kind: 'text', text: 'ABC', x: 0, y: 60, size: 10, bold: false, italic: false, family: 'mono', colour: '#000' },
+      ] }],
+    };
+    const source = { bytes: font, name: 'NotoSerifCJKjp' };
+    const { bytes } = await writePdf(plan, {
+      fonts: { body: source, bodyBold: source, heading: source, headingBold: source, mono: source },
+      subset: subsetter,
+    });
+    const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
+    const doc = await pdfjs.getDocument({ data: bytes, useSystemFonts: false }).promise;
+    const content = await (await doc.getPage(1)).getTextContent();
+    const items = content.items.filter((item): item is typeof item & { fontName: string; str: string } => 'fontName' in item);
+    expect(new Set(items.map(item => item.fontName)).size).toBe(1);
+    expect(items.map(item => item.str).join('')).toBe('認証設計ABC');
+  });
+});

@@ -49,6 +49,10 @@ ErCreator の Blazor WebAssembly も同じ立場にあるが、**TypeScript は�
 | **TALA / D2**（[自動レイアウト](diagram-model.md)） | **MPL-2.0** | ○ | **ファイル単位のコピーレフト。§3** |
 | **Noto Sans / Serif CJK JP**（[同梱フォント](theme.md)） | SIL OFL 1.1 | ○ | 著作権表示の保持。フォント単体の販売は不可 |
 | **harfbuzzjs / HarfBuzz**（[サブセット化](../prototype/pdf-text/FINDINGS.md)） | **要確認** | — | 採用前に確認する |
+| **highlight.js**（コードの色付け） | BSD-3-Clause | ○ | 配布物に著作権表示とライセンス文を含める |
+| **mermaid**（Mermaid の描画。VS Code 拡張と、書き出した HTML に入る） | MIT | ○ | 依存の大半は MIT / ISC。下の 2 件を除く |
+| └ **dompurify**（mermaid の依存） | MPL-2.0 OR Apache-2.0 | ○ | Apache-2.0 を選ぶ |
+| └ **elkjs**（mermaid の依存。ELK レイアウト） | **EPL-2.0** | **要確認** | 弱いコピーレフト。改変しなければ組み込めるが、配布時にソースの入手方法を示す義務がある。配布前に確認する |
 
 ## 3. MPL-2.0 の扱い — 改変しない運用を前提にする
 

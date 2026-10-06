@@ -5,9 +5,20 @@
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./mermaid": {
+      "types": "./dist/mermaid.d.ts",
+      "default": "./dist/mermaid.js"
+    }
+  },
   "dependencies": {
     "@docpresenter/base": "*",
     "@docpresenter/diagram": "*",
-    "@docpresenter/markdown": "*"
+    "@docpresenter/markdown": "*",
+    "mermaid": "^12.1.0"
   }
 }

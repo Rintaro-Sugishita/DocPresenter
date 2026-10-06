@@ -20,6 +20,7 @@ sample/
       search-screen.dgm               画面設計 4 枚目（2 列。grid で組む）
       revision.md                     この文書の改訂履歴
     auth-overview.md                  同じフォルダに置かれたもう 1 本の文書
+    code-and-mermaid.md               コードの色付けと Mermaid（図 / コード / 両方）の見本
     auth-overview/
       revision.md                     こちらの改訂履歴。設計書のものとは別である
     assets/

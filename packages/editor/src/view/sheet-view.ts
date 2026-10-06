@@ -7,7 +7,7 @@
 
 import {
   PICTURE, importAttribute, isAddress, joinPath, parseDocument, parseTable,
-  setImportAttribute, sheetsOf, type Sheet,
+  setFenceView, setImportAttribute, sheetsOf, viewOf, type MermaidView, type Sheet,
 } from '@docpresenter/markdown';
 import { parseDiagram, withParts } from '@docpresenter/diagram';
 import {
@@ -69,6 +69,11 @@ export interface SheetViewOptions {
   readonly onError?: (message: string) => void;
   /** Key bindings and the like. See settings.ts for why this is a value. */
   readonly settings?: EditorSettings;
+  /**
+   * Called with the page after every redraw, for what only the host can draw
+   * — Mermaid, which needs a library the editor does not carry.
+   */
+  readonly decorate?: (page: HTMLElement) => void;
 }
 
 /** What can be added to a sheet, besides prose. */
@@ -373,6 +378,101 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
     });
   }
 
+  // --- Mermaid の見せ方 --------------------------------------------------
+
+  const VIEW_LABEL: Readonly<Record<MermaidView, string>> = {
+    diagram: '図', code: 'コード', both: '両方',
+  };
+
+  /**
+   * The switch between a Mermaid block's drawing and its code. The choice is
+   * written into the document — on the fence's opening line, or on the
+   * `@import` line of a `.mmd` file — so the delivered file shows what was
+   * chosen here. Editor chrome; never in the output.
+   */
+  function addMermaidSwitch(block: HTMLElement): void {
+    const figure = block.closest<HTMLElement>('.dp-figure');
+    const ranged = figure ?? block;
+    // A block pulled in from another document is that document's to change.
+    if (ranged.closest('[data-doc]') || !spanOf(ranged)) return;
+    const current = viewOf(block.dataset['view']);
+    const bar = element('div', 'dp-mermaid-switch');
+    bar.setAttribute('role', 'group');
+    bar.setAttribute('aria-label', 'Mermaid の見せ方');
+    for (const view of ['diagram', 'code', 'both'] as const) {
+      const button = element('button', 'dp-mermaid-choice') as HTMLButtonElement;
+      button.type = 'button';
+      button.textContent = VIEW_LABEL[view];
+      button.setAttribute('aria-pressed', String(view === current));
+      button.addEventListener('click', event => {
+        event.preventDefault();
+        event.stopPropagation();
+        setMermaidView(ranged, figure !== null, view);
+      });
+      bar.append(button);
+    }
+    block.prepend(bar);
+  }
+
+  /**
+   * A button that copies a code block as written — without the colours, the
+   * language label or anything else the page added. Editor chrome; never in
+   * the output, where a reader selects the text instead.
+   */
+  function addCopyButton(block: HTMLElement): void {
+    const code = block.querySelector('pre');
+    if (!code) return;
+    let head = block.querySelector<HTMLElement>(':scope > .dp-code-head');
+    if (!head) {
+      head = element('div', 'dp-code-head');
+      block.prepend(head);
+    }
+    const button = element('button', 'dp-code-copy') as HTMLButtonElement;
+    button.type = 'button';
+    button.textContent = 'コピー';
+    button.title = 'このコードをすべてコピーする';
+    button.addEventListener('click', event => {
+      event.preventDefault();
+      event.stopPropagation();
+      // The line break that closes the last line is the block's, not the code's.
+      void copyText((code.textContent ?? '').replace(/\n$/, '')).then(done => {
+        button.textContent = done ? 'コピーしました' : 'コピーできませんでした';
+        owner.defaultView?.setTimeout(() => { button.textContent = 'コピー'; }, 1500);
+      });
+    });
+    head.append(button);
+  }
+
+  /** The clipboard, or the older way where the clipboard API is not allowed. */
+  async function copyText(text: string): Promise<boolean> {
+    try {
+      await owner.defaultView?.navigator.clipboard.writeText(text);
+      return true;
+    } catch {
+      const area = owner.createElement('textarea');
+      area.value = text;
+      area.style.cssText = 'position:fixed; left:-9999px; top:0;';
+      owner.body.append(area);
+      area.select();
+      const done = owner.execCommand('copy');
+      area.remove();
+      return done;
+    }
+  }
+
+  function setMermaidView(ranged: HTMLElement, imported: boolean, view: MermaidView): void {
+    const span = spanOf(ranged);
+    if (!span) return;
+    const line = sliceBytes(source, span.start, span.end);
+    // The drawing is what a block shows unless told otherwise, so choosing it
+    // removes the attribute rather than writing the default down.
+    const written = imported
+      ? setImportAttribute(line, 'view', view === 'diagram' ? undefined : view)
+      : setFenceView(line, view);
+    if (written === line) return;
+    commit(() => ({ span, text: written, description: `Mermaid を${VIEW_LABEL[view]}で見せる` }), active);
+  }
+
   /** One attribute of the `@import` line that placed a figure. */
   function writeImport(figure: HTMLElement, name: string, value: string | undefined): void {
     const span = spanOf(figure);
@@ -614,6 +714,8 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
     + ' .dp-import-line, .dp-figure, .dp-append, .dp-prose, h1, h2, h3, h4, h5, h6';
 
   function onPointerDown(event: MouseEvent): void {
+    // The switch on a Mermaid block is a button, not a way into the text.
+    if ((event.target as HTMLElement | null)?.closest('.dp-mermaid-switch, .dp-code-copy')) return;
     const target = (event.target as HTMLElement | null)?.closest<HTMLElement>(CLICKABLE);
     if (!target || !pane.contains(target)) return;
     // A press inside whatever is already open belongs to it.
@@ -952,6 +1054,9 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
     sections = [...page.querySelectorAll<HTMLElement>('.dp-sheet')];
     for (const section of sections) addInsertTargets(section);
     for (const figure of page.querySelectorAll<HTMLElement>('.dp-figure')) addImportTarget(figure);
+    for (const block of page.querySelectorAll<HTMLElement>('.dp-mermaid')) addMermaidSwitch(block);
+    for (const block of page.querySelectorAll<HTMLElement>('.dp-code')) addCopyButton(block);
+    options.decorate?.(page);
     if (grid) {
       const figure = page.querySelector<HTMLElement>(`.dp-figure[data-path="${cssEscape(grid.path)}"]`);
       const body = figure?.querySelector<HTMLElement>('.dp-figure-body');

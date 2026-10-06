@@ -16,7 +16,7 @@ import {
 } from './plan.js';
 import {
   FALLBACK, drawsGlyphs, isCff, missingGlyphs,
-  type FontOptions, type FontStyle, type MissingGlyph,
+  type FontOptions, type FontSource, type FontStyle, type MissingGlyph,
 } from './fonts.js';
 
 export interface WriteResult {
@@ -27,6 +27,11 @@ export interface WriteResult {
 
 export class FontError extends Error {}
 
+/** Two sources naming the same face of the same file are one face. */
+function faceKey(source: FontSource): string {
+  return `${source.name}#${source.faceIndex ?? 0}#${source.bytes.length}`;
+}
+
 export async function writePdf(plan: PagePlan, options: FontOptions): Promise<WriteResult> {
   const byFace = codePointsByFace(plan);
   const missing: MissingGlyph[] = [];
@@ -34,10 +39,24 @@ export async function writePdf(plan: PagePlan, options: FontOptions): Promise<Wr
   const pdf = await PDFDocument.create();
   pdf.registerFontkit(fontkit);
 
-  const embedded: Record<string, PDFFont> = {};
+  // Styles that name the same face are one font in the file. A machine with
+  // one Japanese face hands it in for body, bold and code alike, and three cuts
+  // of it carrying the same name are three fonts a viewer takes for one: every
+  // style but the first was drawn with the first one's glyph numbers, and came
+  // out blank. So the characters are gathered per face, cut once, and shared.
+  const faces = new Map<string, { source: FontSource; characters: Set<number>; styles: string[] }>();
   for (const [style, characters] of byFace) {
     const source = options.fonts[style as keyof typeof options.fonts];
     if (!source) continue;                      // the reader falls back below
+    const key = faceKey(source);
+    const face = faces.get(key) ?? { source, characters: new Set<number>(), styles: [] };
+    for (const one of characters) face.characters.add(one);
+    face.styles.push(style);
+    faces.set(key, face);
+  }
+
+  const embedded: Record<string, PDFFont> = {};
+  for (const { source, characters, styles } of faces.values()) {
     if (isCff(source.bytes) && !options.subset) {
       // Not a warning. pdf-lib's subsetter would produce a file whose text
       // extracts and whose glyphs are blank, and every check that reads the
@@ -62,7 +81,8 @@ export async function writePdf(plan: PagePlan, options: FontOptions): Promise<Wr
         + `（${characters.size} 字は多すぎる可能性がある）`,
       );
     }
-    embedded[style] = await pdf.embedFont(bytes, { subset: !options.subset });
+    const font = await pdf.embedFont(bytes, { subset: !options.subset });
+    for (const style of styles) embedded[style] = font;
   }
 
   if (plan.title) pdf.setTitle(plan.title);

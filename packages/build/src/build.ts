@@ -6,14 +6,14 @@
 // from the HTML's is worse than no PDF.
 
 import {
-  expandDocument, isAddress, resolveDocument,
+  expandDocument, fencesOf, isAddress, parseDocument, resolveDocument, viewOf,
   type DiffMarks, type DocumentFile, type ResolvedDocument,
 } from '@docpresenter/markdown';
 import { writePptx } from '@docpresenter/pptx';
 import { deckOf } from './deck.js';
 import { diffOf, type Previous } from './diff.js';
 import { readGraph, type ReferenceGraph, type Root } from './graph.js';
-import { renderPage } from './html.js';
+import { hasMermaid, renderPage } from './html.js';
 import type { Artifact, BuildDiagnostic, Workspace } from './workspace.js';
 
 /** What a format writer is given. Everything is prepared before it is called. */
@@ -32,6 +32,8 @@ export interface WriteInput {
   readonly marks?: DiffMarks;
   /** Pictures from the web, fetched once before any writer ran. */
   readonly inlined?: ReadonlyMap<string, string>;
+  /** Mermaid drawings as pictures, by source, made once before any writer ran. */
+  readonly pictures?: ReadonlyMap<string, MermaidPicture>;
 }
 
 /**
@@ -44,6 +46,11 @@ export type FormatWriter = (input: WriteInput) => Promise<Artifact | undefined> 
 export interface BuildOptions {
   /** Build only these roots. Everything with an `output:` when absent. */
   readonly only?: readonly string[];
+  /**
+   * Write these formats instead of the ones each document's `output:` asks
+   * for. With `only`, a document that has no `output:` is built too.
+   */
+  readonly formats?: readonly string[];
   /** Where artifacts go. `dist` by default. */
   readonly outDir?: string;
   /** Theme name to fall back on when a document names none. */
@@ -64,6 +71,24 @@ export interface BuildOptions {
   readonly showRemoved?: 'none' | 'strike';
   /** Writers for formats beyond `html`. */
   readonly writers?: Readonly<Record<string, FormatWriter>>;
+  /**
+   * The script that draws Mermaid in a delivered page. Laying a drawing out
+   * needs a browser, and this package needs none, so the caller hands over the
+   * script that does it — and the page does it when it is opened.
+   */
+  readonly mermaidScript?: string;
+  /**
+   * Draws one Mermaid source as a picture, for a slide. Only a caller with a
+   * browser can; without one a slide shows the source instead and says so.
+   */
+  readonly mermaidPicture?: (source: string) => Promise<MermaidPicture | undefined>;
+}
+
+/** A Mermaid drawing as a picture: a PNG data URL and its size in pixels. */
+export interface MermaidPicture {
+  readonly data: string;
+  readonly width: number;
+  readonly height: number;
 }
 
 export interface BuildResult {
@@ -88,18 +113,21 @@ export async function build(
   const artifacts: Artifact[] = [];
   const outDir = options.outDir ?? 'dist';
 
-  const wanted = options.only === undefined
-    ? graph.roots
+  const wanted: Root[] = options.only === undefined
+    ? [...graph.roots]
     : graph.roots.filter(root => options.only!.includes(root.path));
 
   if (options.only !== undefined) {
     for (const asked of options.only) {
-      if (!graph.roots.some(root => root.path === asked)) {
-        diagnostics.push({
-          severity: 'error', path: asked,
-          message: 'ビルドルートではない（frontmatter に output が無い）',
-        });
-      }
+      if (graph.roots.some(root => root.path === asked)) continue;
+      // Asked for by name and told what to write, a document needs no `output:`
+      // of its own: the person pressing "PDF" on it has said what they want.
+      const named = options.formats === undefined ? undefined : namedRoot(workspace, asked);
+      if (named) { wanted.push(named); continue; }
+      diagnostics.push({
+        severity: 'error', path: asked,
+        message: 'ビルドルートではない（frontmatter に output が無い）',
+      });
     }
   }
 
@@ -121,15 +149,31 @@ export async function build(
     // format needs the same bytes, and fetching the same address per format
     // would be three requests for one picture.
     const inlined = await takeIn(workspace, prepared, diagnostics);
+    // Drawn once, for the same reason: only a slide needs them as pictures.
+    const pictures = (options.formats ?? root.formats).includes('pptx')
+      ? await drawMermaid(workspace, prepared, options, diagnostics)
+      : new Map<string, MermaidPicture>();
 
-    for (const format of root.formats) {
+    for (const format of options.formats ?? root.formats) {
       const artifact = await write(
-        workspace, root, prepared, format, outDir, options, diagnostics, marks, inlined);
+        workspace, root, prepared, format, outDir, options, diagnostics, marks, inlined, pictures);
       if (artifact) artifacts.push(artifact);
     }
   }
 
   return { artifacts, diagnostics: [...graph.diagnostics, ...diagnostics], graph };
+}
+
+/** A document that is not a root, built because it was named. */
+function namedRoot(workspace: Workspace, path: string): Root | undefined {
+  const source = workspace.read(path);
+  if (source === undefined) return undefined;
+  try {
+    const document = parseDocument(source);
+    return { path, document, formats: document.frontmatter.output };
+  } catch {
+    return undefined;
+  }
 }
 
 /** Expands and numbers one root, so that every writer starts from the same thing. */
@@ -187,10 +231,63 @@ export async function takeIn(
   return inlined;
 }
 
+/**
+ * The Mermaid sources a document shows as drawings: its Mermaid code blocks
+ * and the `.mmd` files it takes in, except those the author chose to show as
+ * code only.
+ */
+export function mermaidSources(workspace: Workspace, document: DocumentFile): string[] {
+  const found = new Set<string>();
+  for (const block of document.blocks) {
+    if (block.kind === 'prose') {
+      for (const fence of fencesOf(block.text)) {
+        if (fence.language === 'mermaid' && viewOf(fence.attributes.get('view')) !== 'code') {
+          found.add(fence.content);
+        }
+      }
+    } else if (block.kind === 'import' && /\.(mmd|mermaid)$/i.test(block.path)
+      && viewOf(block.attributes.get('view')) !== 'code') {
+      const source = workspace.read(block.path);
+      if (source !== undefined) found.add(source);
+    }
+  }
+  return [...found];
+}
+
+/** Every drawing a slide will show, made once. */
+async function drawMermaid(
+  workspace: Workspace, prepared: PreparedDocument, options: BuildOptions,
+  diagnostics: BuildDiagnostic[],
+): Promise<Map<string, MermaidPicture>> {
+  const pictures = new Map<string, MermaidPicture>();
+  const sources = mermaidSources(workspace, prepared.document);
+  if (sources.length === 0) return pictures;
+  if (!options.mermaidPicture) {
+    diagnostics.push({
+      severity: 'warning', path: prepared.root,
+      message: `Mermaid の図を PPTX に描けない環境で建てている（${sources.length} 件）。スライドにはコードを出す`,
+    });
+    return pictures;
+  }
+  for (const source of sources) {
+    try {
+      const picture = await options.mermaidPicture(source);
+      if (picture) pictures.set(source, picture);
+    } catch (error) {
+      diagnostics.push({
+        severity: 'warning', path: prepared.root,
+        message: `Mermaid の図を描けなかった: ${error instanceof Error ? error.message : String(error)}`,
+      });
+    }
+  }
+  return pictures;
+}
+
 async function write(
   workspace: Workspace, root: Root, prepared: PreparedDocument, format: string,
   outDir: string, options: BuildOptions, diagnostics: BuildDiagnostic[],
   marks: DiffMarks | undefined, inlined: ReadonlyMap<string, string>,
+  pictures: ReadonlyMap<string, MermaidPicture>,
 ): Promise<Artifact | undefined> {
   const builtIn: Record<string, FormatWriter | undefined> = { html, pptx };
   const writer = builtIn[format] ?? options.writers?.[format];
@@ -217,7 +314,7 @@ async function write(
 
   try {
     return await writer({
-      workspace, root, prepared, style, options, diagnostics, inlined,
+      workspace, root, prepared, style, options, diagnostics, inlined, pictures,
       ...(marks === undefined ? {} : { marks }),
       out: `${outDir}/${basename(root.path)}`,
     });
@@ -248,6 +345,7 @@ function pptx(input: WriteInput): Artifact {
     title,
     ...(foot ? { foot } : {}),
     ...(input.marks === undefined ? {} : { marks: input.marks }),
+    ...(input.pictures === undefined ? {} : { pictures: input.pictures }),
   });
   for (const message of deck.diagnostics) {
     input.diagnostics.push({ severity: 'warning', path: root.path, message });
@@ -270,7 +368,15 @@ function html(input: WriteInput): Artifact {
     ...(input.marks === undefined ? {} : { marks: input.marks }),
     ...(options.commit === undefined ? {} : { commit: options.commit }),
     ...(options.builtAt === undefined ? {} : { builtAt: options.builtAt }),
+    ...(options.mermaidScript === undefined ? {} : { mermaidScript: options.mermaidScript }),
   });
+  // P6: a drawing that will show as its source is said out loud.
+  if (options.mermaidScript === undefined && hasMermaid(text)) {
+    input.diagnostics.push({
+      severity: 'warning', path: root.path,
+      message: 'Mermaid を描くスクリプトが渡されていない。HTML ではコードのまま表示される',
+    });
+  }
   return { path: `${input.out}.html`, text, root: root.path, format: 'html' };
 }
 

@@ -73,6 +73,55 @@ h2 { font-size: 1.35em; border-bottom: var(--rule-thin); padding-bottom: 0.3em; 
 h3 { font-size: 1.1em; }
 code { font-family: var(--font-mono); font-size: 0.9em; background: var(--fill-tint-1); padding: 0 0.25em; }
 
+/* Code blocks. Wrapped rather than scrolled: a line that runs off the paper is
+   a line nobody reads, and a PDF has no scrollbar. */
+.dp-code {
+  margin: 1em 0; background: var(--fill-tint-1);
+  border: var(--rule-thin); border-left-width: 3px;
+}
+.dp-code-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 0.5em;
+  padding: 0.25em 0.8em; border-bottom: 1px solid #dfe3e8;
+  font-family: var(--font-heading); font-size: 0.72em; color: #5a6270;
+}
+.dp-code-language { letter-spacing: 0.04em; }
+.dp-code > pre {
+  margin: 0; padding: 0.8em 1em; font-size: 0.85em; line-height: 1.6;
+  white-space: pre-wrap; overflow-wrap: anywhere;
+}
+pre > code { background: none; padding: 0; font-size: 1em; }
+
+/* Colours for highlighted code. Dark enough to stay apart in greyscale print,
+   and never the only signal: the code still reads as written without them. */
+.hljs-comment, .hljs-quote { color: #6a737d; font-style: italic; }
+.hljs-keyword, .hljs-selector-tag, .hljs-literal, .hljs-doctag, .hljs-meta .hljs-keyword { color: #a3236f; }
+.hljs-string, .hljs-regexp, .hljs-addition, .hljs-meta .hljs-string { color: #1c6b2a; }
+.hljs-number, .hljs-symbol, .hljs-bullet, .hljs-variable.constant_ { color: #0b5cad; }
+.hljs-title, .hljs-title.function_, .hljs-section { color: #6639ba; }
+.hljs-title.class_, .hljs-type, .hljs-built_in { color: #8a4b00; }
+.hljs-attr, .hljs-attribute, .hljs-property, .hljs-name, .hljs-selector-class,
+.hljs-selector-id, .hljs-template-variable, .hljs-variable { color: #0b5cad; }
+.hljs-meta { color: #5a6270; }
+.hljs-deletion { color: #b3261e; }
+.hljs-emphasis { font-style: italic; }
+.hljs-strong { font-weight: 700; }
+
+/* Mermaid. The block carries both the drawing and its code; the author's
+   choice, written on the block, decides which the reader sees. */
+.dp-mermaid { margin: 1em 0; }
+.dp-mermaid[data-view="code"] > .dp-mermaid-diagram,
+.dp-mermaid[data-view="diagram"] > .dp-mermaid-code { display: none; }
+.dp-mermaid[data-view="both"] > .dp-mermaid-code { margin-top: 0.6em; }
+.dp-mermaid-diagram { text-align: center; }
+.dp-mermaid-diagram > svg { max-width: 100%; height: auto; }
+.dp-mermaid-code { margin: 0; text-align: left; }
+.dp-mermaid-pending {
+  font-family: var(--font-mono); font-size: 0.85em; line-height: 1.6; text-align: left;
+  background: var(--fill-tint-1); border: var(--rule-thin); border-left-width: 3px;
+  padding: 0.8em 1em; white-space: pre-wrap; overflow-wrap: anywhere; margin: 0;
+}
+.dp-mermaid-error { color: #b3261e; font-family: var(--font-heading); font-size: 0.9em; }
+
 .dp-number { color: #5a6270; font-weight: 400; margin-right: 0.4em; }
 .dp-ref { color: #1f5fa8; text-decoration: none; border-bottom: 1px dotted currentColor; }
 
@@ -109,6 +158,35 @@ code { font-family: var(--font-mono); font-size: 0.9em; background: var(--fill-t
 }
 .dp-cover-fields dt { color: #6b7280; }
 .dp-cover-fields dd { margin: 0; }
+.dp-cover-head { display: none; }
+
+/* 紙の表紙。1 ページを使い切り、題名を上寄りに大きく、文書の事実を下に表で置く。
+   目次は次のページから始める。.dp-paged は PDF の組版が付ける印で、画面には付かない。 */
+.dp-paged .dp-cover {
+  display: flex; flex-direction: column; justify-content: space-between;
+  box-sizing: border-box; margin: 0; padding: 0; border: none;
+  /* ページの本文の高さちょうど。端数で次のページへこぼれないよう少しだけ詰める。 */
+  height: calc(var(--page-height) - var(--page-margin-top) - var(--page-margin-bottom) - 4px);
+}
+.dp-paged .dp-cover-head { display: block; margin-top: 62mm; }
+.dp-cover-number {
+  margin: 0 0 0.8em; font-family: var(--font-heading); font-size: 0.95em;
+  letter-spacing: 0.08em; color: #5a6270;
+}
+.dp-cover-title {
+  margin: 0; padding-bottom: 0.45em; border-bottom: var(--rule-thick);
+  font-family: var(--font-heading); font-size: 2.1em; font-weight: 700; line-height: 1.4; color: #1c1f24;
+}
+.dp-paged .dp-cover-fields {
+  align-self: flex-end; width: 62%; gap: 0; font-size: 0.9em;
+  border-top: var(--rule-thick);
+}
+.dp-paged .dp-cover-fields dt,
+.dp-paged .dp-cover-fields dd { padding: 0.45em 0.8em; border-bottom: var(--rule-thin); }
+.dp-paged .dp-cover-fields dt { background: var(--fill-tint-1); }
+.dp-paged .dp-cover + * { break-before: page; }
+/* 紙では余白が前のブロックとの間に残らないので、一覧の間は内側の余白で空ける。 */
+.dp-paged .dp-index + .dp-index { margin-top: 0; padding-top: 2.4em; }
 
 /* 前付け — 表紙の事実と目次。本文には書かれておらず、ビルドが組み立てる。
    紙では 1 つのページにまとまり、本文はその次から 1 ページ目として数え直す。 */
@@ -271,9 +349,9 @@ code { font-family: var(--font-mono); font-size: 0.9em; background: var(--fill-t
 .dp-diagram .dp-class-removed  > rect, .dp-diagram .dp-class-removed  > polygon { fill: var(--fill-removed); }
 .dp-diagram .dp-class-changed  > rect, .dp-diagram .dp-class-changed  > polygon { fill: var(--fill-changed); }
 
-.dp-diagram .dp-edge polyline { stroke: #3a4048; stroke-width: 1.4; fill: none; stroke-linejoin: round; }
+.dp-diagram .dp-edge :is(polyline, .dp-edge-line) { stroke: #3a4048; stroke-width: 1.4; fill: none; stroke-linejoin: round; }
 .dp-diagram .dp-arrow { fill: #3a4048; stroke: none; }
-.dp-diagram .dp-line-dashed polyline { stroke-dasharray: 6 4; }
+.dp-diagram .dp-line-dashed :is(polyline, .dp-edge-line) { stroke-dasharray: 6 4; }
 .dp-diagram .dp-shape-group.dp-line-dashed > rect { stroke-dasharray: 6 4; }
 .dp-diagram .dp-edge-plate { fill: #fff; stroke: none; }
 .dp-diagram .dp-edge-label { font-size: 12px; fill: #3a4048; }
@@ -327,10 +405,10 @@ h1.dp-diff-changed, h2.dp-diff-changed, h3.dp-diff-changed, h4.dp-diff-changed {
 .dp-diagram .dp-diff-changed > path, .dp-diagram .dp-diff-changed > ellipse {
   stroke: #8a5a00; stroke-width: 2.4;
 }
-.dp-diagram .dp-edge.dp-diff-added polyline,
-.dp-diagram .dp-edge.dp-diff-changed polyline { stroke-width: 2.4; }
-.dp-diagram .dp-edge.dp-diff-added polyline { stroke: var(--diff-edge); }
-.dp-diagram .dp-edge.dp-diff-changed polyline { stroke: #8a5a00; }
+.dp-diagram .dp-edge.dp-diff-added :is(polyline, .dp-edge-line),
+.dp-diagram .dp-edge.dp-diff-changed :is(polyline, .dp-edge-line) { stroke-width: 2.4; }
+.dp-diagram .dp-edge.dp-diff-added :is(polyline, .dp-edge-line) { stroke: var(--diff-edge); }
+.dp-diagram .dp-edge.dp-diff-changed :is(polyline, .dp-edge-line) { stroke: #8a5a00; }
 
 .dp-diff-legend {
   display: flex; gap: 0.8em; align-items: baseline; flex-wrap: wrap;

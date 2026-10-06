@@ -14,6 +14,8 @@ const HEADING = /^(#{1,6})\s+(.*?)(?:\s*\{#([A-Za-z0-9_-]+)\})?\s*$/;
 const IMPORT = /^@import\s+"([^"]+)"\s*(?:\{(.*)\})?\s*$/;
 /** Also accepted on read, though never written back. */
 const IMAGE_IMPORT = /^!\[([^\]]*)\]\(([^)]+)\)\s*(?:\{(.*)\})?\s*$/;
+/** The line that opens or closes a fenced code block, as CommonMark has it. */
+const FENCE = /^ {0,3}(`{3,}|~{3,})(.*)$/;
 
 export class DocumentParseError extends Error {
   constructor(message: string, readonly line: number) {
@@ -54,9 +56,25 @@ export function parseDocument(source: string): DocumentFile {
     proseFrom = -1;
   };
 
+  /** The fence a code block was opened with, while inside one. */
+  let fence: string | undefined;
   for (; i < lines.length; i++) {
     const raw = lines[i]!;
     const text = raw.trim();
+
+    // Inside a code block every line is code: a `# comment` in a shell script
+    // is not a heading, and a `---` in YAML is not a sheet boundary.
+    const marker = FENCE.exec(raw.replace(/\r$/, ''));
+    if (fence !== undefined) {
+      if (marker && marker[1]![0] === fence[0] && marker[1]!.length >= fence.length
+        && marker[2]!.trim() === '') fence = undefined;
+      continue;
+    }
+    if (marker) {
+      fence = marker[1]!;
+      if (proseFrom < 0) proseFrom = i;
+      continue;
+    }
 
     if (text === '---') {
       // CommonMark reads `---` under a non-blank line as a setext heading.

@@ -67,6 +67,16 @@ const FALLBACK_PATHS = {
   ],
 };
 
+/**
+ * The monospaced Japanese face the browser sets code in, where the theme's own
+ * is not installed. The first face of MS Gothic's collection is the monospaced
+ * one — the face a Japanese Windows page means by `monospace`.
+ */
+const MONO_FALLBACK_PATHS = {
+  win32: ['C:\\Windows\\Fonts\\msgothic.ttc'],
+  darwin: ['/System/Library/Fonts/Osaka.ttf'],
+};
+
 /** The first of a list that is actually on this machine. */
 function firstThere(paths) {
   return paths.find(path => existsSync(path));
@@ -146,10 +156,17 @@ function fonts(given) {
       + '--font <ttf/ttc のパス> で指定してください'
       + '（環境変数 DOCPRESENTER_FONT でも可）');
   }
-  const one = { bytes, name: fallback.slice(Math.max(fallback.lastIndexOf('/'), fallback.lastIndexOf('\\')) + 1) };
+  const fileName = path => path.slice(Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\')) + 1);
+  const one = { bytes, name: fileName(fallback) };
+  // Code is laid out by the browser in the machine's monospaced face, so it is
+  // written in one too: set in a proportional face, each run is squeezed into
+  // the width the browser gave it and the runs of a line run into each other.
+  const monoAt = firstThere(MONO_FALLBACK_PATHS[platform] ?? []);
+  const monoBytes = monoAt === undefined ? undefined : read(monoAt);
+  const mono = monoBytes ? { bytes: monoBytes, name: fileName(monoAt) } : one;
   return {
-    set: { body: one, bodyBold: one, heading: one, headingBold: one, mono: one },
-    name: one.name,
+    set: { body: one, bodyBold: one, heading: one, headingBold: one, mono },
+    name: mono === one ? one.name : `${one.name} ＋ ${mono.name}`,
   };
 }
 
@@ -180,12 +197,19 @@ export async function createPdfWriter(options = {}) {
       // DOM を読むとき、テーマが解決した色がそのまま入ってくる。
       ...(input.marks ? { marks: input.marks } : {}),
       ...(input.options.commit ? { commit: input.options.commit } : {}),
+      ...(options.mermaidScript ? { mermaidScript: options.mermaidScript } : {}),
     });
 
     const page = await browser.newPage({ viewport: { width: 1200, height: 1600 } });
     const errors = [];
     page.on('pageerror', e => errors.push(e.message));
     await page.setContent(html, { waitUntil: 'load' });
+    // The page draws its Mermaid blocks itself. Measuring before it is done
+    // would leave a blank where each drawing goes.
+    await page.waitForFunction(() => !document.querySelector('.dp-mermaid')
+      || document.documentElement.dataset.dpMermaid === 'done', undefined, { timeout: 60000 });
+    // Drawn as SVG for the screen; laid on the page as a picture of itself.
+    await page.evaluate(() => window.__dpMermaid?.flatten(document));
     await page.addScriptTag({ content: script });
 
     const title = String(input.root.document.frontmatter.raw.title ?? '');
