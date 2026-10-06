@@ -112,7 +112,9 @@ function readFrontmatter(
   }
   if (end < 0) throw new DocumentParseError('frontmatter が閉じられていない', 1);
 
-  const body = lines.slice(1, end).join('\n');
+  // A file checked out on Windows ends its lines in CRLF; the YAML reader
+  // takes the '\r' for part of the value. The spans stay on the raw lines.
+  const body = lines.slice(1, end).map(line => line.replace(/\r$/, '')).join('\n');
   const parsed: unknown = body.trim() === '' ? {} : parseYaml(body);
   const raw = (parsed && typeof parsed === 'object' ? parsed : {}) as Record<string, unknown>;
 
