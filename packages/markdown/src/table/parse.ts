@@ -2,7 +2,7 @@
 // markers, so the only departures from standard markdown are `^` and `<` and
 // the block references.
 
-import { byteLength } from '@docpresenter/base';
+import { byteLength, lineEndingOf } from '@docpresenter/base';
 import type {
   Align, Cell, Column, GridLine, NamedRange, Row, Selector, StyleBlock, StyleRule, TableFile,
 } from './model.js';
@@ -20,13 +20,16 @@ export class TableParseError extends Error {
 }
 
 export function parseTable(source: string): TableFile {
-  const lines = source.split(/\r?\n/);
+  // The CR of a CRLF file is left off the lines but counted in the offsets:
+  // the ranges are in the text as given, and the CR is a byte of it.
+  const ended = source.split('\n');
+  const lines = ended.map(line => line.replace(/\r$/, ''));
 
   // Byte offset of the start of each line, built once so every grid line can
   // carry the range it occupies.
   const lineStart: number[] = [];
   let at = 0;
-  for (const line of lines) {
+  for (const line of ended) {
     lineStart.push(at);
     at += byteLength(line) + 1;
   }
@@ -118,6 +121,7 @@ export function parseTable(source: string): TableFile {
     comments, columns, rows, blocks, theme, style, ranges, styleBlock,
     header: gridLines[0]!.grid,
     delimiter: gridLines[1]!.grid,
+    lineEnding: lineEndingOf(source),
   };
 }
 

@@ -137,6 +137,50 @@ describe('VS Code のカスタムエディタ', () => {
   });
 });
 
+// 画面は LF で読んだ本文の上で範囲を測る（protocol.ts）。レビューの指摘が
+// 「コミット＋バイト範囲」に付く以上、範囲が取り出した機械の改行で変わっては困る。
+// CRLF のファイルに当てるのは器の仕事。
+describe('CRLF で取り出したファイル', () => {
+  const crlf = (text: string): string => text.replace(/\r?\n/g, '\r\n');
+  const bytes = (text: string): number => new TextEncoder().encode(text).length;
+
+  it('LF の上で測った範囲が、CRLF の文書のその場所に当たる', async () => {
+    const view = await open({ 'docs/design.md': crlf(DOC), 'docs/auth/login.dgm': crlf(DGM) });
+    await view.say({ kind: 'ready' });
+    const at = DOC.indexOf('最初の段落。');
+    await view.say({
+      kind: 'change', description: '段落を書き換える', text: '直した段落。\n二行目。',
+      span: { start: bytes(DOC.slice(0, at)), end: bytes(DOC.slice(0, at + '最初の段落。'.length)) },
+    });
+    expect(view.document.getText())
+      .toBe(crlf(DOC.replace('最初の段落。', '直した段落。\n二行目。')));
+  });
+
+  it('図のファイルも、CRLF のまま書き換わる', async () => {
+    const view = await open({ 'docs/design.md': crlf(DOC), 'docs/auth/login.dgm': crlf(DGM) });
+    await view.say({ kind: 'ready' });
+    const at = DGM.indexOf('a @ (10, 20)');
+    const span = { start: bytes(DGM.slice(0, at)), end: bytes(DGM.slice(0, at + 'a @ (10, 20)'.length)) };
+    await view.say({
+      kind: 'change', path: 'docs/auth/login.dgm', description: '配置を変更',
+      span, text: 'a @ (11, 20)',
+    });
+    expect(held.get('docs/auth/login.dgm')).toBe(crlf(DGM.replace('(10, 20)', '(11, 20)')));
+    // 自分で書いた変更を「外からの書き換え」と取り違えない
+    expect(view.sent.filter(one => one.kind === 'file').length).toBe(0);
+  });
+
+  it('LF のファイルには、LF のまま書く', async () => {
+    const view = await open();
+    await view.say({ kind: 'ready' });
+    await view.say({
+      kind: 'change', path: 'docs/auth/login.dgm', description: '図形を追加',
+      span: { start: 0, end: 0 }, text: '# 足した\r\n',
+    });
+    expect(held.get('docs/auth/login.dgm')).toBe(`# 足した\n${DGM}`);
+  });
+});
+
 describe('図だけを開く', () => {
   it('図を取り込む 1 行の文書として画面に渡り、図は最新の中身が渡る', async () => {
     const view = await open(undefined, 'docs/auth/login.dgm');

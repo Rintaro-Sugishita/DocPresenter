@@ -72,7 +72,7 @@ export function removeRow(table: TableFile, at: number): Edit {
   // Take the newline on one side so no blank line is left behind.
   const span = at > 0
     ? { start: lineOf(table, at - 1).end, end: line.end }
-    : { start: line.start, end: line.end + 1 };
+    : { start: line.start, end: line.end + table.lineEnding.length };
   return { span, text: '', description: '行を削除' };
 }
 
@@ -383,7 +383,7 @@ export function setStyle(
 
   if (declarations.size === 0) {
     return {
-      span: { start: existing.span.start, end: existing.span.end + 1 },
+      span: { start: existing.span.start, end: existing.span.end + table.lineEnding.length },
       text: '',
       description: 'スタイルを解除',
     };

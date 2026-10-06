@@ -11,6 +11,7 @@
 // them is in protocol.ts.
 
 import * as vscode from 'vscode';
+import { spanInFile } from '@docpresenter/base';
 import { unitsBefore } from './bytes.js';
 import { inWorkspace } from './paths.js';
 import type { FromView, ToView } from './protocol.js';
@@ -157,16 +158,19 @@ export class SheetEditorProvider implements vscode.CustomTextEditorProvider {
         ? document
         : await vscode.workspace.openTextDocument(uri);
       const text = target.getText();
-      const from = unitsBefore(text, change.span.start);
-      const to = unitsBefore(text, change.span.end);
+      // The range was measured on the file read as LF (protocol.ts); a CRLF
+      // file has it further along, and takes the new text with CRLF too.
+      const { span, text: written } = spanInFile(text, change);
+      const from = unitsBefore(text, span.start);
+      const to = unitsBefore(text, span.end);
       // Worked out and remembered *before* the edit is applied: VS Code
       // reports the change while `applyEdit` is still running, so a note made
       // afterwards is made too late — and the editor gets told to redraw
       // itself for the edit it just made, under the author's hands.
       const path = pathOf(uri);
-      applied.set(path, text.slice(0, from) + change.text + text.slice(to));
+      applied.set(path, text.slice(0, from) + written + text.slice(to));
       const edit = new vscode.WorkspaceEdit();
-      edit.replace(uri, new vscode.Range(target.positionAt(from), target.positionAt(to)), change.text);
+      edit.replace(uri, new vscode.Range(target.positionAt(from), target.positionAt(to)), written);
       if (!await vscode.workspace.applyEdit(edit)) {
         applied.delete(path);
         void vscode.window.showErrorMessage(`DocPresenter: ${change.description}を書き戻せなかった`);

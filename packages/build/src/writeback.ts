@@ -11,7 +11,7 @@
 // worst thing this could do.
 
 import {
-  applyEdit, type Edit,
+  applyEdit, replaceBytes, spanInFile, toLf, type Edit,
 } from '@docpresenter/base';
 import {
   layOutDiagram, lineText, parseDiagram, parseRuns, pinNodes, setNodeText,
@@ -55,9 +55,13 @@ export function writeBack(pptx: Uint8Array, workspace: Workspace): WriteBackResu
       continue;
     }
 
+    // Measured on the LF text, like every other range the build speaks
+    // (asLf), and each edit restated for the file as it is: a CRLF file stays
+    // CRLF, and nothing outside the edit changes.
+    const measured = toLf(source);
     let file: DiagramFile;
     try {
-      file = parseDiagram(source);
+      file = parseDiagram(measured);
     } catch (error) {
       diagnostics.push({
         severity: 'error', path: drawing.source,
@@ -66,8 +70,15 @@ export function writeBack(pptx: Uint8Array, workspace: Workspace): WriteBackResu
       continue;
     }
 
-    let text = source;
+    let text = measured;
+    let written = source;
     const changes: string[] = [];
+    const apply = (edit: Edit): void => {
+      const there = spanInFile(written, edit);
+      written = replaceBytes(written, there.span.start, there.span.end, there.text);
+      text = applyEdit(text, edit);
+      file = parseDiagram(text);
+    };
 
     // Text first: a label is written by its own line, and moving a shape
     // rewrites a line in the layout block, so the two never collide — but the
@@ -90,8 +101,7 @@ export function writeBack(pptx: Uint8Array, workspace: Workspace): WriteBackResu
           message: `${shape.id}: 書式付きのラベルを書き換えると書式が落ちる（${node.text} → ${shape.text}）`,
         });
       }
-      text = applyEdit(text, setNodeText(file, shape.id, shape.text, text));
-      file = parseDiagram(text);
+      apply(setNodeText(file, shape.id, shape.text, text));
       changes.push(`${shape.id} の文字を「${shape.text}」に`);
     }
 
@@ -121,9 +131,7 @@ export function writeBack(pptx: Uint8Array, workspace: Workspace): WriteBackResu
       });
     }
     if (pins.size > 0) {
-      const edit: Edit = pinNodes(file, text, pins);
-      text = applyEdit(text, edit);
-      file = parseDiagram(text);
+      apply(pinNodes(file, text, pins));
       changes.push(`${[...pins.keys()].join('・')} の位置を更新`);
     }
 
@@ -134,7 +142,7 @@ export function writeBack(pptx: Uint8Array, workspace: Workspace): WriteBackResu
       });
     }
 
-    files.push({ path: drawing.source, source, text, changes });
+    files.push({ path: drawing.source, source, text: written, changes });
   }
 
   return { files, diagnostics };

@@ -25,13 +25,17 @@ export class DocumentParseError extends Error {
 }
 
 export function parseDocument(source: string): DocumentFile {
-  const lines = source.split('\n');
+  // A CRLF file's lines are read without their CR, so a range that ends a
+  // line ends before it; the offsets still count it, because it is a byte of
+  // the text as given.
+  const ended = source.split('\n');
+  const lines = ended.map(line => line.replace(/\r$/, ''));
   const blocks: Block[] = [];
 
   /** Byte offset of the start of each line, built as we go. */
   const lineStart: number[] = [];
   let offset = 0;
-  for (const line of lines) {
+  for (const line of ended) {
     lineStart.push(offset);
     offset += byteLength(line) + 1; // the split consumed one '\n'
   }
@@ -49,7 +53,9 @@ export function parseDocument(source: string): DocumentFile {
     let last = until - 1;
     while (last > proseFrom && (lines[last] ?? '').trim() === '') last--;
     const span = spanOfLines(proseFrom, last);
-    const text = lines.slice(proseFrom, last + 1).join('\n');
+    // As written, CRs and all, so an offset into the text is an offset into
+    // the file; only the last line's CR is outside the range.
+    const text = [...ended.slice(proseFrom, last), lines[last]!].join('\n');
     if (text.trim() !== '') {
       blocks.push({ kind: 'prose', text, references: findReferences(text, span.start), span });
     }
@@ -64,7 +70,7 @@ export function parseDocument(source: string): DocumentFile {
 
     // Inside a code block every line is code: a `# comment` in a shell script
     // is not a heading, and a `---` in YAML is not a sheet boundary.
-    const marker = FENCE.exec(raw.replace(/\r$/, ''));
+    const marker = FENCE.exec(raw);
     if (fence !== undefined) {
       if (marker && marker[1]![0] === fence[0] && marker[1]!.length >= fence.length
         && marker[2]!.trim() === '') fence = undefined;
@@ -130,9 +136,9 @@ function readFrontmatter(
   }
   if (end < 0) throw new DocumentParseError('frontmatter が閉じられていない', 1);
 
-  // A file checked out on Windows ends its lines in CRLF; the YAML reader
-  // takes the '\r' for part of the value. The spans stay on the raw lines.
-  const body = lines.slice(1, end).map(line => line.replace(/\r$/, '')).join('\n');
+  // The lines come without the CR of a CRLF file, which the YAML reader would
+  // take for part of the value.
+  const body = lines.slice(1, end).join('\n');
   const parsed: unknown = body.trim() === '' ? {} : parseYaml(body);
   const raw = (parsed && typeof parsed === 'object' ? parsed : {}) as Record<string, unknown>;
 

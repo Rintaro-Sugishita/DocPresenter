@@ -2,6 +2,7 @@
 // stays readable from the text alone; ruling and fills live in the style layer
 // and are recorded only where they deviate from the theme.
 
+import type { LineEnding } from '@docpresenter/base';
 import type { ByteSpan } from '../document/model.js';
 
 export type Align = 'left' | 'center' | 'right' | 'default';
@@ -84,6 +85,12 @@ export interface TableFile {
   readonly styleBlock: StyleBlock | undefined;
   /** Named row ranges, used by partial references such as `{rows="認証関連"}`. */
   readonly ranges: ReadonlyMap<string, NamedRange>;
+  /**
+   * How the file ends its lines. A line's range stops before its line break,
+   * so removing a whole line has to know how long the break is: one byte, or
+   * two on a CRLF checkout.
+   */
+  readonly lineEnding: LineEnding;
 }
 
 /** Resolves the cell covering a grid position, or undefined when out of range. */

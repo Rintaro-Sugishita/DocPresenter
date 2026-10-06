@@ -2,6 +2,7 @@ export * from './bytes.js';
 export * from './span.js';
 export * from './escape.js';
 export * from './edit.js';
+export * from './line-ending.js';
 export * from './inline.js';
 export * from './view/style.js';
 export * from './view/menu.js';

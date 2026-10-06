@@ -10,7 +10,7 @@ import {
   type DiffMarks, type DocumentFile,
   type ResolvedDocument, type ResourceLoader,
 } from '@docpresenter/markdown';
-import type { Workspace } from './workspace.js';
+import { asLf, type Workspace } from './workspace.js';
 
 export interface PageOptions {
   readonly workspace: Workspace;
@@ -35,7 +35,8 @@ export interface PageOptions {
 }
 
 export function renderPage(options: PageOptions): string {
-  const { workspace, document, resolved, style } = options;
+  const { document, resolved, style } = options;
+  const workspace = asLf(options.workspace);
   const raw = document.frontmatter.raw;
   const title = text(raw['title']) ?? text(raw['document']) ?? options.root;
 

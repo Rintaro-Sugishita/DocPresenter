@@ -4,6 +4,7 @@
 // the diff shows the edit and nothing else.
 
 import { replaceBytes } from './bytes.js';
+import { lineEndingOf, withLineEnding } from './line-ending.js';
 import type { ByteSpan } from './span.js';
 
 export interface Edit {
@@ -20,8 +21,16 @@ export interface Edit {
   readonly path?: string | undefined;
 }
 
+/**
+ * Writes an edit into the text it was measured on.
+ *
+ * The new text takes the line ending the text already has: an edit is written
+ * with LF, and a file of CRLF lines with one LF line in it is a file nobody
+ * meant to write.
+ */
 export function applyEdit(source: string, edit: Edit): string {
-  return replaceBytes(source, edit.span.start, edit.span.end, edit.text);
+  return replaceBytes(source, edit.span.start, edit.span.end,
+    withLineEnding(edit.text, lineEndingOf(source)));
 }
 
 export function applyEdits(source: string, edits: readonly Edit[]): string {

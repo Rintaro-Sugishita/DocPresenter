@@ -14,7 +14,7 @@ import { deckOf } from './deck.js';
 import { diffOf, type Previous } from './diff.js';
 import { readGraph, type ReferenceGraph, type Root } from './graph.js';
 import { hasMermaid, renderPage } from './html.js';
-import type { Artifact, BuildDiagnostic, Workspace } from './workspace.js';
+import { asLf, type Artifact, type BuildDiagnostic, type Workspace } from './workspace.js';
 
 /** What a format writer is given. Everything is prepared before it is called. */
 export interface WriteInput {
@@ -106,8 +106,9 @@ export interface PreparedDocument {
 }
 
 export async function build(
-  workspace: Workspace, options: BuildOptions = {},
+  given: Workspace, options: BuildOptions = {},
 ): Promise<BuildResult> {
+  const workspace = asLf(given);
   const graph = readGraph(workspace);
   const diagnostics: BuildDiagnostic[] = [];
   const artifacts: Artifact[] = [];
@@ -177,7 +178,8 @@ function namedRoot(workspace: Workspace, path: string): Root | undefined {
 }
 
 /** Expands and numbers one root, so that every writer starts from the same thing. */
-export function prepare(workspace: Workspace, root: Root): PreparedDocument {
+export function prepare(given: Workspace, root: Root): PreparedDocument {
+  const workspace = asLf(given);
   const diagnostics: BuildDiagnostic[] = [];
   const expansion = expandDocument(root.document, root.path, path => workspace.read(path));
   for (const d of expansion.diagnostics) {
@@ -236,7 +238,8 @@ export async function takeIn(
  * and the `.mmd` files it takes in, except those the author chose to show as
  * code only.
  */
-export function mermaidSources(workspace: Workspace, document: DocumentFile): string[] {
+export function mermaidSources(given: Workspace, document: DocumentFile): string[] {
+  const workspace = asLf(given);
   const found = new Set<string>();
   for (const block of document.blocks) {
     if (block.kind === 'prose') {

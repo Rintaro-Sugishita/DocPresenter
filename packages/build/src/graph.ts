@@ -11,7 +11,7 @@ import { parseDiagram } from '@docpresenter/diagram';
 import {
   isAddress, isBuildRoot, joinPath, parseDocument, type DocumentFile,
 } from '@docpresenter/markdown';
-import type { BuildDiagnostic, Workspace } from './workspace.js';
+import { asLf, type BuildDiagnostic, type Workspace } from './workspace.js';
 
 export interface Root {
   readonly path: string;
@@ -37,7 +37,9 @@ const MARKDOWN = /\.md$/i;
  */
 const NOT_CONTENT = /(^|\/)((node_modules|dist|out|\.git|\.docpresenter)\/|(CLAUDE|AGENTS)\.md$)/;
 
-export function readGraph(workspace: Workspace): ReferenceGraph {
+export function readGraph(given: Workspace): ReferenceGraph {
+  // Read as LF, so the documents' ranges are the same on every checkout.
+  const workspace = asLf(given);
   const diagnostics: BuildDiagnostic[] = [];
   const files = workspace.list().filter(path => !NOT_CONTENT.test(path));
 

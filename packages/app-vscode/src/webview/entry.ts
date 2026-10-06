@@ -6,6 +6,7 @@
 // `WorkspaceEdit`. Nothing here knows what a `vscode` is — the import list
 // says so — which is the same contract the web shell is built against.
 
+import { toLf } from '@docpresenter/base';
 import { joinPath, parseDocument, renderDocument, resolveDocument } from '@docpresenter/markdown';
 import {
   DEFAULT_SETTINGS, mountSheetView,
@@ -123,18 +124,20 @@ window.addEventListener('message', (event: MessageEvent<ToView>) => {
   const message = event.data;
   if (message.kind === 'open') {
     documentPath = message.path;
-    source = message.source;
+    // The files come as they are on disk; the screen measures every range on
+    // their LF text, so a range means the same on every machine (protocol.ts).
+    source = toLf(message.source);
     drawingOnly = message.diagram === true;
-    files = { ...message.files };
+    files = Object.fromEntries(Object.entries(message.files).map(([path, text]) => [path, toLf(text)]));
     images = { ...message.images };
     settings = { commitKey: message.commitKey };
     mount();
     return;
   }
   if (message.kind === 'file') {
-    if (message.path === documentPath && !drawingOnly) source = message.text;
+    if (message.path === documentPath && !drawingOnly) source = toLf(message.text);
     else if (files[message.path] === undefined && !/\.(dgm|table|mmd|ermlx)$/i.test(message.path)) return;
-    else files[message.path] = message.text;
+    else files[message.path] = toLf(message.text);
     mount();
     return;
   }
