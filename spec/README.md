@@ -47,8 +47,16 @@ The rules below hold for every format specified here.
 
 1. **Encoding is UTF-8**, with no byte order mark. A reader MUST NOT require a
    BOM; it MAY accept and discard one.
-2. **Lines end with LF.** A reader MUST also accept CRLF. A writer MUST use LF.
-   Nothing in either format depends on the line terminator's length.
+2. **Lines end with LF or CRLF.** A reader MUST accept both, in the same file.
+   The CR of a CRLF ending counts toward every byte position after it (rule 6),
+   but belongs to no line: a line's range ends before its CR, and no position
+   falls between a CR and its LF. A writer creating a file MUST use LF. A
+   writer changing a file MUST end the lines it adds with the ending the file
+   already uses — the ending of its first line break — and MUST NOT change the
+   ending of a line it does not otherwise rewrite. A checkout on Windows turns
+   LF into CRLF; a writer that answered with LF would make every edit a diff of
+   two different endings. Nothing else in either format depends on the line
+   terminator.
 3. **Leading and trailing whitespace on a line is not significant.** A reader
    trims each line before interpreting it. Indentation is therefore free, and a
    writer SHOULD keep the indentation a file already uses.

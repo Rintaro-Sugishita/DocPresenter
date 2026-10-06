@@ -17,7 +17,7 @@ The format's one idea is that **you do not have to choose**:
 Thirty shapes, three of which someone cared about, is three lines of
 coordinates — and the next shape added does not move them.
 
-The [common rules](README.md) — UTF-8, LF, trimmed lines, `#` comments, byte
+The [common rules](README.md) — UTF-8, LF or CRLF, trimmed lines, `#` comments, byte
 offsets — apply throughout and are not repeated here.
 
 ---

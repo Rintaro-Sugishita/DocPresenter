@@ -14,7 +14,7 @@ So: **keep the grid, add the four things, and keep every addition out of the
 grid.** Merging is a single character inside the grid; everything else lives in
 sections below it.
 
-The [common rules](README.md) — UTF-8, LF, trimmed lines, `#` comments, byte
+The [common rules](README.md) — UTF-8, LF or CRLF, trimmed lines, `#` comments, byte
 offsets — apply throughout and are not repeated here.
 
 ---
