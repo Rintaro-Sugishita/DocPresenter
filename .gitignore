@@ -4,4 +4,6 @@ dist/
 out/
 *.vsix
 packages/app-vscode/media/
-.vscode/
+.vscode/*
+!.vscode/launch.json
+!.vscode/tasks.json

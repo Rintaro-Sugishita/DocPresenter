@@ -7,7 +7,8 @@
   "type": "module",
   "scripts": {
     "test": "vitest run",
-    "typecheck": "tsc --build"
+    "typecheck": "tsc --build",
+    "build:vscode": "tsc --build && node tools/build-vscode.mjs"
   },
   "devDependencies": {
     "@types/markdown-it": "^14.2.0",

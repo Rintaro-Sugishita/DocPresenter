@@ -16,7 +16,7 @@ node tools/build-vscode.mjs      # media/extension.cjs ＋ webview.js ＋ theme.
 
 ## 試す
 
-リポジトリを VS Code で開いて **F5**（`.vscode/launch.json` が生成済み。標本の `sample/` を
+リポジトリを VS Code で開いて **F5**（`npm run build:vscode` でビルドしてから、標本の `sample/` を
 開いた拡張ホストが立ち上がる）。
 
 ## 配る

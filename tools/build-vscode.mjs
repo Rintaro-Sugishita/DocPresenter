@@ -4,7 +4,7 @@
 // Node inside VS Code and must not carry the editor's screen; the WebView half
 // runs in Chromium and must not carry anything of VS Code's. `vscode` itself is
 // never bundled — the editor provides it at run time.
-import { copyFileSync, mkdirSync, writeFileSync } from 'node:fs';
+import { copyFileSync, mkdirSync } from 'node:fs';
 import { rolldown } from 'rolldown';
 
 const OUT = 'packages/app-vscode/media';
@@ -27,18 +27,4 @@ await view.write({ file: `${OUT}/webview.js`, format: 'iife' });
 // own; a workspace with its own theme is the next step, as in the build.
 copyFileSync('themes/default/theme.css', `${OUT}/theme.css`);
 
-// 入れておくと、拡張のフォルダを開いた VS Code で F5 がそのまま動く。
-mkdirSync('.vscode', { recursive: true });
-writeFileSync('.vscode/launch.json', `${JSON.stringify({
-  version: '0.2.0',
-  configurations: [{
-    name: 'DocPresenter 拡張を試す',
-    type: 'extensionHost',
-    request: 'launch',
-    args: ['--extensionDevelopmentPath=\${workspaceFolder}/packages/app-vscode', '\${workspaceFolder}/sample'],
-    outFiles: ['\${workspaceFolder}/packages/app-vscode/media/*.cjs'],
-  }],
-}, null, 2)}\n`);
-
 console.log(`${OUT}/extension.cjs ＋ webview.js ＋ theme.css を生成`);
-console.log('.vscode/launch.json を生成（F5 で標本を開いた拡張ホストが起動する）');

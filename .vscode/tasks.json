@@ -1,0 +1,13 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "DocPresenter 拡張をビルド",
+      "type": "shell",
+      "command": "npm run build:vscode",
+      "options": { "cwd": "${workspaceFolder}" },
+      "group": "build",
+      "problemMatcher": ["$tsc"]
+    }
+  ]
+}

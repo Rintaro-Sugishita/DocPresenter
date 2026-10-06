@@ -1,0 +1,18 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "DocPresenter 拡張を試す",
+      "type": "extensionHost",
+      "request": "launch",
+      "args": [
+        "--extensionDevelopmentPath=${workspaceFolder}/packages/app-vscode",
+        "${workspaceFolder}/sample"
+      ],
+      "outFiles": [
+        "${workspaceFolder}/packages/app-vscode/media/*.cjs"
+      ],
+      "preLaunchTask": "DocPresenter 拡張をビルド"
+    }
+  ]
+}
