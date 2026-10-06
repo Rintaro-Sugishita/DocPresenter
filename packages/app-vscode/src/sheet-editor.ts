@@ -14,6 +14,7 @@ import * as vscode from 'vscode';
 import { unitsBefore } from './bytes.js';
 import { inWorkspace } from './paths.js';
 import type { FromView, ToView } from './protocol.js';
+import { exportDocument, type OpenView } from './export-command.js';
 
 /** Text the document could refer to, and pictures it could show. */
 const TEXT_FILES = '**/*.{dgm,table,mmd,ermlx,md}';
@@ -22,8 +23,32 @@ const IGNORED = '**/{node_modules,out,dist,.git}/**';
 
 export class SheetEditorProvider implements vscode.CustomTextEditorProvider {
   static readonly viewType = 'docpresenter.sheets';
+  /** A `.dgm` on its own: the same editor, showing just that drawing. */
+  static readonly diagramViewType = 'docpresenter.diagram';
 
-  constructor(private readonly context: vscode.ExtensionContext) {}
+  /** Every open editor, so a command can act on the one in front. */
+  private readonly views = new Map<vscode.WebviewPanel, OpenView>();
+
+  constructor(
+    private readonly context: vscode.ExtensionContext,
+    private readonly output: vscode.OutputChannel,
+  ) {}
+
+  /** The DocPresenter editor the author is looking at, if any. */
+  activeView(): OpenView | undefined {
+    for (const [panel, view] of this.views) if (panel.active) return view;
+    return undefined;
+  }
+
+  /** Writes the document in the editor in front as HTML, PDF or PPTX. */
+  async export(format: 'html' | 'pdf' | 'pptx'): Promise<void> {
+    const view = this.activeView();
+    if (!view) {
+      void vscode.window.showInformationMessage('DocPresenter: 書き出す文書を DocPresenter で開いてください');
+      return;
+    }
+    await exportDocument(view, format, this.context, this.output);
+  }
 
   async resolveCustomTextEditor(
     document: vscode.TextDocument,
@@ -40,14 +65,42 @@ export class SheetEditorProvider implements vscode.CustomTextEditorProvider {
     const pathOf = (uri: vscode.Uri): string =>
       vscode.workspace.asRelativePath(uri, false).split('\\').join('/');
     const documentPath = pathOf(document.uri);
+    // A drawing opened on its own is shown as a one-line document that takes
+    // it in: the editor then works on it exactly as on a figure in a document,
+    // and the only file it ever writes is the drawing.
+    const diagram = /\.dgm$/i.test(documentPath);
+    const name = documentPath.slice(documentPath.lastIndexOf('/') + 1);
 
     panel.webview.options = {
       enableScripts: true,
       localResourceRoots: [vscode.Uri.joinPath(this.context.extensionUri, 'media'), root],
     };
-    panel.webview.html = page(panel.webview, this.context.extensionUri);
+    panel.webview.html = page(panel.webview, this.context.extensionUri, !diagram);
 
     const post = (message: ToView): void => { void panel.webview.postMessage(message); };
+
+    // A request the WebView answers — laying a page out, drawing a picture —
+    // is matched to its answer by number.
+    let asked = 0;
+    const waiting = new Map<number, (message: FromView) => void>();
+    const view: OpenView = {
+      documentPath,
+      post,
+      ask: (make, answer) => new Promise((resolve, reject) => {
+        const id = ++asked;
+        const timer = setTimeout(() => {
+          waiting.delete(id);
+          reject(new Error('DocPresenter の画面から応答がない'));
+        }, 120_000);
+        waiting.set(id, message => {
+          clearTimeout(timer);
+          if (message.kind === answer) resolve(message as Extract<FromView, { kind: typeof answer }>);
+          else reject(new Error(`思わぬ応答: ${message.kind}`));
+        });
+        post(make(id));
+      }),
+    };
+    this.views.set(panel, view);
 
     /**
      * What this extension has just written, by path.
@@ -69,12 +122,14 @@ export class SheetEditorProvider implements vscode.CustomTextEditorProvider {
       for (const uri of await vscode.workspace.findFiles(IMAGE_FILES, IGNORED)) {
         images[pathOf(uri)] = panel.webview.asWebviewUri(uri).toString();
       }
+      if (diagram) files[documentPath] = document.getText();
       post({
         kind: 'open',
         path: documentPath,
-        source: document.getText(),
+        source: diagram ? `@import "${name}"\n` : document.getText(),
         files, images,
         commitKey: commitKey(),
+        ...(diagram ? { diagram: true } : {}),
       });
     };
 
@@ -93,6 +148,8 @@ export class SheetEditorProvider implements vscode.CustomTextEditorProvider {
      * range is what VS Code is handed.
      */
     const apply = async (change: Extract<FromView, { kind: 'change' }>): Promise<void> => {
+      // The document a drawing is shown in exists only on screen.
+      if (diagram && change.path === undefined) return;
       const uri = change.path === undefined
         ? document.uri
         : vscode.Uri.joinPath(root, ...change.path.split('/'));
@@ -125,6 +182,15 @@ export class SheetEditorProvider implements vscode.CustomTextEditorProvider {
     panel.webview.onDidReceiveMessage(async (message: FromView) => {
       try {
         if (message.kind === 'ready') { await open(); return; }
+        if (message.kind === 'measured' || message.kind === 'pictured') {
+          waiting.get(message.id)?.(message);
+          waiting.delete(message.id);
+          return;
+        }
+        if (message.kind === 'export') {
+          await exportDocument(view, message.format, this.context, this.output);
+          return;
+        }
         if (message.kind === 'change') { await apply(message); return; }
         if (message.kind === 'create') {
           const bytes = message.bytes
@@ -166,7 +232,11 @@ export class SheetEditorProvider implements vscode.CustomTextEditorProvider {
       }
     });
 
-    panel.onDidDispose(() => { watching.dispose(); settings.dispose(); });
+    panel.onDidDispose(() => {
+      watching.dispose();
+      settings.dispose();
+      this.views.delete(panel);
+    });
   }
 }
 
@@ -177,7 +247,7 @@ function commitKey(): 'ctrl-enter' | 'enter' | 'shift-enter' | 'alt-enter' {
 }
 
 /** The page the WebView loads: our own script, the theme, and nothing else. */
-function page(webview: vscode.Webview, extensionUri: vscode.Uri): string {
+function page(webview: vscode.Webview, extensionUri: vscode.Uri, exportBar = true): string {
   const media = (name: string): vscode.Uri =>
     webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, 'media', name));
   // A nonce, so the only script that runs is the one shipped with the
@@ -192,9 +262,32 @@ function page(webview: vscode.Webview, extensionUri: vscode.Uri): string {
 <link rel="stylesheet" href="${media('theme.css')}">
 <style>
   html, body { height: 100%; margin: 0; padding: 0; max-width: none; background: #fff; }
-  #editor { min-height: 0; }
+  body { display: flex; flex-direction: column; }
+  #editor { flex: 1; min-height: 0; }
+  /* 書き出しのボタン。編集画面の飾りであって、文書には出ない。 */
+  .dp-export {
+    flex: none; display: flex; align-items: center; gap: 6px; padding: 6px 12px;
+    border-bottom: 1px solid #e3e6ea; background: #f7f8fa;
+    font: 12px system-ui, sans-serif; color: #3a4048;
+  }
+  .dp-export-label { margin-right: 2px; }
+  .dp-export button {
+    font: inherit; padding: 3px 12px; border: 1px solid #c9ced6; border-radius: 4px;
+    background: #fff; color: #1c1f24; cursor: pointer;
+  }
+  .dp-export button:hover:not(:disabled) { background: #eef3fa; border-color: #1f5fa8; }
+  .dp-export button:focus-visible { outline: 2px solid #1f5fa8; outline-offset: 1px; }
+  .dp-export button:disabled { color: #a7aeb8; cursor: default; }
+  .dp-export-status { margin-left: 8px; color: #5a6270; }
 </style>
 </head><body>
+${exportBar ? `<div class="dp-export" role="toolbar" aria-label="書き出し">
+  <span class="dp-export-label">書き出し</span>
+  <button type="button" data-format="html">HTML</button>
+  <button type="button" data-format="pdf">PDF</button>
+  <button type="button" data-format="pptx">PPTX</button>
+  <span class="dp-export-status" role="status" aria-live="polite"></span>
+</div>` : ''}
 <div id="editor"></div>
 <script nonce="${nonce}" src="${media('webview.js')}"></script>
 </body></html>`;

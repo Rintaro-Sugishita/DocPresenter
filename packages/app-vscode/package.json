@@ -16,15 +16,37 @@
         "displayName": "DocPresenter",
         "selector": [{ "filenamePattern": "*.md" }],
         "priority": "option"
+      },
+      {
+        "viewType": "docpresenter.diagram",
+        "displayName": "DocPresenter（図）",
+        "selector": [{ "filenamePattern": "*.dgm" }],
+        "priority": "option"
       }
     ],
     "commands": [
-      { "command": "docpresenter.openEditor", "title": "DocPresenter: この文書を開く", "category": "DocPresenter" },
-      { "command": "docpresenter.build", "title": "DocPresenter: ビルド（HTML / PPTX）", "category": "DocPresenter" }
+      { "command": "docpresenter.openEditor", "title": "DocPresenter で開く", "category": "DocPresenter" },
+      { "command": "docpresenter.build", "title": "DocPresenter: 出力対象をすべて書き出す（各文書の output: どおり）", "category": "DocPresenter" },
+      { "command": "docpresenter.buildAs", "title": "DocPresenter: 出力対象をすべて、形式を指定して書き出す…", "category": "DocPresenter" },
+      { "command": "docpresenter.exportHtml", "title": "DocPresenter: この文書を HTML に書き出す", "category": "DocPresenter" },
+      { "command": "docpresenter.exportPdf", "title": "DocPresenter: この文書を PDF に書き出す", "category": "DocPresenter" },
+      { "command": "docpresenter.exportPptx", "title": "DocPresenter: この文書を PPTX に書き出す", "category": "DocPresenter" }
     ],
     "menus": {
       "editor/title": [
-        { "command": "docpresenter.openEditor", "when": "resourceExtname == .md", "group": "navigation" }
+        { "command": "docpresenter.openEditor", "when": "resourceExtname =~ /^\\.(md|dgm)$/ && !activeCustomEditorId", "group": "navigation" },
+        { "command": "docpresenter.exportHtml", "when": "activeCustomEditorId == docpresenter.sheets", "group": "docpresenter@1" },
+        { "command": "docpresenter.exportPdf", "when": "activeCustomEditorId == docpresenter.sheets", "group": "docpresenter@2" },
+        { "command": "docpresenter.exportPptx", "when": "activeCustomEditorId == docpresenter.sheets", "group": "docpresenter@3" }
+      ],
+      "explorer/context": [
+        { "command": "docpresenter.openEditor", "when": "resourceExtname =~ /^\\.(md|dgm)$/", "group": "navigation@9" }
+      ],
+      "commandPalette": [
+        { "command": "docpresenter.openEditor", "when": "resourceExtname =~ /^\\.(md|dgm)$/" },
+        { "command": "docpresenter.exportHtml", "when": "activeCustomEditorId == docpresenter.sheets" },
+        { "command": "docpresenter.exportPdf", "when": "activeCustomEditorId == docpresenter.sheets" },
+        { "command": "docpresenter.exportPptx", "when": "activeCustomEditorId == docpresenter.sheets" }
       ]
     },
     "configuration": {
@@ -49,6 +71,7 @@
     "@docpresenter/build": "*",
     "@docpresenter/diagram": "*",
     "@docpresenter/editor": "*",
-    "@docpresenter/markdown": "*"
+    "@docpresenter/markdown": "*",
+    "@docpresenter/pdf": "*"
   }
 }

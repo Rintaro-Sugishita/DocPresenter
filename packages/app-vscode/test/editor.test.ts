@@ -16,7 +16,10 @@ const DOC = [
 const DGM = ['free {', '  a [あ]', '}', '', 'layout {', '  a @ (10, 20)', '}', ''].join('\n');
 
 /** Opens the editor on a document and gives the test the two directions. */
-async function open(files: Readonly<Record<string, string>> = { 'docs/design.md': DOC, 'docs/auth/login.dgm': DGM }) {
+async function open(
+  files: Readonly<Record<string, string>> = { 'docs/design.md': DOC, 'docs/auth/login.dgm': DGM },
+  path = 'docs/design.md',
+) {
   give(files);
   const sent: ToView[] = [];
   let receive: ((message: FromView) => unknown) | undefined;
@@ -34,7 +37,7 @@ async function open(files: Readonly<Record<string, string>> = { 'docs/design.md'
     },
     onDidDispose: () => ({ dispose: () => undefined }),
   };
-  const document = await documentAt('docs/design.md');
+  const document = await documentAt(path);
   const provider = new SheetEditorProvider(
     { extensionUri: { toString: () => 'file:///ext' } } as never);
   await provider.resolveCustomTextEditor(document as never, panel as never, {} as never);
@@ -134,6 +137,35 @@ describe('VS Code のカスタムエディタ', () => {
   });
 });
 
+describe('図だけを開く', () => {
+  it('図を取り込む 1 行の文書として画面に渡り、図は最新の中身が渡る', async () => {
+    const view = await open(undefined, 'docs/auth/login.dgm');
+    await view.say({ kind: 'ready' });
+    const opened = view.sent.find(one => one.kind === 'open');
+    if (opened?.kind !== 'open') throw new Error('open が来ない');
+    expect(opened.diagram).toBe(true);
+    expect(opened.source).toBe('@import "login.dgm"\n');
+    expect(opened.files['docs/auth/login.dgm']).toBe(DGM);
+    // 書き出しのボタンは、文書ではないので出さない
+    expect(view.html()).not.toContain('data-format="pdf"');
+  });
+
+  it('図の編集は図のファイルに書かれ、画面にしかない文書への編集は捨てる', async () => {
+    const view = await open(undefined, 'docs/auth/login.dgm');
+    await view.say({ kind: 'ready' });
+    await view.say({
+      kind: 'change', span: { start: 0, end: 0 }, description: '本文を追加', text: '前置き\n',
+    });
+    expect(held.get('docs/auth/login.dgm')).toBe(DGM);
+    const at = DGM.indexOf('[あ]');
+    await view.say({
+      kind: 'change', path: 'docs/auth/login.dgm',
+      span: { start: at, end: at + 5 }, description: '文字を変更', text: '[い]',
+    });
+    expect(held.get('docs/auth/login.dgm')).toBe(DGM.replace('[あ]', '[い]'));
+  });
+});
+
 describe('ビルドのコマンド', () => {
   // ビルドはファイルを 1 つも開かない作りなので、CLI と同じものがそのまま動く。
   // 確かめたいのは「VS Code のファイルシステム越しでも同じ結果になる」ことである。
@@ -159,7 +191,8 @@ describe('ビルドのコマンド', () => {
     const output = { lines: [] as string[], clear() { this.lines.length = 0; }, show() {},
       appendLine(line: string) { this.lines.push(line); }, dispose() {} };
     await runBuild(output as never, ':root { --dp-text: #000 }');
-    expect(output.lines.join('\n')).toContain('PDF はこの版では書けません');
+    // まとめてのビルドでは書けない。開いた文書の PDF ボタンで書けると言う。
+    expect(output.lines.join('\n')).toContain('PDF は、文書を DocPresenter で開いて上の「PDF」ボタンで書き出せます');
     // 書けないものを黙って落とさない。HTML は出る。
     expect([...written.keys()]).toContain('out/build/design.html');
   });

@@ -11,8 +11,10 @@ import {
   DEFAULT_SETTINGS, mountSheetView,
   type EditorSettings, type Picture, type ResourceKind, type SheetView,
 } from '@docpresenter/editor';
+import { drawMermaid } from '@docpresenter/editor/mermaid';
+import { answerRenderRequest } from './render-requests.js';
 import { freeName, inDocument, inWorkspace, resourceFolder } from '../paths.js';
-import type { FromView, ToView } from '../protocol.js';
+import type { ExportFormat, FromView, ToView } from '../protocol.js';
 
 declare function acquireVsCodeApi(): { postMessage(message: FromView): void };
 
@@ -24,6 +26,8 @@ let source = '';
 let files: Record<string, string> = {};
 let images: Record<string, string> = {};
 let settings: EditorSettings = DEFAULT_SETTINGS;
+/** A `.dgm` opened on its own: `source` is only the line that shows it. */
+let drawingOnly = false;
 let view: SheetView | undefined;
 
 const STARTER: Readonly<Record<ResourceKind, string>> = {
@@ -91,6 +95,13 @@ function mount(): void {
       return { path: inDocument(documentPath, path) };
     },
     onChange: (edit, text) => {
+      if (edit.path === undefined && drawingOnly) {
+        // The one-line document a drawing is shown in is not a file. Whatever
+        // was done to it is undone, once the editor has finished doing it.
+        setTimeout(mount, 0);
+        send({ kind: 'error', message: '図だけを開いているので、ここに本文は書けません（図を押すと編集できます）' });
+        return;
+      }
       if (edit.path === undefined) {
         source = text;
         send({ kind: 'change', span: edit.span, description: edit.description, text: edit.text });
@@ -103,6 +114,7 @@ function mount(): void {
       });
     },
     onError: message => send({ kind: 'error', message }),
+    decorate: page => { void drawMermaid(page); },
   });
   if (at > 0) view.select(at);
 }
@@ -112,6 +124,7 @@ window.addEventListener('message', (event: MessageEvent<ToView>) => {
   if (message.kind === 'open') {
     documentPath = message.path;
     source = message.source;
+    drawingOnly = message.diagram === true;
     files = { ...message.files };
     images = { ...message.images };
     settings = { commitKey: message.commitKey };
@@ -119,7 +132,7 @@ window.addEventListener('message', (event: MessageEvent<ToView>) => {
     return;
   }
   if (message.kind === 'file') {
-    if (message.path === documentPath) source = message.text;
+    if (message.path === documentPath && !drawingOnly) source = message.text;
     else if (files[message.path] === undefined && !/\.(dgm|table|mmd|ermlx)$/i.test(message.path)) return;
     else files[message.path] = message.text;
     mount();
@@ -133,8 +146,29 @@ window.addEventListener('message', (event: MessageEvent<ToView>) => {
   if (message.kind === 'settings') {
     settings = { commitKey: message.commitKey };
     view?.configure(settings);
+    return;
   }
+  if (message.kind === 'export-state') {
+    for (const button of exportButtons) button.disabled = message.busy;
+    if (exportStatus) exportStatus.textContent = message.message ?? '';
+    return;
+  }
+  answerRenderRequest(message, send);
 });
+
+// --- 書き出し -----------------------------------------------------------------
+//
+// The buttons only ask. The build runs in the extension, which writes the
+// file; what needs a browser — laying the page out for a PDF, drawing Mermaid
+// as a picture for a slide — comes back here as a request.
+
+const exportButtons = [...document.querySelectorAll<HTMLButtonElement>('.dp-export button[data-format]')];
+const exportStatus = document.querySelector<HTMLElement>('.dp-export-status');
+for (const button of exportButtons) {
+  button.addEventListener('click', () => {
+    send({ kind: 'export', format: button.dataset['format'] as ExportFormat });
+  });
+}
 
 // `joinPath` is re-exported so the bundle keeps one copy of the path rules the
 // renderer and the shell both use; referencing it here makes that explicit.

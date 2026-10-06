@@ -2,16 +2,65 @@
 
 設計書（`.md` ＋ `.dgm` ＋ `.table`）を、VS Code の中で**画面のまま**編集する。
 
-- `.md` を開いて **「DocPresenter: この文書を開く」**。シートが並び、図や表はその場で編集できる。
+## 開く
+
+- エクスプローラーで `.md` か `.dgm` を右クリック → **「DocPresenter で開く」**。エディタ右上のボタンからも開ける。
+  - `.md` はシートが並び、図や表はその場で編集できる。
+  - `.dgm` はその図だけを開く。図を押すと編集できる。書き換わるのはその `.dgm` だけである。
 - 編集は **1 操作 ＝ 1 つのバイト範囲**として書き戻される。VS Code の取り消し・未保存の点・git の差分が
   そのまま効くのは、編集を `WorkspaceEdit` として渡しているからである。
-- **「DocPresenter: ビルド」** で HTML と PPTX を `out/build`（設定で変更可）に書く。
+
+## 書き出す
+
+| やりたいこと | 操作 |
+|---|---|
+| 開いている文書を 1 つの形式で | 文書の上の **「書き出し: HTML / PDF / PPTX」**。エディタ右上の「…」メニュー、コマンド「DocPresenter: この文書を PDF に書き出す」なども同じ |
+| `output:` を持つ文書をすべて、各文書の指定どおりに | コマンド **「DocPresenter: 出力対象をすべて書き出す（各文書の output: どおり）」** |
+| `output:` を持つ文書をすべて、形式を指定して | コマンド **「DocPresenter: 出力対象をすべて、形式を指定して書き出す…」**（HTML / PDF / PPTX から選ぶ。`output:` より優先） |
+
+- 書き出し先は `out/build`（設定 `docpresenter.outDir` で変更可）。
+- PDF の組版は DocPresenter の画面がする。まとめて書き出すときは「DocPresenter 書き出し」という画面が横に開き、
+  終わると閉じる。フォントはこの PC のもの（Windows では游ゴシック、コードは MS ゴシック）を埋め込む。
+
+## コードと Mermaid
+
+- コードブロックは言語名（` ```sql ` など）で色が付き、上に言語名が出る。DocPresenter の画面では、
+  その横の **「コピー」** でコードブロックの全文をコピーできる。
+- ` ```mermaid ` と `.mmd` は図になる。ブロックにマウスを載せると右上に **「図 / コード / 両方」** の切り替えが出る。
+  押すと `{view="…"}` がファイルに書かれ、書き出した HTML・PDF・PPTX もそのとおりになる。
+
+### 色が付く言語
+
+開きの行に書く言語名（別名も可）。これ以外の名前は色を付けず、書いた名前をそのまま上に出す。
+
+| 言語 | 書ける名前 |
+|---|---|
+| Bash / シェル | `bash` `sh` `zsh` `shell` `console` |
+| PowerShell | `powershell` `ps` `ps1` |
+| JavaScript | `javascript` `js` `jsx` `mjs` `cjs` |
+| TypeScript | `typescript` `ts` `tsx` `mts` `cts` |
+| JSON | `json` |
+| YAML | `yaml` `yml` |
+| XML / HTML / SVG | `xml` `html` `xhtml` `svg` |
+| CSS | `css` |
+| SQL | `sql` |
+| Python | `python` `py` |
+| Java | `java` |
+| Kotlin | `kotlin` `kt` |
+| C# | `csharp` `cs` `c#` |
+| Go | `go` `golang` |
+| Diff | `diff` `patch` |
+| INI / TOML | `ini` `toml` |
+| Dockerfile | `dockerfile` `docker` |
+| Markdown | `markdown` `md` |
+| テキスト（色なし） | `plaintext` `text` `txt` |
+| Mermaid（図になる） | `mermaid` |
 
 ## 作る
 
 ```
 npx tsc --build                  # 型検査（packages/app-vscode を含む）
-node tools/build-vscode.mjs      # media/extension.cjs ＋ webview.js ＋ theme.css
+node tools/build-vscode.mjs      # media/ に extension.cjs ＋ webview.js ＋ exporter.js ＋ theme.css ＋ mermaid-page.js ＋ harfbuzz-subset.wasm
 ```
 
 ## 試す
@@ -30,5 +79,6 @@ code --install-extension docpresenter-0.1.0.vsix
 
 | | |
 |---|---|
-| **PDF** | 組版はブラウザにさせる作りで、WebView をその用途で使うのは次の段。いまは `node tools/build.mjs` を使う |
+| **PDF をまとめて書く** | まとめてのビルドには組版する画面が無いので、PDF は文書ごとにボタンで書く。まとめて書くなら `node tools/build.mjs` |
+| **PowerPoint で Mermaid を編集** | Mermaid の図は画像で載る。PowerPoint で動かせる図形にしたいなら `.dgm` で描く |
 | **部品ライブラリの編集** | 画面からは選べるが、部品そのものはソースで書く |

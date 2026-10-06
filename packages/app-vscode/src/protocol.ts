@@ -9,6 +9,17 @@
 
 import type { ByteSpan } from '@docpresenter/base';
 import type { CommitKey } from '@docpresenter/editor';
+import type { PagePlan } from '@docpresenter/pdf';
+
+/** What the export buttons write. */
+export type ExportFormat = 'html' | 'pdf' | 'pptx';
+
+/** A Mermaid drawing as a picture: a PNG data URL and its size in pixels. */
+export interface Picture {
+  readonly data: string;
+  readonly width: number;
+  readonly height: number;
+}
 
 /** Host → WebView. */
 export type ToView =
@@ -22,11 +33,29 @@ export type ToView =
     /** Pictures, by workspace path, as URLs the WebView may load. */
     readonly images: Readonly<Record<string, string>>;
     readonly commitKey: CommitKey;
+    /**
+     * A `.dgm` opened on its own. `source` is then a one-line document that
+     * takes the drawing in, and exists only on screen: edits to it are not sent.
+     */
+    readonly diagram?: boolean;
   }
   /** Somebody else changed a file — the document itself, or one it refers to. */
   | { readonly kind: 'file'; readonly path: string; readonly text: string }
   | { readonly kind: 'image'; readonly path: string; readonly url: string }
-  | { readonly kind: 'settings'; readonly commitKey: CommitKey };
+  | { readonly kind: 'settings'; readonly commitKey: CommitKey }
+  /**
+   * Lay this page out and measure it for a PDF. Only a browser can, and the
+   * WebView is the one the extension has; the host writes the PDF from the
+   * plan that comes back. `body` is the page's body, theme already loaded.
+   */
+  | {
+    readonly kind: 'measure'; readonly id: number;
+    readonly body: string; readonly foot: string; readonly title: string;
+  }
+  /** Draw one Mermaid source as a picture, for a slide. */
+  | { readonly kind: 'picture'; readonly id: number; readonly source: string }
+  /** Where an export stands, for the buttons to show. */
+  | { readonly kind: 'export-state'; readonly busy: boolean; readonly message?: string };
 
 /** WebView → host. */
 export type FromView =
@@ -51,4 +80,11 @@ export type FromView =
     /** A picture's bytes, as plain numbers: a WebView message is JSON. */
     readonly bytes?: readonly number[];
   }
-  | { readonly kind: 'error'; readonly message: string };
+  | { readonly kind: 'error'; readonly message: string }
+  /** The author pressed an export button. */
+  | { readonly kind: 'export'; readonly format: ExportFormat }
+  | {
+    readonly kind: 'measured'; readonly id: number;
+    readonly plan?: PagePlan; readonly diagnostics?: readonly string[]; readonly error?: string;
+  }
+  | { readonly kind: 'pictured'; readonly id: number; readonly picture?: Picture; readonly error?: string };
