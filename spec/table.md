@@ -56,10 +56,10 @@ silently.**
 ## 2. The grid
 
 ```
-| 分類 | No | 項目名      | 型             | 必須 | 説明           |
-|------|---:|------------|----------------|:----:|----------------|
-| 入力 |  1 | ログイン ID | `varchar(64)`  |  ○   | メール形式。@1 |
-| ^    |  2 | パスワード   | `varchar(255)` |  ○   | 8 文字以上     |
+| Category | No | Item     | Type           | Required | Description          |
+|----------|---:|----------|----------------|:--------:|----------------------|
+| Input    |  1 | Login ID | `varchar(64)`  |   yes    | An email address. @1 |
+| ^        |  2 | Password | `varchar(255)` |   yes    | 8 characters or more |
 ```
 
 - The **first** grid line is the header row.
@@ -106,15 +106,15 @@ Two markers, each **the entire content of its cell**:
 | `<` | this position belongs to the cell **to the left** |
 
 ```
-| 入力 |  1 | ログイン ID |
-| ^    |  2 | パスワード   |
-| ^    |  3 | 保持        |
+| Input |  1 | Login ID    |
+| ^     |  2 | Password    |
+| ^     |  3 | Remember me |
 ```
 
-「入力」 covers three rows. And across:
+`Input` covers three rows. And across:
 
 ```
-| 期間        | <    | 備考 |
+| Period      | <    | Notes |
 | 2026-04-01  | 2026-09-30 | — |
 ```
 
@@ -158,9 +158,9 @@ Everything outside the grid that refers into it does so **by text**:
 - a **row** is named by the text of its **leading cell**.
 
 ```
-col:説明        { width: 38% }
-cell:表示/説明  { fill: #fdf0d5 }
-認証関連: アクセストークン..セッションキャッシュ
+col:Description          { width: 38% }
+cell:Display/Description { fill: #fdf0d5 }
+Authentication: Access token..Session cache
 ```
 
 Not `col:7` and not `row:12`. This is the single most consequential decision in
@@ -179,11 +179,11 @@ What a cell cannot hold, because it would need a newline.
 
 ```
 [@1]:
-- 大文字小文字は区別しない
-- 前後の空白は除去してから検証する
+- Not case-sensitive
+- Leading and trailing spaces are removed before validation
 
 [@2]:
-認証失敗時は理由を区別せず「ID またはパスワードが違います」と表示する。
+On a failed login, show "The ID or password is incorrect" whatever the reason.
 ```
 
 - The definition opens with `[@key]:` where `key` is any run of characters other
@@ -200,8 +200,8 @@ lives below, where it can be as long as it needs to be.
 
 ```
 range {
-  認証関連:   アクセストークン..セッションキャッシュ
-  ネットワーク: DMZ..IdP
+  Authentication: Access token..Session cache
+  Network:        DMZ..IdP
 }
 ```
 
@@ -218,9 +218,9 @@ table usable in a specification that needs eight of its rows.
 ```
 style {
   theme: grid
-  col:分類       { width: 18% }
-  col:説明       { width: 38% }
-  cell:表示/説明 { fill: #fdf0d5 }
+  col:Category             { width: 18% }
+  col:Description          { width: 38% }
+  cell:Display/Description { fill: #fdf0d5 }
 }
 ```
 
@@ -271,7 +271,7 @@ token; a reader MUST NOT reject it.
 
 `width` is the exception that proves the rule: it is a **measurement**, not a
 token, and it is written as a real length because no theme can know how wide the
-「備考」 column of one particular table should be.
+`Notes` column of one particular table should be.
 
 A value that claims to be a colour but does not match the two hex forms MUST NOT
 be emitted as a colour. The check is a safety rule: the value reaches a `style`

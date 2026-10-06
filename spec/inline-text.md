@@ -109,8 +109,8 @@ For a drawing, this matters twice over:
 1. **A run is a `tspan`.** One run, one element, with the properties as
    attributes or classes.
 2. **Wrapping measures the text, not the marks.** A label is broken into lines
-   by the width of what it shows. `**Web フロント**` is five characters wide, not
-   nine. A reader that measures the source string will wrap labels too early,
+   by the width of what it shows. `**Web front end**` is thirteen characters wide, not
+   seventeen. A reader that measures the source string will wrap labels too early,
    and a writer cannot correct for it.
 
 ## 4. What is not here

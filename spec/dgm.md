@@ -29,7 +29,7 @@ between them. A section opens with a line naming it and ending in `{`, and
 closes with a line holding the matching `}`.
 
 ```
-free 認証まわり {
+free Authentication {
   …
 }
 
@@ -65,7 +65,7 @@ which puts the part a reviewer reads first at the top of the diff.
 The opening line is the section name, then optional free text, then `{`:
 
 ```
-free 認証まわり {
+free Authentication {
 ```
 
 The free text is a **title for people**. A reader MAY show it and MUST NOT
@@ -208,14 +208,14 @@ Nested groups are not specified in version 0.1.
 
 ```
 free {
-  browser [利用者ブラウザ]
-  web     [Web フロント]
-  api     [認証 API]
-  db      [(会員 DB)]
-  note1   >社内 NW からのみ接続可]
+  browser [User's browser]
+  web     [Web front end]
+  api     [Auth API]
+  db      [(Member DB)]
+  note1   >Reachable from the internal network only]
 
-  group dmz   "DMZ"           { web }
-  group intra "社内ネットワーク" { api; db }
+  group dmz   "DMZ"              { web }
+  group intra "Internal network" { api; db }
 
   browser -> web  "HTTPS"
   web     -> api  "gRPC"
@@ -327,8 +327,8 @@ and the wording are kept as text beside it.
 
 ```
 overlay "../assets/login-screen.png" {
-  ① @ (168, 126) -> (188, 132)  "ログイン ID"
-  ② @ (168, 186) -> (188, 192)  "パスワード"
+  ① @ (168, 126) -> (188, 132)  "Login ID"
+  ② @ (168, 186) -> (188, 192)  "Password"
 }
 ```
 
