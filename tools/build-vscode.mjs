@@ -46,4 +46,10 @@ copyFileSync(createRequire(import.meta.url).resolve('harfbuzzjs/dist/harfbuzz-su
 // own; a workspace with its own theme is the next step, as in the build.
 copyFileSync('themes/default/theme.css', `${OUT}/theme.css`);
 
-console.log(`${OUT}/extension.cjs ＋ webview.js ＋ theme.css ＋ exporter.js ＋ mermaid-page.js ＋ harfbuzz-subset.wasm を生成`);
+// What "set this folder up" writes into a workspace: the guide an agent writes
+// by, and the format specs it points to — the same files as spec/, not copies.
+mkdirSync(`${OUT}/init/spec`, { recursive: true });
+copyFileSync('packages/app-vscode/templates/guide.md', `${OUT}/init/guide.md`);
+for (const spec of ['dgm.md', 'table.md', 'inline-text.md']) copyFileSync(`spec/${spec}`, `${OUT}/init/spec/${spec}`);
+
+console.log(`${OUT}/extension.cjs ＋ webview.js ＋ theme.css ＋ exporter.js ＋ mermaid-page.js ＋ harfbuzz-subset.wasm ＋ init/ を生成`);

@@ -1,6 +1,7 @@
 dist/**
 src/**
 test/**
+templates/**
 tsconfig.json
 tsconfig.tsbuildinfo
 .vscodeignore

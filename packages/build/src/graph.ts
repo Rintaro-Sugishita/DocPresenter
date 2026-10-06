@@ -30,8 +30,12 @@ export interface ReferenceGraph {
 }
 
 const MARKDOWN = /\.md$/i;
-/** Files that are content rather than something a document would import. */
-const NOT_CONTENT = /(^|\/)(node_modules|dist|out|\.git)\//;
+/**
+ * Files that are not content: nothing a document would import. The guide the
+ * init command puts in `.docpresenter/`, and the files an agent reads its
+ * instructions from, are Markdown but never a document.
+ */
+const NOT_CONTENT = /(^|\/)((node_modules|dist|out|\.git|\.docpresenter)\/|(CLAUDE|AGENTS)\.md$)/;
 
 export function readGraph(workspace: Workspace): ReferenceGraph {
   const diagnostics: BuildDiagnostic[] = [];

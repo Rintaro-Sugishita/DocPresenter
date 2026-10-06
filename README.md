@@ -57,6 +57,7 @@ cd packages/app-vscode && npx @vscode/vsce package --no-dependencies
 code --install-extension docpresenter-0.1.0.vsix
 ```
 
+新しいリポジトリでは「DocPresenter: 作業場を初期化する」で、推奨のフォルダ・最初の文書・エージェント向けの書き方の仕様書（`.docpresenter/guide.md`）が揃う。
 `.md` を開いて「DocPresenter: この文書を開く」。編集は **1 操作 ＝ 1 つのバイト範囲**の
 `WorkspaceEdit` として渡すので、**取り消し・未保存の点・git の差分は VS Code のものがそのまま効く**。
 開発中はリポジトリを VS Code で開いて **F5**（起動の前に `npm run build:vscode` が走る）。

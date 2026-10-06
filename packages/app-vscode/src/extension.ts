@@ -1,11 +1,12 @@
 // What VS Code loads.
 //
 // Registered and nothing else at start-up: the editor for documents and for
-// drawings on their own, the export buttons' commands, and the commands that
-// write every document at once.
+// drawings on their own, the export buttons' commands, the commands that
+// write every document at once, and the one that sets a folder up.
 
 import * as vscode from 'vscode';
 import { exportAll, FORMAT_LABEL } from './export-command.js';
+import { initWorkspace } from './init-command.js';
 import type { ExportFormat } from './protocol.js';
 import { SheetEditorProvider } from './sheet-editor.js';
 
@@ -56,6 +57,8 @@ export function activate(context: vscode.ExtensionContext): void {
       if (!picked || picked.length === 0) return;
       await exportAll(context, output, picked.map(one => one.format as ExportFormat));
     }),
+    // The recommended folders, a first document, and the guide an agent writes by.
+    vscode.commands.registerCommand('docpresenter.init', () => initWorkspace(context)),
   );
 }
 

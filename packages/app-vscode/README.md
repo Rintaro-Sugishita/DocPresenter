@@ -2,6 +2,26 @@
 
 設計書（`.md` ＋ `.dgm` ＋ `.table`）を、VS Code の中で**画面のまま**編集する。
 
+## 始める
+
+新しいリポジトリでは、コマンド **「DocPresenter: 作業場を初期化する」** を実行する。題・ファイル名・文書番号を
+聞いたあと、次のものを置いて最初の文書を開く。**既にあるファイルは書き換えない**（そのままと報告する）。
+
+```
+docs/<ファイル名>.md            最初の文書。frontmatter・概要（目的・対象範囲・用語）・改訂履歴の取り込みまで書いてある
+docs/<ファイル名>/revision.md   その文書の改訂履歴
+docs/assets/                   画像の置き場
+shared/glossary.table          複数の文書から引く用語集
+.docpresenter/guide.md         書き方の仕様書（Claude Code などのエージェント向け）
+.docpresenter/spec/            .dgm・.table・ラベル内書式の形式の仕様
+CLAUDE.md / AGENTS.md          guide.md を読むよう指示する節を追記（無ければ作る）
+.gitignore                     書き出し先（out/）を追記
+.gitattributes                 .md・.dgm・.table・.mmd を LF で取り出す設定を追記
+```
+
+追記は一度だけなので、もう一度実行しても増えない。`.gitattributes` は、Windows の `core.autocrlf` で
+設計書が CRLF になると、編集を書き戻す位置がずれるためである。
+
 ## 開く
 
 - エクスプローラーで `.md` か `.dgm` を右クリック → **「DocPresenter で開く」**。エディタ右上のボタンからも開ける。
