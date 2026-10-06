@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { parseDiagram } from '@docpresenter/diagram';
-import { renderDiagram, renderOverlay, withParts } from '../src/index.js';
+import { renderDiagram, renderOverlay, roundedPath, withParts } from '../src/index.js';
 
 const draw = (path: string): string => renderDiagram(parseDiagram(readFileSync(path, 'utf8')));
 
@@ -48,6 +48,21 @@ describe('作図のレンダリング', () => {
     // 中心 (66,41) → (66,241)。上下の辺で止まるので y は 66 と 216。
     expect(points[0]).toEqual([66, 66]);
     expect(points[1]).toEqual([66, 216]);
+  });
+
+  it('フローの線は角を丸めて描く', () => {
+    const svg = renderDiagram(parseDiagram(
+      ['flow {', ' a [A]', ' b [B]', ' c [C]', ' a --> b', ' a --> c', '}'].join('\n')));
+    expect(svg).toMatch(/<path class="dp-edge-line" d="M [^"]* Q /);
+    expect(svg).not.toContain('<polyline');
+  });
+
+  it('角の丸みは短い線では小さくなり、端は動かない', () => {
+    expect(roundedPath([{ x: 0, y: 0 }, { x: 0, y: 40 }, { x: 100, y: 40 }]))
+      .toBe('M 0 0 L 0 32 Q 0 40 8 40 L 100 40');
+    expect(roundedPath([{ x: 0, y: 0 }, { x: 0, y: 6 }, { x: 100, y: 6 }]))
+      .toBe('M 0 0 L 0 3 Q 0 6 3 6 L 100 6');
+    expect(roundedPath([{ x: 0, y: 0 }, { x: 0, y: 50 }])).toBe('M 0 0 L 0 50');
   });
 
   it('接続のラベルを線の上に置く', () => {

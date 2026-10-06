@@ -94,6 +94,16 @@ export interface DrawnConnector {
   /** Thickness in drawing units; the default is the one the theme draws with. */
   readonly weight?: number;
   readonly label?: readonly Run[];
+  /** The shape and side each end leaves through, so PowerPoint keeps the line on it. */
+  readonly start?: Attachment;
+  readonly end?: Attachment;
+}
+
+/** Which side of which shape a connection's end is fixed to. */
+export interface Attachment {
+  /** The `DrawnShape` id. */
+  readonly shape: string;
+  readonly side: 'top' | 'left' | 'bottom' | 'right';
 }
 
 export type Block = TextBlock | TableBlock | PictureBlock | DrawingBlock;

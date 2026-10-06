@@ -9,7 +9,7 @@
 import type { Run } from '@docpresenter/diagram';
 import { EMU_PER_PT, EMU_PER_PX } from './model.js';
 import type {
-  DrawingBlock, DrawnConnector, DrawnShape, PictureBlock, TableBlock, TextBlock,
+  Attachment, DrawingBlock, DrawnConnector, DrawnShape, PictureBlock, TableBlock, TextBlock,
 } from './model.js';
 import { escapeXml, hex } from './xml.js';
 
@@ -97,22 +97,25 @@ export function drawing(
     source: block.source ?? '', scale: EMU_PER_PX * scale, originX: left, originY: top,
   });
 
+  // Numbered before anything is written: a connector names the shapes it is
+  // fixed to, and the shapes in front of it are written after it.
+  const ids = new Map(block.shapes.map(shape => [shape.id, nextId()]));
   const behind = block.shapes.filter(shape => shape.behind);
   const front = block.shapes.filter(shape => !shape.behind);
   return [
-    ...behind.map(shape => shapeXml(shape, at, size, scale)),
-    ...block.connectors.map(connector => connectorXml(connector, at, size, scale)),
-    ...front.map(shape => shapeXml(shape, at, size, scale)),
+    ...behind.map(shape => shapeXml(shape, ids.get(shape.id)!, at, size, scale)),
+    ...block.connectors.map(connector => connectorXml(connector, block.shapes, ids, at, scale)),
+    ...front.map(shape => shapeXml(shape, ids.get(shape.id)!, at, size, scale)),
   ].join('');
 }
 
 function shapeXml(
   shape: DrawnShape,
+  id: number,
   at: (x: number, y: number) => { x: number; y: number },
   size: (value: number) => number,
   scale: number,
 ): string {
-  const id = nextId();
   const origin = at(shape.x, shape.y);
   const frame: Frame = {
     x: origin.x, y: origin.y, width: size(shape.width), height: size(shape.height),
@@ -140,14 +143,29 @@ function shapeXml(
 }
 
 /**
- * A connection. Two points make a connector PowerPoint understands as one;
- * more points make a freeform, because a connector cannot hold a path of its
- * own — and the corners the author put in are not ours to throw away.
+ * Where on each preset PowerPoint keeps a connection, by side: the index of the
+ * connection site in the preset's own definition. A preset missing here has its
+ * sites somewhere else, and a line drawn to it is left unattached rather than
+ * fixed to a point that would move it.
+ */
+const SITES: Readonly<Record<string, Readonly<Record<Attachment['side'], number>>>> = {
+  rect:      { top: 0, left: 1, bottom: 2, right: 3 },
+  roundRect: { top: 0, left: 1, bottom: 2, right: 3 },
+  diamond:   { top: 0, left: 1, bottom: 2, right: 3 },
+};
+
+/**
+ * A connection. Two points make a straight connector, and a path that turns
+ * twice at right angles makes an elbow connector — both are connectors
+ * PowerPoint understands as one, and keeps on the shapes when they are moved.
+ * Any other path makes a freeform, because a connector cannot hold a path of
+ * its own — and the corners the author put in are not ours to throw away.
  */
 function connectorXml(
   connector: DrawnConnector,
+  shapes: readonly DrawnShape[],
+  ids: ReadonlyMap<string, number>,
   at: (x: number, y: number) => { x: number; y: number },
-  size: (value: number) => number,
   scale: number,
 ): string {
   const points = connector.points.map(point => at(point.x, point.y));
@@ -165,16 +183,34 @@ function connectorXml(
     + `${connector.startArrow ? '<a:headEnd type="triangle" w="med" len="med"/>' : ''}`
     + `${connector.arrow ? '<a:tailEnd type="triangle" w="med" len="med"/>' : ''}</a:ln>`;
 
+  const fixed = (end: Attachment | undefined, element: string): string => {
+    if (!end) return '';
+    const preset = shapes.find(shape => shape.id === end.shape)?.preset;
+    const site = preset === undefined ? undefined : SITES[preset]?.[end.side];
+    const shape = ids.get(end.shape);
+    return site === undefined || shape === undefined ? '' : `<a:${element} id="${shape}" idx="${site}"/>`;
+  };
+  const head = `<p:cxnSp><p:nvCxnSpPr><p:cNvPr id="${id}" name="line ${id}"/>`
+    + `<p:cNvCxnSpPr>${fixed(connector.start, 'stCxn')}${fixed(connector.end, 'endCxn')}</p:cNvCxnSpPr>`
+    + `<p:nvPr/></p:nvCxnSpPr>`;
+
   if (points.length === 2) {
     const first = points[0]!;
     const last = points[1]!;
     const flipH = last.x < first.x ? ' flipH="1"' : '';
     const flipV = last.y < first.y ? ' flipV="1"' : '';
-    return `<p:cxnSp><p:nvCxnSpPr><p:cNvPr id="${id}" name="line ${id}"/>`
-      + `<p:cNvCxnSpPr/><p:nvPr/></p:nvCxnSpPr>`
+    return head
       + `<p:spPr><a:xfrm${flipH}${flipV}><a:off x="${left}" y="${top}"/>`
       + `<a:ext cx="${width}" cy="${height}"/></a:xfrm>`
       + `<a:prstGeom prst="straightConnector1"><a:avLst/></a:prstGeom>${line}</p:spPr>`
+      + `</p:cxnSp>`;
+  }
+
+  const bent = elbow(points);
+  if (bent) {
+    return head
+      + `<p:spPr>${bent.xfrm}<a:prstGeom prst="bentConnector3"><a:avLst>`
+      + `<a:gd name="adj1" fmla="val ${bent.adjust}"/></a:avLst></a:prstGeom>${line}</p:spPr>`
       + `</p:cxnSp>`;
   }
 
@@ -187,6 +223,55 @@ function connectorXml(
     + `<a:pathLst><a:path w="${width}" h="${height}">${path}</a:path></a:pathLst></a:custGeom>`
     + `<a:noFill/>${line}</p:spPr>`
     + `<p:txBody><a:bodyPr/><a:lstStyle/><a:p><a:endParaRPr lang="ja-JP"/></a:p></p:txBody></p:sp>`;
+}
+
+/**
+ * A path that turns twice at right angles, as PowerPoint's elbow connector.
+ *
+ * The preset is drawn across its box from the top-left corner: along, over at
+ * `adj1` of the way, then along again to the bottom-right. Flips point it the
+ * right way, and a quarter turn makes it run down first — in which case the
+ * box is written as it is before the turn, its sides swapped about the centre.
+ */
+function elbow(
+  points: readonly { x: number; y: number }[],
+): { xfrm: string; adjust: number } | undefined {
+  if (points.length !== 4) return undefined;
+  const [s, p, q, e] = points as [
+    { x: number; y: number }, { x: number; y: number },
+    { x: number; y: number }, { x: number; y: number }];
+  const across = s.y === p.y && p.x === q.x && q.y === e.y;
+  const down = s.x === p.x && p.y === q.y && q.x === e.x;
+  const spanX = Math.abs(e.x - s.x);
+  const spanY = Math.abs(e.y - s.y);
+  if ((!across && !down) || spanX === 0 || spanY === 0) return undefined;
+
+  const cx = (s.x + e.x) / 2;
+  const cy = (s.y + e.y) / 2;
+  let width: number;
+  let height: number;
+  let attributes: string;
+  let along: number;
+  if (across) {
+    width = spanX;
+    height = spanY;
+    attributes = `${e.x < s.x ? ' flipH="1"' : ''}${e.y < s.y ? ' flipV="1"' : ''}`;
+    along = (p.x - s.x) / (e.x - s.x);
+  } else {
+    // A quarter turn clockwise makes the preset run down and then to the
+    // left; three quarters, up and then to the right. A flip takes the other.
+    const downwards = e.y > s.y;
+    width = spanY;
+    height = spanX;
+    const flip = downwards ? e.x > s.x : e.x < s.x;
+    attributes = ` rot="${downwards ? 5400000 : 16200000}"${flip ? ' flipV="1"' : ''}`;
+    along = (p.y - s.y) / (e.y - s.y);
+  }
+  return {
+    xfrm: `<a:xfrm${attributes}><a:off x="${Math.round(cx - width / 2)}" y="${Math.round(cy - height / 2)}"/>`
+      + `<a:ext cx="${width}" cy="${height}"/></a:xfrm>`,
+    adjust: Math.round(along * 100000),
+  };
 }
 
 /** A table, as a native table: the rows stay rows in PowerPoint. */

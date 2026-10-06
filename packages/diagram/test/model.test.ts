@@ -150,6 +150,47 @@ describe('折れ線', () => {
   });
 });
 
+describe('フローの線は縦と横だけで引く', () => {
+  const laid = (body: string[], layout: string[] = []) => layOutDiagram(parseDiagram([
+    'flow {', ...body, '}',
+    ...(layout.length === 0 ? [] : ['layout {', ...layout, '}']),
+  ].join('\n')));
+
+  it('段がずれていれば、段の間の真ん中で横に折れる', () => {
+    const d = laid(['  a [A]', '  b [B]', '  c [C]', '  a --> b', '  a --> c']);
+    const route = d.routes[0]!;
+    const a = d.boxes.get('a')!;
+    const b = d.boxes.get('b')!;
+    expect(route.points).toHaveLength(4);
+    const [start, turn, across, end] = route.points;
+    expect(turn!.x).toBe(start!.x);                       // 下へ
+    expect(across!.y).toBe(turn!.y);                      // 横へ
+    expect(end!.x).toBe(across!.x);                       // また下へ
+    expect(turn!.y).toBe((a.y + a.height + b.y) / 2);     // 段の間の真ん中
+  });
+
+  it('真下にあれば 1 本の直線', () => {
+    const d = laid(['  a [A]', '  b [B]', '  a --> b']);
+    expect(d.routes[0]!.points).toHaveLength(2);
+  });
+
+  it('横に並んでいれば、横・縦・横に折れる', () => {
+    const d = laid(['  a [A]', '  b [B]', '  a --> b'], ['  a @ (0, 0)', '  b @ (300, 30)']);
+    const [start, turn, across, end] = d.routes[0]!.points;
+    expect(turn!.y).toBe(start!.y);
+    expect(across!.x).toBe(turn!.x);
+    expect(end!.y).toBe(across!.y);
+  });
+
+  it('自由配置の図は、これまで通り直線', () => {
+    const d = layOutDiagram(parseDiagram([
+      'free {', '  a [A]', '  b [B]', '  a --> b', '}',
+      'layout {', '  a @ (0, 0)', '  b @ (300, 200)', '}',
+    ].join('\n')));
+    expect(d.routes[0]!.points).toHaveLength(2);
+  });
+});
+
 describe('フローチャートの図形', () => {
   it('Mermaid の括弧をそのまま読む', () => {
     const d = parseDiagram([

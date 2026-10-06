@@ -192,10 +192,13 @@ function park(
 }
 
 /**
- * Routes every connection. A straight line is used whenever it is clear; when
- * it would run through a shape — which pinning makes possible even between
- * neighbouring rows — the line detours through a channel beside the drawing,
- * and if that is still blocked, all the way round it.
+ * Routes every connection. In a `free` drawing a straight line is used. In a
+ * `flow`, a connection runs only up, down and across — down out of one shape,
+ * across at the middle of the gap, down into the next — because a design
+ * document is read as rows, and a diagonal reads as a third direction that is
+ * not in the chart. When that path would run through a shape — which pinning
+ * makes possible even between neighbouring rows — the line detours through a
+ * channel beside the drawing, and if that is still blocked, all the way round.
  */
 function route(
   diagram: DiagramFile, boxes: ReadonlyMap<string, Box>, rank: ReadonlyMap<string, number>,
@@ -233,8 +236,14 @@ function route(
       return true;
     };
 
-    if (diagram.mode !== 'flow' || clear([a, b])) {
+    if (diagram.mode !== 'flow') {
       routes.push({ edge, points: [a, b], labelAt: undefined });
+      continue;
+    }
+
+    const direct = elbow(a, b, from, to);
+    if (clear(direct)) {
+      routes.push({ edge, points: direct, labelAt: undefined });
       continue;
     }
 
@@ -270,6 +279,32 @@ function route(
     routes.push({ edge, points: [a, { x: a.x, y }, { x: b.x, y }, b], labelAt: undefined });
   }
   return placeLabels(routes);
+}
+
+/**
+ * The path of a connection in a flow, centre to centre with only square turns.
+ *
+ * Between shapes one above the other it leaves through the bottom, turns
+ * across half way down the gap and enters through the top; between shapes side
+ * by side it does the same sideways. Ends already in line are joined straight.
+ * Where the two shapes overlap on both axes there is no gap to turn in, and a
+ * straight line is the honest answer.
+ */
+function elbow(a: Point, b: Point, from: Box, to: Box): Point[] {
+  if (Math.abs(a.x - b.x) < 1 || Math.abs(a.y - b.y) < 1) return [a, b];
+  const below = to.y >= from.y + from.height;
+  const above = to.y + to.height <= from.y;
+  if (below || above) {
+    const y = below ? (from.y + from.height + to.y) / 2 : (to.y + to.height + from.y) / 2;
+    return [a, { x: a.x, y }, { x: b.x, y }, b];
+  }
+  const right = to.x >= from.x + from.width;
+  const left = to.x + to.width <= from.x;
+  if (right || left) {
+    const x = right ? (from.x + from.width + to.x) / 2 : (to.x + to.width + from.x) / 2;
+    return [a, { x, y: a.y }, { x, y: b.y }, b];
+  }
+  return [a, b];
 }
 
 /**

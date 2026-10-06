@@ -7,9 +7,9 @@
 // below is a table rather than an approximation.
 
 import {
-  layOutDiagram, type Box, type DiagramFile, type Run, type ShapeKind,
+  border, layOutDiagram, type Box, type DiagramFile, type Point, type Run, type ShapeKind,
 } from '@docpresenter/diagram';
-import type { DrawingBlock, DrawnConnector, DrawnShape } from './model.js';
+import type { Attachment, DrawingBlock, DrawnConnector, DrawnShape } from './model.js';
 
 /** A colour an author wrote, as opposed to a token only the theme can resolve. */
 const COLOUR = /^#[0-9a-fA-F]{3}([0-9a-fA-F]{3})?$/;
@@ -129,12 +129,29 @@ export function drawingOf(diagram: DiagramFile, options: DrawingOptions = {}): D
     });
   }
 
-  const connectors: DrawnConnector[] = laid.routes.map((route): DrawnConnector => ({
-    points: route.points.map(point => ({ x: point.x, y: point.y })),
-    arrow: route.edge.arrow === 'arrow',
-    dashed: route.edge.line === 'dashed',
-    ...(route.edge.label ? { label: [{ text: route.edge.label, bold: false, italic: false, code: false, colour: undefined }] as Run[] } : {}),
-  }));
+  const drawn = new Set(shapes.map(shape => shape.id));
+  const connectors: DrawnConnector[] = laid.routes.map((route): DrawnConnector => {
+    // Ends stop at the outlines, as on screen: a line run to the centre would
+    // put its arrowhead under the shape it points at.
+    const points = route.points.map(point => ({ x: point.x, y: point.y }));
+    const from = laid.boxes.get(route.edge.from);
+    const to = laid.boxes.get(route.edge.to);
+    if (from && to && points.length >= 2) {
+      points[0] = border(from, byId.get(route.edge.from)?.shape ?? 'rect', points[1]!);
+      points[points.length - 1] = border(
+        to, byId.get(route.edge.to)?.shape ?? 'rect', points[points.length - 2]!);
+    }
+    const start = from && drawn.has(route.edge.from) ? sideOf(from, points[0]!) : undefined;
+    const end = to && drawn.has(route.edge.to) ? sideOf(to, points[points.length - 1]!) : undefined;
+    return {
+      points,
+      arrow: route.edge.arrow === 'arrow',
+      dashed: route.edge.line === 'dashed',
+      ...(route.edge.label ? { label: [{ text: route.edge.label, bold: false, italic: false, code: false, colour: undefined }] as Run[] } : {}),
+      ...(start ? { start: { shape: route.edge.from, side: start } } : {}),
+      ...(end ? { end: { shape: route.edge.to, side: end } } : {}),
+    };
+  });
 
   for (const message of laid.diagnostics) options.diagnostics?.push(message);
 
@@ -146,6 +163,22 @@ export function drawingOf(diagram: DiagramFile, options: DrawingOptions = {}): D
     // two shapes is never hidden under a rule drawn across them.
     connectors: [...lines, ...connectors],
   };
+}
+
+/**
+ * The side an end leaves through, when it leaves through the middle of one.
+ * Only then is it the point PowerPoint would put it back on; an end anywhere
+ * else is left unattached rather than moved.
+ */
+function sideOf(box: Box, at: Point): Attachment['side'] | undefined {
+  const near = (a: number, b: number): boolean => Math.abs(a - b) < 0.5;
+  const cx = box.x + box.width / 2;
+  const cy = box.y + box.height / 2;
+  if (near(at.x, cx) && near(at.y, box.y)) return 'top';
+  if (near(at.x, cx) && near(at.y, box.y + box.height)) return 'bottom';
+  if (near(at.y, cy) && near(at.x, box.x)) return 'left';
+  if (near(at.y, cy) && near(at.x, box.x + box.width)) return 'right';
+  return undefined;
 }
 
 /** A group's own label sits at its top-left; it is not the label of a box. */

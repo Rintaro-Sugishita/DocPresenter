@@ -13,7 +13,7 @@ import { isIconPath, stencilArt, textPlace } from './stencil.js';
 import { isListing, listingArt } from './listing.js';
 import { members, shownPage, tabPages, SCROLL_BAR, TAB_STRIP } from '../arrange.js';
 import {
-  arrowHead as arrowCorners, border, cylinderRadius, labelLayout, n, shapeOutlines,
+  arrowHead as arrowCorners, border, cylinderRadius, labelLayout, n, roundedPath, shapeOutlines,
   LINE_HEIGHT, PLAIN_LINE, type LineLook, type Outline, type ShapePart,
 } from './geometry.js';
 
@@ -49,7 +49,8 @@ export function renderDiagram(
 
   // Connections are drawn in two passes: every line and plate first, then every
   // label, so one connection's plate can never blank out another's label.
-  const drawn = laid.routes.map(route => renderEdge(route, byId, laid.boxes, marks));
+  const rounded = diagram.mode === 'flow';
+  const drawn = laid.routes.map(route => renderEdge(route, byId, laid.boxes, rounded, marks));
   const edges = [
     ...drawn.map(e => e.geometry),
     ...drawn.map(e => e.label),
@@ -341,7 +342,7 @@ interface DrawnEdge { readonly geometry: string; readonly label: string }
 
 function renderEdge(
   route: EdgeRoute, byId: ReadonlyMap<string, Node>, boxes: ReadonlyMap<string, Box>,
-  marks?: DiagramMarks,
+  rounded: boolean, marks?: DiagramMarks,
 ): DrawnEdge {
   const { edge, points } = route;
   const from = boxes.get(edge.from);
@@ -358,7 +359,11 @@ function renderEdge(
     + ` data-edge="${escapeAttr(`${edge.from}->${edge.to}`)}">`;
   const geometry = [
     open,
-    `<polyline points="${clipped.map(p => `${n(p.x)},${n(p.y)}`).join(' ')}"/>`,
+    // A flow turns its corners on a curve; a free drawing keeps the corners
+    // its author put there.
+    rounded
+      ? `<path class="dp-edge-line" d="${roundedPath(clipped)}"/>`
+      : `<polyline points="${clipped.map(p => `${n(p.x)},${n(p.y)}`).join(' ')}"/>`,
     ...(edge.arrow === 'arrow'
       ? [arrowHead(clipped[clipped.length - 2]!, clipped[clipped.length - 1]!)] : []),
     ...(edge.label && route.labelAt ? [labelPlate(edge.label, route.labelAt)] : []),

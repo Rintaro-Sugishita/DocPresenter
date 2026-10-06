@@ -111,6 +111,38 @@ describe('単独の線', () => {
   });
 });
 
+describe('フローの線', () => {
+  const flow = drawingOf(diagram(
+    'flow {', '  a [A]', '  b [B]', '  c [C]', '  a --> b', '  a --> c', '}',
+  ));
+  const slide = (): string => {
+    const files = unzipSync(writePptx({
+      title: '図', diagnostics: [],
+      slides: [{ title: undefined, blocks: [flow] }],
+    }));
+    return strFromU8(files['ppt/slides/slide1.xml']!);
+  };
+
+  it('端は図形の上下の辺で止まり、どの辺かを覚えている', () => {
+    const line = flow.connectors[0]!;
+    const a = flow.shapes.find(shape => shape.id === 'a')!;
+    expect(line.points[0]!.y).toBe(a.y + a.height);
+    expect(line.start).toEqual({ shape: 'a', side: 'bottom' });
+    expect(line.end?.side).toBe('top');
+  });
+
+  it('カギ線コネクタになり、両端が図形に付く', () => {
+    const xml = slide();
+    expect(xml).toContain('prst="bentConnector3"');
+    expect(xml).toMatch(/<a:stCxn id="\d+" idx="2"\/><a:endCxn id="\d+" idx="0"\/>/);
+    expect(xml).not.toContain('<a:custGeom>');
+  });
+
+  it('下へ向かうカギ線は 4 分の 1 回して置く', () => {
+    expect(slide()).toMatch(/<a:xfrm rot="5400000"( flipV="1")?>/);
+  });
+});
+
 describe('色', () => {
   it('OOXML の 6 桁に直す', () => {
     expect(hex('#1c1f24', '000000')).toBe('1C1F24');

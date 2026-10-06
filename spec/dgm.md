@@ -298,7 +298,7 @@ Bends live in the layout layer, beside the pins, because a corner is geometry. T
 semantics layer says what connects to what and says nothing about the path.
 
 Where a connection has no bend, the renderer decides the path. **This is not a
-gap in the format**: a straight line is used where it is clear, and a line that
+gap in the format**: a path is computed where it is clear (§8), and a line that
 would cross a shape detours around the drawing. An author who dislikes the
 result adds corners, and an author who wants the corner gone deletes the line
 — which must be possible **in one gesture**, because the alternative is what
@@ -487,15 +487,25 @@ DocPresenter's renderer uses, in CSS pixels:
 | Room a cylinder's lid takes | 24 |
 | Room a part's picture takes above its label | 44 |
 | Connection label font size | 12 |
+| Radius a `flow` connection turns its corners on | 8 |
 
 A shape with no pinned size is measured from its label: the label is broken into
 lines by the width of **what it shows**, with the inline marks removed
 ([`inline-text.md`](inline-text.md) §3), and the shape grows to fit up to the
 maximum width.
 
-Connections are routed centre to centre and clipped at the two outlines. Where a
-straight line would cross another shape — which pinning makes possible — the
-route detours through a channel beside the drawing rather than through it.
+Connections are routed centre to centre and clipped at the two outlines. In a
+`free` drawing the route is a straight line. In a `flow` it runs only up, down
+and across: between shapes one above the other it leaves through the bottom,
+turns across half way down the gap and enters through the top (sideways for
+shapes side by side), and ends already in line are joined straight. Where that
+route would cross another shape — which pinning makes possible — it detours
+through a channel beside the drawing rather than through it.
+
+In a `flow`, every corner of a connection — computed or written as a bend — is
+drawn turning on a short curve of the radius above, tighter where a segment is
+too short for it. This is drawing only: the corners are still the points the
+route and the file hold, so it is not the curved connection §9 leaves out.
 
 `flow` computes positions by ranking shapes along the connections, then placing
 each rank as a row. Pins override the result, which means a pinned shape can pull
@@ -506,4 +516,5 @@ second-guess it.
 
 Stated so that an implementer knows these are absent rather than undocumented:
 ports on a shape (`web.right -> api.left`), nested groups, swimlanes, layers,
-curved connections, `-.-` (dashed, no arrowhead), and any way to set a font.
+curved connections (as opposed to the rounded corners of §8), `-.-` (dashed,
+no arrowhead), and any way to set a font.

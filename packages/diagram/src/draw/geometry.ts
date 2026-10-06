@@ -229,6 +229,42 @@ export function arrowHead(start: Point, end: Point): readonly Point[] {
   return [end, { x: back.x + nx, y: back.y + ny }, { x: back.x - nx, y: back.y - ny }];
 }
 
+/** How far back from a corner a connection in a flow starts to turn. */
+export const CORNER_RADIUS = 8;
+
+/**
+ * A connection through its corners, as SVG path data with each corner turned
+ * on a short curve. Only the drawing is rounded: the corners are still the
+ * points the route and the file hold. A corner on a short segment turns
+ * tighter, so two turns never overlap and the ends stay where they were.
+ */
+export function roundedPath(points: readonly Point[], radius = CORNER_RADIUS): string {
+  if (points.length === 0) return '';
+  const parts = [`M ${n(points[0]!.x)} ${n(points[0]!.y)}`];
+  for (let i = 1; i + 1 < points.length; i++) {
+    const before = points[i - 1]!;
+    const corner = points[i]!;
+    const after = points[i + 1]!;
+    const inLength = Math.hypot(corner.x - before.x, corner.y - before.y);
+    const outLength = Math.hypot(after.x - corner.x, after.y - corner.y);
+    const r = Math.min(radius, inLength / 2, outLength / 2);
+    if (r <= 0) { parts.push(`L ${n(corner.x)} ${n(corner.y)}`); continue; }
+    const start = {
+      x: corner.x - ((corner.x - before.x) / inLength) * r,
+      y: corner.y - ((corner.y - before.y) / inLength) * r,
+    };
+    const end = {
+      x: corner.x + ((after.x - corner.x) / outLength) * r,
+      y: corner.y + ((after.y - corner.y) / outLength) * r,
+    };
+    parts.push(`L ${n(start.x)} ${n(start.y)}`,
+      `Q ${n(corner.x)} ${n(corner.y)} ${n(end.x)} ${n(end.y)}`);
+  }
+  const last = points[points.length - 1]!;
+  parts.push(`L ${n(last.x)} ${n(last.y)}`);
+  return parts.join(' ');
+}
+
 /** Coordinates are rounded: a diff of a rendered SVG should stay readable. */
 export function n(value: number): string {
   return String(Math.round(value * 100) / 100);

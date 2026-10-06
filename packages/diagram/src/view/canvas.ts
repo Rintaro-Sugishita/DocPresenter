@@ -10,6 +10,7 @@ import { layOutDiagram, type Box } from '../layout.js';
 import { containerOf, dropInto } from '../arrange.js';
 import type { DiagramFile, Item, ShapeKind } from '../model.js';
 import { renderDiagram } from '../draw/render.js';
+import { roundedPath } from '../draw/geometry.js';
 import { stencilArt, stencilParts } from '../draw/stencil.js';
 import type { Edit } from '@docpresenter/base';
 import {
@@ -724,8 +725,9 @@ export function createCanvas(options: CanvasOptions): Canvas {
         const after = bending.fresh ? path[bending.index + 1]! : path[bending.index + 2]!;
         bending = { ...bending, at: square(pointOn(event), before, after) };
         // The drawn line follows too, so what is being made is what is seen.
-        const drawn = drawing.querySelector(`[data-edge="${cssEscape(line ?? '')}"] polyline`);
-        drawn?.setAttribute('points', points(livePath(path)));
+        const drawn = drawing.querySelector(`[data-edge="${cssEscape(line ?? '')}"] :is(polyline, .dp-edge-line)`);
+        if (drawn?.tagName === 'path') drawn.setAttribute('d', roundedPath(livePath(path)));
+        else drawn?.setAttribute('points', points(livePath(path)));
       }
       paint();
       return;
