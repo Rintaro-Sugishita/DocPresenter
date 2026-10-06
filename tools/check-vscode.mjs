@@ -8,10 +8,26 @@
 // What is checked is the contract between them: the screen draws from what it
 // is given, every edit leaves as one byte range with the file's own path, and
 // a file changed by somebody else redraws the screen rather than being ignored.
+//
+// Usage: node tools/check-vscode.mjs [--chromium <path>] [--in <sample>]
+//
+// The sample is used as it is checked out, so on a CRLF checkout this is the
+// CRLF case (`--in` names a copy, to try the other one). Either way the edit is made once more on the sample with the
+// other line ending, and must leave as the same range.
 import { existsSync, readFileSync, readdirSync, writeFileSync, mkdirSync } from 'node:fs';
 import { relative, resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { chromium } from 'playwright-core';
+import { replaceBytes, spanInFile, toLf } from '../packages/base/dist/index.js';
 import { COMMIT_KEYS } from '../packages/editor/dist/index.js';
+import { findChromium } from './pdf-writer.mjs';
+
+const option = name => {
+  const at = process.argv.indexOf(name);
+  return at < 0 ? undefined : process.argv[at + 1];
+};
+const chromiumAt = option('--chromium');
+const sampleDir = option('--in') ?? 'sample';
 
 const check = (name, ok, detail = '') => {
   console.log(`${ok ? '○' : '✗'} ${name}${detail ? ' — ' + detail : ''}`);
@@ -48,7 +64,7 @@ const images = {};
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
     const path = resolve(dir, entry.name);
     if (entry.isDirectory()) { collect(path); continue; }
-    const at = relative('sample', path).split('\\').join('/');
+    const at = relative(sampleDir, path).split('\\').join('/');
     if (/\.(dgm|table|ermlx|mmd|md)$/i.test(entry.name)) files[at] = readFileSync(path, 'utf8');
     const picture = /\.(png|jpe?g|gif)$/i.exec(entry.name);
     if (picture) {
@@ -56,7 +72,7 @@ const images = {};
       images[at] = `data:image/${type};base64,${readFileSync(path).toString('base64')}`;
     }
   }
-})('sample');
+})(sampleDir);
 const DOC = 'docs/auth-design.md';
 
 mkdirSync('out', { recursive: true });
@@ -74,10 +90,10 @@ writeFileSync('out/vscode-webview.html', `<!doctype html>
 </body></html>
 `);
 
-const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' });
+const browser = await chromium.launch({ executablePath: findChromium(chromiumAt) });
 const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
 page.on('pageerror', error => { console.log('✗ ページエラー:', error.message); process.exitCode = 1; });
-await page.goto('file://' + process.cwd() + '/out/vscode-webview.html');
+await page.goto(pathToFileURL(resolve('out/vscode-webview.html')).href);
 await page.waitForTimeout(300);
 
 const sent = () => page.evaluate(() => window.__sent);
@@ -102,17 +118,21 @@ check('画像も出る（器が渡した URL で）',
   (await page.$$('img[src^="data:image"]')).length > 0);
 
 // --- 編集が 1 つのバイト範囲として出ていく ----------------------------------
-await page.click('.dp-tab:has-text("ログイン機能")');
-await page.waitForTimeout(300);
-await page.locator('.dp-sheet:not([hidden]) .dp-figure[data-path$="login-screen.dgm"] .dp-figure-body')
-  .first().click();
-await page.waitForSelector('.dp-canvas-bar');
-// 枠は中身に覆われているので、余白のところを押す（真ん中は子が持っている）。
-const frame = await page.locator('.dp-canvas-stage [data-node="frame"]').boundingBox();
-await page.mouse.click(frame.x + 8, frame.y + 8);
-await page.waitForTimeout(200);
-await page.keyboard.press('ArrowRight');
-await page.waitForTimeout(400);
+/** 図を開いて枠を選び、右へ 1 つ動かす。 */
+async function nudgeFrame() {
+  await page.click('.dp-tab:has-text("ログイン機能")');
+  await page.waitForTimeout(300);
+  await page.locator('.dp-sheet:not([hidden]) .dp-figure[data-path$="login-screen.dgm"] .dp-figure-body')
+    .first().click();
+  await page.waitForSelector('.dp-canvas-bar');
+  // 枠は中身に覆われているので、余白のところを押す（真ん中は子が持っている）。
+  const frame = await page.locator('.dp-canvas-stage [data-node="frame"]').boundingBox();
+  await page.mouse.click(frame.x + 8, frame.y + 8);
+  await page.waitForTimeout(200);
+  await page.keyboard.press('ArrowRight');
+  await page.waitForTimeout(400);
+}
+await nudgeFrame();
 
 const changes = (await sent()).filter(one => one.kind === 'change');
 check('編集は 1 つだけ出ていく', changes.length === 1, `${changes.length} 件`);
@@ -127,16 +147,20 @@ check('置き換える文字も一緒に渡す', typeof change.text === 'string'
 check('何をしたかも言う（器が人に見せる）', typeof change.description === 'string'
   && change.description.length > 0, change.description);
 
-// 渡された範囲を本当にその場で当てると、画面が持っているものと同じ文になる
-const written = await page.evaluate(([before, change]) => {
-  const bytes = new TextEncoder().encode(before);
-  const decode = part => new TextDecoder().decode(part);
-  return decode(bytes.slice(0, change.span.start)) + change.text + decode(bytes.slice(change.span.end));
-}, [files['docs/auth-design/login-screen.dgm'], change]);
+// 渡された範囲を、器（sheet-editor.ts）と同じやり方でファイルに当てると、
+// 座標が 1 つ動いた図になる。範囲は LF で読んだ本文の上で測られているので、
+// CRLF のファイルでは器が置き直す。
+const drawing = files['docs/auth-design/login-screen.dgm'];
+const crlf = drawing.includes('\r\n');
+const there = spanInFile(drawing, change);
+const written = replaceBytes(drawing, there.span.start, there.span.end, there.text);
 check('その範囲を置き換えると、座標が 1 つ動いた図になる',
-  written.includes('frame @ ( 44,  20)') && written.split('\n').length
-    === files['docs/auth-design/login-screen.dgm'].split('\n').length,
+  written.includes('frame @ ( 44,  20)') && written.split('\n').length === drawing.split('\n').length,
   (/^\s*frame\s+@.*$/m.exec(written) ?? [''])[0].trim());
+check(`書き戻しても改行は ${crlf ? 'CRLF' : 'LF'} のまま`,
+  (written.match(/\r\n/g) ?? []).length === (crlf ? written.split('\n').length - 1 : 0));
+check('範囲は LF で読んだ本文の上で測られている',
+  replaceBytes(toLf(drawing), change.span.start, change.span.end, change.text) === toLf(written));
 
 // --- 外から書き換えられたら描き直す ----------------------------------------
 await page.evaluate(([path, text]) => {
@@ -149,5 +173,23 @@ check('外からの書き換えは画面に出る',
 check('描き直しても、見ていたシートのまま',
   (await page.getAttribute('.dp-tab:has-text("ログイン機能")', 'aria-selected')) === 'true'
   || !(await page.isHidden('.dp-sheet:not([hidden])')));
+
+// --- 改行が違っても、同じ範囲が出ていく ------------------------------------
+//
+// レビューの指摘は「コミット＋バイト範囲」に付く（design/review-model.md §3）。
+// 同じコミットが Linux では LF、Windows では CRLF で取り出されるので、範囲が
+// 改行に左右されると、同じ指摘が機械ごとに別の場所を指す。
+const flip = text => (crlf ? toLf(text) : toLf(text).replace(/\n/g, '\r\n'));
+const flipped = Object.fromEntries(Object.entries(files).map(([path, text]) => [path, flip(text)]));
+await page.evaluate(() => { window.__sent.length = 0; });
+await page.evaluate(([path, source, files, images]) => {
+  window.postMessage({ kind: 'open', path, source, files, images, commitKey: 'ctrl-enter' }, '*');
+}, [DOC, flipped[DOC], flipped, images]);
+await page.waitForTimeout(800);
+await nudgeFrame();
+const other = (await sent()).filter(one => one.kind === 'change')[0] ?? {};
+check(`${crlf ? 'LF' : 'CRLF'} の標本でも、同じ範囲と同じ文字が出ていく`,
+  JSON.stringify(other.span) === JSON.stringify(change.span) && other.text === change.text,
+  `${JSON.stringify(change.span)} / ${JSON.stringify(other.span)}`);
 
 await browser.close();

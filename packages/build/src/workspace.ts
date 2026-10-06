@@ -4,10 +4,15 @@
 // a browser over a directory handle, and in a test over a map held in memory;
 // all three can answer these four questions, and none of them belongs in here.
 
+import { toLf } from '@docpresenter/base';
+
 export interface Workspace {
   /** Every file in the workspace, as paths relative to its root. */
   list(): readonly string[];
-  /** Reads a text file, or undefined when it is not there. */
+  /**
+   * Reads a text file, or undefined when it is not there. As it is on disk:
+   * the build reads it as LF itself (`asLf`).
+   */
   read(path: string): string | undefined;
   /**
    * A `data:` URL for a binary such as an image. Only the caller knows whether
@@ -41,6 +46,33 @@ export interface Artifact {
   readonly root: string;
   readonly format: string;
 }
+
+/**
+ * The workspace with every text read as LF.
+ *
+ * Every byte range the build writes into an artifact — the HTML's source map,
+ * the PDF's, a diff mark — is where a review comment will be anchored, and an
+ * anchor is a commit and a byte range (design/review-model.md §3). The same
+ * commit is LF on one machine and CRLF on another, so the ranges are measured
+ * on the LF text, which is also what the repository holds. Wrapping twice is
+ * harmless.
+ */
+export function asLf(workspace: Workspace): Workspace {
+  if (LF.has(workspace)) return workspace;
+  const read = (path: string): string | undefined => {
+    const text = workspace.read(path);
+    return text === undefined ? undefined : toLf(text);
+  };
+  const wrapped: Workspace = {
+    list: () => workspace.list(),
+    read,
+    ...(workspace.dataUrl ? { dataUrl: (path: string) => workspace.dataUrl!(path) } : {}),
+    ...(workspace.inline ? { inline: (address: string) => workspace.inline!(address) } : {}),
+  };
+  LF.add(wrapped);
+  return wrapped;
+}
+const LF = new WeakSet<Workspace>();
 
 export type Severity = 'error' | 'warning';
 

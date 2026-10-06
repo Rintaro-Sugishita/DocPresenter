@@ -15,7 +15,7 @@ import {
 } from '@docpresenter/markdown';
 import { drawingOf, type Block, type Deck, type Slide, type TableCell } from '@docpresenter/pptx';
 import type { MermaidPicture } from './build.js';
-import type { Workspace } from './workspace.js';
+import { asLf, type Workspace } from './workspace.js';
 
 export interface DeckOptions {
   readonly workspace: Workspace;
@@ -71,7 +71,7 @@ function blockOf(
   if (block.kind === 'prose') return proseBlocks(block.text, options);
   if (block.kind !== 'import') return undefined;
 
-  const source = options.workspace.read(block.path);
+  const source = asLf(options.workspace).read(block.path);
   const caption = captionOf(block, byBlock);
 
   if (/\.dgm$/i.test(block.path)) {
@@ -84,7 +84,7 @@ function blockOf(
       // Resolved first, so a part reaches PowerPoint as what it draws rather
       // than as a name PowerPoint has never heard of.
       const drawing = withParts(parseDiagram(source),
-        used => options.workspace.read(joinPath(block.path, used)));
+        used => asLf(options.workspace).read(joinPath(block.path, used)));
       return drawingOf(drawing, {
         diagnostics, source: block.path, ...(marks ? { marks } : {}),
       });

@@ -76,7 +76,10 @@ const POINT = /\(\s*(-?\d+)\s*,\s*(-?\d+)\s*\)/g;
 const CALLOUT = /^(\S+)\s*@\s*\(\s*(-?\d+)\s*,\s*(-?\d+)\s*\)\s*->\s*\(\s*(-?\d+)\s*,\s*(-?\d+)\s*\)\s*(?:"([^"]*)")?\s*$/;
 
 export function parseDiagram(source: string): DiagramFile {
-  const raw = source.split(/\r?\n/);
+  // A CRLF file keeps its CR in the line until the offsets are counted: the
+  // ranges are in the text as given, and the CR is a byte of it.
+  const ended = source.split('\n');
+  const raw = ended.map(line => line.replace(/\r$/, ''));
 
   // Byte offset of the start of each line, built once so every pin can carry
   // the range it occupies: dragging a shape rewrites that range and nothing
@@ -90,7 +93,7 @@ export function parseDiagram(source: string): DiagramFile {
     lines.push({
       text, indent: lead, span: { start, end: start + byteLength(text) }, number: index + 1,
     });
-    at += byteLength(line) + 1;
+    at += byteLength(ended[index]!) + 1;
   });
 
   const comments: string[] = [];

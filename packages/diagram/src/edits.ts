@@ -4,7 +4,7 @@
 // else. Un-pinning is just as important as pinning — a layer that only ever
 // grows is a layout nobody can hand back to the engine.
 
-import { byteLength, sliceBytes, type ByteSpan, type Edit } from '@docpresenter/base';
+import { byteLength, pastLineBreak, sliceBytes, type ByteSpan, type Edit } from '@docpresenter/base';
 import { containerOf, members, EMPTY_CELL } from './arrange.js';
 import type { Container, DiagramFile, Item, Node, ShapeKind } from './model.js';
 
@@ -160,7 +160,7 @@ export function unpinNode(file: DiagramFile, source: string, id: string): Edit {
   return {
     span: {
       start: existing.span.start - indent.length,
-      end: Math.min(existing.span.end + 1, byteLength(source)),
+      end: pastLineBreak(source, existing.span.end),
     },
     text: '',
     description: '配置を自動に戻す',
@@ -573,7 +573,7 @@ export function putIntoContainer(
     changes.push({
       span: {
         start: pin.span.start - indent.length,
-        end: Math.min(pin.span.end + 1, byteLength(source)),
+        end: pastLineBreak(source, pin.span.end),
       },
       text: '',
     });
@@ -896,7 +896,7 @@ function whole(source: string, span: ByteSpan, text: string): Change {
   return {
     span: {
       start: span.start - indent.length,
-      end: Math.min(span.end + 1, byteLength(source)),
+      end: pastLineBreak(source, span.end),
     },
     text,
   };

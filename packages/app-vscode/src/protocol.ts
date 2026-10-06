@@ -64,6 +64,12 @@ export type FromView =
    * One edit. `path` is absent for the document itself and workspace-relative
    * otherwise; `span` is the byte range in the text as it was before, which is
    * what the host rewrites — the whole point of the format.
+   *
+   * The range and the text are those of the file with its line breaks read as
+   * LF, whatever the file has on disk: a range has to mean the same on a CRLF
+   * checkout as on an LF one, because a review comment is anchored to one
+   * (design/review-model.md §3). The host restates it for the file
+   * (`spanInFile`), CRLF and all.
    */
   | {
     readonly kind: 'change';

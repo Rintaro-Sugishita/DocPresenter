@@ -11,14 +11,14 @@
 // connections, which is possible only because both are held as models rather
 // than as pictures — and is the plainest benefit of holding them that way.
 
-import { byteLength } from '@docpresenter/base';
+import { byteLength, toLf } from '@docpresenter/base';
 import { parseDiagram, type DiagramFile } from '@docpresenter/diagram';
 import {
   cellAt, parseTable,
   type Change, type DiagramMarks, type DiffMarks, type RangeMark,
   type TableFile, type TableMarks,
 } from '@docpresenter/markdown';
-import type { Workspace } from './workspace.js';
+import { asLf, type Workspace } from './workspace.js';
 
 /** The other version. A folder, a commit — whatever the caller can read. */
 export type Previous = (path: string) => string | undefined;
@@ -41,9 +41,12 @@ export function diffOf(options: DiffOptions): DiffMarks {
   const diagrams = new Map<string, DiagramMarks>();
 
   for (const path of options.files) {
-    const now = options.workspace.read(path);
+    // Both read as LF, so a CRLF checkout compares the same as an LF one and
+    // the marks land on the ranges the rest of the build speaks (asLf).
+    const now = asLf(options.workspace).read(path);
     if (now === undefined) continue;
-    const before = options.previous(path);
+    const previous = options.previous(path);
+    const before = previous === undefined ? undefined : toLf(previous);
 
     if (/\.md$/i.test(path)) {
       const doc = path === options.root ? '' : path;
