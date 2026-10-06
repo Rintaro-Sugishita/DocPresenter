@@ -1,0 +1,3 @@
+# The product is written, tested and diffed with LF line endings. A CRLF
+# checkout (core.autocrlf on Windows) shifts the byte spans the editor writes back.
+* text=auto eol=lf
