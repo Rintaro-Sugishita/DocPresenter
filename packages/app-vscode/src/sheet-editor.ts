@@ -12,6 +12,7 @@
 
 import * as vscode from 'vscode';
 import { spanInFile } from '@docpresenter/base';
+import { retargetImports } from '@docpresenter/markdown';
 import { unitsBefore } from './bytes.js';
 import { inWorkspace } from './paths.js';
 import type { FromView, ToView } from './protocol.js';
@@ -185,6 +186,52 @@ export class SheetEditorProvider implements vscode.CustomTextEditorProvider {
       if (change.path !== undefined) await target.save();
     };
 
+    /**
+     * Moves a figure's file and points every other document at it, as one
+     * `WorkspaceEdit` — one step to undo, and nothing half done if it fails.
+     * The document on screen is left out: its editor rewrites it with the
+     * `change` that follows, as a byte range like every other edit.
+     */
+    const move = async (from: string, to: string): Promise<void> => {
+      const at = (path: string): vscode.Uri => vscode.Uri.joinPath(root, ...path.split('/'));
+      const edit = new vscode.WorkspaceEdit();
+      edit.renameFile(at(from), at(to), { overwrite: false });
+      const others: vscode.TextDocument[] = [];
+      for (const uri of await vscode.workspace.findFiles('**/*.md', IGNORED)) {
+        if (uri.toString() === document.uri.toString()) continue;
+        const other = await vscode.workspace.openTextDocument(uri);
+        const text = other.getText();
+        let replacements;
+        try { replacements = retargetImports(text, pathOf(uri), from, to); } catch { continue; }
+        for (const one of replacements) {
+          edit.replace(uri, new vscode.Range(
+            other.positionAt(unitsBefore(text, one.span.start)),
+            other.positionAt(unitsBefore(text, one.span.end))), one.text);
+        }
+        // One with unsaved work of the author's is left unsaved: saving it
+        // would write their half-finished change along with ours.
+        if (replacements.length > 0 && !other.isDirty) others.push(other);
+      }
+      if (!await vscode.workspace.applyEdit(edit)) {
+        void vscode.window.showErrorMessage(`DocPresenter: ${t('vscode.move.failed', { from, to })}`);
+        await open();
+        return;
+      }
+      // Written through, as an edit to a figure's own file is: the author is
+      // looking at this document, not at the others that were brought along.
+      for (const other of others) await other.save();
+    };
+
+    // Messages that change files are handled one at a time, in the order they
+    // were sent: a rename and the document edit after it touch the same lines.
+    // Answers to the host's own questions are not queued — an export waits for
+    // them, and queueing them behind it would wait for ever.
+    let writing: Promise<void> = Promise.resolve();
+    const inTurn = (work: () => Promise<void>): Promise<void> => {
+      writing = writing.then(work, work);
+      return writing;
+    };
+
     panel.webview.onDidReceiveMessage(async (message: FromView) => {
       try {
         if (message.kind === 'ready') { await open(); return; }
@@ -197,7 +244,8 @@ export class SheetEditorProvider implements vscode.CustomTextEditorProvider {
           await exportDocument(view, message.format, this.context, this.output);
           return;
         }
-        if (message.kind === 'change') { await apply(message); return; }
+        if (message.kind === 'change') { await inTurn(() => apply(message)); return; }
+        if (message.kind === 'move') { await inTurn(() => move(message.from, message.to)); return; }
         if (message.kind === 'create') {
           const bytes = message.bytes
             ? Uint8Array.from(message.bytes)

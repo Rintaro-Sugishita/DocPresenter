@@ -27,6 +27,14 @@ export const MARKDOWN_MESSAGES = defineMessages({
   'markdown.missingImage': '取り込めなかった画像がある: {path}',
   'markdown.missingRange': '名前付き範囲が見つからない: {rows}',
 
+  // --- renaming a figure -------------------------------------------------------------
+  'markdown.figure.notFound': 'この図表の取り込み行が見つからない（文書が書き換わった可能性がある）',
+  'markdown.figure.badLabel': "ラベル '{label}' は使えない（英数字・-・_ で、fig- などで始める）",
+  'markdown.figure.wrongPrefix': "ラベル '{label}' は {prefix}- で始める",
+  'markdown.figure.labelTaken': "ラベル '{label}' は、この文書の別の場所で使われている",
+  'markdown.figure.labelInUse': "ラベル '{label}' は本文から {count} か所で参照されているので外せない",
+  'markdown.figure.badPath': "ファイル名 '{path}' は使えない",
+
   // --- in the document -----------------------------------------------------------------
   'markdown.noun.figure': '図 {number}',
   'markdown.noun.table': '表 {number}',
@@ -54,6 +62,13 @@ export const MARKDOWN_MESSAGES = defineMessages({
   'markdown.kindMismatch': "The kind of label '{label}' does not match '{path}'",
   'markdown.missingImage': 'An image could not be brought in: {path}',
   'markdown.missingRange': 'Named range not found: {rows}',
+
+  'markdown.figure.notFound': "This figure's import line is gone (the document may have changed)",
+  'markdown.figure.badLabel': "The label '{label}' cannot be used (letters, digits, - and _, starting with fig- or the like)",
+  'markdown.figure.wrongPrefix': "The label '{label}' must start with {prefix}-",
+  'markdown.figure.labelTaken': "The label '{label}' is already used elsewhere in this document",
+  'markdown.figure.labelInUse': "The label '{label}' is referred to {count} times in the text, so it cannot be removed",
+  'markdown.figure.badPath': "The file name '{path}' cannot be used",
 
   'markdown.noun.figure': 'Figure {number}',
   'markdown.noun.table': 'Table {number}',

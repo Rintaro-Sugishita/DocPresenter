@@ -88,6 +88,46 @@ export const EDITOR_STYLE = `
 .dp-mermaid-choice + .dp-mermaid-choice { border-left: 1px solid #c9ced6; }
 .dp-mermaid-choice[aria-pressed="true"] { background: #1f5fa8; color: #fff; }
 .dp-mermaid-choice:focus-visible { outline: 2px solid #1f5fa8; outline-offset: -2px; }
+/* A figure's names: its file, its caption, its label. The button shows on the
+   figure the pointer is over; the form is laid over the editor. */
+.dp-figure { position: relative; }
+.dp-figure-names {
+  position: absolute; top: 4px; right: 4px; z-index: 3;
+  font: 11px system-ui, sans-serif; color: #3a4048; cursor: pointer;
+  background: #fff; border: 1px solid #c9ced6; border-radius: 3px; padding: 2px 8px;
+  opacity: 0; transition: opacity 0.12s;
+}
+.dp-figure:hover > .dp-figure-names, .dp-figure-names:focus-visible { opacity: 1; }
+.dp-figure-names:hover { border-color: #1f5fa8; color: #1f5fa8; }
+.dp-figure-names:focus-visible { outline: 2px solid #1f5fa8; outline-offset: 1px; }
+.dp-names-backdrop {
+  position: fixed; inset: 0; z-index: 50; background: rgba(20, 24, 31, .35);
+  display: flex; align-items: flex-start; justify-content: center; padding: 10vh 16px 0;
+}
+.dp-names {
+  width: min(520px, 100%); box-sizing: border-box; background: #fff; color: #1f2329;
+  border-radius: 6px; box-shadow: 0 10px 30px rgba(0, 0, 0, .25); padding: 18px 20px 14px;
+  font: 13px system-ui, sans-serif;
+}
+.dp-names-title { font-size: 15px; margin: 0 0 12px; }
+.dp-names-field { display: block; margin-bottom: 12px; }
+.dp-names-label { display: block; font-weight: 600; margin-bottom: 4px; }
+.dp-names-line { display: flex; align-items: center; gap: 4px; }
+.dp-names-fixed { color: #6b7280; font-family: ui-monospace, monospace; white-space: nowrap; }
+.dp-names-input {
+  flex: 1; min-width: 0; font: inherit; padding: 5px 7px;
+  border: 1px solid #c9ced6; border-radius: 3px;
+}
+.dp-names-input:focus { outline: 2px solid #1f5fa8; outline-offset: -1px; border-color: #1f5fa8; }
+.dp-names-input:disabled { background: #f3f4f6; color: #6b7280; }
+.dp-names-hint { display: block; color: #6b7280; font-size: 12px; margin-top: 3px; }
+.dp-names-problem { color: #b3261e; margin: 0 0 10px; }
+.dp-names-buttons { display: flex; justify-content: flex-end; gap: 8px; }
+.dp-names-buttons button {
+  font: inherit; padding: 5px 14px; border-radius: 3px; cursor: pointer;
+  border: 1px solid #c9ced6; background: #f7f8fa; color: #3a4048;
+}
+.dp-names-buttons .dp-names-ok { background: #1f5fa8; border-color: #1f5fa8; color: #fff; }
 /* Copying a code block. In its header, beside the language. */
 .dp-code-copy {
   margin-left: auto; font: 11px system-ui, sans-serif; color: #3a4048; cursor: pointer;

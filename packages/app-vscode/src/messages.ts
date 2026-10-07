@@ -17,6 +17,9 @@ export const VSCODE_MESSAGES = defineMessages({
   'vscode.unexpected': '思わぬ応答: {kind}',
   'vscode.writeBackFailed': '{description}を書き戻せなかった',
   'vscode.drawingOnly': '図だけを開いているので、ここに本文は書けません（図を押すと編集できます）',
+  'vscode.move.missing': '{path} が見つからない',
+  'vscode.move.exists': '{path} はもうある',
+  'vscode.move.failed': '{from} を {to} に移せなかった',
   'vscode.exportBar': '書き出し',
 
   // --- exporting -------------------------------------------------------------------
@@ -71,6 +74,9 @@ export const VSCODE_MESSAGES = defineMessages({
   'vscode.unexpected': 'Unexpected answer: {kind}',
   'vscode.writeBackFailed': 'Could not write back: {description}',
   'vscode.drawingOnly': 'Only the diagram is open, so text cannot be written here (click the diagram to edit it)',
+  'vscode.move.missing': '{path} was not found',
+  'vscode.move.exists': '{path} already exists',
+  'vscode.move.failed': 'Could not move {from} to {to}',
   'vscode.exportBar': 'Export',
 
   'vscode.export.reading': 'Reading the workspace…',

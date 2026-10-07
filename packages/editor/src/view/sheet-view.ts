@@ -6,8 +6,8 @@
 // file contains can never drift apart: there is only the file.
 
 import {
-  PICTURE, importAttribute, isAddress, joinPath, parseDocument, parseTable,
-  setFenceView, setImportAttribute, sheetsOf, viewOf, type MermaidView, type Sheet,
+  PICTURE, importAttribute, isAddress, joinPath, labelPrefixFor, parseDocument, parseTable,
+  renameFigure, setFenceView, setImportAttribute, sheetsOf, viewOf, type MermaidView, type Sheet,
 } from '@docpresenter/markdown';
 import { parseDiagram, withParts } from '@docpresenter/diagram';
 import {
@@ -28,6 +28,7 @@ import { BASE_STYLE } from '@docpresenter/base';
 import { DIAGRAM_STYLE } from '@docpresenter/diagram';
 import { createToolbar } from '@docpresenter/base';
 import { mountPicture, type Align, type PictureControls } from './picture.js';
+import { openFigureNames, type FigureNamesForm } from './figure-names.js';
 
 export interface SheetViewOptions {
   readonly root: HTMLElement;
@@ -67,6 +68,22 @@ export interface SheetViewOptions {
    * than making another. Which files exist is the platform's business too.
    */
   readonly listResources?: () => readonly { path: string; label: string }[];
+  /**
+   * Moves the file behind a figure — renaming it in its folder — and points
+   * every *other* document's `@import` at the new place. Both paths are as
+   * this document writes them. The editor rewrites this document itself, as
+   * one edit, once the host has said yes.
+   *
+   * Returns why it cannot be done, or undefined when it was. Without it the
+   * file name of a figure is shown but cannot be changed.
+   */
+  readonly moveResource?: ((from: string, to: string) => string | undefined) | undefined;
+  /**
+   * Whether figures offer their names for changing. Off where the document on
+   * screen is not a file — a drawing opened on its own — so there is no line
+   * to write a caption or a label on.
+   */
+  readonly nameFigures?: boolean;
   /** Called when an operation is refused, so the app can say why. */
   readonly onError?: (message: string) => void;
   /** Key bindings and the like. See settings.ts for why this is a value. */
@@ -111,6 +128,8 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
   /** The table whose grid is open, and where the selection sits in it. */
   let picture: { path: string } | undefined;
   let pictureControls: PictureControls | undefined;
+  /** The form for a figure's file name, caption and label, while it is open. */
+  let namesForm: FigureNamesForm | undefined;
   let grid: { path: string; at: GridPosition; target: string } | undefined;
   let mounted: Grid | undefined;
   /** The diagram open for direct manipulation, and the shapes picked in it. */
@@ -142,6 +161,16 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
   pane.addEventListener('dragover', onDragOver);
   pane.addEventListener('dragleave', onDragLeave);
   pane.addEventListener('drop', onDrop);
+  // A figure's names are asked for from its button, or from the menu on it.
+  // The grid and the canvas have menus of their own, and keep them.
+  pane.addEventListener('contextmenu', event => {
+    const target = event.target as HTMLElement | null;
+    if (target?.closest('.dp-grid, .dp-canvas, .dp-canvas-host, .dp-block-source')) return;
+    const figure = target?.closest<HTMLElement>('.dp-figure');
+    if (!figure || !nameable(figure)) return;
+    event.preventDefault();
+    menu.open(event.clientX, event.clientY, [{ label: t('editor.figure.button'), run: () => openNames(figure) }]);
+  });
   const tabbar = element('div', 'dp-tabbar');
   tabbar.setAttribute('role', 'tablist');
   root.append(pane, tabbar);
@@ -495,6 +524,93 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
     commit(() => ({ span, text: written, ...described(said) }), active);
   }
 
+  // --- 図表の名前（ファイル名・題・ラベル） ------------------------------------
+
+  /** A figure this document placed. One pulled in from another document is that document's to name. */
+  function nameable(figure: HTMLElement): boolean {
+    return options.nameFigures !== false && !figure.closest('[data-doc]')
+      && spanOf(figure) !== undefined && !!figure.dataset['path'];
+  }
+
+  /** The button that opens the form. Editor chrome; never in the output. */
+  function addNamesButton(figure: HTMLElement): void {
+    if (!nameable(figure)) return;
+    const button = element('button', 'dp-figure-names') as HTMLButtonElement;
+    button.type = 'button';
+    button.textContent = t('editor.figure.button');
+    button.title = t('editor.figure.buttonTitle');
+    button.addEventListener('click', event => {
+      event.preventDefault();
+      event.stopPropagation();
+      openNames(figure);
+    });
+    figure.prepend(button);
+  }
+
+  /**
+   * Asks for a figure's file name, caption and label, and writes what changed:
+   * the file is moved by the host, and this document is rewritten as one edit
+   * — the `@import` lines that name the file and every `@label` that named the
+   * figure.
+   */
+  function openNames(figure: HTMLElement): void {
+    const span = spanOf(figure);
+    const path = figure.dataset['path'];
+    if (!span || !path) return;
+    endEdit(true);
+    namesForm?.close();
+    const line = sliceBytes(source, span.start, span.end);
+    const slash = path.lastIndexOf('/');
+    const folder = path.slice(0, slash + 1);
+    const file = path.slice(slash + 1);
+    const dot = file.lastIndexOf('.');
+    const extension = dot > 0 ? file.slice(dot) : '';
+    const fixedName = isAddress(path) ? t('editor.figure.fixedAddress')
+      : options.moveResource ? undefined : t('editor.figure.fixedHere');
+
+    namesForm = openFigureNames({
+      owner,
+      root,
+      locale: settings.locale,
+      folder,
+      extension,
+      fixedName,
+      prefix: labelPrefixFor(path),
+      value: {
+        name: dot > 0 ? file.slice(0, dot) : file,
+        caption: importAttribute(line, 'caption') ?? '',
+        label: /\{[^}]*#([A-Za-z0-9_-]+)/.exec(line)?.[1] ?? '',
+      },
+      onClose: () => { namesForm = undefined; },
+      onSubmit: value => {
+        const moved = fixedName === undefined ? `${folder}${value.name}${extension}` : path;
+        let change;
+        try {
+          change = renameFigure(source, span, {
+            caption: value.caption, label: value.label, ...(moved === path ? {} : { path: moved }),
+          });
+        } catch (error) {
+          return explain(error);
+        }
+        if (moved !== path) {
+          const refused = options.moveResource!(path, moved);
+          if (refused !== undefined) return refused;
+          // Whatever was open on the figure follows it to its new name.
+          if (grid?.path === path) grid = { ...grid, path: moved };
+          if (canvas?.path === path) canvas = { ...canvas, path: moved };
+          if (picture?.path === path) picture = { path: moved };
+        }
+        if (change) {
+          const done = change;
+          commit(() => ({ ...done, ...described(ed('editor.did.names', { path: moved })) }), active);
+        } else if (moved !== path) {
+          draw();
+        }
+        return undefined;
+      },
+    });
+  }
+
   /** Whether the file behind a figure can be shown as what it is. */
   function readable(path: string, text: string): boolean {
     try {
@@ -726,7 +842,15 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
 
   function onPointerDown(event: MouseEvent): void {
     // The switch on a Mermaid block is a button, not a way into the text.
-    if ((event.target as HTMLElement | null)?.closest('.dp-mermaid-switch, .dp-code-copy')) return;
+    if ((event.target as HTMLElement | null)?.closest('.dp-mermaid-switch, .dp-code-copy, .dp-figure-names')) return;
+    // A right press on a figure is for its menu. Opening the caption or the
+    // drawing under it first would replace the element the menu belongs to.
+    if (event.button === 2) {
+      const pressed = event.target as HTMLElement | null;
+      const figure = pressed?.closest<HTMLElement>('.dp-figure');
+      if (figure && nameable(figure)
+        && !pressed?.closest('.dp-grid, .dp-canvas, .dp-canvas-host, .dp-block-source')) return;
+    }
     const target = (event.target as HTMLElement | null)?.closest<HTMLElement>(CLICKABLE);
     if (!target || !pane.contains(target)) return;
     // A press inside whatever is already open belongs to it.
@@ -1069,6 +1193,7 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
     sections = [...page.querySelectorAll<HTMLElement>('.dp-sheet')];
     for (const section of sections) addInsertTargets(section);
     for (const figure of page.querySelectorAll<HTMLElement>('.dp-figure')) addImportTarget(figure);
+    for (const figure of page.querySelectorAll<HTMLElement>('.dp-figure')) addNamesButton(figure);
     for (const block of page.querySelectorAll<HTMLElement>('.dp-mermaid')) addMermaidSwitch(block);
     for (const block of page.querySelectorAll<HTMLElement>('.dp-code')) addCopyButton(block);
     options.decorate?.(page);
@@ -1260,6 +1385,7 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
       owner.removeEventListener('keydown', onKeyDown);
       owner.removeEventListener('paste', onPaste);
       pictureControls?.destroy();
+      namesForm?.close();
       root.replaceChildren();
       root.classList.remove('dp-editor');
     },

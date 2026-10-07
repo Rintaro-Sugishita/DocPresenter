@@ -30,8 +30,12 @@ export class Uri {
 
 export class WorkspaceEdit {
   readonly changes: { uri: Uri; range: Range; text: string }[] = [];
+  readonly renames: { from: Uri; to: Uri; overwrite: boolean }[] = [];
   replace(uri: Uri, range: Range, text: string): void {
     this.changes.push({ uri, range, text });
+  }
+  renameFile(from: Uri, to: Uri, options: { overwrite?: boolean } = {}): void {
+    this.renames.push({ from, to, overwrite: options.overwrite ?? false });
   }
 }
 
@@ -44,6 +48,8 @@ export const saved: string[] = [];
 export const shown: string[] = [];
 
 export class TextDocument {
+  /** Nothing here is typed into by hand, so nothing is ever unsaved. */
+  readonly isDirty = false;
   constructor(readonly uri: Uri, private body: string) {}
   getText(): string { return this.body; }
   positionAt(offset: number): Position {
@@ -81,9 +87,9 @@ export const workspace = {
   getWorkspaceFolder: () => ({ uri: ROOT, name: 'w', index: 0 }),
   asRelativePath: (uri: Uri) => relative(uri),
   findFiles: async (pattern: string) => {
-    // Only the part of glob this extension uses: `**/*` for everything, and
-    // `**/*.{a,b}` for a set of kinds.
-    const kinds = /\{([^}]*)\}/.exec(pattern)?.[1]?.split(',');
+    // Only the part of glob this extension uses: `**/*` for everything,
+    // `**/*.{a,b}` for a set of kinds, and `**/*.a` for one.
+    const kinds = /\{([^}]*)\}/.exec(pattern)?.[1]?.split(',') ?? /\*\.(\w+)$/.exec(pattern)?.slice(1);
     return [...held.keys(), ...written.keys()]
       .filter((path, at, all) => all.indexOf(path) === at)
       .filter(path => kinds === undefined
@@ -110,6 +116,16 @@ export const workspace = {
     return made;
   },
   applyEdit: async (edit: WorkspaceEdit) => {
+    // As VS Code does: a rename onto a file that is there is refused, and the
+    // whole edit with it.
+    for (const one of edit.renames) {
+      if (!one.overwrite && held.has(relative(one.to))) return false;
+    }
+    for (const one of edit.renames) {
+      held.set(relative(one.to), held.get(relative(one.from)) ?? '');
+      held.delete(relative(one.from));
+      open.delete(relative(one.from));
+    }
     for (const one of edit.changes) {
       const document = await workspace.openTextDocument(one.uri);
       document.replace(one.range, one.text);

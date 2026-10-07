@@ -3,7 +3,7 @@ import { applyEdit, type Edit } from '@docpresenter/base';
 import { runBuild } from '../src/build-command.js';
 import { SheetEditorProvider } from '../src/sheet-editor.js';
 import type { FromView, ToView } from '../src/protocol.js';
-import { documentAt, give, held, saved, written } from './fake-vscode.js';
+import { documentAt, give, held, saved, shown, written } from './fake-vscode.js';
 
 const DOC = [
   '# 認証機能 設計書',
@@ -113,6 +113,28 @@ describe('VS Code のカスタムエディタ', () => {
     await view.say({ kind: 'ready' });
     await view.say({ kind: 'create', path: 'docs/design/diagram-1.dgm', text: 'free {\n}\n' });
     expect(new TextDecoder().decode(written.get('docs/design/diagram-1.dgm'))).toBe('free {\n}\n');
+  });
+
+  // 図のファイル名を変えると、ファイルが動き、ほかの文書の取り込み行もついてくる。
+  // 開いている文書は画面が書き直す（続く change）ので、ここでは触らない。
+  it('図のファイル名を変えると、ファイルが動き、ほかの文書の取り込み行も直る', async () => {
+    const OTHER = '# 概要\n\n@import "auth/login.dgm" {#fig-login}\n\n@import "../shared/x.dgm"\n';
+    const view = await open({ 'docs/design.md': DOC, 'docs/auth/login.dgm': DGM, 'docs/overview.md': OTHER });
+    await view.say({ kind: 'ready' });
+    await view.say({ kind: 'move', from: 'docs/auth/login.dgm', to: 'docs/auth/login-flow.dgm' });
+    expect(held.has('docs/auth/login.dgm')).toBe(false);
+    expect(held.get('docs/auth/login-flow.dgm')).toBe(DGM);
+    expect(held.get('docs/overview.md')).toBe(OTHER.replace('auth/login.dgm', 'auth/login-flow.dgm'));
+    expect(saved).toContain('docs/overview.md');
+    expect(held.get('docs/design.md')).toBe(DOC);
+  });
+
+  it('移す先にもうファイルがあれば、何も変えずに断る', async () => {
+    const view = await open({ 'docs/design.md': DOC, 'docs/auth/login.dgm': DGM, 'docs/auth/other.dgm': DGM });
+    await view.say({ kind: 'ready' });
+    await view.say({ kind: 'move', from: 'docs/auth/login.dgm', to: 'docs/auth/other.dgm' });
+    expect(held.has('docs/auth/login.dgm')).toBe(true);
+    expect(shown.some(message => message.includes('docs/auth/other.dgm'))).toBe(true);
   });
 
   // ほかの誰かが同じファイルを書き換えたら、画面は古いものを映していることになる。

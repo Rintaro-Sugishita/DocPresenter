@@ -80,6 +80,22 @@ function mount(): void {
       send({ kind: 'create', path, text });
       return { path: inDocument(documentPath, path), text };
     },
+    // The file is moved here first, so the redraw that follows the document's
+    // edit finds it under its new name; the host then moves the real one.
+    moveResource: drawingOnly ? undefined : (fromWritten, toWritten) => {
+      const t = VSCODE_MESSAGES.in(settings.locale);
+      const from = here(fromWritten);
+      const to = here(toWritten);
+      if (from === to) return undefined;
+      const held = from in files ? files : from in images ? images : undefined;
+      if (!held) return t('vscode.move.missing', { path: fromWritten });
+      if (to in files || to in images) return t('vscode.move.exists', { path: toWritten });
+      held[to] = held[from]!;
+      delete held[from];
+      send({ kind: 'move', from, to });
+      return undefined;
+    },
+    nameFigures: !drawingOnly,
     createImage: (picture: Picture) => {
       const name = picture.name.replace(/[^\w.-]+/g, '-').replace(/^-+|-+$/g, '');
       const extension = /\.(png|jpe?g|gif|webp)$/i.exec(name)?.[1]?.toLowerCase()

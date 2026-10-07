@@ -90,6 +90,12 @@ export type FromView =
     /** A picture's bytes, as plain numbers: a WebView message is JSON. */
     readonly bytes?: readonly number[];
   }
+  /**
+   * Rename a figure's file, both as workspace paths. The host moves the file
+   * and points every other document's `@import` at it; the document on screen
+   * is rewritten by the editor, with a `change` that follows this message.
+   */
+  | { readonly kind: 'move'; readonly from: string; readonly to: string }
   | { readonly kind: 'error'; readonly message: string }
   /** The author pressed an export button. */
   | { readonly kind: 'export'; readonly format: ExportFormat }
