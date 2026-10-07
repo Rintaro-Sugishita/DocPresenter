@@ -67,7 +67,10 @@ export function readDrawings(bytes: Uint8Array): ReadResult {
 
     const shapes: ReadShape[] = [];
     const unknown: string[] = [];
-    for (const shape of xml.split('<p:sp>').slice(1)) {
+    // Each shape up to its own end: what follows it on the slide — a table, a
+    // picture, the next text box — is not part of it, and its text is not the
+    // shape's label.
+    for (const [shape] of xml.matchAll(/<p:sp>[\s\S]*?<\/p:sp>/g)) {
       const id = attribute(shape, 'p:cNvPr', 'name');
       const frame = xfrmOf(shape);
       if (!frame) continue;
