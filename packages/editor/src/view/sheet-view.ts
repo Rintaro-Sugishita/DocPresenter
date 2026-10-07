@@ -11,8 +11,10 @@ import {
 } from '@docpresenter/markdown';
 import { parseDiagram, withParts } from '@docpresenter/diagram';
 import {
-  applyEdit, byteLength, sliceBytes, toggleInline, type Edit, type InlineMark,
+  applyEdit, byteLength, describeError, described, localizeEdit, sliceBytes, toggleInline,
+  type Edit, type InlineMark, type Phrase,
 } from '@docpresenter/base';
+import { EDITOR_MESSAGES, ed } from '../messages.js';
 import { DEFAULT_SETTINGS, isCommit, type EditorSettings } from '../settings.js';
 import { insertSheet, moveSheet, removeSheet, renameSheet, SheetEditError } from '../sheets.js';
 import { DiagramEditError } from '@docpresenter/diagram';
@@ -119,6 +121,9 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
     edge: string | undefined;
   } | undefined;
   let settings = options.settings ?? DEFAULT_SETTINGS;
+  let t = EDITOR_MESSAGES.in(settings.locale);
+  /** An error in the author's language, when it can say itself in theirs. */
+  const explain = (error: unknown): string => describeError(error, settings.locale);
 
   const owner = root.ownerDocument;
   const menu = createMenu(owner);
@@ -166,7 +171,7 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
     readonly path: string | undefined;
   }
 
-  const toolbar = createToolbar(owner, applyFormat);
+  let toolbar = createToolbar(owner, applyFormat, settings.locale);
 
   function applyFormat(mark: InlineMark): void {
     const current = editing;
@@ -198,7 +203,7 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
     if (!body || !path || editing?.host === body) return;
     const text = options.readResource?.(path);
     if (text === undefined) {
-      options.onError?.(`${path} を開けない`);
+      options.onError?.(t('editor.view.cannotOpen', { path }));
       return;
     }
     // A file that will not parse has no grid and no drawing to open, and the
@@ -317,7 +322,7 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
     const bytes = new Uint8Array(await file.arrayBuffer());
     const made = options.createImage?.({ bytes, name: file.name, type: file.type });
     if (!made) {
-      options.onError?.('画像を置けなかった');
+      options.onError?.(t('editor.view.imageFailed'));
       return;
     }
     place(made.path, at);
@@ -330,7 +335,7 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
     commit(() => ({
       span: { start: target, end: target },
       text: `\n\n@import "${path}"`,
-      description: isAddress(path) ? `${path} を参照` : `${path} を貼り付け`,
+      ...described(ed(isAddress(path) ? 'editor.did.refer' : 'editor.did.pasteImage', { path })),
     }), active);
   }
 
@@ -369,6 +374,7 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
     if (!span) return;
     const line = sliceBytes(source, span.start, span.end);
     pictureControls = mountPicture({
+      locale: settings.locale,
       owner,
       figure,
       align: importAttribute(line, 'align'),
@@ -380,8 +386,8 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
 
   // --- Mermaid の見せ方 --------------------------------------------------
 
-  const VIEW_LABEL: Readonly<Record<MermaidView, string>> = {
-    diagram: '図', code: 'コード', both: '両方',
+  const VIEW_LABEL: Readonly<Record<MermaidView, 'editor.mermaid.diagram' | 'editor.mermaid.code' | 'editor.mermaid.both'>> = {
+    diagram: 'editor.mermaid.diagram', code: 'editor.mermaid.code', both: 'editor.mermaid.both',
   };
 
   /**
@@ -398,11 +404,11 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
     const current = viewOf(block.dataset['view']);
     const bar = element('div', 'dp-mermaid-switch');
     bar.setAttribute('role', 'group');
-    bar.setAttribute('aria-label', 'Mermaid の見せ方');
+    bar.setAttribute('aria-label', t('editor.mermaid.switch'));
     for (const view of ['diagram', 'code', 'both'] as const) {
       const button = element('button', 'dp-mermaid-choice') as HTMLButtonElement;
       button.type = 'button';
-      button.textContent = VIEW_LABEL[view];
+      button.textContent = t(VIEW_LABEL[view]);
       button.setAttribute('aria-pressed', String(view === current));
       button.addEventListener('click', event => {
         event.preventDefault();
@@ -429,15 +435,15 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
     }
     const button = element('button', 'dp-code-copy') as HTMLButtonElement;
     button.type = 'button';
-    button.textContent = 'コピー';
-    button.title = 'このコードをすべてコピーする';
+    button.textContent = t('editor.copy');
+    button.title = t('editor.copyTitle');
     button.addEventListener('click', event => {
       event.preventDefault();
       event.stopPropagation();
       // The line break that closes the last line is the block's, not the code's.
       void copyText((code.textContent ?? '').replace(/\n$/, '')).then(done => {
-        button.textContent = done ? 'コピーしました' : 'コピーできませんでした';
-        owner.defaultView?.setTimeout(() => { button.textContent = 'コピー'; }, 1500);
+        button.textContent = t(done ? 'editor.copied' : 'editor.copyFailed');
+        owner.defaultView?.setTimeout(() => { button.textContent = t('editor.copy'); }, 1500);
       });
     });
     head.append(button);
@@ -470,7 +476,9 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
       ? setImportAttribute(line, 'view', view === 'diagram' ? undefined : view)
       : setFenceView(line, view);
     if (written === line) return;
-    commit(() => ({ span, text: written, description: `Mermaid を${VIEW_LABEL[view]}で見せる` }), active);
+    commit(() => ({
+      span, text: written, ...described(ed('editor.did.mermaid', { view: ed(VIEW_LABEL[view]) })),
+    }), active);
   }
 
   /** One attribute of the `@import` line that placed a figure. */
@@ -480,10 +488,11 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
     const line = sliceBytes(source, span.start, span.end);
     const written = setImportAttribute(line, name, value);
     if (written === line) return;
-    const said = name === 'align'
-      ? (value === undefined ? '左に寄せる' : `${value === 'center' ? '中央' : '右'}に寄せる`)
-      : (value === undefined ? '幅の指定を外す' : `幅を ${value} にする`);
-    commit(() => ({ span, text: written, description: said }), active);
+    const said: Phrase = name === 'align'
+      ? ed(value === undefined ? 'editor.did.alignLeft'
+        : value === 'center' ? 'editor.did.alignCenter' : 'editor.did.alignRight')
+      : (value === undefined ? ed('editor.did.unwidth') : ed('editor.did.width.set', { value }));
+    commit(() => ({ span, text: written, ...described(said) }), active);
   }
 
   /** Whether the file behind a figure can be shown as what it is. */
@@ -510,12 +519,13 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
     try {
       table = parseTable(text);
     } catch (error) {
-      options.onError?.(error instanceof Error ? error.message : String(error));
+      options.onError?.(explain(error));
       grid = undefined;
       return;
     }
 
     mounted = createGrid({
+      locale: settings.locale,
       owner,
       table,
       at: current.at,
@@ -531,7 +541,7 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
           try {
             return { ...make(), path: current.path };
           } catch (error) {
-            if (error instanceof TableEditError) throw new SheetEditError(error.message);
+            if (error instanceof TableEditError) throw new SheetEditError(error.phrase);
             throw error;
           }
         }, active);
@@ -561,7 +571,7 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
       file = withParts(parseDiagram(text),
         used => options.readResource?.(joinPath(current.path, used)));
     } catch (error) {
-      options.onError?.(error instanceof Error ? error.message : String(error));
+      options.onError?.(explain(error));
       canvas = undefined;
       return;
     }
@@ -578,7 +588,7 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
           try {
             return { ...make(), path: current.path };
           } catch (error) {
-            if (error instanceof DiagramEditError) throw new SheetEditError(error.message);
+            if (error instanceof DiagramEditError) throw new SheetEditError(error.phrase);
             throw error;
           }
         }, active);
@@ -593,6 +603,7 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
         open(body, { start: 0, end: byteLength(source) }, source, '', false, current.path);
       },
       onError: (message: string) => options.onError?.(message),
+      locale: settings.locale,
     };
 
     // An overlay is a picture with callouts on it, already on the page at the
@@ -704,9 +715,9 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
       text: current.prefix + typed,
       path: current.path,
       // The path is in the edit; naming it here too would say it twice.
-      description: current.path !== undefined
-        ? 'ソースを編集'
-        : current.fresh ? '本文を追加' : '本文を編集',
+      ...described(ed(current.path !== undefined
+        ? 'editor.did.source'
+        : current.fresh ? 'editor.did.addText' : 'editor.did.editText')),
     }), active);
   }
 
@@ -849,7 +860,9 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
     append.dataset['span'] = span;
 
     const hint = element('span', 'dp-append-hint');
-    hint.textContent = empty ? 'ここに本文を書く' : '';
+    hint.textContent = empty ? t('editor.append.hint') : '';
+    // Said by the stylesheet on hover when the sheet is not empty.
+    hint.dataset['hint'] = t('editor.append.hint');
     append.append(hint);
 
     const button = (label: string, title: string, run: (event: MouseEvent) => void): void => {
@@ -867,15 +880,14 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
     };
 
     if (options.createResource) {
-      for (const [kind, label] of [['table', '表'], ['diagram', '図']] as const) {
-        button(`＋ ${label}`, `ここに新しい${label}を作る`, () => addResource(append, kind));
-      }
+      button(t('editor.append.table'), t('editor.append.tableTitle'), () => addResource(append, 'table'));
+      button(t('editor.append.diagram'), t('editor.append.diagramTitle'), () => addResource(append, 'diagram'));
     }
     if (options.listResources) {
       // Most figures in a real document already exist somewhere — in the
       // shared folder, or earlier in this one. Making a second copy of a
       // shared diagram is the thing this prevents.
-      button('＋ 参照', 'すでにある図表を参照する', event => chooseResource(append, event));
+      button(t('editor.append.refer'), t('editor.append.referTitle'), event => chooseResource(append, event));
     }
     return append;
   }
@@ -893,7 +905,7 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
     const at = spanOf(append)?.end;
     if (at === undefined) return;
     if (available.length === 0) {
-      options.onError?.('参照できる図表がまだ無い');
+      options.onError?.(t('editor.append.nothingToRefer'));
       return;
     }
     menu.open(event.clientX, event.clientY, available.map((resource, index) => ({
@@ -902,7 +914,7 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
       run: () => commit(() => ({
         span: { start: at, end: at },
         text: `\n\n@import "${resource.path}"`,
-        description: `${resource.path} を参照`,
+        ...described(ed('editor.did.refer', { path: resource.path })),
       }), active),
     })));
   }
@@ -917,13 +929,16 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
     const made = options.createResource?.(kind);
     if (at === undefined || !made) return;
     options.onChange?.(
-      { span: { start: 0, end: 0 }, text: made.text, path: made.path, description: `${made.path} を作成` },
+      localizeEdit({
+        span: { start: 0, end: 0 }, text: made.text, path: made.path,
+        ...described(ed('editor.did.create', { path: made.path })),
+      }, settings.locale),
       made.text,
     );
     commit(() => ({
       span: { start: at, end: at },
       text: `\n\n@import "${made.path}"`,
-      description: kind === 'table' ? '表を追加' : '図を追加',
+      ...described(ed(kind === 'table' ? 'editor.did.addTable' : 'editor.did.addDiagram')),
     }), active);
   }
 
@@ -959,7 +974,7 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
     try {
       edit = make();
     } catch (error) {
-      if (error instanceof SheetEditError) { options.onError?.(error.message); return; }
+      if (error instanceof SheetEditError) { options.onError?.(explain(error)); return; }
       throw error;
     }
 
@@ -969,7 +984,7 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
       edit.path === undefined ? source : before ?? '', edit,
     );
     if (edit.path === undefined) source = written;
-    options.onChange?.(edit, written);
+    options.onChange?.(localizeEdit(edit, settings.locale), written);
 
     try {
       active = Math.max(1, Math.min(select, sheets().length));
@@ -977,10 +992,10 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
     } catch (error) {
       source = previous;
       if (edit.path !== undefined && before !== undefined) {
-        options.onChange?.({ ...edit, description: '取り消し' }, before);
+        options.onChange?.({ ...edit, phrase: undefined, description: t('editor.did.undo') }, before);
       }
       draw();
-      options.onError?.(error instanceof Error ? error.message : String(error));
+      options.onError?.(explain(error));
     }
   }
 
@@ -1080,7 +1095,7 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
     }
 
     drawTabs(sections.map((section, i) => ({
-      title: section.dataset['title'] ?? `シート ${i + 1}`,
+      title: section.dataset['title'] ?? t('editor.sheet.untitled', { index: i + 1 }),
       empty: section.textContent?.trim() === '',
     })));
     refresh('keep');
@@ -1147,7 +1162,7 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
         const close = element('button', 'dp-tab-close') as HTMLButtonElement;
         close.type = 'button';
         close.textContent = '×';
-        close.title = 'このシートを削除';
+        close.title = t('editor.sheet.removeTitle');
         close.addEventListener('click', event => {
           event.stopPropagation();
           commit(() => removeSheet(parseDocument(source), source, index), Math.max(1, index - 1));
@@ -1161,7 +1176,7 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
     const add = element('button', 'dp-tab dp-tab-add') as HTMLButtonElement;
     add.type = 'button';
     add.textContent = '＋';
-    add.title = 'シートを追加';
+    add.title = t('editor.sheet.addTitle');
     add.addEventListener('click', () => {
       const last = labels.length;
       commit(() => insertSheet(parseDocument(source), source, last), last + 1);
@@ -1170,7 +1185,7 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
 
     const toggle = element('button', 'dp-tabbar-toggle') as HTMLButtonElement;
     toggle.type = 'button';
-    toggle.textContent = '全シート表示';
+    toggle.textContent = t('editor.sheet.showAll');
     toggle.setAttribute('aria-pressed', String(continuous));
     toggle.addEventListener('click', event => {
       continuous = !continuous;
@@ -1230,7 +1245,16 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
     get active() { return active; },
     select,
     configure(next) {
+      const relabel = next.locale !== settings.locale;
       settings = next;
+      if (!relabel) return;
+      // Everything on screen is in the old language. What is being typed is
+      // kept — closing the block commits it — and the page is drawn again in
+      // the new one, from the same place.
+      if (editing) endEdit(true);
+      t = EDITOR_MESSAGES.in(settings.locale);
+      toolbar = createToolbar(owner, applyFormat, settings.locale);
+      draw();
     },
     destroy() {
       owner.removeEventListener('keydown', onKeyDown);

@@ -2,6 +2,7 @@
 // never stored, so a number written into the source would go stale; references
 // are therefore written as labels and resolved here.
 
+import type { Locale } from '@docpresenter/base';
 import type { Block, ByteSpan } from '../document/model.js';
 
 export type ElementKind =
@@ -15,10 +16,6 @@ export const KIND_BY_PREFIX: ReadonlyMap<string, ElementKind> = new Map([
   ['req', 'requirement'], ['des', 'design'], ['tst', 'test'],
 ]);
 
-/** How a resolved reference reads in running text. */
-export const NOUN_BY_KIND: Readonly<Partial<Record<ElementKind, string>>> = {
-  figure: '図', table: '表',
-};
 
 export interface NumberedElement {
   readonly kind: ElementKind;
@@ -43,6 +40,8 @@ export interface ResolvedDocument {
   /** Text to substitute for each reference, keyed by its byte start. */
   readonly referenceText: ReadonlyMap<number, string>;
   readonly diagnostics: readonly Diagnostic[];
+  /** The language the reference text and the diagnostics were written in. */
+  readonly locale: Locale;
 }
 
 export function hasError(resolved: ResolvedDocument): boolean {

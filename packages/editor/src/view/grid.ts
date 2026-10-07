@@ -16,7 +16,8 @@ import {
   alignOf, cellClasses, cellRules, headerClasses, headerRules, inlineMarkdown,
   inlineStyle, rowClasses,
 } from '@docpresenter/markdown';
-import type { Edit } from '@docpresenter/base';
+import { BASE_MESSAGES, DEFAULT_LOCALE, type Edit, type Locale } from '@docpresenter/base';
+import { EDITOR_MESSAGES } from '../messages.js';
 import {
   formatTable, insertColumn, insertRow, parseClipboardGrid, pasteGrid,
   mergeDown, mergeLoses, mergeRange, mergeRight, removeColumn, removeRow, setAlign,
@@ -48,6 +49,8 @@ export interface GridOptions {
   readonly onTarget: (target: string) => void;
   /** Leaves the grid and shows the source instead. */
   readonly showSource: () => void;
+  /** Which language the bars and menus speak. */
+  readonly locale?: Locale | undefined;
 }
 
 /**
@@ -59,12 +62,7 @@ export interface GridOptions {
  * table, so the theme draws them - the same call as the rule under the header.
  * A `row:odd` rule already in a file is still read and still rendered.
  */
-const TARGETS: readonly { readonly id: string; readonly label: string }[] = [
-  { id: 'cell', label: 'このセル' },
-  { id: 'row', label: 'この行' },
-  { id: 'column', label: 'この列' },
-  { id: 'header', label: 'ヘッダ' },
-];
+const TARGETS = ['cell', 'row', 'column', 'header'] as const;
 
 export interface Grid {
   readonly element: HTMLElement;
@@ -78,6 +76,8 @@ export interface Grid {
 
 export function createGrid(options: GridOptions): Grid {
   const { owner, table } = options;
+  const locale = options.locale ?? DEFAULT_LOCALE;
+  const t = EDITOR_MESSAGES.in(locale);
   const columns = table.columns.length;
 
   // One text box, always focused, sitting over the selected cell. A cell that
@@ -91,7 +91,7 @@ export function createGrid(options: GridOptions): Grid {
   let editing = false;
   let repaintStyle: () => void = () => {};
   // A target the host remembers from an older build may no longer exist.
-  let target = TARGETS.some(t => t.id === options.target) ? options.target : 'cell';
+  let target = TARGETS.some(one => one === options.target) ? options.target : 'cell';
   const nodes = new Map<string, HTMLElement>();
   const input = owner.createElement('input');
   input.className = 'dp-grid-input';
@@ -100,7 +100,7 @@ export function createGrid(options: GridOptions): Grid {
   // A cell holds inline Markdown, so the same bar that formats prose formats a
   // cell. It appears only while a cell is open: with nothing being edited
   // there is no selection for it to act on.
-  const toolbar: Toolbar = createToolbar(owner, applyInline);
+  const toolbar: Toolbar = createToolbar(owner, applyInline, locale);
   toolbar.element.hidden = true;
   const menu = createMenu(owner);
 
@@ -427,11 +427,11 @@ export function createGrid(options: GridOptions): Grid {
 
     const choose = owner.createElement('select');
     choose.className = 'dp-grid-target';
-    choose.title = 'スタイルを付ける対象';
+    choose.title = t('editor.grid.targetTitle');
     for (const option of TARGETS) {
       const node = owner.createElement('option');
-      node.value = option.id;
-      node.textContent = option.label;
+      node.value = option;
+      node.textContent = t(`editor.grid.target.${option}`);
       choose.append(node);
     }
     choose.value = target;
@@ -452,15 +452,15 @@ export function createGrid(options: GridOptions): Grid {
     };
 
     const rows = ([
-      ['fill', '塗り', FILL_SWATCHES, '#ffe0e0'],
-      ['color', '文字色', TEXT_SWATCHES, '#ff0000'],
+      ['fill', t('editor.grid.fill'), FILL_SWATCHES, '#ffe0e0'],
+      ['color', t('editor.grid.colour'), TEXT_SWATCHES, '#ff0000'],
     ] as const).map(([property, label, swatches, initial], index) => {
       if (index > 0) bar.append(element('span', 'dp-grid-divider'));
       const name = element('span', 'dp-grid-label');
       name.textContent = label;
       bar.append(name);
       const row = createSwatchRow(owner, {
-        label, swatches, initial, className: 'dp-grid-swatch',
+        label, swatches, initial, locale, className: 'dp-grid-swatch',
         onPick: colour => set(property, colour),
         onReset: () => set(property, undefined),
       });
@@ -486,7 +486,7 @@ export function createGrid(options: GridOptions): Grid {
    */
   function addResizeHandle(node: HTMLElement, column: number): void {
     const handle = element('span', 'dp-grid-resize');
-    handle.title = 'ドラッグして列幅を決める';
+    handle.title = t('editor.grid.widthHandle');
     node.append(handle);
 
     handle.addEventListener('mousedown', event => {
@@ -575,9 +575,9 @@ export function createGrid(options: GridOptions): Grid {
     const node = nodes.get(key({ row: box.top, column: box.left }));
     const where = node?.getBoundingClientRect();
     menu.open(where?.left ?? 0, (where?.bottom ?? 0) + 4, [
-      { label: `${lost.length} 個のセルの文字が消えます`, disabled: true, run: () => {} },
-      { label: `左上の「${keptText()}」だけを残して結合`, separated: true, run: apply },
-      { label: 'やめる', run: () => {} },
+      { label: t('editor.grid.mergeLoses', { count: lost.length }), disabled: true, run: () => {} },
+      { label: t('editor.grid.mergeKeep', { text: keptText() }), separated: true, run: apply },
+      { label: BASE_MESSAGES.in(locale)('base.cancel'), run: () => {} },
     ]);
   }
 
@@ -585,7 +585,7 @@ export function createGrid(options: GridOptions): Grid {
   function keptText(): string {
     const box = range();
     const text = (cellAt(table, box.top, box.left)?.text ?? '').trim();
-    if (text === '') return '空のセル';
+    if (text === '') return t('editor.grid.emptyCell');
     return text.length > 12 ? `${text.slice(0, 12)}…` : text;
   }
 
@@ -593,23 +593,23 @@ export function createGrid(options: GridOptions): Grid {
     const row = Math.max(0, at.row);
     const here = (): GridPosition => ({ row, column: at.column });
     return [
-      { label: '行を上に追加', run: () => options.apply(() => insertRow(table, row), here()) },
+      { label: t('editor.grid.rowAbove'), run: () => options.apply(() => insertRow(table, row), here()) },
       {
-        label: '行を下に追加',
+        label: t('editor.grid.rowBelow'),
         run: () => options.apply(() => insertRow(table, row + 1), { row: row + 1, column: at.column }),
       },
-      { label: '行を削除', run: () => options.apply(() => removeRow(table, row), here()) },
+      { label: t('editor.grid.removeRow'), run: () => options.apply(() => removeRow(table, row), here()) },
       {
-        label: '列を左に追加', separated: true,
+        label: t('editor.grid.columnLeft'), separated: true,
         run: () => options.apply(() => insertColumn(table, at.column, ''), here()),
       },
       {
-        label: '列を右に追加',
+        label: t('editor.grid.columnRight'),
         run: () => options.apply(
           () => insertColumn(table, at.column + 1, ''), { row: at.row, column: at.column + 1 }),
       },
       {
-        label: '列を削除',
+        label: t('editor.grid.removeColumn'),
         run: () => options.apply(
           () => removeColumn(table, at.column), { row: at.row, column: Math.max(0, at.column - 1) }),
       },
@@ -633,19 +633,19 @@ export function createGrid(options: GridOptions): Grid {
 
     return [
       {
-        label: '選択範囲を結合', separated: true, disabled: single() || at.row < 0,
+        label: t('editor.grid.mergeSelection'), separated: true, disabled: single() || at.row < 0,
         run: () => mergeSelection(),
       },
       {
-        label: '下のセルと結合', disabled: !canDown || !single(),
+        label: t('editor.grid.mergeDown'), disabled: !canDown || !single(),
         run: () => options.apply(() => mergeDown(table, at.row, at.column), at),
       },
       {
-        label: '右のセルと結合', disabled: !canRight || !single(),
+        label: t('editor.grid.mergeRight'), disabled: !canRight || !single(),
         run: () => options.apply(() => mergeRight(table, at.row, at.column), at),
       },
       {
-        label: '結合を解除', disabled: !merged,
+        label: t('editor.grid.unmerge'), disabled: !merged,
         run: () => options.apply(() => unmerge(table, at.row, at.column), at),
       },
     ];
@@ -668,10 +668,12 @@ export function createGrid(options: GridOptions): Grid {
     // headings centred over right-aligned figures is the usual scientific
     // table, and the vocabulary already allows it.
     const aligns: [Align, string, string][] = [
-      ['left', '左', '左寄せ'], ['center', '中', '中央'], ['right', '右', '右寄せ'],
+      ['left', t('editor.grid.alignLeft'), t('editor.grid.alignLeftTitle')],
+      ['center', t('editor.grid.alignCenter'), t('editor.grid.alignCenterTitle')],
+      ['right', t('editor.grid.alignRight'), t('editor.grid.alignRightTitle')],
     ];
     for (const [align, label, title] of aligns) {
-      add(label, `${title}（対象に合わせて）`, () => {
+      add(label, title, () => {
         if (target === 'column') {
           options.apply(() => setAlign(table, at.column, align), here());
           return;
@@ -686,9 +688,9 @@ export function createGrid(options: GridOptions): Grid {
     bar.append(element('span', 'dp-grid-divider'));
     // The source is what a reviewer reads in a diff, so keeping its columns
     // lined up is worth a button. It changes nothing in the printed table.
-    add('ソース整形', 'ソースファイルの桁を揃える（見た目は変わらない）', () =>
+    add(t('editor.grid.format'), t('editor.grid.formatTitle'), () =>
       options.apply(() => formatTable(table), here()));
-    add('ソース', '.table のソースを直接編集する', () => options.showSource());
+    add(t('editor.grid.source'), t('editor.grid.sourceTitle'), () => options.showSource());
     return bar;
   }
 }

@@ -7,7 +7,7 @@
 // The direction is in the name. `ToView` is the host telling the editor what
 // the workspace holds; `FromView` is the editor saying what the author did.
 
-import type { ByteSpan } from '@docpresenter/base';
+import type { ByteSpan, Locale } from '@docpresenter/base';
 import type { CommitKey } from '@docpresenter/editor';
 import type { PagePlan } from '@docpresenter/pdf';
 
@@ -33,6 +33,8 @@ export type ToView =
     /** Pictures, by workspace path, as URLs the WebView may load. */
     readonly images: Readonly<Record<string, string>>;
     readonly commitKey: CommitKey;
+    /** VS Code's display language, so the editor speaks the same one as the host. */
+    readonly locale: Locale;
     /**
      * A `.dgm` opened on its own. `source` is then a one-line document that
      * takes the drawing in, and exists only on screen: edits to it are not sent.
@@ -51,6 +53,8 @@ export type ToView =
   | {
     readonly kind: 'measure'; readonly id: number;
     readonly body: string; readonly foot: string; readonly title: string;
+    /** The language of the diagnostics that come back. */
+    readonly locale: Locale;
   }
   /** Draw one Mermaid source as a picture, for a slide. */
   | { readonly kind: 'picture'; readonly id: number; readonly source: string }

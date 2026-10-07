@@ -8,7 +8,7 @@ const page = await browser.newPage({
   permissions: ['clipboard-read', 'clipboard-write'],
 });
 page.on('pageerror', e => { console.log('✗ ページエラー:', e.message); process.exitCode = 1; });
-await page.goto('file://' + process.cwd() + '/out/editor.html');
+await page.goto('file://' + process.cwd() + '/out/editor.html?lang=ja');
 await page.waitForTimeout(400);
 
 const check = (name, ok, detail = '') => {

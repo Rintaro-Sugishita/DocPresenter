@@ -9,6 +9,8 @@
 // to, once — each checks for what it would add, so running the command again
 // adds nothing.
 
+import { DEFAULT_LOCALE, type Locale } from '@docpresenter/base';
+
 export interface ScaffoldAnswers {
   /** The first document's file name, without `.md`: `auth-design`. */
   readonly name: string;
@@ -19,6 +21,8 @@ export interface ScaffoldAnswers {
   readonly today: string;
   /** Where builds are written, so that it can be kept out of Git. */
   readonly outDir: string;
+  /** The language the starting documents are written in. Japanese when absent. */
+  readonly locale?: Locale | undefined;
 }
 
 /** What the extension ships for the folder: the guide and the format specs. */
@@ -55,6 +59,7 @@ export function planScaffold(
   const files: PlannedFile[] = [];
   const kept: string[] = [];
   const document = `docs/${answers.name}.md`;
+  const words = WORDS[answers.locale ?? DEFAULT_LOCALE];
 
   const create = (path: string, text: string): void => {
     if (existing(path) === undefined) files.push({ path, text, mode: 'create' });
@@ -68,26 +73,113 @@ export function planScaffold(
     else files.push({ path, text: `${now === '' || now.endsWith('\n') ? '' : '\n'}\n${block}`, mode: 'append' });
   };
 
-  create(document, firstDocument(answers));
-  create(`docs/${answers.name}/revision.md`, revision(answers));
+  create(document, firstDocument(answers, words));
+  create(`docs/${answers.name}/revision.md`, revision(answers, words));
   create('docs/assets/.gitkeep', '');
-  create('shared/glossary.table', GLOSSARY);
+  create('shared/glossary.table', glossary(words));
   create('.docpresenter/guide.md', shipped.guide);
   for (const [name, text] of Object.entries(shipped.specs)) create(`.docpresenter/spec/${name}`, text);
 
   for (const path of ['CLAUDE.md', 'AGENTS.md']) {
-    append(path, AGENT_POINTER, text => text.includes(MARKER));
+    append(path, agentPointer(words), text => text.includes(MARKER));
   }
   // The top folder the builds go in: `out/build` is kept out of Git as `out/`.
   const top = answers.outDir.replace(/^\.?\/+/, '').split('/')[0]!;
-  append('.gitignore', `# DocPresenter の書き出し\n${top}/\n`,
+  append('.gitignore', `${words.gitignore}\n${top}/\n`,
     text => text.split(/\r?\n/).some(line => line.trim().replace(/^\/|\/$/g, '') === top));
 
   return { files, kept, document };
 }
 
 
-function firstDocument(answers: ScaffoldAnswers): string {
+/**
+ * The words of what is written into the folder. They are the start of the
+ * author's documents, not chrome, so they come in the language the author's
+ * VS Code speaks — the same rule as 図 and 表 in a build (design/decisions.md).
+ */
+interface Words {
+  readonly gitignore: string;
+  readonly overview: string;
+  readonly purpose: string;
+  readonly purposeText: string;
+  readonly scope: string;
+  readonly scopeIn: string;
+  readonly scopeInItem: string;
+  readonly scopeOut: string;
+  readonly scopeOutItem: string;
+  readonly terms: string;
+  readonly termsText: string;
+  readonly glossaryCaption: string;
+  readonly revision: string;
+  readonly revisionText: string;
+  readonly revisionHead: readonly [string, string, string];
+  readonly firstRevision: string;
+  readonly glossary: string;
+  readonly glossaryHead: readonly [string, string];
+  readonly glossaryRow: readonly [string, string];
+  readonly agent: readonly string[];
+}
+
+const WORDS: Readonly<Record<Locale, Words>> = {
+  ja: {
+    gitignore: '# DocPresenter の書き出し',
+    overview: '概要',
+    purpose: '目的',
+    purposeText: '本書は、〈対象システム・機能〉の設計を示す。',
+    scope: '対象範囲',
+    scopeIn: '本書が扱う範囲は次のとおりとする。',
+    scopeInItem: '〈対象に含めるもの〉',
+    scopeOut: '次のものは本書の対象外とする。',
+    scopeOutItem: '〈対象に含めないもの〉',
+    terms: '用語',
+    termsText: '本書で用いる用語を @tbl-glossary に示す。',
+    glossaryCaption: '用語集',
+    revision: '改訂履歴',
+    revisionText: '版と変更点は Git の履歴が正本である。ここに載せるのは、**読み手が版を名指しするための番号**だけとする。',
+    revisionHead: ['版', '日付', '変更点'],
+    firstRevision: '初版作成',
+    glossary: '用語集（複数の文書から引く）',
+    glossaryHead: ['用語', '説明'],
+    glossaryRow: ['〈用語〉', '〈説明〉'],
+    agent: [
+      '## DocPresenter の設計書',
+      '',
+      '`docs/` と `shared/` の設計書は DocPresenter の形式で書かれている。',
+      '設計書を書く・直す前に、必ず [.docpresenter/guide.md](.docpresenter/guide.md) を読み、その規則に従うこと。',
+      '図（`.dgm`）と表（`.table`）の形式の詳細は `.docpresenter/spec/` にある。',
+    ],
+  },
+  en: {
+    gitignore: '# DocPresenter output',
+    overview: 'Overview',
+    purpose: 'Purpose',
+    purposeText: 'This document describes the design of 〈the system or feature〉.',
+    scope: 'Scope',
+    scopeIn: 'This document covers the following.',
+    scopeInItem: '〈What is in scope〉',
+    scopeOut: 'The following is out of scope.',
+    scopeOutItem: '〈What is out of scope〉',
+    terms: 'Terms',
+    termsText: 'The terms used in this document are listed in @tbl-glossary.',
+    glossaryCaption: 'Glossary',
+    revision: 'Revision history',
+    revisionText: 'The Git history is the record of versions and changes. This table holds only **the numbers readers use to name a version**.',
+    revisionHead: ['Version', 'Date', 'Changes'],
+    firstRevision: 'First draft',
+    glossary: 'Glossary (shared by several documents)',
+    glossaryHead: ['Term', 'Meaning'],
+    glossaryRow: ['〈Term〉', '〈Meaning〉'],
+    agent: [
+      '## DocPresenter design documents',
+      '',
+      'The design documents in `docs/` and `shared/` are written in the DocPresenter format.',
+      'Before writing or changing one, read [.docpresenter/guide.md](.docpresenter/guide.md) and follow its rules.',
+      'The `.dgm` (diagram) and `.table` (table) formats are specified in `.docpresenter/spec/`.',
+    ],
+  },
+};
+
+function firstDocument(answers: ScaffoldAnswers, words: Words): string {
   return [
     '---',
     ...(answers.number ? [`document: ${yamlText(answers.number)}`] : []),
@@ -102,27 +194,27 @@ function firstDocument(answers: ScaffoldAnswers): string {
     '',
     `# ${answers.title}`,
     '',
-    '## 概要 {#sec-overview}',
+    `## ${words.overview} {#sec-overview}`,
     '',
-    '### 目的 {#sec-purpose}',
+    `### ${words.purpose} {#sec-purpose}`,
     '',
-    '本書は、〈対象システム・機能〉の設計を示す。',
+    words.purposeText,
     '',
-    '### 対象範囲 {#sec-scope}',
+    `### ${words.scope} {#sec-scope}`,
     '',
-    '本書が扱う範囲は次のとおりとする。',
+    words.scopeIn,
     '',
-    '- 〈対象に含めるもの〉',
+    `- ${words.scopeInItem}`,
     '',
-    '次のものは本書の対象外とする。',
+    words.scopeOut,
     '',
-    '- 〈対象に含めないもの〉',
+    `- ${words.scopeOutItem}`,
     '',
-    '### 用語 {#sec-terms}',
+    `### ${words.terms} {#sec-terms}`,
     '',
-    '本書で用いる用語を @tbl-glossary に示す。',
+    words.termsText,
     '',
-    '@import "../shared/glossary.table" {#tbl-glossary caption="用語集"}',
+    `@import "../shared/glossary.table" {#tbl-glossary caption="${words.glossaryCaption}"}`,
     '',
     '---',
     '',
@@ -131,41 +223,40 @@ function firstDocument(answers: ScaffoldAnswers): string {
   ].join('\n');
 }
 
-function revision(answers: ScaffoldAnswers): string {
+function revision(answers: ScaffoldAnswers, words: Words): string {
+  const [version, date, changes] = words.revisionHead;
   return [
-    '## 改訂履歴 {#sec-revision}',
+    `## ${words.revision} {#sec-revision}`,
     '',
-    '版と変更点は Git の履歴が正本である。ここに載せるのは、**読み手が版を名指しするための番号**だけとする。',
+    words.revisionText,
     '',
-    '| 版 | 日付 | 変更点 |',
+    `| ${version} | ${date} | ${changes} |`,
     '|----|------------|------------------------------|',
-    `| 0.1 | ${answers.today} | 初版作成 |`,
+    `| 0.1 | ${answers.today} | ${words.firstRevision} |`,
     '',
   ].join('\n');
 }
 
-const GLOSSARY = [
-  '# 用語集（複数の文書から引く）',
-  '',
-  '| 用語 | 説明 |',
-  '|------|------|',
-  '| 〈用語〉 | 〈説明〉 |',
-  '',
-  'style {',
-  '  col:用語 { width: 30% }',
-  '}',
-  '',
-].join('\n');
+function glossary(words: Words): string {
+  const [term, meaning] = words.glossaryHead;
+  const [someTerm, someMeaning] = words.glossaryRow;
+  return [
+    `# ${words.glossary}`,
+    '',
+    `| ${term} | ${meaning} |`,
+    '|------|------|',
+    `| ${someTerm} | ${someMeaning} |`,
+    '',
+    'style {',
+    `  col:${term} { width: 30% }`,
+    '}',
+    '',
+  ].join('\n');
+}
 
-const AGENT_POINTER = [
-  MARKER,
-  '## DocPresenter の設計書',
-  '',
-  '`docs/` と `shared/` の設計書は DocPresenter の形式で書かれている。',
-  '設計書を書く・直す前に、必ず [.docpresenter/guide.md](.docpresenter/guide.md) を読み、その規則に従うこと。',
-  '図（`.dgm`）と表（`.table`）の形式の詳細は `.docpresenter/spec/` にある。',
-  '',
-].join('\n');
+function agentPointer(words: Words): string {
+  return [MARKER, ...words.agent, ''].join('\n');
+}
 
 /** A frontmatter value that stays a string, whatever the author typed. */
 function yamlText(value: string): string {

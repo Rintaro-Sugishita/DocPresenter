@@ -6,12 +6,13 @@
 
 import { drawMermaid, flattenMermaid, mermaidPicture } from '@docpresenter/editor/mermaid';
 import { measure } from '@docpresenter/pdf';
+import type { Locale } from '@docpresenter/base';
 import type { FromView, ToView } from '../protocol.js';
 
 /** Answers a request if it is one of these. Returns whether it was. */
 export function answerRenderRequest(message: ToView, send: (message: FromView) => void): boolean {
   if (message.kind === 'measure') {
-    void measurePage(message.id, message.body, message.foot, message.title, send);
+    void measurePage(message.id, message.body, message.foot, message.title, message.locale, send);
     return true;
   }
   if (message.kind === 'picture') {
@@ -33,7 +34,8 @@ export function answerRenderRequest(message: ToView, send: (message: FromView) =
  * rendering of the document, not the editor's.
  */
 async function measurePage(
-  id: number, body: string, foot: string, title: string, send: (message: FromView) => void,
+  id: number, body: string, foot: string, title: string, locale: Locale,
+  send: (message: FromView) => void,
 ): Promise<void> {
   const stage = document.createElement('div');
   stage.style.cssText = 'position:absolute; left:-20000px; top:0; width:800px;';
@@ -42,10 +44,10 @@ async function measurePage(
   try {
     // Drawn before anything is measured, then laid down as pictures: the PDF
     // writer does not follow the markers Mermaid draws its arrowheads with.
-    await drawMermaid(stage);
+    await drawMermaid(stage, locale);
     await flattenMermaid(stage);
     await Promise.all([...stage.querySelectorAll('img')].map(image => image.decode().catch(() => undefined)));
-    const measured = measure(stage, { foot, title });
+    const measured = measure(stage, { foot, title, locale });
     send({ kind: 'measured', id, plan: measured.plan, diagnostics: measured.diagnostics });
   } catch (error) {
     send({ kind: 'measured', id, error: error instanceof Error ? error.message : String(error) });

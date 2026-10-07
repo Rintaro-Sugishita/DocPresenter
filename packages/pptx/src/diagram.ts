@@ -10,6 +10,8 @@ import {
   border, layOutDiagram, type Box, type DiagramFile, type Point, type Run, type ShapeKind,
 } from '@docpresenter/diagram';
 import type { Attachment, DrawingBlock, DrawnConnector, DrawnShape } from './model.js';
+import { DEFAULT_LOCALE, type Locale } from '@docpresenter/base';
+import { PPTX_MESSAGES } from './messages.js';
 
 /** A colour an author wrote, as opposed to a token only the theme can resolve. */
 const COLOUR = /^#[0-9a-fA-F]{3}([0-9a-fA-F]{3})?$/;
@@ -57,10 +59,14 @@ export interface DrawingOptions {
   /** Colours the theme resolves, which the model cannot. Keyed by style token. */
   readonly tokens?: Readonly<Record<string, string>>;
   readonly diagnostics?: string[];
+  /** The language the diagnostics are written in. */
+  readonly locale?: Locale;
 }
 
 export function drawingOf(diagram: DiagramFile, options: DrawingOptions = {}): DrawingBlock {
-  const laid = layOutDiagram(diagram);
+  const locale = options.locale ?? DEFAULT_LOCALE;
+  const t = PPTX_MESSAGES.in(locale);
+  const laid = layOutDiagram(diagram, locale);
   const byId = new Map(diagram.nodes.map(node => [node.id, node]));
   const shapes: DrawnShape[] = [];
   const lines: DrawnConnector[] = [];
@@ -97,16 +103,16 @@ export function drawingOf(diagram: DiagramFile, options: DrawingOptions = {}): D
     if (style?.get('icon') !== undefined) {
       // A part is a picture, not a shape (design/diagram-model.md §10.2). It
       // is said out loud rather than drawn as an empty box.
-      options.diagnostics?.push(`部品の絵は PPTX にまだ出せない: ${id}`);
+      options.diagnostics?.push(t('pptx.part', { id }));
     }
     // What a container draws of itself — the headings of a tab control, the bar
     // down a list that is cut off — is drawn by the SVG renderer and not here.
     // The arrangement itself does arrive: the boxes were computed in common.
     const container = diagram.containers.get(id);
     if (container?.kind === 'tabs') {
-      options.diagnostics?.push(`タブの見出しは PPTX にまだ出せない: ${id}`);
+      options.diagnostics?.push(t('pptx.tabs', { id }));
     } else if (container && container.scroll !== 'none') {
-      options.diagnostics?.push(`スクロールの印は PPTX にまだ出せない: ${id}`);
+      options.diagnostics?.push(t('pptx.scroll', { id }));
     }
 
     const marked = options.marks?.get(id);

@@ -3,7 +3,7 @@ import { chromium } from 'playwright-core';
 const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' });
 const page = await browser.newPage({ viewport: { width: 1320, height: 880 } });
 page.on('pageerror', e => { console.log('✗ ページエラー:', e.message); process.exitCode = 1; });
-await page.goto('file://' + process.cwd() + '/out/editor.html');
+await page.goto('file://' + process.cwd() + '/out/editor.html?lang=ja');
 await page.waitForTimeout(400);
 const check = (name, ok, detail = '') => {
   console.log(`${ok ? '○' : '✗'} ${name}${detail ? ' — ' + detail : ''}`);
@@ -60,7 +60,7 @@ check('増えた図はそのまま動かせる形で開ける',
 
 
 // --- すでにある図表を参照する ---------------------------------------------
-await page.goto('file://' + process.cwd() + '/out/editor.html');
+await page.goto('file://' + process.cwd() + '/out/editor.html?lang=ja');
 await page.waitForTimeout(500);
 await page.click('.dp-tab[data-index="1"]');
 await page.waitForTimeout(300);

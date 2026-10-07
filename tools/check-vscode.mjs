@@ -104,7 +104,7 @@ check('最初に言うのは「用意ができた」だけ',
   JSON.stringify(await sent()));
 
 await page.evaluate(([path, source, files, images]) => {
-  window.postMessage({ kind: 'open', path, source, files, images, commitKey: 'ctrl-enter' }, '*');
+  window.postMessage({ kind: 'open', path, source, files, images, commitKey: 'ctrl-enter', locale: 'ja' }, '*');
 }, [DOC, files[DOC], files, images]);
 await page.waitForTimeout(800);
 
@@ -183,7 +183,7 @@ const flip = text => (crlf ? toLf(text) : toLf(text).replace(/\n/g, '\r\n'));
 const flipped = Object.fromEntries(Object.entries(files).map(([path, text]) => [path, flip(text)]));
 await page.evaluate(() => { window.__sent.length = 0; });
 await page.evaluate(([path, source, files, images]) => {
-  window.postMessage({ kind: 'open', path, source, files, images, commitKey: 'ctrl-enter' }, '*');
+  window.postMessage({ kind: 'open', path, source, files, images, commitKey: 'ctrl-enter', locale: 'ja' }, '*');
 }, [DOC, flipped[DOC], flipped, images]);
 await page.waitForTimeout(800);
 await nudgeFrame();

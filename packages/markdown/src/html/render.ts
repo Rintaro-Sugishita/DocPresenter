@@ -1,7 +1,8 @@
 // Renders a document to HTML. Every element carries the byte range it came
 // from, so the DOM is itself the source map a review comment anchors through.
 
-import { byteLength, type ByteSpan } from '@docpresenter/base';
+import { byteLength, DEFAULT_LOCALE, describeError, type ByteSpan, type Locale } from '@docpresenter/base';
+import { MARKDOWN_MESSAGES } from '../messages.js';
 import {
   parseDiagram, renderDiagram, renderOverlay, specimenOf, withParts,
 } from '@docpresenter/diagram';
@@ -37,11 +38,18 @@ export interface RenderOptions {
   readonly loader: ResourceLoader;
   /** What changed since another version, when the build was told to compare. */
   readonly marks?: DiffMarks;
+  /**
+   * The language of what the renderer adds: 図 and 表, a missing reference.
+   * Taken from the resolution when not given, so the numbers and the words
+   * around them agree.
+   */
+  readonly locale?: Locale;
 }
 
 export function renderDocument(
-  document: DocumentFile, resolved: ResolvedDocument, options: RenderOptions,
+  document: DocumentFile, resolved: ResolvedDocument, given: RenderOptions,
 ): string {
+  const options: RenderOptions = { ...given, locale: given.locale ?? resolved.locale };
   const elementByBlock = new Map<unknown, NumberedElement>(
     resolved.elements.map(e => [e.block, e]),
   );
@@ -58,7 +66,7 @@ export function renderDocument(
   }).join('\n');
   // The legend belongs to the build, not to the document: it explains marks the
   // author never wrote and cannot remove.
-  return options.marks ? `${sheets}\n${legend(options.marks)}` : sheets;
+  return options.marks ? `${sheets}\n${legend(options.marks, options.locale)}` : sheets;
 }
 
 function renderBlock(
@@ -80,7 +88,7 @@ function renderBlock(
     }
     case 'prose':
       return `<div class="dp-prose${markClass(markOf(options.marks, block.doc, block.span))}"${span}>`
-        + `${markdown.render(substitute(block.text, block.span.start, resolved), proseEnv(block))}</div>`;
+        + `${markdown.render(substitute(block.text, block.span.start, resolved), proseEnv(block, resolved.locale))}</div>`;
     case 'import':
       return renderImport(block, elementByBlock.get(block), options);
     case 'separator':
@@ -103,7 +111,7 @@ function renderImport(
 
   const caption = element && element.number !== undefined
     ? `<figcaption class="dp-caption">`
-      + `<span class="dp-number">${captionPrefix(element)}</span>`
+      + `<span class="dp-number">${captionPrefix(element, options)}</span>`
       + (element.caption ? ` ${escapeHtml(element.caption)}` : '')
       + `</figcaption>`
     : '';
@@ -132,7 +140,7 @@ function fromFile(
 ): string {
   const source = options.loader.read(path);
   return source === undefined
-    ? `<p class="dp-missing">参照先が見つからない: ${escapeHtml(path)}</p>`
+    ? `<p class="dp-missing">${escapeHtml(say(options, 'markdown.missing', { target: path }))}</p>`
     : renderResource(path, source, attributes, options);
 }
 
@@ -151,8 +159,8 @@ function picture(
   const src = options.loader.url?.(path);
   if (src === undefined) {
     return isAddress(path)
-      ? `<p class="dp-missing">取り込めなかった画像がある: ${escapeHtml(path)}</p>`
-      : `<p class="dp-missing">参照先が見つからない: ${escapeHtml(path)}</p>`;
+      ? `<p class="dp-missing">${escapeHtml(say(options, 'markdown.missingImage', { path }))}</p>`
+      : `<p class="dp-missing">${escapeHtml(say(options, 'markdown.missing', { target: path }))}</p>`;
   }
   return image(src, attributes);
 }
@@ -176,8 +184,16 @@ function sized(attributes: ReadonlyMap<string, string>): string {
   return ` style="width: ${escapeAttr(width.trim())}"`;
 }
 
-function captionPrefix(element: NumberedElement): string {
-  return describe(element);
+function captionPrefix(element: NumberedElement, options: RenderOptions): string {
+  return describe(element, options.locale);
+}
+
+/** One of the renderer's own sentences, in the language of the build. */
+function say(
+  options: RenderOptions, id: Parameters<ReturnType<typeof MARKDOWN_MESSAGES.in>>[0],
+  params: Readonly<Record<string, string>>,
+): string {
+  return MARKDOWN_MESSAGES.in(options.locale ?? DEFAULT_LOCALE)(id, params);
 }
 
 function renderResource(
@@ -189,8 +205,8 @@ function renderResource(
   } catch (error) {
     // A referenced file can now be edited in place, so a half-written one has
     // to be shown as what it is rather than taking the whole page down.
-    const message = error instanceof Error ? error.message : String(error);
-    return `<p class="dp-broken">${escapeHtml(path)} を読めない: ${escapeHtml(message)}</p>`
+    const message = describeError(error, options.locale ?? DEFAULT_LOCALE);
+    return `<p class="dp-broken">${escapeHtml(say(options, 'markdown.unreadable', { target: path, message }))}</p>`
       + `<pre class="dp-unrendered">${escapeHtml(source.trim())}</pre>`;
   }
 }
@@ -206,7 +222,7 @@ function renderKnown(
     if (rows === undefined) return renderTable(table, marks);
     const selected = selectRows(table, rows);
     if (!selected) {
-      return `<p class="dp-missing">名前付き範囲が見つからない: ${escapeHtml(rows)}</p>`;
+      return `<p class="dp-missing">${escapeHtml(say(options, 'markdown.missingRange', { rows }))}</p>`;
     }
     return renderTable(selected, marks);
   }
@@ -225,12 +241,13 @@ function renderKnown(
     // A library has nothing of its own to place, so what it draws is itself.
     if (diagram.mode === 'parts') {
       return renderDiagram(
-        specimenOf(diagram, used => options.loader.read(joinPath(path, used))), url, marks);
+        specimenOf(diagram, used => options.loader.read(joinPath(path, used)), options.locale),
+        url, marks, options.locale);
     }
-    if (diagram.mode !== 'overlay') return renderDiagram(diagram, url, marks);
+    if (diagram.mode !== 'overlay') return renderDiagram(diagram, url, marks, options.locale);
     // The image is written relative to the diagram, not to the document.
     const image = diagram.image === undefined ? undefined : url(joinPath(path, diagram.image));
-    return renderOverlay(diagram, image);
+    return renderOverlay(diagram, image, options.locale);
   }
 
   // Diagrams and delegated formats are not rendered yet; the source is shown so
@@ -256,7 +273,7 @@ function substitute(text: string, baseOffset: number, resolved: ResolvedDocument
     const start = baseOffset + byteLength(text.slice(0, index));
     const end = start + byteLength(whole);
     return `<a class="dp-ref" href="#${escapeAttr(label)}" data-ref="${escapeAttr(label)}"`
-      + ` data-span="${start},${end}">${escapeHtml(describe(target))}</a>`;
+      + ` data-span="${start},${end}">${escapeHtml(describe(target, resolved.locale))}</a>`;
   });
 }
 
@@ -284,8 +301,8 @@ function codeRanges(text: string): [number, number][] {
  * editor can change without opening the text — the view of a Mermaid block.
  * A block pulled in from another document has no range in this one.
  */
-function proseEnv(block: Extract<Block, { kind: 'prose' }>): RenderEnv {
-  if (block.doc !== undefined) return {};
+function proseEnv(block: Extract<Block, { kind: 'prose' }>, locale: Locale): RenderEnv {
+  if (block.doc !== undefined) return { locale };
   const lines = block.text.split('\n');
   const starts: number[] = [];
   let offset = block.span.start;
@@ -294,6 +311,7 @@ function proseEnv(block: Extract<Block, { kind: 'prose' }>): RenderEnv {
     offset += byteLength(line) + 1;
   }
   return {
+    locale,
     lineSpan: line => {
       const start = starts[line];
       const text = lines[line];

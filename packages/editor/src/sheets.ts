@@ -7,18 +7,19 @@
 // `\n\n---\n\n`; everything inside each sheet is carried across verbatim.
 
 import { sheetsOf, type DocumentFile, type Sheet } from '@docpresenter/markdown';
-import { sliceBytes, type Edit } from '@docpresenter/base';
+import { described, LocalizedError, sliceBytes, type Edit } from '@docpresenter/base';
+import { ed } from './messages.js';
 
 const JOIN = '\n\n---\n\n';
 
-export class SheetEditError extends Error {}
+export class SheetEditError extends LocalizedError {}
 
 /** Moves the sheet at `from` (1-based) so that it ends up at `to`. */
 export function moveSheet(document: DocumentFile, source: string, from: number, to: number): Edit {
   const sheets = sheetsOf(document);
   const a = at(sheets, from);
   const b = at(sheets, to);
-  if (from === to) return { span: a.span, text: bodyOf(source, a), description: '移動なし' };
+  if (from === to) return { span: a.span, text: bodyOf(source, a), ...described(ed('editor.sheet.noMove')) };
 
   const low = Math.min(from, to);
   const high = Math.max(from, to);
@@ -29,7 +30,7 @@ export function moveSheet(document: DocumentFile, source: string, from: number, 
   return {
     span: { start: sheets[low - 1]!.span.start, end: sheets[high - 1]!.span.end },
     text: run.map(sheet => bodyOf(source, sheet)).join(JOIN),
-    description: `シート「${a.title}」を ${b.index} 番目へ移動`,
+    ...described(ed('editor.sheet.move', { title: a.title, index: b.index })),
   };
 }
 
@@ -43,7 +44,7 @@ export function insertSheet(document: DocumentFile, source: string, after: numbe
   return {
     span: { start: previous.span.end, end: previous.span.end },
     text: '\n\n---\n',
-    description: `シート ${after + 1} を追加`,
+    ...described(ed('editor.sheet.insert', { index: after + 1 })),
   };
 }
 
@@ -52,14 +53,14 @@ export function removeSheet(document: DocumentFile, source: string, index: numbe
   const sheets = sheetsOf(document);
   const sheet = at(sheets, index);
   if (sheets.length === 1) {
-    throw new SheetEditError('最後のシートは削除できない');
+    throw new SheetEditError(ed('editor.sheet.lastOne'));
   }
   // Take the separator on the side where there is one, so the remaining
   // sheets stay divided by exactly one `---`.
   const span = index > 1
     ? { start: sheets[index - 2]!.span.end, end: sheet.span.end }
     : { start: sheet.span.start, end: sheets[index]!.span.start };
-  return { span, text: '', description: `シート「${sheet.title}」を削除` };
+  return { span, text: '', ...described(ed('editor.sheet.remove', { title: sheet.title })) };
 }
 
 /**
@@ -73,23 +74,23 @@ export function renameSheet(
   const sheet = at(sheetsOf(document), index);
   const heading = sheet.blocks.find(block => block.kind === 'heading');
   if (!heading || heading.kind !== 'heading') {
-    throw new SheetEditError('見出しの無いシートには名前が無い（見出しを足すこと）');
+    throw new SheetEditError(ed('editor.sheet.noHeading'));
   }
   const written = sliceBytes(source, heading.span.start, heading.span.end);
   const renamed = written.replace(heading.text, title);
   if (renamed === written && heading.text !== title) {
-    throw new SheetEditError('見出しの書き換えに失敗した');
+    throw new SheetEditError(ed('editor.sheet.renameFailed'));
   }
   return {
     span: heading.span,
     text: renamed,
-    description: `シート「${sheet.title}」を「${title}」に改名`,
+    ...described(ed('editor.sheet.rename', { from: sheet.title, to: title })),
   };
 }
 
 function at(sheets: readonly Sheet[], index: number): Sheet {
   const sheet = sheets[index - 1];
-  if (!sheet) throw new SheetEditError(`シート ${index} は無い（全 ${sheets.length} 枚）`);
+  if (!sheet) throw new SheetEditError(ed('editor.sheet.missing', { index, count: sheets.length }));
   return sheet;
 }
 

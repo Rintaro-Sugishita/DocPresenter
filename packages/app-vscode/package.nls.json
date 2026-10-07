@@ -1,0 +1,17 @@
+{
+  "extension.description": "Write design documents in VS Code, where the Git diff is the review",
+  "customEditor.diagram.displayName": "DocPresenter (Diagram)",
+  "command.init.title": "DocPresenter: Set Up This Folder (folders, a first document, a writing guide for agents)",
+  "command.openEditor.title": "Open in DocPresenter",
+  "command.build.title": "DocPresenter: Export Every Output (as each document's output: says)",
+  "command.buildAs.title": "DocPresenter: Export Every Output in Formats of My Choice…",
+  "command.exportHtml.title": "DocPresenter: Export This Document as HTML",
+  "command.exportPdf.title": "DocPresenter: Export This Document as PDF",
+  "command.exportPptx.title": "DocPresenter: Export This Document as PPTX",
+  "config.commitKey.description": "The key that commits the open block. Every other Enter breaks the line.",
+  "config.commitKey.ctrl-enter": "Ctrl+Enter commits / Enter breaks the line",
+  "config.commitKey.enter": "Enter commits / Shift+Enter breaks the line",
+  "config.commitKey.shift-enter": "Shift+Enter commits / Enter breaks the line",
+  "config.commitKey.alt-enter": "Alt+Enter commits / Enter breaks the line",
+  "config.outDir.description": "The folder builds are written to (relative to the workspace)."
+}

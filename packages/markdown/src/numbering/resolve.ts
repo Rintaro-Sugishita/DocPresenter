@@ -3,10 +3,12 @@
 // includes it.
 
 import type { Block, DocumentFile, Import, Reference } from '../document/model.js';
+import { DEFAULT_LOCALE, type Locale } from '@docpresenter/base';
 import {
-  KIND_BY_PREFIX, NOUN_BY_KIND,
+  KIND_BY_PREFIX,
   type Diagnostic, type ElementKind, type NumberedElement, type ResolvedDocument,
 } from './model.js';
+import { MARKDOWN_MESSAGES } from '../messages.js';
 
 /** Attributes an import may carry. Anything else is a mistake worth reporting. */
 const KNOWN_ATTRIBUTES = new Set([
@@ -19,7 +21,12 @@ const KNOWN_ATTRIBUTES = new Set([
 const FIGURE_EXTENSIONS = ['.dgm', '.mmd', '.ermlx', '.svg', '.png', '.jpg', '.jpeg', '.gif'];
 const TABLE_EXTENSIONS = ['.table', '.csv'];
 
-export function resolveDocument(document: DocumentFile): ResolvedDocument {
+/**
+ * `locale` is the language the numbers read in — 図 2 or Figure 2 — and the
+ * diagnostics are written in. It is the locale of whoever builds.
+ */
+export function resolveDocument(document: DocumentFile, locale: Locale = DEFAULT_LOCALE): ResolvedDocument {
+  const t = MARKDOWN_MESSAGES.in(locale);
   const elements: NumberedElement[] = [];
   const byLabel = new Map<string, NumberedElement>();
   const diagnostics: Diagnostic[] = [];
@@ -43,7 +50,7 @@ export function resolveDocument(document: DocumentFile): ResolvedDocument {
     if (existing) {
       diagnostics.push({
         severity: 'error',
-        message: `ラベル '${element.label}' が重複している`,
+        message: t('markdown.duplicateLabel', { label: element.label }),
         span: block.span,
       });
       continue;
@@ -61,16 +68,16 @@ export function resolveDocument(document: DocumentFile): ResolvedDocument {
       if (!target) {
         diagnostics.push({
           severity: 'error',
-          message: `参照先が見つからない: @${reference.label}`,
+          message: t('markdown.missing', { target: `@${reference.label}` }),
           span: reference.span,
         });
         continue;
       }
-      referenceText.set(reference.span.start, describe(target));
+      referenceText.set(reference.span.start, describe(target, locale));
     }
   }
 
-  return { elements, byLabel, referenceText, diagnostics };
+  return { elements, byLabel, referenceText, diagnostics, locale };
 
   function numberBlock(block: Block): NumberedElement | undefined {
     if (block.kind === 'heading') {
@@ -93,12 +100,12 @@ export function resolveDocument(document: DocumentFile): ResolvedDocument {
       if (!KNOWN_ATTRIBUTES.has(name)) {
         diagnostics.push({
           severity: 'warning',
-          message: `未知の属性 '${name}' は無視される`,
+          message: t('markdown.unknownAttribute', { name }),
           span: block.span,
         });
       }
     }
-    const kind = kindOfImport(block, diagnostics);
+    const kind = kindOfImport(block, diagnostics, locale);
     const caption = block.attributes.get('caption') ?? block.attributes.get('alt');
     if (kind === 'figure') return { kind, label: block.label, number: String(++figures), caption, block };
     if (kind === 'table') return { kind, label: block.label, number: String(++tables), caption, block };
@@ -120,13 +127,13 @@ function kindOfLabel(label: string | undefined): ElementKind | undefined {
 }
 
 /** The label's prefix wins; the extension decides when there is no label. */
-function kindOfImport(block: Import, diagnostics: Diagnostic[]): ElementKind {
+function kindOfImport(block: Import, diagnostics: Diagnostic[], locale: Locale): ElementKind {
   const byExtension = kindOfPath(block.path);
   const byLabel = kindOfLabel(block.label);
   if (byLabel && byExtension && byLabel !== byExtension) {
     diagnostics.push({
       severity: 'warning',
-      message: `ラベル '${block.label}' の種別が参照先 '${block.path}' と食い違う`,
+      message: MARKDOWN_MESSAGES.in(locale)('markdown.kindMismatch', { label: block.label ?? '', path: block.path }),
       span: block.span,
     });
   }
@@ -141,10 +148,12 @@ function kindOfPath(path: string): ElementKind | undefined {
 }
 
 /** Renders a reference as it reads in running text, e.g. `図 2` or `3.2 節`. */
-export function describe(element: NumberedElement): string {
-  if (element.number === undefined) return element.caption ?? '';
-  const noun = NOUN_BY_KIND[element.kind];
-  if (noun) return `${noun} ${element.number}`;
-  if (element.kind === 'section') return `${element.number} 節`;
-  return element.number;
+export function describe(element: NumberedElement, locale: Locale = DEFAULT_LOCALE): string {
+  const { number } = element;
+  if (number === undefined) return element.caption ?? '';
+  const t = MARKDOWN_MESSAGES.in(locale);
+  if (element.kind === 'figure') return t('markdown.noun.figure', { number });
+  if (element.kind === 'table') return t('markdown.noun.table', { number });
+  if (element.kind === 'section') return t('markdown.noun.section', { number });
+  return number;
 }

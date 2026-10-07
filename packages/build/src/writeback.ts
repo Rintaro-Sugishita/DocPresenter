@@ -18,6 +18,8 @@ import {
   type DiagramFile, type Pin,
 } from '@docpresenter/diagram';
 import { readDrawings } from '@docpresenter/pptx';
+import { DEFAULT_LOCALE, describeError, type Locale } from '@docpresenter/base';
+import { said } from './messages.js';
 import type { BuildDiagnostic, Workspace } from './workspace.js';
 
 export interface WriteBack {
@@ -37,8 +39,8 @@ export interface WriteBackResult {
 /** How far a shape has to move before it counts as moved, in drawing pixels. */
 const MOVED = 2;
 
-export function writeBack(pptx: Uint8Array, workspace: Workspace): WriteBackResult {
-  const { drawings, diagnostics: read } = readDrawings(pptx);
+export function writeBack(pptx: Uint8Array, workspace: Workspace, locale: Locale = DEFAULT_LOCALE): WriteBackResult {
+  const { drawings, diagnostics: read } = readDrawings(pptx, locale);
   const diagnostics: BuildDiagnostic[] = read.map(message => ({
     severity: 'warning', message, path: '',
   }));
@@ -50,7 +52,7 @@ export function writeBack(pptx: Uint8Array, workspace: Workspace): WriteBackResu
     if (source === undefined) {
       diagnostics.push({
         severity: 'error', path: drawing.source,
-        message: '読み戻す先の図が見つからない',
+        ...said(locale, 'build.writeback.missing'),
       });
       continue;
     }
@@ -65,7 +67,7 @@ export function writeBack(pptx: Uint8Array, workspace: Workspace): WriteBackResu
     } catch (error) {
       diagnostics.push({
         severity: 'error', path: drawing.source,
-        message: `読めない: ${error instanceof Error ? error.message : String(error)}`,
+        ...said(locale, 'build.unreadable', { message: describeError(error, locale) }),
       });
       continue;
     }
@@ -88,7 +90,7 @@ export function writeBack(pptx: Uint8Array, workspace: Workspace): WriteBackResu
       if (!node) {
         diagnostics.push({
           severity: 'warning', path: drawing.source,
-          message: `スライドにある図形が図に無い: ${shape.id}（PowerPoint で足されたものは読み戻せない）`,
+          ...said(locale, 'build.writeback.extraShape', { id: shape.id }),
         });
         continue;
       }
@@ -98,11 +100,11 @@ export function writeBack(pptx: Uint8Array, workspace: Workspace): WriteBackResu
       if (shown !== node.text) {
         diagnostics.push({
           severity: 'warning', path: drawing.source,
-          message: `${shape.id}: 書式付きのラベルを書き換えると書式が落ちる（${node.text} → ${shape.text}）`,
+          ...said(locale, 'build.writeback.formatted', { id: shape.id, from: node.text, to: shape.text }),
         });
       }
       apply(setNodeText(file, shape.id, shape.text, text));
-      changes.push(`${shape.id} の文字を「${shape.text}」に`);
+      changes.push(said(locale, 'build.writeback.text', { id: shape.id, text: shape.text }).message);
     }
 
     // A slide holds the drawing as it was laid out, which is not where the
@@ -132,13 +134,13 @@ export function writeBack(pptx: Uint8Array, workspace: Workspace): WriteBackResu
     }
     if (pins.size > 0) {
       apply(pinNodes(file, text, pins));
-      changes.push(`${[...pins.keys()].join('・')} の位置を更新`);
+      changes.push(said(locale, 'build.writeback.moved', { ids: [...pins.keys()].join(locale === 'ja' ? '・' : ', ') }).message);
     }
 
     for (const id of drawing.unknown) {
       diagnostics.push({
         severity: 'warning', path: drawing.source,
-        message: `読み戻せない図形がある: ${id}`,
+        ...said(locale, 'build.writeback.unreadable', { id }),
       });
     }
 

@@ -129,7 +129,7 @@ for (const name of ['net/router', 'ui/radio-on', 'ui/slider', 'ui/scrollbar-v'])
 const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' });
 const view = await browser.newPage({ viewport: { width: 1280, height: 900 } });
 view.on('pageerror', e => { console.log('✗ ページエラー:', e.message); process.exitCode = 1; });
-await view.goto('file://' + process.cwd() + '/out/editor.html');
+await view.goto('file://' + process.cwd() + '/out/editor.html?lang=ja');
 await view.waitForTimeout(600);
 
 await view.click('.dp-tab:has-text("画面部品")');
@@ -507,7 +507,7 @@ check('押せば最初の 1 行が書かれる', listRows(await searchSource()).
 const { stencilParts } = await import('@docpresenter/diagram');
 
 const openMenu = async (view) => {
-  await view.goto('file://' + process.cwd() + '/out/editor.html');
+  await view.goto('file://' + process.cwd() + '/out/editor.html?lang=ja');
   await view.waitForTimeout(500);
   await view.click('.dp-tab[data-index="2"]');
   await view.waitForTimeout(250);

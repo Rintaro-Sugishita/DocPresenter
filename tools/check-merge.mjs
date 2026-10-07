@@ -3,7 +3,7 @@ import { chromium } from 'playwright-core';
 const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' });
 const page = await browser.newPage({ viewport: { width: 1360, height: 900 } });
 page.on('pageerror', e => { console.log('✗ ページエラー:', e.message); process.exitCode = 1; });
-await page.goto('file://' + process.cwd() + '/out/editor.html');
+await page.goto('file://' + process.cwd() + '/out/editor.html?lang=ja');
 await page.waitForTimeout(400);
 const check = (name, ok, detail = '') => {
   console.log(`${ok ? '○' : '✗'} ${name}${detail ? ' — ' + detail : ''}`);
@@ -85,7 +85,7 @@ await page.keyboard.press('Escape');
 
 
 // --- 範囲の結合 -----------------------------------------------------------
-await page.goto('file://' + process.cwd() + '/out/editor.html');
+await page.goto('file://' + process.cwd() + '/out/editor.html?lang=ja');
 await page.waitForTimeout(500);
 await page.click('.dp-tab:has-text("用語")');
 await page.waitForTimeout(250);
@@ -134,7 +134,7 @@ check('左上の文字だけが残る',
 
 
 // --- 見出しの寄せと色 -----------------------------------------------------
-await page.goto('file://' + process.cwd() + '/out/editor.html');
+await page.goto('file://' + process.cwd() + '/out/editor.html?lang=ja');
 await page.waitForTimeout(500);
 await page.click('.dp-tab:has-text("用語")');
 await page.waitForTimeout(250);
@@ -171,7 +171,7 @@ check('本文セルの寄せは変わらない',
 
 
 // --- グリッドは「見た目」を出す -------------------------------------------
-await page.goto('file://' + process.cwd() + '/out/editor.html');
+await page.goto('file://' + process.cwd() + '/out/editor.html?lang=ja');
 await page.waitForTimeout(500);
 await page.click('.dp-tab:has-text("用語")');
 await page.waitForTimeout(250);

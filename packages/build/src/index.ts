@@ -1,6 +1,7 @@
 // The build pipeline: find what is a deliverable, collect what it needs, and
 // write it out. It knows nothing about a filesystem — see `workspace.ts`.
 
+export * from './messages.js';
 export * from './workspace.js';
 export * from './graph.js';
 export * from './html.js';

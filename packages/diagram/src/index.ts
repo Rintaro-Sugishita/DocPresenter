@@ -2,6 +2,7 @@
 // It knows nothing about documents — a drawing is a file of its own.
 
 export * from './model.js';
+export * from './messages.js';
 export * from './parse.js';
 export * from './parts.js';
 export * from './default-parts.js';

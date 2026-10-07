@@ -5,6 +5,9 @@
 // whole point of marking changes from the repository is that nobody has to
 // remember to paint them, or to scrub them off afterwards.
 
+import { DEFAULT_LOCALE, type Locale } from '@docpresenter/base';
+import { MARKDOWN_MESSAGES } from '../messages.js';
+
 export type Change = 'added' | 'removed' | 'changed';
 
 /** A stretch of one source file that changed. */
@@ -62,13 +65,14 @@ export function markClass(change: Change | undefined): string {
 }
 
 /** The legend. Written by the build, not by the author. */
-export function legend(marks: DiffMarks): string {
+export function legend(marks: DiffMarks, locale: Locale = DEFAULT_LOCALE): string {
+  const t = MARKDOWN_MESSAGES.in(locale);
   const rows: [Change, string][] = [
-    ['added', '追加'], ['changed', '変更'],
+    ['added', t('markdown.diff.added')], ['changed', t('markdown.diff.changed')],
   ];
-  if (marks.showRemoved === 'strike') rows.push(['removed', '削除']);
+  if (marks.showRemoved === 'strike') rows.push(['removed', t('markdown.diff.removed')]);
   return `<aside class="dp-diff-legend">`
-    + `<span class="dp-diff-from">${escape(marks.from)} からの変更</span>`
+    + `<span class="dp-diff-from">${escape(t('markdown.diff.from', { from: marks.from }))}</span>`
     + rows.map(([change, label]) =>
       `<span class="dp-diff-key dp-diff-${change}">${label}</span>`).join('')
     + `</aside>`;

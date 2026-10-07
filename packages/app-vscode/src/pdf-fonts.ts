@@ -8,6 +8,7 @@
 
 import { readFile } from 'node:fs/promises';
 import type { FontSet, FontSource } from '@docpresenter/pdf';
+import { t } from './l10n.js';
 
 interface Face { readonly file: string; readonly index?: number }
 
@@ -53,7 +54,7 @@ export async function systemFonts(): Promise<{ set: FontSet; name: string }> {
   const platform = process.platform in BODY ? process.platform : 'linux';
   const body = await first(BODY[platform]!);
   if (!body) {
-    throw new Error('PDF に埋め込む日本語フォントがこの PC に見つからない');
+    throw new Error(t('vscode.export.noFont'));
   }
   const mono = (await first(MONO[platform] ?? [])) ?? body;
   return {

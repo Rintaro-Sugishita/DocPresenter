@@ -15,6 +15,7 @@ import { spanInFile } from '@docpresenter/base';
 import { unitsBefore } from './bytes.js';
 import { inWorkspace } from './paths.js';
 import type { FromView, ToView } from './protocol.js';
+import { hostLocale, t } from './l10n.js';
 import { exportDocument, type OpenView } from './export-command.js';
 
 /** Text the document could refer to, and pictures it could show. */
@@ -45,7 +46,7 @@ export class SheetEditorProvider implements vscode.CustomTextEditorProvider {
   async export(format: 'html' | 'pdf' | 'pptx'): Promise<void> {
     const view = this.activeView();
     if (!view) {
-      void vscode.window.showInformationMessage('DocPresenter: 書き出す文書を DocPresenter で開いてください');
+      void vscode.window.showInformationMessage(`DocPresenter: ${t('vscode.openFirst')}`);
       return;
     }
     await exportDocument(view, format, this.context, this.output);
@@ -58,8 +59,7 @@ export class SheetEditorProvider implements vscode.CustomTextEditorProvider {
   ): Promise<void> {
     const folder = vscode.workspace.getWorkspaceFolder(document.uri);
     if (!folder) {
-      panel.webview.html = plainPage('フォルダを開いてから使ってください'
-        + '（図や表は作業場からの相対パスで引かれます）');
+      panel.webview.html = plainPage(t('vscode.noFolderPage'));
       return;
     }
     const root = folder.uri;
@@ -91,12 +91,12 @@ export class SheetEditorProvider implements vscode.CustomTextEditorProvider {
         const id = ++asked;
         const timer = setTimeout(() => {
           waiting.delete(id);
-          reject(new Error('DocPresenter の画面から応答がない'));
+          reject(new Error(t('vscode.noAnswer')));
         }, 120_000);
         waiting.set(id, message => {
           clearTimeout(timer);
           if (message.kind === answer) resolve(message as Extract<FromView, { kind: typeof answer }>);
-          else reject(new Error(`思わぬ応答: ${message.kind}`));
+          else reject(new Error(t('vscode.unexpected', { kind: message.kind })));
         });
         post(make(id));
       }),
@@ -130,6 +130,7 @@ export class SheetEditorProvider implements vscode.CustomTextEditorProvider {
         source: diagram ? `@import "${name}"\n` : document.getText(),
         files, images,
         commitKey: commitKey(),
+        locale: hostLocale(),
         ...(diagram ? { diagram: true } : {}),
       });
     };
@@ -173,7 +174,8 @@ export class SheetEditorProvider implements vscode.CustomTextEditorProvider {
       edit.replace(uri, new vscode.Range(target.positionAt(from), target.positionAt(to)), written);
       if (!await vscode.workspace.applyEdit(edit)) {
         applied.delete(path);
-        void vscode.window.showErrorMessage(`DocPresenter: ${change.description}を書き戻せなかった`);
+        void vscode.window.showErrorMessage(
+          `DocPresenter: ${t('vscode.writeBackFailed', { description: change.description })}`);
         return;
       }
       // A file the author never opened should not be left unsaved: a dirty
@@ -261,7 +263,7 @@ function page(webview: vscode.Webview, extensionUri: vscode.Uri, exportBar = tru
     'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'[
       Math.floor(Math.random() * 62)]).join('');
   return `<!doctype html>
-<html lang="ja"><head><meta charset="utf-8">
+<html lang="${hostLocale()}"><head><meta charset="utf-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${webview.cspSource} data:; style-src ${webview.cspSource} 'unsafe-inline'; font-src ${webview.cspSource} data:; script-src 'nonce-${nonce}';">
 <link rel="stylesheet" href="${media('theme.css')}">
 <style>
@@ -285,8 +287,8 @@ function page(webview: vscode.Webview, extensionUri: vscode.Uri, exportBar = tru
   .dp-export-status { margin-left: 8px; color: #5a6270; }
 </style>
 </head><body>
-${exportBar ? `<div class="dp-export" role="toolbar" aria-label="書き出し">
-  <span class="dp-export-label">書き出し</span>
+${exportBar ? `<div class="dp-export" role="toolbar" aria-label="${t('vscode.exportBar')}">
+  <span class="dp-export-label">${t('vscode.exportBar')}</span>
   <button type="button" data-format="html">HTML</button>
   <button type="button" data-format="pdf">PDF</button>
   <button type="button" data-format="pptx">PPTX</button>
@@ -298,6 +300,6 @@ ${exportBar ? `<div class="dp-export" role="toolbar" aria-label="書き出し">
 }
 
 function plainPage(message: string): string {
-  return `<!doctype html><html lang="ja"><head><meta charset="utf-8"></head>`
+  return `<!doctype html><html lang="${hostLocale()}"><head><meta charset="utf-8"></head>`
     + `<body style="font: 13px system-ui; padding: 2em; color: #3a4048">${message}</body></html>`;
 }

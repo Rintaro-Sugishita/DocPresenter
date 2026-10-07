@@ -81,6 +81,17 @@ npx tsc --build                  # 型検査（packages/app-vscode を含む）
 node tools/build-vscode.mjs      # media/ に extension.cjs ＋ webview.js ＋ exporter.js ＋ theme.css ＋ mermaid-page.js ＋ harfbuzz-subset.wasm
 ```
 
+## 表示言語
+
+**VS Code の表示言語に従う。** 日本語なら日本語、それ以外は英語になる（コマンド名・設定の説明・通知・
+編集画面・書き出した文書の表紙や目次まで）。切り替えは VS Code の「Configure Display Language」で行い、
+この拡張に専用の設定は無い。
+
+- 拡張ホストの文言は `src/messages.ts`、`package.json` の文言は `package.nls.json`（英）/ `package.nls.ja.json`（日）。
+- 編集画面（WebView）へは、`open` メッセージの `locale` で同じ言語を渡す。
+- 「作業場を初期化する」で置く最初の文書・用語集・`CLAUDE.md` への追記も、その言語で書く
+  （`.docpresenter/guide.md` は今のところ日本語のみ）。
+
 ## 試す
 
 リポジトリを VS Code で開いて **F5**（`npm run build:vscode` でビルドしてから、標本の `sample/` を

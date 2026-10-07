@@ -12,7 +12,10 @@ import type { DiagramFile, Item, ShapeKind } from '../model.js';
 import { renderDiagram } from '../draw/render.js';
 import { roundedPath } from '../draw/geometry.js';
 import { stencilArt, stencilParts } from '../draw/stencil.js';
-import type { Edit } from '@docpresenter/base';
+import {
+  BASE_MESSAGES, DEFAULT_LOCALE, described, type Edit, type Locale, type Phrase,
+} from '@docpresenter/base';
+import { DIAGRAM_MESSAGES, dgm } from '../messages.js';
 import {
   addNode, bendEdge, canUnpin, connectNodes, disconnectNodes, groupMembers, groupNodes,
   nextShapeId, pinNode, pinNodes, reconnect, removeNodes, setContainerCells, setItems,
@@ -46,8 +49,6 @@ const GRID = 4;
 const THRESHOLD = 3;
 const MIN_SIZE = 16;
 
-/** What the bar says when nothing in particular is picked. */
-const HINT = 'ドラッグで移動 / 右下で大きさ / ダブルクリックで文字 / 右クリックで操作';
 
 /**
  * The shapes on offer. Fewer than the notation has: a palette is a set of
@@ -55,25 +56,25 @@ const HINT = 'ドラッグで移動 / 右下で大きさ / ダブルクリック
  * the stadium's near-twin) are either not a shape you draw or are one keystroke
  * away in the source.
  */
-const PALETTE: readonly (readonly [ShapeKind, string])[] = [
-  ['rect', '四角'],
-  ['round-rect', '角丸'],
-  ['stadium', '端丸'],
-  ['ellipse', '楕円'],
-  ['diamond', 'ひし形'],
-  ['cylinder', '円柱'],
-  ['note', '付箋'],
-  ['text', '文字だけ'],
+const PALETTE = [
+  'rect',
+  'round-rect',
+  'stadium',
+  'ellipse',
+  'diamond',
+  'cylinder',
+  'note',
+  'text',
   // A line on its own. Not a connection: it divides a screen or points at a
   // part of it, and neither of those joins two shapes together.
-  ['line', '線'],
+  'line',
   // The flowchart set. Kept together at the end, after the shapes that get
   // used in any kind of drawing.
-  ['parallelogram', '入出力'],
-  ['hexagon', '六角形'],
-  ['loop-start', 'ループ開始'],
-  ['loop-end', 'ループ終了'],
-];
+  'parallelogram',
+  'hexagon',
+  'loop-start',
+  'loop-end',
+] as const satisfies readonly ShapeKind[];
 
 export interface CanvasOptions {
   readonly owner: Document;
@@ -93,6 +94,8 @@ export interface CanvasOptions {
   readonly showSource: () => void;
   readonly close: () => void;
   readonly onError?: (message: string) => void;
+  /** Which language the bar, the menus and the hints speak. */
+  readonly locale?: Locale | undefined;
 }
 
 export interface Canvas {
@@ -107,7 +110,11 @@ export interface Canvas {
 
 export function createCanvas(options: CanvasOptions): Canvas {
   const { owner, file, source } = options;
-  const laid = layOutDiagram(file);
+  const locale = options.locale ?? DEFAULT_LOCALE;
+  const t = DIAGRAM_MESSAGES.in(locale);
+  /** What the bar says when nothing in particular is picked. */
+  const HINT = t('diagram.canvas.hint');
+  const laid = layOutDiagram(file, locale);
   // The selection is a list rather than one id: grouping and moving several
   // shapes at once both need to know what was picked, in what order.
   let picked = options.selected.filter(id => laid.boxes.has(id));
@@ -165,7 +172,7 @@ export function createCanvas(options: CanvasOptions): Canvas {
   const root = element('div', 'dp-canvas');
   const stage = element('div', 'dp-canvas-stage');
   stage.tabIndex = 0;
-  stage.innerHTML = renderDiagram(file);
+  stage.innerHTML = renderDiagram(file, undefined, undefined, locale);
   const svg = stage.querySelector('svg');
   const bar = createBar();
   root.append(bar, stage);
@@ -660,7 +667,7 @@ export function createCanvas(options: CanvasOptions): Canvas {
     if (!box) return;
     moving = movingSet();
     if (moving.size === 0) {
-      options.onError?.(`${id} は中身が無いので動かせない`);
+      options.onError?.(t('diagram.edit.empty', { id }));
       return;
     }
     drag = {
@@ -1001,8 +1008,8 @@ export function createCanvas(options: CanvasOptions): Canvas {
     const corner = target?.closest('.dp-canvas-bend')?.getAttribute('data-bend');
     if (corner !== undefined && corner !== null) {
       menu.open(event.clientX, event.clientY, [
-        { label: 'この折れ点を消す', run: () => dropCorner(Number(corner)) },
-        { label: 'まっすぐに戻す（折れ点を全部消す）', run: () => dropCorner('all') },
+        { label: t('diagram.canvas.dropCorner'), run: () => dropCorner(Number(corner)) },
+        { label: t('diagram.canvas.straighten'), run: () => dropCorner('all') },
       ]);
       return;
     }
@@ -1017,11 +1024,11 @@ export function createCanvas(options: CanvasOptions): Canvas {
       const bent = (file.bends.get(onLine)?.points.length ?? 0) > 0;
       menu.open(event.clientX, event.clientY, [
         ...(bent ? [{
-          label: 'まっすぐに戻す（折れ点を全部消す）',
+          label: t('diagram.canvas.straighten'),
           run: () => dropCorner('all'),
         }] : []),
         {
-          label: '線を消す',
+          label: t('diagram.canvas.deleteLine'),
           separated: bent,
           run: () => options.apply(() => disconnectNodes(file, source, edge.from, edge.to), []),
         },
@@ -1166,7 +1173,7 @@ export function createCanvas(options: CanvasOptions): Canvas {
     const now = listingNow();
     if (!now) return;
     const items: Item[] = [...now.held.items, {
-      text: '項目', depth: now.held.items[now.held.items.length - 1]?.depth ?? 0,
+      text: t('diagram.new.item'), depth: now.held.items[now.held.items.length - 1]?.depth ?? 0,
       closed: false, picked: false,
     }];
     pickRow({ id: now.id, index: items.length - 1 });
@@ -1184,8 +1191,8 @@ export function createCanvas(options: CanvasOptions): Canvas {
   }
 
   function addItems(event: MouseEvent): MenuItem[] {
-    return PALETTE.map(([shape, label]): MenuItem => ({
-      label,
+    return PALETTE.map((shape): MenuItem => ({
+      label: t(`diagram.shape.${shape}`),
       icon: shapeIcon(shape),
       separated: shape === 'parallelogram',
       run: () => addShape(shape, event),
@@ -1218,7 +1225,7 @@ export function createCanvas(options: CanvasOptions): Canvas {
 
   function stencilItems(event?: MouseEvent): MenuItem[] {
     const kinds = new Map<string, MenuItem[]>();
-    for (const part of stencilParts()) {
+    for (const part of stencilParts(locale)) {
       const one: MenuItem = {
         label: part.label,
         icon: partIcon(part.body),
@@ -1249,9 +1256,10 @@ export function createCanvas(options: CanvasOptions): Canvas {
         disabled: name === current,
         run: () => run(name),
       };
-      const kind = kinds.get(part.group ?? 'その他');
+      const group = part.group ?? t('diagram.stencil.group.other');
+      const kind = kinds.get(group);
       if (kind) kind.push(one);
-      else kinds.set(part.group ?? 'その他', [one]);
+      else kinds.set(group, [one]);
     }
     return [...kinds].map(([group, items]): MenuItem => ({ label: group, items }));
   }
@@ -1269,7 +1277,7 @@ export function createCanvas(options: CanvasOptions): Canvas {
   }
 
   function addShape(
-    shape: ShapeKind, event?: MouseEvent, icon?: string, text = '図形',
+    shape: ShapeKind, event?: MouseEvent, icon?: string, text = t('diagram.new.shape'),
   ): void {
     const into = beside();
     // A freely placed drawing has no engine to decide where a shape goes, so
@@ -1332,8 +1340,8 @@ export function createCanvas(options: CanvasOptions): Canvas {
       // drawing looks the same the moment after.
       const ids = [...picked];
       items.push({
-        label: `${ids.length} 個をグループにする`,
-        run: () => options.apply(() => groupNodes(file, source, ids, 'グループ'), ids),
+        label: t('diagram.canvas.groupCount', { count: ids.length }),
+        run: () => options.apply(() => groupNodes(file, source, ids, t('diagram.new.group')), ids),
       });
     }
     // A shape that holds rows has no label of its own: what the menu offers is
@@ -1343,21 +1351,21 @@ export function createCanvas(options: CanvasOptions): Canvas {
     items.push(
       // A line holds no words, so there is nothing for a text box to edit.
       {
-        label: held ? '行の文字を変える' : '文字を変える',
+        label: held ? t('diagram.canvas.editRowText') : t('diagram.canvas.editText'),
         run: () => (onRow === undefined ? beginText(id) : beginRow(id, onRow)),
         disabled: node?.shape === 'line' || (held !== undefined && onRow === undefined),
       },
       {
-        label: connecting === undefined ? '線を引く' : '線を引く（引き先を選ぶ）',
+        label: connecting === undefined ? t('diagram.canvas.connect') : t('diagram.canvas.connectPick'),
         run: () => { connecting = id; describe(); },
         disabled: node?.shape === 'group' || picked.length > 1,
       },
     );
-    for (const [shape, label] of PALETTE) {
+    for (const shape of PALETTE) {
       items.push({
-        label,
+        label: t(`diagram.shape.${shape}`),
         icon: shapeIcon(shape),
-        separated: shape === PALETTE[0]![0] || shape === 'parallelogram',
+        separated: shape === PALETTE[0] || shape === 'parallelogram',
         // Becoming a line means losing the words: the notation has nowhere to
         // keep them. So it is offered for a shape that has none, and a shape
         // with words is left to be emptied first — rather than quietly emptied.
@@ -1369,7 +1377,7 @@ export function createCanvas(options: CanvasOptions): Canvas {
     }
     if (file.library.size > 0 && node?.shape !== 'group') {
       items.push({
-        label: file.partOf.has(id) ? '部品を変える' : '部品にする',
+        label: file.partOf.has(id) ? t('diagram.canvas.changePart') : t('diagram.canvas.makePart'),
         separated: true,
         items: libraryItems(
           name => options.apply(() => setNodePart(file, source, id, name), [id]),
@@ -1377,7 +1385,7 @@ export function createCanvas(options: CanvasOptions): Canvas {
       });
     }
     items.push({
-      label: '自動配置に戻す',
+      label: t('diagram.canvas.unpin'),
       separated: true,
       disabled: !canUnpin(file, id),
       run: () => options.apply(() => unpinNode(file, source, id), [id]),
@@ -1397,11 +1405,12 @@ export function createCanvas(options: CanvasOptions): Canvas {
   function deleteLabel(): string {
     const ids = new Set(picked);
     if (picked.length === 1 && file.nodes.find(n => n.id === picked[0])?.shape === 'group') {
-      return 'グループを解除（中身は残る）';
+      return t('diagram.canvas.ungroup');
     }
     const lines = file.edges.filter(e => ids.has(e.from) || ids.has(e.to)).length;
-    const what = picked.length > 1 ? `${picked.length} 個を削除` : '削除';
-    return lines === 0 ? what : `${what}（線 ${lines} 本も消える）`;
+    const what = picked.length > 1
+      ? t('diagram.canvas.deleteCount', { count: picked.length }) : t('diagram.canvas.delete');
+    return lines === 0 ? what : t('diagram.canvas.deleteWithLines', { what, lines });
   }
 
   /**
@@ -1431,7 +1440,7 @@ export function createCanvas(options: CanvasOptions): Canvas {
 
     // The same bar a paragraph and a table cell get: a label holds the same
     // inline Markdown they do, so it gets the same way of writing it.
-    const toolbar = createToolbar(owner, mark => applyMark(mark));
+    const toolbar = createToolbar(owner, mark => applyMark(mark), locale);
     toolbar.element.classList.add('dp-canvas-format');
     stage.append(toolbar.element);
     const bar = toolbar.element.getBoundingClientRect();
@@ -1589,7 +1598,7 @@ export function createCanvas(options: CanvasOptions): Canvas {
               label: deleteLabel(),
               run: () => options.apply(() => removeNodes(file, source, ids), []),
             },
-            { label: 'やめる', run: () => {} },
+            { label: BASE_MESSAGES.in(locale)('base.cancel'), run: () => {} },
           ],
         );
         return;
@@ -1663,7 +1672,7 @@ export function createCanvas(options: CanvasOptions): Canvas {
         case 'middle': deltas.set(id, { x: 0, y: target - (box.y + box.height / 2) }); break;
       }
     }
-    shiftAll(deltas, '整列');
+    shiftAll(deltas, dgm('diagram.did.align'));
   }
 
   /** Spreads the picked shapes so the gaps between them are equal. */
@@ -1686,14 +1695,14 @@ export function createCanvas(options: CanvasOptions): Canvas {
       deltas.set(id, axis === 'x' ? { x: at - box.x, y: 0 } : { x: 0, y: at - box.y });
       at += box[size] + gap;
     }
-    shiftAll(deltas, '等間隔に並べる');
+    shiftAll(deltas, dgm('diagram.did.spread'));
   }
 
   /**
    * Moves each shape by its own offset. A group moves what it holds, the same
    * way dragging it does.
    */
-  function shiftAll(deltas: ReadonlyMap<string, { x: number; y: number }>, what: string): void {
+  function shiftAll(deltas: ReadonlyMap<string, { x: number; y: number }>, what: Phrase): void {
     const pins = new Map<string, { x: number; y: number }>();
     const add = (id: string, by: { x: number; y: number }): void => {
       const node = file.nodes.find(n => n.id === id);
@@ -1710,7 +1719,7 @@ export function createCanvas(options: CanvasOptions): Canvas {
     };
     for (const [id, by] of deltas) add(id, by);
     if (pins.size === 0) return;
-    options.apply(() => ({ ...pinNodes(file, source, pins), description: what }), [...picked]);
+    options.apply(() => ({ ...pinNodes(file, source, pins), ...described(what) }), [...picked]);
   }
 
   // --- 操作列 ------------------------------------------------------------
@@ -1724,13 +1733,13 @@ export function createCanvas(options: CanvasOptions): Canvas {
       // A shape a container holds has somewhere to go back to, and saying
       // "the layout engine" about a form's own frame would mean nothing.
       const inContainer = at !== undefined && containerOf(file).has(at);
-      release.textContent = inContainer ? '入れ物に戻す' : '自動配置に戻す';
+      release.textContent = inContainer ? t('diagram.canvas.backToContainer') : t('diagram.canvas.unpin');
       release.title = picked.length === 1 && at !== undefined && !canUnpin(file, at)
         && file.mode !== 'flow'
-        ? '自由配置の図では外せない（外すと置き場所が無くなる）'
+        ? t('diagram.canvas.freeCannotUnpin')
         : inContainer
-          ? '手で決めた位置を捨て、入れ物の並びに返す'
-          : '手で決めた位置を捨て、レイアウトエンジンに返す';
+          ? t('diagram.canvas.unpinToContainer')
+          : t('diagram.canvas.unpinToEngine');
     }
     if (aligners) aligners.hidden = picked.length < 2;
     for (const button of spreaders) button.disabled = picked.length < 3;
@@ -1745,8 +1754,8 @@ export function createCanvas(options: CanvasOptions): Canvas {
       button.disabled = (button.dataset.rowOnly === 'tree' && inRow?.icon !== 'ui/tree')
         || (row === undefined && !adds);
       if (adds) {
-        button.title = row !== undefined ? '下に行を足す'
-          : (inRow?.items.length ?? 0) === 0 ? '最初の行を足す' : 'いちばん下に行を足す';
+        button.title = row !== undefined ? t('diagram.canvas.addRowBelow')
+          : (inRow?.items.length ?? 0) === 0 ? t('diagram.canvas.addFirstRow') : t('diagram.canvas.addLastRow');
       }
     }
     for (const button of lookButtons) {
@@ -1757,15 +1766,14 @@ export function createCanvas(options: CanvasOptions): Canvas {
     }
     if (!where) return;
     if (connecting !== undefined) {
-      where.textContent = `${connecting} から線を引く先を選ぶ`;
+      where.textContent = t('diagram.canvas.connectFrom', { id: connecting });
       return;
     }
     const chosen = lineOf(line);
     if (chosen) {
-      where.textContent = `${chosen.edge.from} → ${chosen.edge.to}  (線)`;
+      where.textContent = t('diagram.canvas.lineName', { from: chosen.edge.from, to: chosen.edge.to });
       if (hint) {
-        hint.textContent = '線の途中の○をドラッグすると曲がる / □をダブルクリックでその折れ点を消す / '
-          + '端の○でつなぎ替え / Delete で線を消す';
+        hint.textContent = t('diagram.canvas.lineHint');
       }
       return;
     }
@@ -1774,21 +1782,21 @@ export function createCanvas(options: CanvasOptions): Canvas {
       // answering a question nobody asked. The buttons are small pictures;
       // this is where they are named.
       hint.textContent = row !== undefined
-        ? '行：ダブルクリックで文字 / 左のボタンで足す・消す・深さ・選択・開閉'
+        ? t('diagram.canvas.rowHint')
         : alone?.shape === 'line'
-          ? 'ドラッグで移動 / 右下で長さと向き / 左のボタンで矢印と太さ'
+          ? t('diagram.canvas.lineShapeHint')
           : HINT;
     }
     if (picked.length > 1) {
-      where.textContent = `${picked.length} 個を選択`;
+      where.textContent = t('diagram.canvas.pickedCount', { count: picked.length });
       return;
     }
     const box = preview?.box ?? boxOf(at);
     if (at === undefined || !box) {
-      where.textContent = '図形を選ぶ';
+      where.textContent = t('diagram.canvas.pickShape');
       return;
     }
-    const pinned = file.layout.has(at) ? '固定' : '自動';
+    const pinned = file.layout.has(at) ? t('diagram.canvas.pinned') : t('diagram.canvas.auto');
     where.textContent = `${at}  ${round(box.x - laid.origin.x)}, `
       + `${round(box.y - laid.origin.y)}  ${round(box.width)}×${round(box.height)}  (${pinned})`;
   }
@@ -1840,14 +1848,14 @@ export function createCanvas(options: CanvasOptions): Canvas {
       aligners?.append(button);
       if (keep) spread_.push(button);
     };
-    icon(alignIcon('left'), '左を揃える', () => align('left'));
-    icon(alignIcon('centre'), '左右の中心を揃える', () => align('centre'));
-    icon(alignIcon('right'), '右を揃える', () => align('right'));
-    icon(alignIcon('top'), '上を揃える', () => align('top'));
-    icon(alignIcon('middle'), '上下の中心を揃える', () => align('middle'));
-    icon(alignIcon('bottom'), '下を揃える', () => align('bottom'));
-    icon(alignIcon('spread-x'), '横に等間隔で並べる', () => spread('x'), true);
-    icon(alignIcon('spread-y'), '縦に等間隔で並べる', () => spread('y'), true);
+    icon(alignIcon('left'), t('diagram.canvas.alignLeft'), () => align('left'));
+    icon(alignIcon('centre'), t('diagram.canvas.alignCentre'), () => align('centre'));
+    icon(alignIcon('right'), t('diagram.canvas.alignRight'), () => align('right'));
+    icon(alignIcon('top'), t('diagram.canvas.alignTop'), () => align('top'));
+    icon(alignIcon('middle'), t('diagram.canvas.alignMiddle'), () => align('middle'));
+    icon(alignIcon('bottom'), t('diagram.canvas.alignBottom'), () => align('bottom'));
+    icon(alignIcon('spread-x'), t('diagram.canvas.spreadX'), () => spread('x'), true);
+    icon(alignIcon('spread-y'), t('diagram.canvas.spreadY'), () => spread('y'), true);
     spreaders = spread_;
     node.append(aligners);
 
@@ -1875,13 +1883,13 @@ export function createCanvas(options: CanvasOptions): Canvas {
       liners?.append(button);
       looks.push(button);
     };
-    look(lineIcon('arrow-none'), '矢印なし', 'arrow', undefined);
-    look(lineIcon('arrow-end'), '終点に矢印', 'arrow', 'end');
-    look(lineIcon('arrow-start'), '始点に矢印', 'arrow', 'start');
-    look(lineIcon('arrow-both'), '両端に矢印', 'arrow', 'both');
-    look(lineIcon('weight-1'), '細い線', 'weight', undefined);
-    look(lineIcon('weight-2'), '中くらいの太さ', 'weight', '2.5');
-    look(lineIcon('weight-4'), '太い線', 'weight', '4');
+    look(lineIcon('arrow-none'), t('diagram.canvas.arrowNone'), 'arrow', undefined);
+    look(lineIcon('arrow-end'), t('diagram.canvas.arrowEnd'), 'arrow', 'end');
+    look(lineIcon('arrow-start'), t('diagram.canvas.arrowStart'), 'arrow', 'start');
+    look(lineIcon('arrow-both'), t('diagram.canvas.arrowBoth'), 'arrow', 'both');
+    look(lineIcon('weight-1'), t('diagram.canvas.weightThin'), 'weight', undefined);
+    look(lineIcon('weight-2'), t('diagram.canvas.weightMedium'), 'weight', '2.5');
+    look(lineIcon('weight-4'), t('diagram.canvas.weightThick'), 'weight', '4');
     lookButtons = looks;
     node.append(liners);
 
@@ -1912,23 +1920,23 @@ export function createCanvas(options: CanvasOptions): Canvas {
     // the row alone would leave its children hanging off whatever came before
     // — a different tree than the one anybody asked for, and sometimes one
     // with a gap in its depths that cannot be drawn at all.
-    onRow(rowIcon('add'), '下に行を足す', () => {
+    onRow(rowIcon('add'), t('diagram.canvas.addRowBelow'), () => {
       // With no row pressed there is nothing to be under — and a listing with
       // no rows at all has nothing to press, which is how one gets its first.
       if (row === undefined) { addRow(); return; }
       changeRows((items, at) => {
         const after = branch(items, at);
         items.splice(after, 0, {
-          text: '項目', depth: items[at]?.depth ?? 0, closed: false, picked: false,
+          text: t('diagram.new.item'), depth: items[at]?.depth ?? 0, closed: false, picked: false,
         });
         return { items, at: after };
       });
     }, undefined, 'add');
-    onRow(rowIcon('drop'), 'この行を消す', () => changeRows((items, at) => {
+    onRow(rowIcon('drop'), t('diagram.canvas.dropRow'), () => changeRows((items, at) => {
       items.splice(at, branch(items, at) - at);
       return { items, at: Math.max(0, at - 1) };
     }));
-    onRow(rowIcon('in'), '一段深くする', () => changeRows((items, at) => {
+    onRow(rowIcon('in'), t('diagram.canvas.deeper'), () => changeRows((items, at) => {
       // A row can only be as deep as one step past the row above it: a gap in
       // the depths is a tree nobody can draw.
       const most = at === 0 ? 0 : (items[at - 1]?.depth ?? 0) + 1;
@@ -1936,17 +1944,17 @@ export function createCanvas(options: CanvasOptions): Canvas {
       if (!one || one.depth >= most) return undefined;
       return { items: deepen(items, at, 1), at };
     }), 'tree');
-    onRow(rowIcon('out'), '一段浅くする', () => changeRows((items, at) => {
+    onRow(rowIcon('out'), t('diagram.canvas.shallower'), () => changeRows((items, at) => {
       const one = items[at];
       if (!one || one.depth === 0) return undefined;
       return { items: deepen(items, at, -1), at };
     }), 'tree');
-    onRow(rowIcon('pick'), '選択中にする', () => changeRows((items, at) => {
+    onRow(rowIcon('pick'), t('diagram.canvas.pickRow'), () => changeRows((items, at) => {
       const was = items[at]?.picked ?? false;
       // One row at a time is chosen, as on the screen being drawn.
       return { items: items.map((one, i) => ({ ...one, picked: i === at && !was })), at };
     }));
-    onRow(rowIcon('fold'), '枝を開く / 閉じる', () => changeRows((items, at) => {
+    onRow(rowIcon('fold'), t('diagram.canvas.fold'), () => changeRows((items, at) => {
       const one = items[at];
       if (!one) return undefined;
       items[at] = { ...one, closed: !one.closed };
@@ -1955,25 +1963,25 @@ export function createCanvas(options: CanvasOptions): Canvas {
     rowButtons = rowed;
     node.append(rows);
 
-    add('＋ 部品', 'ルータやサーバなどの絵を足す', () => {
+    add(t('diagram.canvas.addPart'), t('diagram.canvas.addPartTitle'), () => {
       const at = bar.getBoundingClientRect();
       menu.open(at.left + 8, at.bottom + 4, partItems());
     });
-    add('＋ 図形', 'この図に図形を足す', () => {
+    add(t('diagram.canvas.addShape'), t('diagram.canvas.addShapeTitle'), () => {
       const at = bar.getBoundingClientRect();
-      menu.open(at.left + 8, at.bottom + 4, PALETTE.map(([shape, label]) => ({
-        label,
+      menu.open(at.left + 8, at.bottom + 4, PALETTE.map(shape => ({
+        label: t(`diagram.shape.${shape}`),
         icon: shapeIcon(shape),
         separated: shape === 'parallelogram',
         run: () => addShape(shape),
       })));
     });
-    release = add('自動配置に戻す', '手で決めた位置を捨て、レイアウトエンジンに返す', () => {
+    release = add(t('diagram.canvas.unpin'), t('diagram.canvas.unpinToEngine'), () => {
       const id = primary();
       if (id === undefined || picked.length !== 1) return;
       options.apply(() => unpinNode(file, source, id), [id]);
     });
-    add('ソース', '.dgm のソースを直接編集する', () => options.showSource());
+    add(t('diagram.canvas.source'), t('diagram.canvas.sourceTitle'), () => options.showSource());
 
     hint = element('span', 'dp-canvas-hint');
     hint.textContent = HINT;

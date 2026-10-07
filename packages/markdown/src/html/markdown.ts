@@ -7,6 +7,8 @@
 // in a cell. Two implementations of the same notation will always drift; there
 // is one now, and a cell is simply the inline half of it.
 
+import { DEFAULT_LOCALE, type Locale } from '@docpresenter/base';
+import { MARKDOWN_MESSAGES } from '../messages.js';
 import MarkdownIt from 'markdown-it';
 import hljs from 'highlight.js/lib/core';
 import bash from 'highlight.js/lib/languages/bash';
@@ -79,7 +81,7 @@ markdown.renderer.rules.fence = (tokens, index, options, env, self) => {
   }
   const html = plainFence(tokens, index, options, env, self);
   const coloured = hljs.getLanguage(language) ? html.replace('<code class="', '<code class="hljs ') : html;
-  return codeBlock(coloured, language);
+  return codeBlock(coloured, language, (env as RenderEnv | undefined)?.locale ?? DEFAULT_LOCALE);
 };
 
 /**
@@ -96,23 +98,27 @@ const LANGUAGE_NAMES: Readonly<Record<string, string>> = {
   sql: 'SQL', python: 'Python', py: 'Python', java: 'Java', kotlin: 'Kotlin', kt: 'Kotlin',
   csharp: 'C#', cs: 'C#', 'c#': 'C#', go: 'Go', golang: 'Go', diff: 'Diff', patch: 'Diff',
   ini: 'INI', toml: 'TOML', dockerfile: 'Dockerfile', docker: 'Dockerfile',
-  markdown: 'Markdown', md: 'Markdown', plaintext: 'テキスト', text: 'テキスト', txt: 'テキスト',
+  markdown: 'Markdown', md: 'Markdown',
   mermaid: 'Mermaid',
 };
 
 /** The label a code block carries, or nothing when no language was written. */
-export function languageLabel(language: string): string | undefined {
+export function languageLabel(language: string, locale: Locale = DEFAULT_LOCALE): string | undefined {
   if (language === '') return undefined;
+  // Plain text is the one name that is a word rather than a proper noun.
+  if (PLAIN.has(language)) return MARKDOWN_MESSAGES.in(locale)('markdown.code.text');
   return LANGUAGE_NAMES[language] ?? language;
 }
+
+const PLAIN = new Set(['plaintext', 'text', 'txt']);
 
 /**
  * A code block with its language named above it. The label is part of the
  * document rather than editor chrome: a reader of the PDF needs to know that
  * the lines are SQL as much as the author does.
  */
-function codeBlock(pre: string, language: string): string {
-  const label = languageLabel(language);
+function codeBlock(pre: string, language: string, locale: Locale): string {
+  const label = languageLabel(language, locale);
   const head = label === undefined
     ? ''
     : `<div class="dp-code-head"><span class="dp-code-language">${escapeHtml(label)}</span></div>`;
@@ -124,6 +130,8 @@ export interface RenderEnv {
   [key: string | symbol]: unknown;
   /** The byte range of one line of the block, counted from its first line. */
   readonly lineSpan?: (line: number) => { start: number; end: number } | undefined;
+  /** The language words the renderer adds — a code block's "Text" — are in. */
+  readonly locale?: Locale;
 }
 
 /** How a Mermaid block is shown: the drawing, the code it is drawn from, or both. */

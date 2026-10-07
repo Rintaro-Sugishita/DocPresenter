@@ -4,11 +4,14 @@
 // its natural size because the coordinates in the file are image pixels.
 
 import type { Callout, DiagramFile } from '../model.js';
-import { escapeAttr, escapeHtml } from '@docpresenter/base';
+import { DEFAULT_LOCALE, escapeAttr, escapeHtml, type Locale } from '@docpresenter/base';
+import { DIAGRAM_MESSAGES } from '../messages.js';
 
-export function renderOverlay(diagram: DiagramFile, src = diagram.image): string {
+export function renderOverlay(
+  diagram: DiagramFile, src = diagram.image, locale: Locale = DEFAULT_LOCALE,
+): string {
   if (src === undefined) {
-    return '<p class="dp-missing">overlay に画像が指定されていない</p>';
+    return `<p class="dp-missing">${escapeHtml(DIAGRAM_MESSAGES.in(locale)('diagram.overlay.noImage'))}</p>`;
   }
   const markers = diagram.callouts.map(renderMarker).join('\n');
   const legend = diagram.callouts

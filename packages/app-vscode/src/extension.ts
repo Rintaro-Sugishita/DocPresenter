@@ -7,6 +7,7 @@
 import * as vscode from 'vscode';
 import { exportAll, FORMAT_LABEL } from './export-command.js';
 import { initWorkspace } from './init-command.js';
+import { t } from './l10n.js';
 import type { ExportFormat } from './protocol.js';
 import { SheetEditorProvider } from './sheet-editor.js';
 
@@ -23,7 +24,7 @@ export function activate(context: vscode.ExtensionContext): void {
   const openInDocPresenter = async (uri: vscode.Uri | undefined): Promise<void> => {
     const target = uri ?? vscode.window.activeTextEditor?.document.uri;
     if (!target) {
-      void vscode.window.showInformationMessage('DocPresenter: 開く文書がありません');
+      void vscode.window.showInformationMessage(`DocPresenter: ${t('vscode.noDocument')}`);
       return;
     }
     const viewType = /\.dgm$/i.test(target.path)
@@ -51,8 +52,8 @@ export function activate(context: vscode.ExtensionContext): void {
         })),
         {
           canPickMany: true,
-          title: 'DocPresenter: 出力対象をすべて書き出す',
-          placeHolder: '書き出す形式を選んでください（各文書の output: の指定より優先します）',
+          title: t('vscode.buildAs.title'),
+          placeHolder: t('vscode.buildAs.placeHolder'),
         });
       if (!picked || picked.length === 0) return;
       await exportAll(context, output, picked.map(one => one.format as ExportFormat));

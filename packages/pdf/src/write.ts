@@ -6,6 +6,8 @@
 // measurement side free to think in the coordinates it actually sees.
 
 import fontkit from '@pdf-lib/fontkit';
+import { LocalizedError } from '@docpresenter/base';
+import { pdf as says } from './messages.js';
 import {
   PDFArray, PDFDict, PDFDocument, PDFHexString, PDFName, PDFNumber, PDFRef,
   rgb, type PDFContext, type PDFFont, type PDFPage,
@@ -25,7 +27,7 @@ export interface WriteResult {
   readonly missing: readonly MissingGlyph[];
 }
 
-export class FontError extends Error {}
+export class FontError extends LocalizedError {}
 
 /** Two sources naming the same face of the same file are one face. */
 function faceKey(source: FontSource): string {
@@ -61,10 +63,7 @@ export async function writePdf(plan: PagePlan, options: FontOptions): Promise<Wr
       // Not a warning. pdf-lib's subsetter would produce a file whose text
       // extracts and whose glyphs are blank, and every check that reads the
       // text back would pass it.
-      throw new FontError(
-        `${source.name} は CFF フォントで、pdf-lib のサブセット化では字が描かれない。`
-        + 'subset を渡すこと（design/pdf-engine.md §6.4）',
-      );
+      throw new FontError(says('pdf.font.cff', { name: source.name }));
     }
     missing.push(...missingGlyphs(source, characters));
     // Each face is cut down to what it actually carries, not to what the
@@ -76,10 +75,7 @@ export async function writePdf(plan: PagePlan, options: FontOptions): Promise<Wr
       // The subsetter said nothing and produced a font with no outlines. Left
       // alone it would make a PDF whose text extracts and whose pages are
       // blank — the one failure this whole path is arranged to prevent.
-      throw new FontError(
-        `${source.name} を削った結果に字形が入っていない`
-        + `（${characters.size} 字は多すぎる可能性がある）`,
-      );
+      throw new FontError(says('pdf.font.empty', { name: source.name, count: characters.size }));
     }
     const font = await pdf.embedFont(bytes, { subset: !options.subset });
     for (const style of styles) embedded[style] = font;

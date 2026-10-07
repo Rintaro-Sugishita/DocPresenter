@@ -12,6 +12,8 @@ import {
   isAddress, isBuildRoot, joinPath, parseDocument, type DocumentFile,
 } from '@docpresenter/markdown';
 import { asLf, type BuildDiagnostic, type Workspace } from './workspace.js';
+import { DEFAULT_LOCALE, describeError, type Locale } from '@docpresenter/base';
+import { said } from './messages.js';
 
 export interface Root {
   readonly path: string;
@@ -37,7 +39,7 @@ const MARKDOWN = /\.md$/i;
  */
 const NOT_CONTENT = /(^|\/)((node_modules|dist|out|\.git|\.docpresenter)\/|(CLAUDE|AGENTS)\.md$)/;
 
-export function readGraph(given: Workspace): ReferenceGraph {
+export function readGraph(given: Workspace, locale: Locale = DEFAULT_LOCALE): ReferenceGraph {
   // Read as LF, so the documents' ranges are the same on every checkout.
   const workspace = asLf(given);
   const diagnostics: BuildDiagnostic[] = [];
@@ -55,7 +57,7 @@ export function readGraph(given: Workspace): ReferenceGraph {
       // the repository does not stop every other document being built.
       diagnostics.push({
         severity: 'warning', path,
-        message: `読めない: ${error instanceof Error ? error.message : String(error)}`,
+        ...said(locale, 'build.unreadable', { message: describeError(error, locale) }),
       });
     }
   }
@@ -72,7 +74,7 @@ export function readGraph(given: Workspace): ReferenceGraph {
   const closure = new Map<string, readonly string[]>();
   const reached = new Set<string>();
   for (const root of roots) {
-    const found = walk(root, workspace, parsed, present, diagnostics);
+    const found = walk(root, workspace, parsed, present, diagnostics, locale);
     closure.set(root.path, found);
     for (const path of found) reached.add(path);
   }
@@ -80,7 +82,7 @@ export function readGraph(given: Workspace): ReferenceGraph {
   if (roots.length === 0) {
     diagnostics.push({
       severity: 'warning', path: '',
-      message: 'frontmatter に output を持つ文書が無い。ビルドするものが何も無い',
+      ...said(locale, 'build.noRoots'),
     });
   }
 
@@ -90,7 +92,7 @@ export function readGraph(given: Workspace): ReferenceGraph {
   for (const path of orphans) {
     diagnostics.push({
       severity: 'warning', path,
-      message: 'どの成果物にも含まれていない',
+      ...said(locale, 'build.orphan'),
     });
   }
 
@@ -103,7 +105,7 @@ const CONTENT = /\.(md|dgm|table|mmd|ermlx|csv|png|jpe?g|gif|svg)$/i;
 /** The files one root reaches, depth first, with each one listed once. */
 function walk(
   root: Root, workspace: Workspace, parsed: ReadonlyMap<string, DocumentFile>,
-  present: ReadonlySet<string>, diagnostics: BuildDiagnostic[],
+  present: ReadonlySet<string>, diagnostics: BuildDiagnostic[], locale: Locale,
 ): readonly string[] {
   const found: string[] = [];
   const open: string[] = [];
@@ -122,7 +124,7 @@ function walk(
       if (open.includes(target)) {
         diagnostics.push({
           severity: 'error', path,
-          message: `参照が循環している: ${[...open, target].join(' → ')}`,
+          ...said(locale, 'build.cycle', { chain: [...open, target].join(' → ') }),
           span: block.span,
         });
         continue;
@@ -130,7 +132,7 @@ function walk(
       if (!present.has(target)) {
         diagnostics.push({
           severity: 'error', path,
-          message: `参照先が見つからない: ${target}`,
+          ...said(locale, 'build.missing', { target }),
           span: block.span,
         });
         continue;

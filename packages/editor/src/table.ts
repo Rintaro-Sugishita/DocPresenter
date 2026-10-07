@@ -10,9 +10,10 @@ import {
   removeField, replaceField, sameSelector, splitFields,
   type Align, type Selector, type TableFile,
 } from '@docpresenter/markdown';
-import type { Edit } from '@docpresenter/base';
+import { described, LocalizedError, type Edit, type Phrase } from '@docpresenter/base';
+import { ed } from './messages.js';
 
-export class TableEditError extends Error {}
+export class TableEditError extends LocalizedError {}
 
 /** Every line of the grid, in order, with the range it occupies. */
 function gridLines(table: TableFile): { text: string; start: number; end: number }[] {
@@ -23,7 +24,7 @@ function gridLines(table: TableFile): { text: string; start: number; end: number
 /** Row -1 is the header; 0 and up are body rows. The delimiter is not a row. */
 function lineOf(table: TableFile, row: number): { text: string; start: number; end: number } {
   const line = row < 0 ? table.header : table.rows[row]?.line;
-  if (!line) throw new TableEditError(`${row + 1} 行目は無い`);
+  if (!line) throw new TableEditError(ed('editor.table.noRow', { row: row + 1 }));
   return { text: line.text, start: line.span.start, end: line.span.end };
 }
 
@@ -32,7 +33,7 @@ export function setCell(table: TableFile, row: number, column: number, text: str
   return {
     span: { start: line.start, end: line.end },
     text: replaceField(line.text, column, text),
-    description: 'セルを編集',
+    ...described(ed('editor.did.cell')),
   };
 }
 
@@ -43,7 +44,7 @@ export function setAlign(table: TableFile, column: number, align: Align): Edit {
   return {
     span: table.delimiter.span,
     text: joinFields(fields),
-    description: '寄せを変更',
+    ...described(ed('editor.did.align')),
   };
 }
 
@@ -55,25 +56,25 @@ export function insertRow(table: TableFile, at: number): Edit {
     return {
       span: { start: last.span.end, end: last.span.end },
       text: `\n${blank}`,
-      description: '行を追加',
+      ...described(ed('editor.did.insertRow')),
     };
   }
   const line = lineOf(table, at);
   return {
     span: { start: line.start, end: line.start },
     text: `${blank}\n`,
-    description: '行を追加',
+    ...described(ed('editor.did.insertRow')),
   };
 }
 
 export function removeRow(table: TableFile, at: number): Edit {
-  if (table.rows.length <= 1) throw new TableEditError('最後の行は削除できない');
+  if (table.rows.length <= 1) throw new TableEditError(ed('editor.table.lastRow'));
   const line = lineOf(table, at);
   // Take the newline on one side so no blank line is left behind.
   const span = at > 0
     ? { start: lineOf(table, at - 1).end, end: line.end }
     : { start: line.start, end: line.end + table.lineEnding.length };
-  return { span, text: '', description: '行を削除' };
+  return { span, text: '', ...described(ed('editor.did.removeRow')) };
 }
 
 export function insertColumn(table: TableFile, at: number, header = ''): Edit {
@@ -81,12 +82,12 @@ export function insertColumn(table: TableFile, at: number, header = ''): Edit {
     if (index === 0) return insertField(text, at, header);
     if (index === 1) return insertField(text, at, '---');
     return insertField(text, at, '');
-  }, '列を追加');
+  }, ed('editor.did.insertColumn'));
 }
 
 export function removeColumn(table: TableFile, at: number): Edit {
-  if (table.columns.length <= 1) throw new TableEditError('最後の列は削除できない');
-  return rewriteGrid(table, text => removeField(text, at), '列を削除');
+  if (table.columns.length <= 1) throw new TableEditError(ed('editor.table.lastColumn'));
+  return rewriteGrid(table, text => removeField(text, at), ed('editor.did.removeColumn'));
 }
 
 /**
@@ -123,7 +124,7 @@ export function pasteGrid(
   return {
     span: { start: lines[0]!.start, end: lines[lines.length - 1]!.end },
     text: written.join('\n'),
-    description: '貼り付け',
+    ...described(ed('editor.did.paste')),
   };
 }
 
@@ -133,7 +134,7 @@ export function formatTable(table: TableFile): Edit {
   return {
     span: { start: lines[0]!.start, end: lines[lines.length - 1]!.end },
     text: formatGrid(table),
-    description: '表を整形',
+    ...described(ed('editor.did.format')),
   };
 }
 
@@ -189,18 +190,18 @@ export function clearRange(table: TableFile, range: CellRange): Edit {
   return {
     span: { start: lines[first]!.start, end: lines[last]!.end },
     text: written.join('\n'),
-    description: '内容を消去',
+    ...described(ed('editor.did.clear')),
   };
 }
 
 function rewriteGrid(
-  table: TableFile, rewrite: (text: string, index: number) => string, description: string,
+  table: TableFile, rewrite: (text: string, index: number) => string, description: Phrase,
 ): Edit {
   const lines = gridLines(table);
   return {
     span: { start: lines[0]!.start, end: lines[lines.length - 1]!.end },
     text: lines.map((line, i) => rewrite(line.text, i)).join('\n'),
-    description,
+    ...described(description),
   };
 }
 
@@ -264,13 +265,13 @@ export function mergeLoses(table: TableFile, range: CellRange): string[] {
  */
 export function mergeRange(table: TableFile, range: CellRange): Edit {
   const { top, left, bottom, right } = wholeCells(table, range);
-  if (top === bottom && left === right) throw new TableEditError('結合する範囲が 1 セルしかない');
-  if (top < 0) throw new TableEditError('見出し行は結合できない');
+  if (top === bottom && left === right) throw new TableEditError(ed('editor.table.oneCell'));
+  if (top < 0) throw new TableEditError(ed('editor.table.headerMerge'));
 
   const lines: { span: { start: number; end: number }; text: string }[] = [];
   for (let r = top; r <= bottom; r++) {
     const line = table.rows[r]?.line;
-    if (!line) throw new TableEditError('範囲が表の外に出ている');
+    if (!line) throw new TableEditError(ed('editor.table.outside'));
     let text = line.text;
     for (let c = left; c <= right; c++) {
       if (r === top && c === left) continue;
@@ -281,31 +282,31 @@ export function mergeRange(table: TableFile, range: CellRange): Edit {
   return {
     span: { start: lines[0]!.span.start, end: lines[lines.length - 1]!.span.end },
     text: lines.map(l => l.text).join('\n'),
-    description: 'セルを結合',
+    ...described(ed('editor.did.merge')),
   };
 }
 
 /** Takes the row below into the cell at (row, column). */
 export function mergeDown(table: TableFile, row: number, column: number): Edit {
   const owner = cellAt(table, row, column);
-  if (!owner) throw new TableEditError('結合するセルが無い');
+  if (!owner) throw new TableEditError(ed('editor.table.noOwner'));
   const below = table.rows[owner.row + owner.rowspan];
-  if (!below) throw new TableEditError('これより下に行が無い');
+  if (!below) throw new TableEditError(ed('editor.table.noRowBelow'));
 
   // A cell that spans several columns is marked once per column below it.
   let text = below.line.text;
   for (let c = owner.column; c < owner.column + owner.colspan; c++) {
     text = replaceField(text, c, MERGE_UP);
   }
-  return { span: below.line.span, text, description: 'セルを結合' };
+  return { span: below.line.span, text, ...described(ed('editor.did.merge')) };
 }
 
 /** Takes the column to the right into the cell at (row, column). */
 export function mergeRight(table: TableFile, row: number, column: number): Edit {
   const owner = cellAt(table, row, column);
-  if (!owner) throw new TableEditError('結合するセルが無い');
+  if (!owner) throw new TableEditError(ed('editor.table.noOwner'));
   const next = owner.column + owner.colspan;
-  if (next >= table.columns.length) throw new TableEditError('これより右に列が無い');
+  if (next >= table.columns.length) throw new TableEditError(ed('editor.table.noColumnRight'));
 
   // Every row the cell covers gives up its cell in that column.
   const lines = [];
@@ -314,11 +315,11 @@ export function mergeRight(table: TableFile, row: number, column: number): Edit 
     if (!line) continue;
     lines.push({ span: line.span, text: replaceField(line.text, next, MERGE_LEFT) });
   }
-  if (lines.length === 0) throw new TableEditError('結合するセルが無い');
+  if (lines.length === 0) throw new TableEditError(ed('editor.table.noOwner'));
   return {
     span: { start: lines[0]!.span.start, end: lines[lines.length - 1]!.span.end },
     text: lines.map(l => l.text).join('\n'),
-    description: 'セルを結合',
+    ...described(ed('editor.did.merge')),
   };
 }
 
@@ -326,7 +327,7 @@ export function mergeRight(table: TableFile, row: number, column: number): Edit 
 export function unmerge(table: TableFile, row: number, column: number): Edit {
   const owner = cellAt(table, row, column);
   if (!owner || (owner.rowspan === 1 && owner.colspan === 1)) {
-    throw new TableEditError('結合されていない');
+    throw new TableEditError(ed('editor.table.notMerged'));
   }
   const lines = [];
   for (let r = owner.row; r < owner.row + owner.rowspan; r++) {
@@ -342,7 +343,7 @@ export function unmerge(table: TableFile, row: number, column: number): Edit {
   return {
     span: { start: lines[0]!.span.start, end: lines[lines.length - 1]!.span.end },
     text: lines.map(l => l.text).join('\n'),
-    description: '結合を解除',
+    ...described(ed('editor.did.unmerge')),
   };
 }
 
@@ -372,7 +373,7 @@ export function setStyle(
 
   if (!existing) {
     if (value === undefined) {
-      return { span: table.header.span, text: table.header.text, description: '変更なし' };
+      return { span: table.header.span, text: table.header.text, ...described(ed('editor.did.nothing')) };
     }
     return addRule(table, selector, new Map([[property, value]]));
   }
@@ -385,13 +386,13 @@ export function setStyle(
     return {
       span: { start: existing.span.start, end: existing.span.end + table.lineEnding.length },
       text: '',
-      description: 'スタイルを解除',
+      ...described(ed('editor.did.unstyle')),
     };
   }
   return {
     span: existing.span,
     text: formatRule(selector, declarations),
-    description: value === undefined ? 'スタイルを解除' : 'スタイルを設定',
+    ...described(value === undefined ? ed('editor.did.unstyle') : ed('editor.did.style')),
   };
 }
 
@@ -408,7 +409,7 @@ export function styleAt(
 export function setWidth(table: TableFile, column: string, width: string): Edit {
   return {
     ...setStyle(table, { kind: 'column', name: column }, 'width', width),
-    description: '列幅を変更',
+    ...described(ed('editor.did.width')),
   };
 }
 
@@ -421,7 +422,7 @@ function addRule(
     return {
       span: { start: insertAt, end: insertAt },
       text: `\n${indent}${line}`,
-      description: 'スタイルを設定',
+      ...described(ed('editor.did.style')),
     };
   }
   // No style block yet: start one after everything else in the file.
@@ -429,7 +430,7 @@ function addRule(
   return {
     span: { start: end, end },
     text: `\n\nstyle {\n  ${line}\n}`,
-    description: 'スタイルを設定',
+    ...described(ed('editor.did.style')),
   };
 }
 

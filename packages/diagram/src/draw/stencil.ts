@@ -10,9 +10,13 @@
 // GCP, Cisco) are not: they are large, they are licensed, and their owners
 // publish them. A drawing reaches those with a path — `icon: ./icons/ec2.svg`.
 
+import { DEFAULT_LOCALE, say, type Locale } from '@docpresenter/base';
+import '../messages.js';
+
 /** One picture, drawn on a 24 by 24 grid so they line up with each other. */
 export interface StencilPart {
   readonly name: string;
+  /** What the menu calls it, in the locale it was asked for. */
   readonly label: string;
   readonly body: string;
   /**
@@ -39,9 +43,20 @@ export interface StencilPart {
    *
    * The name's prefix already says it — `net/router`, `ui/slider` — but a
    * prefix is for the file and a heading is for a person, and the two want
-   * different words.
+   * different words. In the locale it was asked for, like the label.
    */
   readonly group: string;
+}
+
+/** A picture as written here: named, and filed under a kind, but not yet in words. */
+type Drawn = Omit<StencilPart, 'label' | 'group'> & { readonly group: 'network' | 'ui' };
+
+function inWords(part: Drawn, locale: Locale): StencilPart {
+  return {
+    ...part,
+    label: say(locale, { id: `diagram.stencil.${part.name}` }),
+    group: say(locale, { id: `diagram.stencil.group.${part.group}` }),
+  };
 }
 
 /** Where a picture puts the text of the shape it draws. */
@@ -63,74 +78,74 @@ const FILL = 'fill="currentColor" opacity="0.12"';
  * shapes are the ones every network drawing uses; anything more particular
  * belongs in a file the author points at.
  */
-const PARTS: readonly StencilPart[] = [
+const PARTS: readonly Drawn[] = [
   {
-    name: 'net/cloud', label: 'クラウド',
-    group: 'ネットワーク',
+    name: 'net/cloud',
+    group: 'network',
     body: `<path d="M6.5 18.5 A4.5 4.5 0 0 1 6.9 9.6 A6 6 0 0 1 18 8.4`
       + ` A4.6 4.6 0 0 1 17.8 18.5 Z" ${FILL}/>`
       + `<path d="M6.5 18.5 A4.5 4.5 0 0 1 6.9 9.6 A6 6 0 0 1 18 8.4`
       + ` A4.6 4.6 0 0 1 17.8 18.5 Z" ${LINE}/>`,
   },
   {
-    name: 'net/internet', label: 'インターネット',
-    group: 'ネットワーク',
+    name: 'net/internet',
+    group: 'network',
     body: `<circle cx="12" cy="12" r="8.5" ${LINE}/>`
       + `<path d="M3.5 12 h17 M12 3.5 a12 12 0 0 1 0 17 a12 12 0 0 1 0 -17" ${LINE}/>`,
   },
   {
-    name: 'net/vpn', label: 'VPN',
-    group: 'ネットワーク',
+    name: 'net/vpn',
+    group: 'network',
     body: `<path d="M12 3.5 L20 6.5 v6 c0 4.5 -3.4 7.4 -8 8.5 c-4.6 -1.1 -8 -4 -8 -8.5 v-6 Z" ${FILL}/>`
       + `<path d="M12 3.5 L20 6.5 v6 c0 4.5 -3.4 7.4 -8 8.5 c-4.6 -1.1 -8 -4 -8 -8.5 v-6 Z" ${LINE}/>`
       + `<path d="M9.5 12.5 h5 v4 h-5 Z M10.6 12.5 v-1.8 a1.4 1.4 0 0 1 2.8 0 v1.8" ${LINE}/>`,
   },
   {
-    name: 'net/router', label: 'ルータ',
-    group: 'ネットワーク',
+    name: 'net/router',
+    group: 'network',
     body: `<rect x="2.5" y="12" width="19" height="7" rx="1.5" ${FILL}/>`
       + `<rect x="2.5" y="12" width="19" height="7" rx="1.5" ${LINE}/>`
       + `<path d="M8 9.5 L8 4.5 M8 4.5 l-2 2 M8 4.5 l2 2 M16 4.5 L16 9.5`
       + ` M16 9.5 l-2 -2 M16 9.5 l2 -2" ${LINE}/>`,
   },
   {
-    name: 'net/switch', label: 'スイッチ',
-    group: 'ネットワーク',
+    name: 'net/switch',
+    group: 'network',
     body: `<rect x="2.5" y="11" width="19" height="8" rx="1.5" ${FILL}/>`
       + `<rect x="2.5" y="11" width="19" height="8" rx="1.5" ${LINE}/>`
       + `<path d="M6.5 8.5 v-3 h11 v3 M9 5.5 l0 3 M15 5.5 l0 3" ${LINE}/>`
       + `<path d="M6 15 h3 M10.5 15 h3 M15 15 h3" ${LINE}/>`,
   },
   {
-    name: 'net/firewall', label: 'ファイアウォール',
-    group: 'ネットワーク',
+    name: 'net/firewall',
+    group: 'network',
     body: `<rect x="3" y="6" width="18" height="12" rx="1" ${FILL}/>`
       + `<rect x="3" y="6" width="18" height="12" rx="1" ${LINE}/>`
       + `<path d="M3 10 h18 M3 14 h18 M9 6 v4 M15 10 v4 M9 14 v4" ${LINE}/>`,
   },
   {
-    name: 'net/server', label: 'サーバ',
-    group: 'ネットワーク',
+    name: 'net/server',
+    group: 'network',
     body: `<rect x="5" y="3.5" width="14" height="17" rx="1.5" ${FILL}/>`
       + `<rect x="5" y="3.5" width="14" height="17" rx="1.5" ${LINE}/>`
       + `<path d="M5 9 h14 M5 14.5 h14 M8 6.2 h2 M8 11.8 h2 M8 17.3 h2" ${LINE}/>`,
   },
   {
-    name: 'net/storage', label: 'ストレージ',
-    group: 'ネットワーク',
+    name: 'net/storage',
+    group: 'network',
     body: `<path d="M4 7 a8 3 0 0 1 16 0 v10 a8 3 0 0 1 -16 0 Z" ${FILL}/>`
       + `<path d="M4 7 a8 3 0 0 1 16 0 v10 a8 3 0 0 1 -16 0 Z" ${LINE}/>`
       + `<path d="M4 7 a8 3 0 0 0 16 0" ${LINE}/>`,
   },
   {
-    name: 'net/user', label: '利用者',
-    group: 'ネットワーク',
+    name: 'net/user',
+    group: 'network',
     body: `<circle cx="12" cy="8" r="3.8" ${LINE}/>`
       + `<path d="M4.5 20.5 a7.5 7 0 0 1 15 0" ${LINE}/>`,
   },
   {
-    name: 'net/mobile', label: '携帯端末',
-    group: 'ネットワーク',
+    name: 'net/mobile',
+    group: 'network',
     body: `<rect x="7" y="3" width="10" height="18" rx="2" ${FILL}/>`
       + `<rect x="7" y="3" width="10" height="18" rx="2" ${LINE}/>`
       + `<path d="M10.5 18.5 h3" ${LINE}/>`,
@@ -154,29 +169,29 @@ const UI_LINE = 'fill="none" stroke="#8b929c" stroke-width="1.3" '
 const UI_FACE = 'fill="#ffffff" stroke="#aeb4bd" stroke-width="1.3"';
 const UI_MARK = '#2f6fb5';
 
-const CONTROLS: readonly StencilPart[] = [
+const CONTROLS: readonly Drawn[] = [
   {
-    name: 'ui/radio', label: 'ラジオ（未選択）',
-    group: '画面部品',
+    name: 'ui/radio',
+    group: 'ui',
     holds: 'none',
     body: `<circle cx="12" cy="12" r="8" ${UI_FACE}/>`,
   },
   {
-    name: 'ui/radio-on', label: 'ラジオ（選択）',
-    group: '画面部品',
+    name: 'ui/radio-on',
+    group: 'ui',
     holds: 'none',
     body: `<circle cx="12" cy="12" r="8" ${UI_FACE}/>`
       + `<circle cx="12" cy="12" r="4" fill="${UI_MARK}"/>`,
   },
   {
-    name: 'ui/check', label: 'チェック（未選択）',
-    group: '画面部品',
+    name: 'ui/check',
+    group: 'ui',
     holds: 'none',
     body: `<rect x="4" y="4" width="16" height="16" rx="2" ${UI_FACE}/>`,
   },
   {
-    name: 'ui/check-on', label: 'チェック（選択）',
-    group: '画面部品',
+    name: 'ui/check-on',
+    group: 'ui',
     holds: 'none',
     body: `<rect x="4" y="4" width="16" height="16" rx="2" fill="${UI_MARK}" stroke="${UI_MARK}"/>`
       + `<path d="M7.5 12.5 l3 3 l6 -6" fill="none" stroke="#ffffff" stroke-width="2"`
@@ -185,8 +200,8 @@ const CONTROLS: readonly StencilPart[] = [
   {
     // Drawn wide: a drop-down is a box with a chevron at its right end, and the
     // chevron must stay at the end however wide the box is.
-    name: 'ui/select', label: 'ドロップダウン',
-    group: '画面部品',
+    name: 'ui/select',
+    group: 'ui',
     holds: 'inside',
     fit: { width: 160, height: 34 },
     body: `<rect x="0.7" y="0.7" width="158.6" height="32.6" rx="3" fill="#fbfbfc"`
@@ -194,8 +209,8 @@ const CONTROLS: readonly StencilPart[] = [
       + `<path d="M143 14 l5 5 l5 -5" ${UI_LINE}/>`,
   },
   {
-    name: 'ui/spinner', label: '数値入力（上下つき）',
-    group: '画面部品',
+    name: 'ui/spinner',
+    group: 'ui',
     holds: 'inside',
     fit: { width: 120, height: 34 },
     body: `<rect x="0.7" y="0.7" width="118.6" height="32.6" rx="3" fill="#fbfbfc"`
@@ -206,8 +221,8 @@ const CONTROLS: readonly StencilPart[] = [
       + `<path d="M106.5 21.5 l3.7 3.4 l3.7 -3.4" ${UI_LINE}/>`,
   },
   {
-    name: 'ui/scrollbar-v', label: 'スクロールバー（縦）',
-    group: '画面部品',
+    name: 'ui/scrollbar-v',
+    group: 'ui',
     holds: 'none',
     fit: { width: 12, height: 120 },
     body: `<rect x="0" y="0" width="12" height="120" fill="#f0f1f3"/>`
@@ -216,8 +231,8 @@ const CONTROLS: readonly StencilPart[] = [
       + `<path d="M3.6 115.6 l2.4 2.4 l2.4 -2.4" ${UI_LINE}/>`,
   },
   {
-    name: 'ui/scrollbar-h', label: 'スクロールバー（横）',
-    group: '画面部品',
+    name: 'ui/scrollbar-h',
+    group: 'ui',
     holds: 'none',
     fit: { width: 120, height: 12 },
     body: `<rect x="0" y="0" width="120" height="12" fill="#f0f1f3"/>`
@@ -226,8 +241,8 @@ const CONTROLS: readonly StencilPart[] = [
       + `<path d="M115.6 3.6 l2.4 2.4 l-2.4 2.4" ${UI_LINE}/>`,
   },
   {
-    name: 'ui/slider', label: 'スライダー',
-    group: '画面部品',
+    name: 'ui/slider',
+    group: 'ui',
     holds: 'none',
     fit: { width: 160, height: 24 },
     body: `<path d="M4 12 h152" stroke="#d3d7dd" stroke-width="4" stroke-linecap="round"/>`
@@ -238,8 +253,8 @@ const CONTROLS: readonly StencilPart[] = [
   // the menu shows and what a part with no rows falls back to; the real
   // drawing is worked out from the rows (draw/listing.ts).
   {
-    name: 'ui/tree', label: 'ツリー',
-    group: '画面部品',
+    name: 'ui/tree',
+    group: 'ui',
     fit: { width: 160, height: 120 },
     holds: 'none',
     body: `<rect x="0.7" y="0.7" width="158.6" height="118.6" ${UI_FACE}/>`
@@ -249,8 +264,8 @@ const CONTROLS: readonly StencilPart[] = [
       + `<path d="M22 38 l5 5 l5 -5" ${UI_LINE}/>`,
   },
   {
-    name: 'ui/list', label: 'リスト',
-    group: '画面部品',
+    name: 'ui/list',
+    group: 'ui',
     fit: { width: 160, height: 100 },
     holds: 'none',
     body: `<rect x="0.7" y="0.7" width="158.6" height="98.6" ${UI_FACE}/>`
@@ -259,8 +274,8 @@ const CONTROLS: readonly StencilPart[] = [
       + ` stroke-width="3" stroke-linecap="round"/>`,
   },
   {
-    name: 'ui/menu', label: 'メニューバー',
-    group: '画面部品',
+    name: 'ui/menu',
+    group: 'ui',
     fit: { width: 240, height: 28 },
     holds: 'none',
     body: `<rect x="0.7" y="0.7" width="238.6" height="26.6" ${UI_FACE}/>`
@@ -273,8 +288,8 @@ const CONTROLS: readonly StencilPart[] = [
     // rows and columns it has is a property of the screen, not of the picture.
     // Drawn with a header and a few rows, stretched, it reads as "a table goes
     // here" — which is what a screen mock-up is saying.
-    name: 'ui/grid', label: '表（一覧）',
-    group: '画面部品',
+    name: 'ui/grid',
+    group: 'ui',
     fit: { width: 240, height: 120 },
     holds: 'none',
     body: `<rect x="0.7" y="0.7" width="238.6" height="118.6" fill="#ffffff"`
@@ -296,8 +311,8 @@ const CONTROLS: readonly StencilPart[] = [
       + ` stroke-linecap="round"/>`,
   },
   {
-    name: 'ui/image', label: '画像の枠',
-    group: '画面部品',
+    name: 'ui/image',
+    group: 'ui',
     holds: 'none',
     fit: { width: 120, height: 90 },
     body: `<rect x="0.7" y="0.7" width="118.6" height="88.6" fill="#f4f5f7"`
@@ -307,11 +322,11 @@ const CONTROLS: readonly StencilPart[] = [
   },
 ];
 
-const BY_NAME = new Map([...PARTS, ...CONTROLS].map(part => [part.name, part]));
+const BY_NAME = new Map([...PARTS, ...CONTROLS].map(part => [part.name, inWords(part, DEFAULT_LOCALE)]));
 
 /** Everything the editor can offer, in the order it offers it. */
-export function stencilParts(): readonly StencilPart[] {
-  return [...PARTS, ...CONTROLS];
+export function stencilParts(locale: Locale = DEFAULT_LOCALE): readonly StencilPart[] {
+  return [...PARTS, ...CONTROLS].map(part => inWords(part, locale));
 }
 
 /** One part's drawing, on its 24 by 24 grid, or nothing for an unknown name. */

@@ -89,12 +89,15 @@ const ASSETS = ${JSON.stringify(resolve(base))};
 const FONTS = ${JSON.stringify(fonts)};
 
 import { joinPath, parseDocument, resolveDocument } from '@docpresenter/markdown';
-import { prepare, takeIn } from '@docpresenter/build';
+import { BUILD_MESSAGES, prepare, takeIn } from '@docpresenter/build';
 import { renderDocument } from '@docpresenter/markdown';
 import { renderPage } from '@docpresenter/build';
 import { measure, writePdf } from '@docpresenter/pdf';
-import { COMMIT_KEYS, COMMIT_KEY_LABEL, DEFAULT_SETTINGS, mountSheetView } from '@docpresenter/editor';
+import {
+  COMMIT_KEYS, commitKeyLabel, DEFAULT_SETTINGS, mountSheetView, starterResource,
+} from '@docpresenter/editor';
 import { drawMermaid } from '@docpresenter/editor/mermaid';
+import { askLocale, languageSelect, SHELL_MESSAGES, startingLocale } from '../tools/web-shell/locale.mjs';
 
 const FILES = ${JSON.stringify(files)};
 const IMAGES = ${JSON.stringify(images)};
@@ -119,7 +122,7 @@ const loader = {
 
 const render = source => {
   const doc = parseDocument(source);
-  return renderDocument(doc, resolveDocument(doc), { loader });
+  return renderDocument(doc, resolveDocument(doc, settings.locale), { loader });
 };
 
 const status = document.getElementById('status');
@@ -131,23 +134,24 @@ const KEY = 'docpresenter.commitKey';
 const stored = (() => {
   try { return localStorage.getItem(KEY); } catch { return null; }
 })();
+// 表示言語も同じく器が決めて渡す。初めて開いたときに一度だけ尋ね、この端末に覚える
+// （tools/web-shell/locale.mjs）。尋ねているあいだは、ブラウザの言語で描いておく。
+const start = startingLocale();
 let settings = {
   ...DEFAULT_SETTINGS,
   commitKey: COMMIT_KEYS.includes(stored) ? stored : DEFAULT_SETTINGS.commitKey,
+  locale: start.locale,
 };
+let t = SHELL_MESSAGES.in(settings.locale);
 
 // 新しい図表のファイルは、文書と同じ名前のフォルダに置く（docs/<文書名>/ の約束）。
 const NL = String.fromCharCode(10);
 let made = 0;
-const STARTER = {
-  table: ['| 見出し 1 | 見出し 2 |', '| -------- | -------- |', '|          |          |', ''].join(NL),
-  diagram: ['free {', '  a [ここに図形]', '}', '', 'layout {', '  a @ (40, 40) 160x60', '}', ''].join(NL),
-};
 const createResource = kind => {
   made += 1;
   const path = 'auth-design/' + (kind === 'table' ? 'table-' : 'diagram-')
     + made + (kind === 'table' ? '.table' : '.dgm');
-  return { path, text: STARTER[kind] };
+  return { path, text: starterResource(kind, settings.locale) };
 };
 
 const view = mountSheetView({
@@ -167,11 +171,13 @@ const view = mountSheetView({
   onChange: (edit, text) => {
     if (edit.path === undefined) document.getElementById('source').textContent = text;
     else FILES[inWorkspace(edit.path)] = text;
-    const where = edit.path === undefined ? '' : edit.path + ' の ';
-    say(where + edit.description + '　' + edit.span.start + '〜' + edit.span.end + ' バイトを書き換え', 'ok');
+    const where = edit.path === undefined ? '' : t('shell.editedIn', { path: edit.path });
+    say(t('shell.edited', {
+      where, description: edit.description, start: edit.span.start, end: edit.span.end,
+    }), 'ok');
   },
   onError: message => say(message, 'refused'),
-  decorate: page => { void drawMermaid(page); },
+  decorate: page => { void drawMermaid(page, settings.locale); },
 });
 document.getElementById('source').textContent = view.source;
 
@@ -182,7 +188,7 @@ const applyWidth = () => { side.hidden = narrow.matches && toggle.getAttribute('
 toggle.addEventListener('click', () => {
   const open = toggle.getAttribute('aria-expanded') === 'true';
   toggle.setAttribute('aria-expanded', String(!open));
-  toggle.textContent = open ? 'ソースを見る' : 'ソースを閉じる';
+  toggle.textContent = t(open ? 'shell.source.show' : 'shell.source.hide');
   applyWidth();
 });
 narrow.addEventListener('change', applyWidth);
@@ -311,13 +317,13 @@ const deliver = async (name, bytes) => {
   if (shell) {
     try {
       await shell.save({ filename: name, data: blob });
-      return '保存しました';
+      return t('shell.save.saved');
     } catch (error) {
       const code = error && error.code;
-      if (code === 'declined') return '保存はしていません';
+      if (code === 'declined') return t('shell.save.declined');
       // 器が保存を扱えないなら、こちらで保存しても同じように止められる。
       // 黙って何も起きないより、なぜ渡せないかを言う（P6）。
-      return '保存できませんでした（' + (code || 'unknown') + '）';
+      return t('shell.save.failed', { code: code || 'unknown' });
     }
   }
   const url = URL.createObjectURL(blob);
@@ -326,13 +332,13 @@ const deliver = async (name, bytes) => {
   link.download = name;
   link.click();
   setTimeout(() => URL.revokeObjectURL(url), 10000);
-  return 'ダウンロードしました';
+  return t('shell.save.downloaded');
 };
 
 const pdfButton = document.getElementById('make-pdf');
 pdfButton.addEventListener('click', async () => {
   pdfButton.disabled = true;
-  say('PDF を組んでいます…', 'ok');
+  say(t('shell.pdf.composing'), 'ok');
   // 画面の外に、印刷される姿のまま組ませる。編集画面には触らない。
   const stage = document.createElement('div');
   stage.style.cssText = 'position:absolute; left:-20000px; top:0; width:800px;';
@@ -340,7 +346,8 @@ pdfButton.addEventListener('click', async () => {
     const source = view.source;
     // 書き出しは CLI と同じ支度をする。取り込んだ文書を畳んでおかないと、採番も
     // 目次もしおりも、取り込んだ節をただ知らないまま出来上がる。
-    const ready = prepare(workspace, { path: ROOT, document: parseDocument(source), formats: ['pdf'] });
+    const ready = prepare(workspace, { path: ROOT, document: parseDocument(source), formats: ['pdf'] },
+      settings.locale);
     const doc = ready.document;
     // web 上の画像は、ここで一度だけ取り込む。CLI のビルドと同じ段取りである。
     const trouble = [];
@@ -358,11 +365,13 @@ pdfButton.addEventListener('click', async () => {
     stage.innerHTML = page.slice(open, page.lastIndexOf('</body>'));
     document.body.append(stage);
     // Mermaid は描き終わってから測る。測ってから描くと、図の場所が空白のまま組まれる。
-    await drawMermaid(stage);
+    await drawMermaid(stage, settings.locale);
 
     const raw = doc.frontmatter.raw;
-    const foot = [raw.document, raw.version && ('版 ' + raw.version)].filter(Boolean).join('　');
-    const measured = measure(stage, { foot, title: String(raw.title ?? '') });
+    const version = raw.version
+      && BUILD_MESSAGES.in(settings.locale)('build.foot.version', { version: String(raw.version) });
+    const foot = [raw.document, version].filter(Boolean).join('　');
+    const measured = measure(stage, { foot, title: String(raw.title ?? ''), locale: settings.locale });
     const { bytes, missing } = await writePdf(measured.plan, { fonts: FONT_SET, subset: alreadyCut });
 
     const handed = await deliver((raw.document ?? 'document') + '.pdf', bytes);
@@ -370,11 +379,11 @@ pdfButton.addEventListener('click', async () => {
     // P6: 出せなかった字は黙って消さない。同梱したのは標本のぶんだけである。
     const lost = [...new Set(missing.map(one => one.character))].join('');
     const unfetched = trouble.map(one => one.message).join('　');
-    say(measured.plan.pages.length + ' ページの PDF を作って' + handed
-      + (lost ? '　同梱フォントに無い字: ' + lost : '')
+    say(t('shell.pdf.made', { pages: measured.plan.pages.length, handed })
+      + (lost ? t('shell.pdf.missing', { characters: lost }) : '')
       + (unfetched ? '　' + unfetched : ''), lost || unfetched ? 'refused' : 'ok');
   } catch (error) {
-    say('PDF を作れませんでした: ' + error.message, 'refused');
+    say(t('shell.pdf.failed', { message: error.message }), 'refused');
   } finally {
     stage.remove();
     pdfButton.disabled = false;
@@ -385,7 +394,6 @@ const select = document.getElementById('commit-key');
 for (const key of COMMIT_KEYS) {
   const option = document.createElement('option');
   option.value = key;
-  option.textContent = COMMIT_KEY_LABEL[key];
   select.append(option);
 }
 select.value = settings.commitKey;
@@ -394,6 +402,31 @@ select.addEventListener('change', () => {
   view.configure(settings);
   try { localStorage.setItem(KEY, select.value); } catch { /* 使えなくても動く */ }
 });
+
+// --- 表示言語 -----------------------------------------------------------------
+//
+// 器の文言は data-text に名前を書いておき、言語が変わるたびに書き直す。
+// 編集画面のほうは configure に渡せば、開いている場所を保ったまま描き直す。
+const relabel = () => {
+  document.documentElement.lang = settings.locale;
+  document.title = t('shell.editor.title');
+  for (const node of document.querySelectorAll('[data-text]')) node.textContent = t(node.dataset.text);
+  toggle.textContent = t(toggle.getAttribute('aria-expanded') === 'true' ? 'shell.source.hide' : 'shell.source.show');
+  for (const option of select.options) option.textContent = commitKeyLabel(option.value, settings.locale);
+};
+const useLocale = locale => {
+  if (locale === settings.locale) return;
+  settings = { ...settings, locale };
+  t = SHELL_MESSAGES.in(locale);
+  view.configure(settings);
+  document.getElementById('source').textContent = view.source;
+  language.value = locale;
+  relabel();
+};
+const language = languageSelect(document, settings.locale, useLocale);
+document.getElementById('language').append(language);
+relabel();
+if (start.ask) void askLocale(document, start.locale).then(useLocale);
 `;
 
 mkdirSync('out', { recursive: true });
@@ -404,7 +437,7 @@ await bundle.write({ file: 'out/editor.js', format: 'iife' });
 
 writeFileSync('out/editor.html', `<!doctype html>
 <html lang="ja"><head><meta charset="utf-8">
-<title>DocPresenter — シート編集</title>
+<title>DocPresenter</title>
 <link rel="stylesheet" href="../themes/default/theme.css">
 <style>
   html, body { height: 100%; margin: 0; }
@@ -446,13 +479,14 @@ writeFileSync('out/editor.html', `<!doctype html>
 </style>
 </head><body>
 <div id="editor"></div>
-<button type="button" id="toggle-source" aria-expanded="false">ソースを見る</button>
+<button type="button" id="toggle-source" aria-expanded="false"></button>
 <aside id="side">
-  <h2>ソース（書き戻される内容）</h2>
-  <label class="setting">確定キー <select id="commit-key"></select></label>
-  <div class="setting"><button type="button" id="make-pdf">PDF を出す</button>
-    <span class="note">組版はこのブラウザで行います</span></div>
-  <div id="status">タブの操作がそのままバイト範囲の書き換えになる</div>
+  <h2 data-text="shell.source.heading"></h2>
+  <label class="setting"><span data-text="shell.commitKey"></span> <select id="commit-key"></select></label>
+  <label class="setting" id="language"><span data-text="shell.language"></span> </label>
+  <div class="setting"><button type="button" id="make-pdf" data-text="shell.pdf.make"></button>
+    <span class="note" data-text="shell.pdf.note"></span></div>
+  <div id="status" data-text="shell.status.start"></div>
   <pre id="source"></pre>
 </aside>
 <script src="editor.js"></script>

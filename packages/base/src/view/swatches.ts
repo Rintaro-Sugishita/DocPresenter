@@ -5,10 +5,17 @@
 // are the same control doing the same job, and three copies of it would drift
 // the way the two inline parsers did.
 
+import { DEFAULT_LOCALE, type Locale } from '../i18n.js';
+import { BASE_MESSAGES } from '../messages.js';
+
+/** A colour's name, looked up in the messages as `base.colour.<name>`. */
+export type ColourName = 'red' | 'blue' | 'green' | 'purple' | 'yellow' | 'grey';
+
 export interface SwatchRowOptions {
-  /** What the row sets, for the titles: 文字色, 塗り, … */
+  /** What the row sets, for the titles: 文字色, 塗り, … — already in the locale's language. */
   readonly label: string;
-  readonly swatches: readonly (readonly [string, string])[];
+  readonly swatches: readonly (readonly [string, ColourName])[];
+  readonly locale?: Locale | undefined;
   /** The colour the picker starts on. */
   readonly initial: string;
   readonly onPick: (colour: string) => void;
@@ -27,25 +34,27 @@ export interface SwatchRow {
  * to stand out; a palette of tasteful near-greys defeats the only thing it is
  * for. Anything else comes from the picker.
  */
-export const TEXT_SWATCHES: readonly (readonly [string, string])[] = [
-  ['#ff0000', '赤'], ['#0000ff', '青'], ['#00b400', '緑'], ['#8000ff', '紫'],
+export const TEXT_SWATCHES: readonly (readonly [string, ColourName])[] = [
+  ['#ff0000', 'red'], ['#0000ff', 'blue'], ['#00b400', 'green'], ['#8000ff', 'purple'],
 ];
 
 /** The same four hues, pale enough to read black text on. */
-export const FILL_SWATCHES: readonly (readonly [string, string])[] = [
-  ['#ffe0e0', '赤'], ['#e0e8ff', '青'], ['#e0f5e0', '緑'], ['#f0e0ff', '紫'],
-  ['#fdf0d5', '黄'], ['#eceef1', '灰'],
+export const FILL_SWATCHES: readonly (readonly [string, ColourName])[] = [
+  ['#ffe0e0', 'red'], ['#e0e8ff', 'blue'], ['#e0f5e0', 'green'], ['#f0e0ff', 'purple'],
+  ['#fdf0d5', 'yellow'], ['#eceef1', 'grey'],
 ];
 
 export function createSwatchRow(owner: Document, options: SwatchRowOptions): SwatchRow {
   const buttons: { colour: string; node: HTMLButtonElement }[] = [];
   const nodes: HTMLElement[] = [];
+  const t = BASE_MESSAGES.in(options.locale ?? DEFAULT_LOCALE);
+  const { label } = options;
 
   for (const [colour, name] of options.swatches) {
     const node = owner.createElement('button');
     node.type = 'button';
     node.className = options.className;
-    node.title = `${options.label}: ${name}`;
+    node.title = t('base.swatch.named', { label, name: t(`base.colour.${name}`) });
     node.style.setProperty('--swatch', colour);
     node.setAttribute('aria-pressed', 'false');
     // mousedown, not click: a click blurs the text box first, and the
@@ -61,7 +70,7 @@ export function createSwatchRow(owner: Document, options: SwatchRowOptions): Swa
   const picker = owner.createElement('input');
   picker.type = 'color';
   picker.className = `${options.className}-picker`;
-  picker.title = `${options.label}を選ぶ`;
+  picker.title = t('base.swatch.pick', { label });
   picker.value = options.initial;
   picker.addEventListener('mousedown', event => event.stopPropagation());
   picker.addEventListener('input', () => options.onPick(picker.value));
@@ -70,8 +79,8 @@ export function createSwatchRow(owner: Document, options: SwatchRowOptions): Swa
   const reset = owner.createElement('button');
   reset.type = 'button';
   reset.className = `${options.className}-reset`;
-  reset.textContent = '解除';
-  reset.title = `${options.label}を外す`;
+  reset.textContent = t('base.swatch.reset');
+  reset.title = t('base.swatch.resetTitle', { label });
   reset.addEventListener('mousedown', event => {
     event.preventDefault();
     options.onReset();

@@ -8,6 +8,8 @@
 
 import { inlineStateAt, type InlineMark, type InlineState } from '../inline.js';
 import { createSwatchRow, TEXT_SWATCHES, type SwatchRow } from './swatches.js';
+import { DEFAULT_LOCALE, type Locale } from '../i18n.js';
+import { BASE_MESSAGES } from '../messages.js';
 
 export interface Toolbar {
   readonly element: HTMLElement;
@@ -18,8 +20,9 @@ export interface Toolbar {
 export { TEXT_SWATCHES as SWATCHES };
 
 export function createToolbar(
-  owner: Document, apply: (mark: InlineMark) => void,
+  owner: Document, apply: (mark: InlineMark) => void, locale: Locale = DEFAULT_LOCALE,
 ): Toolbar {
+  const t = BASE_MESSAGES.in(locale);
   const bar = owner.createElement('div');
   bar.className = 'dp-format-bar';
   bar.setAttribute('role', 'toolbar');
@@ -41,9 +44,9 @@ export function createToolbar(
     bar.append(button);
   };
 
-  add('bold', 'B', '太字（Ctrl+B）', 'dp-format-bold');
-  add('italic', 'I', '斜体（Ctrl+I）', 'dp-format-italic');
-  add('code', '</>', 'コード', 'dp-format-code');
+  add('bold', 'B', t('base.format.bold'), 'dp-format-bold');
+  add('italic', 'I', t('base.format.italic'), 'dp-format-italic');
+  add('code', '</>', t('base.format.code'), 'dp-format-code');
 
   const divider = owner.createElement('span');
   divider.className = 'dp-format-divider';
@@ -51,7 +54,8 @@ export function createToolbar(
 
   let colour: string | undefined;
   const swatches: SwatchRow = createSwatchRow(owner, {
-    label: '文字色',
+    label: t('base.format.colour'),
+    locale,
     swatches: TEXT_SWATCHES,
     initial: '#ff0000',
     className: 'dp-format-swatch',

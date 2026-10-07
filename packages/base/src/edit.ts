@@ -6,6 +6,7 @@
 import { replaceBytes } from './bytes.js';
 import { lineEndingOf, withLineEnding } from './line-ending.js';
 import type { ByteSpan } from './span.js';
+import { DEFAULT_LOCALE, say, type Locale, type Phrase } from './i18n.js';
 
 export interface Edit {
   /** The bytes to replace. An empty range inserts. */
@@ -13,6 +14,12 @@ export interface Edit {
   readonly text: string;
   /** What the author asked for, for the undo stack and the commit message. */
   readonly description: string;
+  /**
+   * The description as a phrase, when the code that made the edit had no
+   * locale to hand. `description` is its Japanese; the view puts it into the
+   * author's language with `localizeEdit` before the edit leaves it.
+   */
+  readonly phrase?: Phrase | undefined;
   /**
    * The referenced file the range belongs to, relative to the document.
    * Absent means the document itself. A diagram and a table live in their own
@@ -35,4 +42,14 @@ export function applyEdit(source: string, edit: Edit): string {
 
 export function applyEdits(source: string, edits: readonly Edit[]): string {
   return edits.reduce(applyEdit, source);
+}
+
+/** A description and the phrase it came from, for code that makes edits. */
+export function described(phrase: Phrase): { description: string; phrase: Phrase } {
+  return { description: say(DEFAULT_LOCALE, phrase), phrase };
+}
+
+/** The edit with its description in the author's language. */
+export function localizeEdit<E extends Edit>(edit: E, locale: Locale): E {
+  return edit.phrase ? { ...edit, description: say(locale, edit.phrase) } : edit;
 }

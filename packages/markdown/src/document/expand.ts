@@ -17,6 +17,8 @@ import { joinPath } from '../html/path.js';
 import { isAddress } from '../html/render.js';
 import { parseDocument } from './parse.js';
 import type { Block, DocumentFile, Import } from './model.js';
+import { DEFAULT_LOCALE, describeError, type Locale } from '@docpresenter/base';
+import { MARKDOWN_MESSAGES } from '../messages.js';
 
 /** Reads a file by its workspace-relative path. */
 export type DocumentReader = (path: string) => string | undefined;
@@ -40,8 +42,9 @@ export interface ExpansionDiagnostic {
 const DOCUMENT = /\.md$/i;
 
 export function expandDocument(
-  root: DocumentFile, rootPath: string, read: DocumentReader,
+  root: DocumentFile, rootPath: string, read: DocumentReader, locale: Locale = DEFAULT_LOCALE,
 ): Expansion {
+  const t = MARKDOWN_MESSAGES.in(locale);
   const documents: string[] = [rootPath];
   const diagnostics: ExpansionDiagnostic[] = [];
 
@@ -67,7 +70,7 @@ export function expandDocument(
       if (open.includes(target)) {
         diagnostics.push({
           severity: 'error', path,
-          message: `参照が循環している: ${[...open, target].join(' → ')}`,
+          message: t('markdown.cycle', { chain: [...open, target].join(' → ') }),
           span: block.span,
         });
         continue;
@@ -76,7 +79,7 @@ export function expandDocument(
       if (source === undefined) {
         diagnostics.push({
           severity: 'error', path,
-          message: `参照先が見つからない: ${target}`,
+          message: t('markdown.missing', { target }),
           span: block.span,
         });
         continue;
@@ -87,7 +90,7 @@ export function expandDocument(
       } catch (error) {
         diagnostics.push({
           severity: 'error', path,
-          message: `${target} を読めない: ${error instanceof Error ? error.message : String(error)}`,
+          message: t('markdown.unreadable', { target, message: describeError(error, locale) }),
           span: block.span,
         });
         continue;

@@ -2,7 +2,8 @@
 // @import directive, labels on headings, `@label` references and `---`.
 
 import { parse as parseYaml } from 'yaml';
-import { byteLength } from '@docpresenter/base';
+import { byteLength, LocalizedError, type Phrase } from '@docpresenter/base';
+import { md } from '../messages.js';
 import type {
   Block, ByteSpan, DocumentFile, Frontmatter, Import, Reference,
 } from './model.js';
@@ -17,9 +18,9 @@ const IMAGE_IMPORT = /^!\[([^\]]*)\]\(([^)]+)\)\s*(?:\{(.*)\})?\s*$/;
 /** The line that opens or closes a fenced code block, as CommonMark has it. */
 const FENCE = /^ {0,3}(`{3,}|~{3,})(.*)$/;
 
-export class DocumentParseError extends Error {
-  constructor(message: string, readonly line: number) {
-    super(`${message}（${line} 行目）`);
+export class DocumentParseError extends LocalizedError {
+  constructor(message: Phrase, readonly line: number) {
+    super({ id: 'base.atLine', params: { message, line } });
     this.name = 'DocumentParseError';
   }
 }
@@ -86,9 +87,7 @@ export function parseDocument(source: string): DocumentFile {
       // CommonMark reads `---` under a non-blank line as a setext heading.
       const previous = i > 0 ? (lines[i - 1] ?? '').trim() : '';
       if (previous !== '') {
-        throw new DocumentParseError(
-          '`---` の前には空行が必要（setext 見出しと区別できないため）', i + 1,
-        );
+        throw new DocumentParseError(md('markdown.parse.separatorNeedsBlank'), i + 1);
       }
       flushProse(i);
       blocks.push({ kind: 'separator', span: spanOfLines(i, i) });
@@ -134,7 +133,7 @@ function readFrontmatter(
   for (let i = 1; i < lines.length; i++) {
     if ((lines[i] ?? '').trim() === '---') { end = i; break; }
   }
-  if (end < 0) throw new DocumentParseError('frontmatter が閉じられていない', 1);
+  if (end < 0) throw new DocumentParseError(md('markdown.parse.unclosedFrontmatter'), 1);
 
   // The lines come without the CR of a CRLF file, which the YAML reader would
   // take for part of the value.

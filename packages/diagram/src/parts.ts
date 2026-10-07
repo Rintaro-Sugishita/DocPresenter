@@ -14,6 +14,8 @@ import {
   DEFAULT_LIBRARY, DEFAULT_PARTS, ICON_LIBRARY, iconParts,
 } from './default-parts.js';
 import { DiagramParseError, notationOf, parseDiagram } from './parse.js';
+import { DIAGRAM_MESSAGES, dgm } from './messages.js';
+import { DEFAULT_LOCALE, type Locale } from '@docpresenter/base';
 import type { DiagramFile, Node, Part, Placement, ShapeKind } from './model.js';
 
 /** Reads a file named by a `use` line, as written in the drawing. */
@@ -35,14 +37,14 @@ export function partsOf(diagram: DiagramFile, read: PartReader): ReadonlyMap<str
   const gather = (file: DiagramFile): void => {
     for (const path of file.uses) {
       if (open.includes(path)) {
-        throw new DiagramParseError(`部品の参照が循環している: ${[...open, path].join(' → ')}`, 1);
+        throw new DiagramParseError(dgm('diagram.parts.cycle', { path: [...open, path].join(' → ') }), 1);
       }
       // `use "default"` names the set shipped with the tool. It is not a file,
       // so nothing is read for it and it is there in every shell.
       const source = path === DEFAULT_LIBRARY ? DEFAULT_PARTS
         : path === ICON_LIBRARY ? iconParts()
           : read(path);
-      if (source === undefined) throw new DiagramParseError(`部品の定義が読めない: ${path}`, 1);
+      if (source === undefined) throw new DiagramParseError(dgm('diagram.parts.unreadable', { path }), 1);
       open.push(path);
       gather(parseDiagram(source));
       open.pop();
@@ -81,7 +83,7 @@ export function withParts(diagram: DiagramFile, read: PartReader): DiagramFile {
     // A name nobody declared is a typo, and a typo that draws a plain box is a
     // typo nobody finds. The whole figure says it cannot be read, which is what
     // every other unreadable line in this format does.
-    if (!part) throw new DiagramParseError(`部品が見つからない: ${name}（${node.id}）`, 1);
+    if (!part) throw new DiagramParseError(dgm('diagram.parts.missing', { name, id: node.id }), 1);
     return { ...node, shape: part.shape };
   });
 
@@ -147,7 +149,9 @@ const COLUMN = 14;
  * wants from the page anyway, and it keeps the question of what a part looks
  * like answered by the same renderer that draws the screens.
  */
-export function specimenOf(library: DiagramFile, read: PartReader = () => undefined): DiagramFile {
+export function specimenOf(
+  library: DiagramFile, read: PartReader = () => undefined, locale: Locale = DEFAULT_LOCALE,
+): DiagramFile {
   // Everything this library offers, not only what it declares. A set built on
   // another is mostly what it inherited, and a reader asking "what can I use
   // here" means all of it.
@@ -196,7 +200,7 @@ export function specimenOf(library: DiagramFile, read: PartReader = () => undefi
 
     const left = ROW.name + ROW.gap + ROW.written + ROW.gap;
     nodes.push({
-      id: part.name, text: sampleOf(part.name, part.shape), shape: part.shape,
+      id: part.name, text: sampleOf(part.name, part.shape, locale), shape: part.shape,
       className: undefined, children: [], items: [], span,
     });
     // Centred in its row rather than sitting at the top of it: a part shorter
@@ -224,12 +228,13 @@ export function specimenOf(library: DiagramFile, read: PartReader = () => undefi
  * The parts that hold nothing come first: a checkbox is 16 pixels square, and a
  * sample sentence in it is not a sample of anything.
  */
-function sampleOf(name: string, shape: ShapeKind): string {
+function sampleOf(name: string, shape: ShapeKind, locale: Locale): string {
+  const t = DIAGRAM_MESSAGES.in(locale);
   // A line holds no words at all, so a sample sentence in one is not a sample.
   if (shape === 'line') return '';
   if (/check|radio|frame|banner|alert|panel|icon|scroll|slider|image|net-|ui-/.test(name)) return '';
   if (/^required$/.test(name)) return '*';
-  if (/button|primary|secondary|danger/.test(name)) return 'ボタン';
-  if (/box|field|input|area|select|spinner/.test(name)) return '入力された文字';
-  return 'テキスト';
+  if (/button|primary|secondary|danger/.test(name)) return t('diagram.parts.sampleButton');
+  if (/box|field|input|area|select|spinner/.test(name)) return t('diagram.parts.sampleInput');
+  return t('diagram.parts.sampleText');
 }

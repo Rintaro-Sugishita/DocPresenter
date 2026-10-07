@@ -147,6 +147,9 @@ export const commands = {
 
 export const Disposable = { from: () => ({ dispose: () => undefined }) };
 
+/** VS Code's display language. Japanese, as the tests read; a test may change it. */
+export const env = { language: 'ja', openExternal: async () => true };
+
 /** Sets up a workspace for one test. */
 export function give(files: Readonly<Record<string, string>>, config: Record<string, unknown> = {}): void {
   held.clear(); written.clear(); open.clear(); saved.length = 0; shown.length = 0;

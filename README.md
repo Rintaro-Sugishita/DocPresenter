@@ -9,7 +9,7 @@ Git の差分がレビューになる設計書のための道具。文章は Mar
 
 | パッケージ | 中身 | 単独公開 |
 |---|---|:--:|
-| `packages/base` | バイト範囲・編集・inline 記法・共通 UI 部品 | 土台 |
+| `packages/base` | バイト範囲・編集・inline 記法・共通 UI 部品・表示言語の仕組み（日英） | 土台 |
 | `packages/diagram` | 作図：記法・レイアウト・SVG 描画・部品ライブラリ・キャンバス GUI | **する** |
 | `packages/markdown` | 文書エンジン：Markdown・表・採番・HTML 描画（画面を持たない） | **する** |
 | `packages/pdf` | PDF：ページ計画・組版済み DOM の読み取り・改ページ・書き出し | 製品の一部 |
@@ -48,6 +48,21 @@ node tools/build-vscode.mjs        # VS Code 拡張             → packages/app
 node tools/check-spec.mjs          # 仕様と実装が一致しているか
 for f in tools/check-*.mjs; do node "$f"; done   # 全検証（上の 3 つを先に走らせておく）
 ```
+
+## 表示言語
+
+UI は日本語と英語。[決め方は決定事項 §9.4](design/decisions.md)。
+
+- **VS Code** — VS Code の表示言語に従う（日本語以外は英語）。
+- **Web 版**（`out/editor.html`・`out/canvas-app.html`）— 初めて開いたときに一度だけ尋ね、この端末に覚える。
+  設定パネルの「表示言語 / Language」で変えられる。`?lang=en` を付けるとその回だけ英語で開く。
+- **CLI** — `node tools/build.mjs --lang en`。無ければこの機械の言語設定から決める。
+
+表紙の見出し・目次・「図 1 / Figure 1」など**成果物に入る文言も、ビルドした人の言語になる**。
+CI で成果物の言語を揃えたいときは `--lang` で固定する。
+
+文言を足すときは、そのパッケージの `src/messages.ts` に日本語と英語を並べて書く。
+英語が抜けていればテスト（`checkMessages`）が落ちる。
 
 ## VS Code で使う
 

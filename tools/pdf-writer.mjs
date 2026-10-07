@@ -8,7 +8,7 @@ import { existsSync, readFileSync, mkdirSync, writeFileSync } from 'node:fs';
 import { platform } from 'node:process';
 import { chromium } from 'playwright-core';
 import { rolldown } from 'rolldown';
-import { renderPage } from '../packages/build/dist/index.js';
+import { BUILD_MESSAGES, renderPage } from '../packages/build/dist/index.js';
 import { createRequire } from 'node:module';
 import { createSubsetter, writePdf } from '../packages/pdf/dist/index.js';
 
@@ -215,10 +215,13 @@ export async function createPdfWriter(options = {}) {
     const title = String(input.root.document.frontmatter.raw.title ?? '');
     const number = String(input.root.document.frontmatter.raw.document ?? '');
     const version = String(input.root.document.frontmatter.raw.version ?? '');
+    const { locale } = input.prepared.resolved;
+    const versioned = version && BUILD_MESSAGES.in(locale)('build.foot.version', { version });
     const measured = await page.evaluate(
-      ([foot, name, commit]) => window.__dpMeasure(document.body, { foot, title: name, commit }),
-      [[number, title, version && `版 ${version}`].filter(Boolean).join('　'), title,
-        input.options.commit ?? ''],
+      ([foot, name, commit, language]) =>
+        window.__dpMeasure(document.body, { foot, title: name, commit, locale: language }),
+      [[number, title, versioned].filter(Boolean).join('　'), title,
+        input.options.commit ?? '', locale],
     );
     await page.close();
     if (errors.length) throw new Error(errors.join(' / '));
