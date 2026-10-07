@@ -65,6 +65,21 @@ export const VSCODE_MESSAGES = defineMessages({
   'vscode.init.kept': '既にある {count} 個はそのままです（{paths}）',
   'vscode.init.join': '。',
   'vscode.init.list': '・',
+
+  // --- reading a deck back ------------------------------------------------------------
+  'vscode.back.title': 'DocPresenter: PPTX の修正を図に読み戻す',
+  'vscode.back.pick': '読み戻す',
+  'vscode.back.reading': '{deck} を読み戻します',
+  'vscode.back.unchanged': '{path}　変更なし',
+  'vscode.back.join': '、',
+  'vscode.back.list': '・',
+  'vscode.back.sentence': '。',
+  'vscode.back.nothing': 'この PPTX には、図に読み戻す変更がありません',
+  'vscode.back.nothingButWarnings': '読み戻す変更はありませんでしたが、読めなかったものがあります（出力パネルに理由）',
+  'vscode.back.choose': '書き戻す図を選んでください（変わる行は出力パネルにあります）',
+  'vscode.back.done': '{count} 個の図に書き戻しました',
+  'vscode.back.stale': '{paths} は読んだあとで変わっていたので、書き戻していません',
+  'vscode.back.warnings': '読み戻せなかったものが {count} 件あります（出力パネルに理由）',
 }, {
   'vscode.noFolder': 'Open a folder first',
   'vscode.noDocument': 'There is no document to open',
@@ -120,6 +135,20 @@ export const VSCODE_MESSAGES = defineMessages({
   'vscode.init.kept': p => `Left ${p['count']} existing ${p['count'] === '1' ? 'file' : 'files'} as they were (${p['paths']})`,
   'vscode.init.join': '. ',
   'vscode.init.list': ', ',
+
+  'vscode.back.title': 'DocPresenter: Read PPTX Changes Back into the Diagrams',
+  'vscode.back.pick': 'Read back',
+  'vscode.back.reading': 'Reading {deck} back',
+  'vscode.back.unchanged': '{path}  no change',
+  'vscode.back.join': ', ',
+  'vscode.back.list': ', ',
+  'vscode.back.sentence': '. ',
+  'vscode.back.nothing': 'This PPTX has no changes to read back into the diagrams',
+  'vscode.back.nothingButWarnings': 'There was nothing to read back, but some things could not be read (see the Output panel)',
+  'vscode.back.choose': 'Choose the diagrams to write (the changed lines are in the Output panel)',
+  'vscode.back.done': p => `Wrote ${p['count']} diagram${p['count'] === '1' ? '' : 's'} back`,
+  'vscode.back.stale': '{paths} changed after it was read, so it was not written',
+  'vscode.back.warnings': p => `${p['count']} thing${p['count'] === '1' ? '' : 's'} could not be read back (see the Output panel)`,
 });
 
 export type VscodeMessage = (typeof VSCODE_MESSAGES.ids)[number];

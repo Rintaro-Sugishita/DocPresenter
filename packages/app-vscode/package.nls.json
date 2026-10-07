@@ -8,6 +8,7 @@
   "command.exportHtml.title": "DocPresenter: Export This Document as HTML",
   "command.exportPdf.title": "DocPresenter: Export This Document as PDF",
   "command.exportPptx.title": "DocPresenter: Export This Document as PPTX",
+  "command.readBackPptx.title": "DocPresenter: Read PPTX Changes Back into the Diagrams…",
   "config.commitKey.description": "The key that commits the open block. Every other Enter breaks the line.",
   "config.commitKey.ctrl-enter": "Ctrl+Enter commits / Enter breaks the line",
   "config.commitKey.enter": "Enter commits / Shift+Enter breaks the line",

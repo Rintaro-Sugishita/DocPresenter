@@ -7,6 +7,7 @@
 import * as vscode from 'vscode';
 import { exportAll, FORMAT_LABEL } from './export-command.js';
 import { initWorkspace } from './init-command.js';
+import { readBackDeck } from './pptx-back-command.js';
 import { t } from './l10n.js';
 import type { ExportFormat } from './protocol.js';
 import { SheetEditorProvider } from './sheet-editor.js';
@@ -60,6 +61,9 @@ export function activate(context: vscode.ExtensionContext): void {
     }),
     // The recommended folders, a first document, and the guide an agent writes by.
     vscode.commands.registerCommand('docpresenter.init', () => initWorkspace(context)),
+    // A deck edited in PowerPoint, read back into the drawings it came from.
+    // The explorer's menu hands over the deck that was right-clicked.
+    vscode.commands.registerCommand('docpresenter.readBackPptx', (uri?: vscode.Uri) => readBackDeck(output, uri)),
   );
 }
 

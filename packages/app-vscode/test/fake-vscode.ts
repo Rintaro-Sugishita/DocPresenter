@@ -45,6 +45,11 @@ export const held = new Map<string, string>();
 /** Files written through `fs.writeFile` rather than through an edit. */
 export const written = new Map<string, Uint8Array>();
 export const saved: string[] = [];
+/** How the dialogs answer, for a test that drives a command. */
+export const picks: {
+  dialog?: Uri[] | undefined;
+  quick?: (<T>(items: readonly T[]) => T[] | undefined | Promise<T[] | undefined>) | undefined;
+} = {};
 export const shown: string[] = [];
 
 export class TextDocument {
@@ -98,6 +103,9 @@ export const workspace = {
   },
   fs: {
     readFile: async (uri: Uri) => {
+      // A binary — a deck — is held as the bytes that were written.
+      const bytes = written.get(relative(uri));
+      if (bytes && !held.has(relative(uri))) return bytes;
       const text = held.get(relative(uri));
       if (text === undefined) throw new Error(`no such file: ${relative(uri)}`);
       return new TextEncoder().encode(text);
@@ -147,6 +155,11 @@ export const window = {
   showErrorMessage: (message: string) => { shown.push(message); },
   showWarningMessage: (message: string) => { shown.push(message); },
   showInformationMessage: (message: string) => { shown.push(message); },
+  /** What the next file dialog answers. */
+  showOpenDialog: async () => picks.dialog,
+  /** Picks what the test said to, or every item that was offered as picked. */
+  showQuickPick: async <T extends { picked?: boolean }>(items: readonly T[]) =>
+    picks.quick ? await picks.quick(items) : items.filter(item => item.picked),
   createOutputChannel: () => ({
     lines: [] as string[],
     clear() { this.lines.length = 0; },
@@ -169,6 +182,7 @@ export const env = { language: 'ja', openExternal: async () => true };
 /** Sets up a workspace for one test. */
 export function give(files: Readonly<Record<string, string>>, config: Record<string, unknown> = {}): void {
   held.clear(); written.clear(); open.clear(); saved.length = 0; shown.length = 0;
+  picks.dialog = undefined; picks.quick = undefined;
   changed.length = 0; configured.length = 0;
   configuration = config;
   for (const [path, text] of Object.entries(files)) held.set(path, text);

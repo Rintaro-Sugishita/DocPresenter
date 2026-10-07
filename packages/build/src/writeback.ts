@@ -72,6 +72,12 @@ export function writeBack(pptx: Uint8Array, workspace: Workspace, locale: Locale
       continue;
     }
 
+    // Where the slide drew each shape: the layout of the file the deck was
+    // built from. Taken before any label is written back — a shorter label
+    // lays out narrower and shifts its neighbours, and comparing the slide
+    // with *that* would pin every shape the author never touched.
+    const drawn = layOutDiagram(file);
+
     let text = measured;
     let written = source;
     const changes: string[] = [];
@@ -113,7 +119,7 @@ export function writeBack(pptx: Uint8Array, workspace: Workspace, locale: Locale
     // with where it was drawn, and only what moved becomes a pin — pinning
     // everything would turn a computed drawing into a hand-placed one, which
     // is the opposite of what the layout layer is for.
-    const laid = layOutDiagram(file);
+    const laid = drawn;
     const pins = new Map<string, Pin>();
     for (const shape of drawing.shapes) {
       const node = file.nodes.find(one => one.id === shape.id);
