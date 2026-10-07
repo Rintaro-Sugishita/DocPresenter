@@ -8,7 +8,8 @@
 // its own copy.
 
 import type { Callout, DiagramFile } from '../model.js';
-import type { Edit } from '@docpresenter/base';
+import { DEFAULT_LOCALE, type Edit, type Locale } from '@docpresenter/base';
+import { DIAGRAM_MESSAGES } from '../messages.js';
 import { moveCallout } from '../edits.js';
 
 const STEP = 4;
@@ -29,6 +30,8 @@ export interface OverlayEditorOptions {
   readonly showSource: () => void;
   readonly close: () => void;
   readonly onError?: (message: string) => void;
+  /** Which language the bar speaks. */
+  readonly locale?: Locale | undefined;
 }
 
 export interface OverlayEditor {
@@ -37,6 +40,7 @@ export interface OverlayEditor {
 
 export function createOverlayEditor(options: OverlayEditorOptions): OverlayEditor {
   const { owner, file, source, host } = options;
+  const t = DIAGRAM_MESSAGES.in(options.locale ?? DEFAULT_LOCALE);
   const stage = host.querySelector<HTMLElement>('.dp-overlay');
   // Pressing inside belongs to this editor, not to the page behind it.
   host.classList.add('dp-canvas-host');
@@ -78,7 +82,7 @@ export function createOverlayEditor(options: OverlayEditorOptions): OverlayEdito
     if (!where) return;
     const at = selected === undefined ? undefined : byMarker.get(selected);
     where.textContent = at === undefined
-      ? '注釈を選ぶ'
+      ? t('diagram.overlayEditor.pickCallout')
       : `${at.marker}  ${at.x}, ${at.y} → ${at.targetX}, ${at.targetY}`;
   }
 
@@ -235,11 +239,11 @@ export function createOverlayEditor(options: OverlayEditorOptions): OverlayEdito
       });
       node.append(button);
     };
-    add('ソース', '.dgm のソースを直接編集する', () => options.showSource());
+    add(t('diagram.canvas.source'), t('diagram.canvas.sourceTitle'), () => options.showSource());
 
     const hint = owner.createElement('span');
     hint.className = 'dp-canvas-hint';
-    hint.textContent = '丸をドラッグで移動 / 先端の点で指す位置 / 矢印キーで微調整';
+    hint.textContent = t('diagram.overlayEditor.hint');
     node.append(hint);
     return node;
   }

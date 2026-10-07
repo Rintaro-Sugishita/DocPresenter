@@ -2,7 +2,8 @@
 // markers, so the only departures from standard markdown are `^` and `<` and
 // the block references.
 
-import { byteLength, lineEndingOf } from '@docpresenter/base';
+import { byteLength, lineEndingOf, LocalizedError, type Phrase } from '@docpresenter/base';
+import { md } from '../messages.js';
 import type {
   Align, Cell, Column, GridLine, NamedRange, Row, Selector, StyleBlock, StyleRule, TableFile,
 } from './model.js';
@@ -12,9 +13,9 @@ const MERGE_UP = '^';
 /** Merge with the cell to the left. */
 const MERGE_LEFT = '<';
 
-export class TableParseError extends Error {
-  constructor(message: string, readonly line: number) {
-    super(`${message}（${line} 行目）`);
+export class TableParseError extends LocalizedError {
+  constructor(message: Phrase, readonly line: number) {
+    super({ id: 'base.atLine', params: { message, line } });
     this.name = 'TableParseError';
   }
 }
@@ -64,7 +65,7 @@ export function parseTable(source: string): TableFile {
     if (!text.startsWith('|')) break;
     gridLines.push({ text, line: i + 1, grid: spanOfLine(i) });
   }
-  if (gridLines.length < 2) throw new TableParseError('表のグリッドが見つからない', i + 1);
+  if (gridLines.length < 2) throw new TableParseError(md('markdown.table.noGrid'), i + 1);
 
   // Remaining sections.
   for (; i < lines.length; i++) {
@@ -113,7 +114,7 @@ export function parseTable(source: string): TableFile {
       continue;
     }
 
-    throw new TableParseError(`解釈できない行: ${text}`, i + 1);
+    throw new TableParseError(md('markdown.table.unreadableLine', { text }), i + 1);
   }
 
   const { columns, rows } = parseGrid(gridLines);
@@ -160,7 +161,7 @@ function parseGrid(
   const headerCells = splitRow(gridLines[0]!.text);
   const delimiter = splitRow(gridLines[1]!.text);
   if (!delimiter.every(d => /^:?-+:?$/.test(d))) {
-    throw new TableParseError('区切り行が正しくない', gridLines[1]!.line);
+    throw new TableParseError(md('markdown.table.badDelimiter'), gridLines[1]!.line);
   }
   const columns: Column[] = headerCells.map((header, c) => ({
     header,
@@ -184,7 +185,7 @@ function parseGrid(
 
       if (text === MERGE_UP) {
         const owner = spanningFromAbove[c];
-        if (!owner) throw new TableParseError(`'${MERGE_UP}' の上に結合できるセルがない（${c + 1} 列目）`, grid.line);
+        if (!owner) throw new TableParseError(md('markdown.table.noCellAbove', { mark: MERGE_UP, column: c + 1 }), grid.line);
         if (!extendedThisRow.has(owner)) {
           owner.rowspan++;
           extendedThisRow.add(owner);
@@ -196,7 +197,7 @@ function parseGrid(
         // spanning down from above — which is what a block merged downwards
         // and then rightwards looks like.
         const owner = lastStarted ?? spanningFromAbove[c - 1];
-        if (!owner) throw new TableParseError(`'${MERGE_LEFT}' の左に結合できるセルがない（${c + 1} 列目）`, grid.line);
+        if (!owner) throw new TableParseError(md('markdown.table.noCellLeft', { mark: MERGE_LEFT, column: c + 1 }), grid.line);
         // Only the row the cell starts on decides how wide it is; a later row
         // merely records that the position is covered.
         if (owner.row === r) owner.colspan++;

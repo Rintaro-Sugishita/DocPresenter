@@ -41,7 +41,7 @@ export const EDITOR_STYLE = `
 .dp-append:hover { min-height: 1.8em; }
 .dp-sheet > .dp-append:last-child { min-height: 1.8em; padding: 0.5em 0; }
 .dp-append-hint { flex: 0 0 auto; }
-.dp-append:hover .dp-append-hint:empty::before { content: "ここに本文を書く"; }
+.dp-append:hover .dp-append-hint:empty::before { content: attr(data-hint); }
 .dp-sheet-empty .dp-append { color: #8b929c; min-height: 3em; }
 /* The buttons are quiet until the pointer is near; the sheet is for reading. */
 .dp-append-add {

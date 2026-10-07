@@ -6,10 +6,11 @@
 // `WorkspaceEdit`. Nothing here knows what a `vscode` is — the import list
 // says so — which is the same contract the web shell is built against.
 
-import { toLf } from '@docpresenter/base';
+import { isLocale, toLf } from '@docpresenter/base';
+import { VSCODE_MESSAGES } from '../messages.js';
 import { joinPath, parseDocument, renderDocument, resolveDocument } from '@docpresenter/markdown';
 import {
-  DEFAULT_SETTINGS, mountSheetView,
+  DEFAULT_SETTINGS, mountSheetView, starterResource,
   type EditorSettings, type Picture, type ResourceKind, type SheetView,
 } from '@docpresenter/editor';
 import { drawMermaid } from '@docpresenter/editor/mermaid';
@@ -31,10 +32,6 @@ let settings: EditorSettings = DEFAULT_SETTINGS;
 let drawingOnly = false;
 let view: SheetView | undefined;
 
-const STARTER: Readonly<Record<ResourceKind, string>> = {
-  table: '| 見出し 1 | 見出し 2 |\n| -------- | -------- |\n|          |          |\n',
-  diagram: 'free {\n  a [ここに図形]\n}\n\nlayout {\n  a @ (40, 40) 160x60\n}\n',
-};
 
 const here = (written: string): string => inWorkspace(documentPath, written);
 
@@ -46,7 +43,7 @@ const loader = {
 
 const render = (text: string): string => {
   const doc = parseDocument(text);
-  return renderDocument(doc, resolveDocument(doc), { loader });
+  return renderDocument(doc, resolveDocument(doc, settings.locale), { loader });
 };
 
 /**
@@ -76,7 +73,7 @@ function mount(): void {
       const extension = kind === 'table' ? 'table' : 'dgm';
       const path = freeName(resourceFolder(documentPath), kind === 'table' ? 'table' : 'diagram',
         extension, new Set(Object.keys(files)));
-      const text = STARTER[kind];
+      const text = starterResource(kind, settings.locale);
       // Held here as well as written to disk: the sheet is drawn from this
       // map the moment the import line lands, and the write is a round trip.
       files[path] = text;
@@ -100,7 +97,7 @@ function mount(): void {
         // The one-line document a drawing is shown in is not a file. Whatever
         // was done to it is undone, once the editor has finished doing it.
         setTimeout(mount, 0);
-        send({ kind: 'error', message: '図だけを開いているので、ここに本文は書けません（図を押すと編集できます）' });
+        send({ kind: 'error', message: VSCODE_MESSAGES.in(settings.locale)('vscode.drawingOnly') });
         return;
       }
       if (edit.path === undefined) {
@@ -115,7 +112,7 @@ function mount(): void {
       });
     },
     onError: message => send({ kind: 'error', message }),
-    decorate: page => { void drawMermaid(page); },
+    decorate: page => { void drawMermaid(page, settings.locale); },
   });
   if (at > 0) view.select(at);
 }
@@ -130,7 +127,10 @@ window.addEventListener('message', (event: MessageEvent<ToView>) => {
     drawingOnly = message.diagram === true;
     files = Object.fromEntries(Object.entries(message.files).map(([path, text]) => [path, toLf(text)]));
     images = { ...message.images };
-    settings = { commitKey: message.commitKey };
+    settings = {
+      commitKey: message.commitKey,
+      locale: isLocale(message.locale) ? message.locale : DEFAULT_SETTINGS.locale,
+    };
     mount();
     return;
   }
@@ -147,7 +147,7 @@ window.addEventListener('message', (event: MessageEvent<ToView>) => {
     return;
   }
   if (message.kind === 'settings') {
-    settings = { commitKey: message.commitKey };
+    settings = { ...settings, commitKey: message.commitKey };
     view?.configure(settings);
     return;
   }

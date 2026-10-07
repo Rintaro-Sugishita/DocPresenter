@@ -1,6 +1,7 @@
 // The document engine: Markdown with the marks this project adds, the tables
 // it imports, the numbering it resolves, and the HTML it renders. No screen.
 
+export * from './messages.js';
 export * from './table/model.js';
 export * from './table/parse.js';
 export * from './table/format.js';

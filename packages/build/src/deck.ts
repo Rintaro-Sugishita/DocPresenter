@@ -16,6 +16,8 @@ import {
 import { drawingOf, type Block, type Deck, type Slide, type TableCell } from '@docpresenter/pptx';
 import type { MermaidPicture } from './build.js';
 import { asLf, type Workspace } from './workspace.js';
+import { describeError } from '@docpresenter/base';
+import { BUILD_MESSAGES } from './messages.js';
 
 export interface DeckOptions {
   readonly workspace: Workspace;
@@ -72,11 +74,13 @@ function blockOf(
   if (block.kind !== 'import') return undefined;
 
   const source = asLf(options.workspace).read(block.path);
-  const caption = captionOf(block, byBlock);
+  const caption = captionOf(block, byBlock, options);
+  const { locale } = options.resolved;
+  const t = BUILD_MESSAGES.in(locale);
 
   if (/\.dgm$/i.test(block.path)) {
     if (source === undefined) {
-      diagnostics.push(`参照先が見つからない: ${block.path}`);
+      diagnostics.push(t('build.missing', { target: block.path }));
       return undefined;
     }
     try {
@@ -86,16 +90,16 @@ function blockOf(
       const drawing = withParts(parseDiagram(source),
         used => asLf(options.workspace).read(joinPath(block.path, used)));
       return drawingOf(drawing, {
-        diagnostics, source: block.path, ...(marks ? { marks } : {}),
+        diagnostics, locale, source: block.path, ...(marks ? { marks } : {}),
       });
     } catch (error) {
-      diagnostics.push(`${block.path} を読めない: ${error instanceof Error ? error.message : String(error)}`);
+      diagnostics.push(t('build.unreadableFile', { path: block.path, message: describeError(error, locale) }));
       return undefined;
     }
   }
   if (/\.table$/i.test(block.path)) {
     if (source === undefined) {
-      diagnostics.push(`参照先が見つからない: ${block.path}`);
+      diagnostics.push(t('build.missing', { target: block.path }));
       return undefined;
     }
     try {
@@ -105,19 +109,19 @@ function blockOf(
       const rows = block.attributes.get('rows');
       const chosen = rows === undefined ? whole : selectRows(whole, rows);
       if (!chosen) {
-        diagnostics.push(`名前付き範囲が見つからない: ${rows ?? ''}`);
+        diagnostics.push(t('build.missingRange', { rows: rows ?? '' }));
         return undefined;
       }
       return tableOf(chosen);
     } catch (error) {
-      diagnostics.push(`${block.path} を読めない: ${error instanceof Error ? error.message : String(error)}`);
+      diagnostics.push(t('build.unreadableFile', { path: block.path, message: describeError(error, locale) }));
       return undefined;
     }
   }
   if (/\.(png|jpe?g|gif)$/i.test(block.path)) {
     const data = options.workspace.dataUrl?.(block.path);
     if (data === undefined) {
-      diagnostics.push(`画像を読めない: ${block.path}`);
+      diagnostics.push(t('build.unreadableImage', { path: block.path }));
       return undefined;
     }
     // The slide sizes it; the proportions come from the file, which is not
@@ -127,21 +131,23 @@ function blockOf(
 
   if (/\.(mmd|mermaid)$/i.test(block.path)) {
     if (source === undefined) {
-      diagnostics.push(`参照先が見つからない: ${block.path}`);
+      diagnostics.push(t('build.missing', { target: block.path }));
       return undefined;
     }
     return mermaidBlocks(source, viewOf(block.attributes.get('view')), options);
   }
 
-  diagnostics.push(`スライドにできない参照: ${block.path}${caption ? `（${caption}）` : ''}`);
+  diagnostics.push(caption
+    ? t('build.notSlideCaptioned', { path: block.path, caption })
+    : t('build.notSlide', { path: block.path }));
   return undefined;
 }
 
 function captionOf(
-  block: DocBlock, byBlock: ReadonlyMap<unknown, NumberedElement>,
+  block: DocBlock, byBlock: ReadonlyMap<unknown, NumberedElement>, options: DeckOptions,
 ): string | undefined {
   const element = byBlock.get(block);
-  return element ? describe(element) : undefined;
+  return element ? describe(element, options.resolved.locale) : undefined;
 }
 
 /**
@@ -200,7 +206,7 @@ function substitute(text: string, resolved: ResolvedDocument): string {
   return text.replace(/@(?:[A-Za-z0-9][\w.-]*:)?((?:fig|tbl|sec|req|des|tst)-[A-Za-z0-9_-]+)/g,
     (whole, label: string) => {
       const target = resolved.byLabel.get(label);
-      return target && target.number !== undefined ? describe(target) : whole;
+      return target && target.number !== undefined ? describe(target, resolved.locale) : whole;
     });
 }
 

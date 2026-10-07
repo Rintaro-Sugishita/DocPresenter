@@ -82,7 +82,10 @@ export type Severity = 'error' | 'warning';
  */
 export interface BuildDiagnostic {
   readonly severity: Severity;
+  /** In the locale the build was given. */
   readonly message: string;
+  /** Which message it is, for code that decides by what was said. */
+  readonly id?: string;
   readonly path: string;
   readonly span?: { readonly start: number; readonly end: number };
 }

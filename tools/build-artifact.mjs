@@ -28,7 +28,10 @@ collect('sample');
 const entry = `
 import { parseDocument, resolveDocument } from '@docpresenter/markdown';
 import { renderDocument } from '@docpresenter/markdown';
-import { COMMIT_KEYS, COMMIT_KEY_LABEL, DEFAULT_SETTINGS, mountSheetView } from '@docpresenter/editor';
+import {
+  COMMIT_KEYS, commitKeyLabel, DEFAULT_SETTINGS, mountSheetView, starterResource,
+} from '@docpresenter/editor';
+import { askLocale, languageSelect, SHELL_MESSAGES, startingLocale } from '../../tools/web-shell/locale.mjs';
 
 const FILES = ${JSON.stringify(text)};
 const IMAGES = ${JSON.stringify(images)};
@@ -37,7 +40,7 @@ const loader = { read: p => FILES[clean(p)], url: p => IMAGES[clean(p)] ?? clean
 
 const render = source => {
   const doc = parseDocument(source);
-  return renderDocument(doc, resolveDocument(doc), { loader });
+  return renderDocument(doc, resolveDocument(doc, settings.locale), { loader });
 };
 
 const status = document.getElementById('status');
@@ -49,23 +52,24 @@ const KEY = 'docpresenter.commitKey';
 const stored = (() => {
   try { return localStorage.getItem(KEY); } catch { return null; }
 })();
+// 表示言語も器が決める。初回に一度だけ尋ね、この端末に覚える（tools/web-shell/locale.mjs）。
+const start = startingLocale();
 let settings = {
   ...DEFAULT_SETTINGS,
   commitKey: COMMIT_KEYS.includes(stored) ? stored : DEFAULT_SETTINGS.commitKey,
+  locale: start.locale,
 };
+let t = SHELL_MESSAGES.in(settings.locale);
 
 // 新しい図表のファイルは、文書と同じ名前のフォルダに置く（docs/<文書名>/ の約束）。
 const NL = String.fromCharCode(10);
 let made = 0;
-const STARTER = {
-  table: ['| 見出し 1 | 見出し 2 |', '| -------- | -------- |', '|          |          |', ''].join(NL),
-  diagram: ['free {', '  a [ここに図形]', '}', '', 'layout {', '  a @ (40, 40) 160x60', '}', ''].join(NL),
-};
+
 const createResource = kind => {
   made += 1;
   const path = 'auth-design/' + (kind === 'table' ? 'table-' : 'diagram-')
     + made + (kind === 'table' ? '.table' : '.dgm');
-  return { path, text: STARTER[kind] };
+  return { path, text: starterResource(kind, settings.locale) };
 };
 
 const view = mountSheetView({
@@ -83,8 +87,10 @@ const view = mountSheetView({
   onChange: (edit, text) => {
     if (edit.path === undefined) document.getElementById('source').textContent = text;
     else FILES[clean(edit.path)] = text;
-    const where = edit.path === undefined ? '' : edit.path + ' の ';
-    say(where + edit.description + '　' + edit.span.start + '〜' + edit.span.end + ' バイトを書き換え', 'ok');
+    const where = edit.path === undefined ? '' : t('shell.editedIn', { path: edit.path });
+    say(t('shell.edited', {
+      where, description: edit.description, start: edit.span.start, end: edit.span.end,
+    }), 'ok');
   },
   onError: message => say(message, 'refused'),
 });
@@ -98,7 +104,7 @@ const applyWidth = () => { side.hidden = narrow.matches && toggle.getAttribute('
 toggle.addEventListener('click', () => {
   const open = toggle.getAttribute('aria-expanded') === 'true';
   toggle.setAttribute('aria-expanded', String(!open));
-  toggle.textContent = open ? 'ソースを見る' : 'ソースを閉じる';
+  toggle.textContent = t(open ? 'shell.source.show' : 'shell.source.hide');
   applyWidth();
 });
 narrow.addEventListener('change', applyWidth);
@@ -108,7 +114,6 @@ const select = document.getElementById('commit-key');
 for (const key of COMMIT_KEYS) {
   const option = document.createElement('option');
   option.value = key;
-  option.textContent = COMMIT_KEY_LABEL[key];
   select.append(option);
 }
 select.value = settings.commitKey;
@@ -117,6 +122,37 @@ select.addEventListener('change', () => {
   view.configure(settings);
   try { localStorage.setItem(KEY, select.value); } catch { /* 使えなくても動く */ }
 });
+
+// 器の文言は data-text に名前を書いておき、言語が変わるたびに書き直す。
+const relabel = () => {
+  document.documentElement.lang = settings.locale;
+  document.title = t('shell.artifact.title');
+  for (const node of document.querySelectorAll('[data-text]')) node.textContent = t(node.dataset.text);
+  const next = document.getElementById('next-sheet');
+  next.replaceChildren(...t('shell.artifact.next', { key: '\\u0000' }).split('\\u0000').flatMap((part, i) => {
+    if (i === 0) return [part];
+    const ctrl = document.createElement('kbd');
+    ctrl.textContent = 'Ctrl';
+    const page = document.createElement('kbd');
+    page.textContent = 'PageDown';
+    return [ctrl, '+', page, part];
+  }));
+  toggle.textContent = t(toggle.getAttribute('aria-expanded') === 'true' ? 'shell.source.hide' : 'shell.source.show');
+  for (const option of select.options) option.textContent = commitKeyLabel(option.value, settings.locale);
+};
+const useLocale = locale => {
+  if (locale === settings.locale) return;
+  settings = { ...settings, locale };
+  t = SHELL_MESSAGES.in(locale);
+  view.configure(settings);
+  document.getElementById('source').textContent = view.source;
+  language.value = locale;
+  relabel();
+};
+const language = languageSelect(document, settings.locale, useLocale);
+document.getElementById('language').append(language);
+relabel();
+if (start.ask) void askLocale(document, start.locale).then(useLocale);
 `;
 
 mkdirSync('out/artifact', { recursive: true });
@@ -135,7 +171,7 @@ writeFileSync('out/artifact/index.html', page(theme, script));
 console.log(`out/artifact/index.html を生成（${(page(theme, script).length / 1024 / 1024).toFixed(2)} MB）`);
 
 function page(theme, script) {
-  return `<title>DocPresenter シートエディタ</title>
+  return `<title>DocPresenter</title>
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;600;700&display=swap">
 <style>
@@ -237,21 +273,22 @@ body {
 
 <div class="app">
   <header class="bar">
-    <h1>DocPresenter シートエディタ</h1>
-    <p>下端のタブでシートを切り替え・ドラッグで並べ替え・ダブルクリックで改名</p>
-    <p>本文と図はソースが、表はグリッドが開く</p>
-    <p>色は見本かピッカーから自由に、列幅はヘッダの右端をドラッグ</p>
-    <p><kbd>Ctrl</kbd>+<kbd>PageDown</kbd> で次のシート</p>
-    <button type="button" id="toggle-source" aria-expanded="false">ソースを見る</button>
+    <h1 data-text="shell.artifact.title"></h1>
+    <p data-text="shell.artifact.tabs"></p>
+    <p data-text="shell.artifact.open"></p>
+    <p data-text="shell.artifact.colour"></p>
+    <p id="next-sheet"></p>
+    <button type="button" id="toggle-source" aria-expanded="false"></button>
   </header>
   <main class="work">
     <div id="editor"></div>
     <aside class="side" id="side">
-      <h2>書き戻されるソース</h2>
-      <label class="setting" for="commit-key">編集を確定するキー
+      <h2 data-text="shell.artifact.heading"></h2>
+      <label class="setting" for="commit-key"><span data-text="shell.artifact.commitKey"></span>
         <select id="commit-key"></select>
       </label>
-      <div id="status">タブと書式バーの操作が、そのままバイト範囲の書き換えになる</div>
+      <label class="setting" id="language"><span data-text="shell.language"></span></label>
+      <div id="status" data-text="shell.artifact.status"></div>
       <pre id="source"></pre>
     </aside>
   </main>

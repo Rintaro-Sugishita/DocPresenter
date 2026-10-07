@@ -5,6 +5,8 @@
 // through `getComputedStyle` — which is the reason the PDF can share one theme
 // with the HTML instead of reimplementing it.
 
+import type { Phrase } from '@docpresenter/base';
+import { pdf } from './messages.js';
 import { mapPathData } from './plan.js';
 import type { FontFamily, Item, TextItem } from './plan.js';
 
@@ -35,7 +37,7 @@ export interface Placed {
 
 /** Every mark inside `element`, in document pixels. */
 export function collect(
-  element: HTMLElement, left: number, top: number, diagnostics: string[],
+  element: HTMLElement, left: number, top: number, diagnostics: Phrase[],
 ): Placed[] {
   const at: Offset = { left, top };
   const items: Placed[] = [];
@@ -43,7 +45,7 @@ export function collect(
   return items;
 }
 
-function walk(node: Element, at: Offset, items: Placed[], diagnostics: string[]): void {
+function walk(node: Element, at: Offset, items: Placed[], diagnostics: Phrase[]): void {
   if (node instanceof SVGSVGElement) {
     // A drawing is one unit: every mark in it belongs to the drawing's top, so
     // it travels to a page whole rather than being cut through the middle.
@@ -56,7 +58,7 @@ function walk(node: Element, at: Offset, items: Placed[], diagnostics: string[])
     if (node.currentSrc.startsWith('data:')) {
       items.push({ item: { kind: 'picture', ...box, data: node.currentSrc, ...marks(node) }, top: box.y });
     } else {
-      diagnostics.push(`PDF に入れられない画像がある: ${node.currentSrc.slice(0, 60)}`);
+      diagnostics.push(pdf('pdf.image', { src: node.currentSrc.slice(0, 60) }));
     }
     return;
   }

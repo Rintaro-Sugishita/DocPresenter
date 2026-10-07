@@ -2,6 +2,7 @@
 // into a file. See design/pdf-engine.md for why the PDF is written here rather
 // than asked of the browser's print pipeline.
 
+export * from './messages.js';
 export * from './plan.js';
 export * from './fonts.js';
 export * from './subset.js';

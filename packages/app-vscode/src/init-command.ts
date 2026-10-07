@@ -3,6 +3,7 @@
 
 import * as vscode from 'vscode';
 import { DOCUMENT_NAME, planScaffold, type Shipped } from './scaffold.js';
+import { hostLocale, t } from './l10n.js';
 import { SheetEditorProvider } from './sheet-editor.js';
 import { outDirOf } from './workspace-files.js';
 
@@ -12,27 +13,27 @@ const SPECS = ['dgm.md', 'table.md', 'inline-text.md'];
 export async function initWorkspace(context: vscode.ExtensionContext): Promise<void> {
   const folder = vscode.workspace.workspaceFolders?.[0];
   if (!folder) {
-    void vscode.window.showErrorMessage('DocPresenter: フォルダを開いてから実行してください');
+    void vscode.window.showErrorMessage(`DocPresenter: ${t('vscode.noFolder')}`);
     return;
   }
 
   const title = await vscode.window.showInputBox({
-    title: 'DocPresenter: 作業場を初期化する（1/3）',
-    prompt: '最初の文書の題',
-    placeHolder: '認証機能 設計書',
-    validateInput: value => value.trim() === '' ? '題を入れてください' : undefined,
+    title: t('vscode.init.step', { step: 1 }),
+    prompt: t('vscode.init.title'),
+    placeHolder: t('vscode.init.titleExample'),
+    validateInput: value => value.trim() === '' ? t('vscode.init.titleEmpty') : undefined,
   });
   if (title === undefined) return;
   const name = await vscode.window.showInputBox({
-    title: 'DocPresenter: 作業場を初期化する（2/3）',
-    prompt: 'ファイル名（英小文字・数字・-）。docs/<ファイル名>.md と docs/<ファイル名>/ ができます',
+    title: t('vscode.init.step', { step: 2 }),
+    prompt: t('vscode.init.name'),
     value: 'design',
-    validateInput: value => DOCUMENT_NAME.test(value) ? undefined : '英小文字・数字・- で付けてください（例: auth-design）',
+    validateInput: value => DOCUMENT_NAME.test(value) ? undefined : t('vscode.init.nameInvalid'),
   });
   if (name === undefined) return;
   const number = await vscode.window.showInputBox({
-    title: 'DocPresenter: 作業場を初期化する（3/3）',
-    prompt: '文書番号（表紙に出ます。無ければ空のまま Enter）',
+    title: t('vscode.init.step', { step: 3 }),
+    prompt: t('vscode.init.number'),
     placeHolder: 'SD-AUTH-001',
   });
   if (number === undefined) return;
@@ -45,7 +46,7 @@ export async function initWorkspace(context: vscode.ExtensionContext): Promise<v
 
   const guide = await read(media('guide.md'));
   if (guide === undefined) {
-    void vscode.window.showErrorMessage('DocPresenter: 拡張に書き方の仕様書が入っていません（拡張をビルドし直してください）');
+    void vscode.window.showErrorMessage(`DocPresenter: ${t('vscode.init.noGuide')}`);
     return;
   }
   const specs: Record<string, string> = {};
@@ -70,7 +71,7 @@ export async function initWorkspace(context: vscode.ExtensionContext): Promise<v
 
   const plan = planScaffold({
     name, title: title.trim(), number: number.trim() || undefined,
-    today: localDate(new Date()), outDir: outDirOf(),
+    today: localDate(new Date()), outDir: outDirOf(), locale: hostLocale(),
   }, shipped, path => existing.get(path));
 
   for (const file of plan.files) {
@@ -80,11 +81,13 @@ export async function initWorkspace(context: vscode.ExtensionContext): Promise<v
 
   const made = plan.files.filter(file => file.mode === 'create').length;
   const added = plan.files.filter(file => file.mode === 'append').map(file => file.path);
+  const list = t('vscode.init.list');
   const said = [
-    `${made} 個のファイルを作りました`,
-    ...(added.length > 0 ? [`${added.join('・')} に追記しました`] : []),
-    ...(plan.kept.length > 0 ? [`既にある ${plan.kept.length} 個はそのままです（${plan.kept.join('・')}）`] : []),
-  ].join('。');
+    t('vscode.init.made', { count: made }),
+    ...(added.length > 0 ? [t('vscode.init.appended', { paths: added.join(list) })] : []),
+    ...(plan.kept.length > 0
+      ? [t('vscode.init.kept', { count: plan.kept.length, paths: plan.kept.join(list) })] : []),
+  ].join(t('vscode.init.join'));
   void vscode.window.showInformationMessage(`DocPresenter: ${said}`);
 
   await vscode.commands.executeCommand('vscode.openWith', at(plan.document), SheetEditorProvider.viewType);

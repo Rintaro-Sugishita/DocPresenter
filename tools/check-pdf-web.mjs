@@ -25,7 +25,7 @@ page.on('request', request => {
   if (!url.startsWith('file://') && !url.startsWith('data:') && !url.startsWith('blob:')) outside.push(url);
 });
 
-await page.goto('file://' + process.cwd() + '/out/editor.html');
+await page.goto('file://' + process.cwd() + '/out/editor.html?lang=ja');
 await page.waitForTimeout(600);
 
 check('PDF のボタンがある', await page.isVisible('#make-pdf'));
@@ -113,7 +113,7 @@ await shellPage.addInitScript(() => {
     }),
   };
 });
-await shellPage.goto('file://' + process.cwd() + '/out/editor.html');
+await shellPage.goto('file://' + process.cwd() + '/out/editor.html?lang=ja');
 await shellPage.waitForTimeout(600);
 
 let fell = false;

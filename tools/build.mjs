@@ -3,7 +3,7 @@
 // over a directory handle.
 //
 // Usage: node tools/build.mjs [--in <workspace>] [--out <dir>] [root.md ...]
-//                             [--chromium <path>] [--font <ttf/ttc>]
+//                             [--chromium <path>] [--font <ttf/ttc>] [--lang ja|en]
 //
 // The PDF is laid out by a browser and carries its own fonts, so those two are
 // this machine's business rather than the document's: both are found by
@@ -16,6 +16,7 @@ import { readFileSync, readdirSync, writeFileSync, mkdirSync, statSync } from 'n
 import { execFileSync, spawnSync } from 'node:child_process';
 import { dirname, join, relative, resolve } from 'node:path';
 import { build } from '../packages/build/dist/index.js';
+import { isLocale, pickLocale } from '../packages/base/dist/index.js';
 import { createPdfWriter } from './pdf-writer.mjs';
 import { createMermaidPainter, mermaidScript } from './mermaid-script.mjs';
 
@@ -39,6 +40,14 @@ const showRemoved = option('--show-removed', undefined);
 // PDF を書くのに要る、この機械のもの。見つからなければ既定の置き場所を順に探す。
 const chromiumAt = option('--chromium', undefined);
 const fontAt = option('--font', undefined);
+// 診断と、文書に入る文言（表紙の見出し・目次・図/表）の言語。ビルドした人の言語に
+// 従う（design/decisions.md）。--lang が無ければ、この機械の言語設定から決める。
+const langAsked = option('--lang', undefined);
+const locale = isLocale(langAsked) ? langAsked : pickLocale([
+  process.env.LC_ALL, process.env.LC_MESSAGES, process.env.LANG,
+  Intl.DateTimeFormat().resolvedOptions().locale,
+].filter(Boolean));
+const ja = locale === 'ja';
 const inside = path => join(root, path);
 
 const files = [];
@@ -78,7 +87,8 @@ const workspace = {
     if (!Object.values(MEDIA).includes(type)) return undefined;
     const bytes = Buffer.from(await response.arrayBuffer());
     if (bytes.length === 0) return undefined;
-    console.log(`  取り込み ${address}（${(bytes.length / 1024).toFixed(0)} KB）`);
+    const size = (bytes.length / 1024).toFixed(0);
+    console.log(ja ? `  取り込み ${address}（${size} KB）` : `  Brought in ${address} (${size} KB)`);
     return `data:${type};base64,${bytes.toString('base64')}`;
   },
 };
@@ -128,7 +138,8 @@ const painter = await (async () => {
   try {
     return await createMermaidPainter({ chromium: chromiumAt, script });
   } catch (error) {
-    console.log(`  ! Mermaid の図をスライドに描けない: ${error.message}`);
+    console.log(ja ? `  ! Mermaid の図をスライドに描けない: ${error.message}`
+      : `  ! Cannot draw Mermaid diagrams for slides: ${error.message}`);
     return undefined;
   }
 })();
@@ -140,7 +151,7 @@ const pdf = await (async () => {
   try {
     return await createPdfWriter({ chromium: chromiumAt, font: fontAt, mermaidScript: script });
   } catch (error) {
-    console.log(`  ✗ PDF は書けない: ${error.message}`);
+    console.log(ja ? `  ✗ PDF は書けない: ${error.message}` : `  ✗ Cannot write PDF: ${error.message}`);
     process.exitCode = 1;
     return undefined;
   }
@@ -148,6 +159,7 @@ const pdf = await (async () => {
 
 const only = argv.map(path => relative(root, resolve(path)).split('\\').join('/'));
 const result = await build(workspace, {
+  locale,
   ...(pdf ? { writers: { pdf: pdf.write } } : {}),
   ...(script ? { mermaidScript: script } : {}),
   ...(painter ? { mermaidPicture: painter.picture } : {}),
@@ -171,15 +183,21 @@ for (const artifact of result.artifacts) {
   const body = artifact.bytes ?? artifact.text;   // outDir is relative to the cwd
   writeFileSync(artifact.path, body);
   const size = ((artifact.bytes?.length ?? Buffer.byteLength(artifact.text)) / 1024).toFixed(0);
+  const comma = ja ? '、' : ', ';
   const extra = artifact.report
-    ? `、${artifact.report.pages} ページ`
-      + (artifact.report.font ? `、${artifact.report.font}` : '')
-      + (artifact.report.missing.length ? `、欠字 ${artifact.report.missing.length}` : '')
+    ? comma + (ja ? `${artifact.report.pages} ページ` : `${artifact.report.pages} pages`)
+      + (artifact.report.font ? comma + artifact.report.font : '')
+      + (artifact.report.missing.length
+        ? comma + (ja ? '欠字 ' : 'missing glyphs ') + artifact.report.missing.length : '')
     : '';
-  console.log(`${artifact.path}（${artifact.root} → ${artifact.format}、${size} KB${extra}）`);
+  console.log(ja
+    ? `${artifact.path}（${artifact.root} → ${artifact.format}、${size} KB${extra}）`
+    : `${artifact.path} (${artifact.root} → ${artifact.format}, ${size} KB${extra})`);
   for (const message of artifact.report?.diagnostics ?? []) console.log(`  ! ${message}`);
 }
 await pdf?.close();
 await painter?.close();
-console.log(`ルート ${result.graph.roots.length} 件 / 成果物 ${result.artifacts.length} 件`);
+console.log(ja
+  ? `ルート ${result.graph.roots.length} 件 / 成果物 ${result.artifacts.length} 件`
+  : `${result.graph.roots.length} roots / ${result.artifacts.length} outputs`);
 if (result.diagnostics.some(d => d.severity === 'error')) process.exitCode = 1;

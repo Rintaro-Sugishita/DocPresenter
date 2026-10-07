@@ -12,6 +12,8 @@
 // read, and is reported rather than quietly lost.
 
 import { unzipSync, strFromU8 } from 'fflate';
+import { DEFAULT_LOCALE, type Locale } from '@docpresenter/base';
+import { PPTX_MESSAGES } from './messages.js';
 
 export interface ReadShape {
   readonly id: string;
@@ -40,7 +42,7 @@ export interface ReadResult {
 
 const MARK = /dp:drawing=([^;]*);scale=([\d.]+);x=(-?\d+);y=(-?\d+)/;
 
-export function readDrawings(bytes: Uint8Array): ReadResult {
+export function readDrawings(bytes: Uint8Array, locale: Locale = DEFAULT_LOCALE): ReadResult {
   const files = unzipSync(bytes);
   const diagnostics: string[] = [];
   const drawings: ReadDrawing[] = [];
@@ -56,7 +58,7 @@ export function readDrawings(bytes: Uint8Array): ReadResult {
     const hasShapes = /<p:sp>/.test(xml);
     if (!marked) {
       if (hasShapes && /prstGeom prst="(?!rect)/.test(xml)) {
-        diagnostics.push(`スライド ${index}: どの図から作られたか分からない（名前が失われている）`);
+        diagnostics.push(PPTX_MESSAGES.in(locale)('pptx.unnamed', { index }));
       }
       continue;
     }

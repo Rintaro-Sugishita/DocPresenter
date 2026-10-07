@@ -10,6 +10,8 @@ import {
   type DiffMarks, type DocumentFile, type ResolvedDocument,
 } from '@docpresenter/markdown';
 import { writePptx } from '@docpresenter/pptx';
+import { DEFAULT_LOCALE, describeError, type Locale } from '@docpresenter/base';
+import { BUILD_MESSAGES, said } from './messages.js';
 import { deckOf } from './deck.js';
 import { diffOf, type Previous } from './diff.js';
 import { readGraph, type ReferenceGraph, type Root } from './graph.js';
@@ -82,6 +84,12 @@ export interface BuildOptions {
    * browser can; without one a slide shows the source instead and says so.
    */
   readonly mermaidPicture?: (source: string) => Promise<MermaidPicture | undefined>;
+  /**
+   * The language of the diagnostics and of what the build writes into the
+   * document — the cover's labels, 目次, 図 and 表. It is the locale of whoever
+   * builds; Japanese when nobody says.
+   */
+  readonly locale?: Locale;
 }
 
 /** A Mermaid drawing as a picture: a PNG data URL and its size in pixels. */
@@ -109,7 +117,8 @@ export async function build(
   given: Workspace, options: BuildOptions = {},
 ): Promise<BuildResult> {
   const workspace = asLf(given);
-  const graph = readGraph(workspace);
+  const locale = options.locale ?? DEFAULT_LOCALE;
+  const graph = readGraph(workspace, locale);
   const diagnostics: BuildDiagnostic[] = [];
   const artifacts: Artifact[] = [];
   const outDir = options.outDir ?? 'dist';
@@ -126,14 +135,13 @@ export async function build(
       const named = options.formats === undefined ? undefined : namedRoot(workspace, asked);
       if (named) { wanted.push(named); continue; }
       diagnostics.push({
-        severity: 'error', path: asked,
-        message: 'ビルドルートではない（frontmatter に output が無い）',
+        severity: 'error', path: asked, ...said(locale, 'build.notRoot'),
       });
     }
   }
 
   for (const root of wanted) {
-    const prepared = prepare(workspace, root);
+    const prepared = prepare(workspace, root, locale);
     diagnostics.push(...prepared.diagnostics);
     if (prepared.diagnostics.some(d => d.severity === 'error')) continue;
 
@@ -178,15 +186,15 @@ function namedRoot(workspace: Workspace, path: string): Root | undefined {
 }
 
 /** Expands and numbers one root, so that every writer starts from the same thing. */
-export function prepare(given: Workspace, root: Root): PreparedDocument {
+export function prepare(given: Workspace, root: Root, locale: Locale = DEFAULT_LOCALE): PreparedDocument {
   const workspace = asLf(given);
   const diagnostics: BuildDiagnostic[] = [];
-  const expansion = expandDocument(root.document, root.path, path => workspace.read(path));
+  const expansion = expandDocument(root.document, root.path, path => workspace.read(path), locale);
   for (const d of expansion.diagnostics) {
     diagnostics.push({ severity: d.severity, message: d.message, path: d.path, span: d.span });
   }
 
-  const resolved = resolveDocument(expansion.document);
+  const resolved = resolveDocument(expansion.document, locale);
   for (const d of resolved.diagnostics) {
     diagnostics.push({
       severity: d.severity, message: d.message, path: root.path, span: d.span,
@@ -212,10 +220,11 @@ export async function takeIn(
   }
   const inlined = new Map<string, string>();
   if (addresses.size === 0) return inlined;
+  const { locale } = prepared.resolved;
   if (!workspace.inline) {
     diagnostics.push({
       severity: 'warning', path: prepared.root,
-      message: `外部の画像を取り込めない器で建てている（${addresses.size} 件）`,
+      ...said(locale, 'build.cannotInline', { count: addresses.size }),
     });
     return inlined;
   }
@@ -224,7 +233,7 @@ export async function takeIn(
     if (data === undefined) {
       diagnostics.push({
         severity: 'warning', path: prepared.root,
-        message: `外部の画像を取り込めなかった: ${address}`,
+        ...said(locale, 'build.inlineFailed', { address }),
       });
       continue;
     }
@@ -264,11 +273,12 @@ async function drawMermaid(
 ): Promise<Map<string, MermaidPicture>> {
   const pictures = new Map<string, MermaidPicture>();
   const sources = mermaidSources(workspace, prepared.document);
+  const { locale } = prepared.resolved;
   if (sources.length === 0) return pictures;
   if (!options.mermaidPicture) {
     diagnostics.push({
       severity: 'warning', path: prepared.root,
-      message: `Mermaid の図を PPTX に描けない環境で建てている（${sources.length} 件）。スライドにはコードを出す`,
+      ...said(locale, 'build.noMermaidPicture', { count: sources.length }),
     });
     return pictures;
   }
@@ -279,7 +289,7 @@ async function drawMermaid(
     } catch (error) {
       diagnostics.push({
         severity: 'warning', path: prepared.root,
-        message: `Mermaid の図を描けなかった: ${error instanceof Error ? error.message : String(error)}`,
+        ...said(locale, 'build.mermaidFailed', { message: describeError(error, locale) }),
       });
     }
   }
@@ -293,13 +303,14 @@ async function write(
   pictures: ReadonlyMap<string, MermaidPicture>,
 ): Promise<Artifact | undefined> {
   const builtIn: Record<string, FormatWriter | undefined> = { html, pptx };
+  const { locale } = prepared.resolved;
   const writer = builtIn[format] ?? options.writers?.[format];
   if (!writer) {
     // P6: a format that is asked for and not written is said out loud rather
     // than passed over in silence.
     diagnostics.push({
       severity: 'warning', path: root.path,
-      message: `${format} 出力はこの環境では書けない（書き手が渡されていない）`,
+      ...said(locale, 'build.noWriter', { format }),
     });
     return undefined;
   }
@@ -310,7 +321,7 @@ async function write(
     : workspace.read(`themes/${theme}/theme.css`);
   if (style === undefined) {
     diagnostics.push({
-      severity: 'error', path: root.path, message: `テーマが見つからない: ${theme}`,
+      severity: 'error', path: root.path, ...said(locale, 'build.noTheme', { theme }),
     });
     return undefined;
   }
@@ -324,7 +335,7 @@ async function write(
   } catch (error) {
     diagnostics.push({
       severity: 'error', path: root.path,
-      message: `${format} を書けなかった: ${error instanceof Error ? error.message : String(error)}`,
+      ...said(locale, 'build.writeFailed', { format, message: describeError(error, locale) }),
     });
     return undefined;
   }
@@ -339,7 +350,9 @@ function pptx(input: WriteInput): Artifact {
   const { root, prepared } = input;
   const raw = root.document.frontmatter.raw;
   const title = String(raw['title'] ?? root.path);
-  const foot = [raw['document'], raw['version'] ? `版 ${String(raw['version'])}` : '']
+  const { locale } = prepared.resolved;
+  const foot = [raw['document'],
+    raw['version'] ? BUILD_MESSAGES.in(locale)('build.foot.version', { version: String(raw['version']) }) : '']
     .filter(value => value !== undefined && value !== '').join('　');
   const deck = deckOf({
     workspace: input.workspace,
@@ -377,7 +390,7 @@ function html(input: WriteInput): Artifact {
   if (options.mermaidScript === undefined && hasMermaid(text)) {
     input.diagnostics.push({
       severity: 'warning', path: root.path,
-      message: 'Mermaid を描くスクリプトが渡されていない。HTML ではコードのまま表示される',
+      ...said(prepared.resolved.locale, 'build.noMermaidScript'),
     });
   }
   return { path: `${input.out}.html`, text, root: root.path, format: 'html' };

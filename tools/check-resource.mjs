@@ -5,7 +5,7 @@ import { chromium } from 'playwright-core';
 const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' });
 const page = await browser.newPage({ viewport: { width: 1280, height: 860 } });
 page.on('pageerror', e => { console.log('✗ ページエラー:', e.message); process.exitCode = 1; });
-await page.goto('file://' + process.cwd() + '/out/editor.html');
+await page.goto('file://' + process.cwd() + '/out/editor.html?lang=ja');
 await page.waitForTimeout(400);
 
 const check = (name, ok, detail = '') => {
@@ -115,7 +115,7 @@ await page.waitForTimeout(250);
 check('Enter 確定に変えると Enter で閉じる', !(await page.isVisible('.dp-block-source')));
 
 // 書式バーは markdown のためのもの。参照ファイルには出さない。
-await page.goto('file://' + process.cwd() + '/out/editor.html');
+await page.goto('file://' + process.cwd() + '/out/editor.html?lang=ja');
 await page.waitForTimeout(400);
 await sheet(2);
 await page.waitForTimeout(250);

@@ -1,7 +1,7 @@
 {
   "name": "docpresenter",
   "displayName": "DocPresenter",
-  "description": "Git の差分がレビューになる設計書を、VS Code の中で書く",
+  "description": "%extension.description%",
   "version": "0.1.0",
   "publisher": "docpresenter",
   "private": true,
@@ -19,19 +19,19 @@
       },
       {
         "viewType": "docpresenter.diagram",
-        "displayName": "DocPresenter（図）",
+        "displayName": "%customEditor.diagram.displayName%",
         "selector": [{ "filenamePattern": "*.dgm" }],
         "priority": "option"
       }
     ],
     "commands": [
-      { "command": "docpresenter.init", "title": "DocPresenter: 作業場を初期化する（フォルダ・最初の文書・エージェント向けの書き方）", "category": "DocPresenter" },
-      { "command": "docpresenter.openEditor", "title": "DocPresenter で開く", "category": "DocPresenter" },
-      { "command": "docpresenter.build", "title": "DocPresenter: 出力対象をすべて書き出す（各文書の output: どおり）", "category": "DocPresenter" },
-      { "command": "docpresenter.buildAs", "title": "DocPresenter: 出力対象をすべて、形式を指定して書き出す…", "category": "DocPresenter" },
-      { "command": "docpresenter.exportHtml", "title": "DocPresenter: この文書を HTML に書き出す", "category": "DocPresenter" },
-      { "command": "docpresenter.exportPdf", "title": "DocPresenter: この文書を PDF に書き出す", "category": "DocPresenter" },
-      { "command": "docpresenter.exportPptx", "title": "DocPresenter: この文書を PPTX に書き出す", "category": "DocPresenter" }
+      { "command": "docpresenter.init", "title": "%command.init.title%", "category": "DocPresenter" },
+      { "command": "docpresenter.openEditor", "title": "%command.openEditor.title%", "category": "DocPresenter" },
+      { "command": "docpresenter.build", "title": "%command.build.title%", "category": "DocPresenter" },
+      { "command": "docpresenter.buildAs", "title": "%command.buildAs.title%", "category": "DocPresenter" },
+      { "command": "docpresenter.exportHtml", "title": "%command.exportHtml.title%", "category": "DocPresenter" },
+      { "command": "docpresenter.exportPdf", "title": "%command.exportPdf.title%", "category": "DocPresenter" },
+      { "command": "docpresenter.exportPptx", "title": "%command.exportPptx.title%", "category": "DocPresenter" }
     ],
     "menus": {
       "editor/title": [
@@ -57,13 +57,17 @@
         "docpresenter.commitKey": {
           "type": "string",
           "enum": ["ctrl-enter", "enter", "shift-enter", "alt-enter"],
+          "enumDescriptions": [
+            "%config.commitKey.ctrl-enter%", "%config.commitKey.enter%",
+            "%config.commitKey.shift-enter%", "%config.commitKey.alt-enter%"
+          ],
           "default": "ctrl-enter",
-          "description": "開いているブロックを確定するキー。ほかの Enter は改行になる。"
+          "description": "%config.commitKey.description%"
         },
         "docpresenter.outDir": {
           "type": "string",
           "default": "out/build",
-          "description": "ビルドの成果物を書くフォルダ（作業場からの相対）。"
+          "description": "%config.outDir.description%"
         }
       }
     }

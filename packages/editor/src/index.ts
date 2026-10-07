@@ -1,4 +1,6 @@
+export * from './messages.js';
 export * from './settings.js';
+export * from './starter.js';
 export * from './sheets.js';
 export * from './table.js';
 export * from './view/style.js';

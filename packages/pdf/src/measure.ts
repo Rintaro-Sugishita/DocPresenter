@@ -10,7 +10,9 @@
 // Everything here runs inside the page, so it uses DOM APIs only and holds no
 // imports that a bundler would have to resolve at run time.
 
+import { DEFAULT_LOCALE, say, type Locale, type Phrase } from '@docpresenter/base';
 import { collect, headingFamily } from './collect.js';
+import { pdf } from './messages.js';
 import { mapPathData } from './plan.js';
 import type { FontFamily, Item, OutlineEntry, Page, PagePlan, TextItem } from './plan.js';
 
@@ -37,6 +39,8 @@ export interface MeasureOptions {
   readonly foot?: string;
   readonly title?: string;
   readonly commit?: string;
+  /** The language the diagnostics are written in. */
+  readonly locale?: Locale;
 }
 
 export interface Measurement {
@@ -143,7 +147,8 @@ export function measure(root: HTMLElement, options: MeasureOptions = {}): Measur
   for (let round = 0; round < 3 && fillContents(root, laid.labels); round++) {
     laid = layOut(root, options);
   }
-  return { plan: laid.plan, diagnostics: laid.diagnostics };
+  const locale = options.locale ?? DEFAULT_LOCALE;
+  return { plan: laid.plan, diagnostics: laid.diagnostics.map(one => say(locale, one)) };
 }
 
 /**
@@ -163,7 +168,10 @@ function fillContents(root: HTMLElement, labels: ReadonlyMap<string, string>): b
   return changed;
 }
 
-interface LaidOut extends Measurement {
+interface LaidOut {
+  readonly plan: PagePlan;
+  /** Put into words by `measure`, which knows the locale. */
+  readonly diagnostics: readonly Phrase[];
   /** Which page each anchor is on, as the foot of that page prints it. */
   readonly labels: ReadonlyMap<string, string>;
 }
@@ -171,7 +179,7 @@ interface LaidOut extends Measurement {
 function layOut(root: HTMLElement, options: MeasureOptions): LaidOut {
   const portrait = readPageSetup(document.documentElement);
   const landscape = turned(portrait);
-  const diagnostics: string[] = [];
+  const diagnostics: Phrase[] = [];
 
   // Two passes, because a page turned sideways is a different measure and the
   // browser has to lay the block out at the width it will be printed at. Only
@@ -230,7 +238,7 @@ function layOut(root: HTMLElement, options: MeasureOptions): LaidOut {
         }
       }
       if (height > contentHeight) {
-        diagnostics.push(`1 ページに収まらない要素がある（高さ ${Math.round(height)}px）`);
+        diagnostics.push(pdf('pdf.tooTall', { height: Math.round(height) }));
       }
       current.fragments.push(fragment);
       current.offsets.push(cursor - fragment.top);
@@ -391,7 +399,7 @@ function turned(setup: PageSetup): PageSetup {
  * it, and the blocks that belong on it are read.
  */
 function pass(
-  root: HTMLElement, setup: PageSetup, orientation: Orientation, diagnostics: string[],
+  root: HTMLElement, setup: PageSetup, orientation: Orientation, diagnostics: Phrase[],
 ): MeasuredBlock[] {
   const contentWidth = (setup.width - setup.margin.left - setup.margin.right) * PX_PER_PT;
   root.style.width = `${contentWidth}px`;

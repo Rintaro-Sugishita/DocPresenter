@@ -5,6 +5,9 @@
 // same thing in the end: one attribute on the `@import` line that placed it,
 // which is a byte range like every other edit this product makes.
 
+import { DEFAULT_LOCALE, type Locale } from '@docpresenter/base';
+import { EDITOR_MESSAGES } from '../messages.js';
+
 export type Align = 'left' | 'center' | 'right';
 
 export interface PictureOptions {
@@ -18,6 +21,7 @@ export interface PictureOptions {
   readonly onAlign: (value: Align | undefined) => void;
   /** Writes `width` as a percentage of the text column. */
   readonly onWidth: (percent: number) => void;
+  readonly locale?: Locale | undefined;
 }
 
 export interface PictureControls {
@@ -30,6 +34,7 @@ const MOST = 100;
 
 export function mountPicture(options: PictureOptions): PictureControls {
   const { owner, figure } = options;
+  const t = EDITOR_MESSAGES.in(options.locale ?? DEFAULT_LOCALE);
   const body = figure.querySelector<HTMLElement>('.dp-figure-body');
   if (!body) return { destroy: () => undefined };
 
@@ -54,26 +59,27 @@ export function mountPicture(options: PictureOptions): PictureControls {
   };
 
   const at = options.align === 'center' || options.align === 'right' ? options.align : 'left';
-  for (const [value, label] of [['left', '左'], ['center', '中央'], ['right', '右']] as const) {
+  for (const value of ['left', 'center', 'right'] as const) {
     // Left is the theme's own default, so choosing it takes the attribute off
     // rather than writing down what was already true.
-    button(label, `${label}に寄せる`, at === value,
+    button(t(`editor.picture.${value}`), t(`editor.picture.${value}Title`), at === value,
       () => options.onAlign(value === 'left' ? undefined : value));
   }
 
   const size = owner.createElement('span');
   size.className = 'dp-picture-size';
   const show = (percent: number | undefined): void => {
-    size.textContent = percent === undefined ? (options.width ?? '原寸') : `${percent}%`;
+    size.textContent = percent === undefined ? (options.width ?? t('editor.picture.natural')) : `${percent}%`;
   };
   show(undefined);
   bar.append(size);
   // Zero means "no width of its own": the picture goes back to its natural size.
-  button('原寸', '幅の指定を外す', options.width === undefined, () => options.onWidth(0));
+  button(t('editor.picture.natural'), t('editor.picture.naturalTitle'), options.width === undefined,
+    () => options.onWidth(0));
 
   const handle = owner.createElement('div');
   handle.className = 'dp-picture-handle';
-  handle.title = '端をつまんで幅を変える';
+  handle.title = t('editor.picture.handle');
 
   // The column the percentage is of: the figure's own container, which is what
   // the printed text column will be.

@@ -2,7 +2,8 @@
 // so someone who writes Mermaid can write this, and the layout and style
 // sections stay separate so that moving a shape never touches the semantics.
 
-import { byteLength, type ByteSpan } from '@docpresenter/base';
+import { byteLength, LocalizedError, type ByteSpan, type Phrase } from '@docpresenter/base';
+import { dgm } from './messages.js';
 import type {
   ArrowStyle, Bend, Callout, DiagramFile, DiagramMode, Edge, EdgeStyle, LayoutBlock, Node,
   Container, Item, Part, Placement, Point, Section, ShapeKind,
@@ -18,9 +19,9 @@ interface SourceLine {
   readonly number: number;
 }
 
-export class DiagramParseError extends Error {
-  constructor(message: string, readonly line: number) {
-    super(`${message}（${line} 行目）`);
+export class DiagramParseError extends LocalizedError {
+  constructor(message: Phrase, readonly line: number) {
+    super({ id: 'base.atLine', params: { message, line } });
     this.name = 'DiagramParseError';
   }
 }
@@ -129,7 +130,7 @@ export function parseDiagram(source: string): DiagramFile {
     if (used) { uses.push(used[1]!); continue; }
 
     const section = /^(free|flow|overlay|layout|style|parts)\b([^{]*)\{$/.exec(text);
-    if (!section) throw new DiagramParseError(`解釈できない行: ${text}`, line.number);
+    if (!section) throw new DiagramParseError(dgm('diagram.parse.unreadableLine', { text }), line.number);
 
     const kind = section[1]!;
     const header = (section[2] ?? '').trim();
@@ -142,7 +143,7 @@ export function parseDiagram(source: string): DiagramFile {
       if (depth === 0) break;
       inner.push(line);
     }
-    if (depth !== 0) throw new DiagramParseError(`'${kind}' が閉じられていない`, lines[start]!.number);
+    if (depth !== 0) throw new DiagramParseError(dgm('diagram.parse.unclosed', { kind }), lines[start]!.number);
 
     if (kind === 'free' || kind === 'flow') {
       mode = kind;
@@ -157,7 +158,7 @@ export function parseDiagram(source: string): DiagramFile {
     } else if (kind === 'overlay') {
       mode = kind;
       const quoted = /^"([^"]*)"$/.exec(header);
-      if (!quoted) throw new DiagramParseError('overlay には画像のパスが要る', lines[start]!.number);
+      if (!quoted) throw new DiagramParseError(dgm('diagram.parse.overlayNeedsImage'), lines[start]!.number);
       image = quoted[1]!;
       parseCallouts(inner, callouts);
     } else if (kind === 'layout') {
@@ -172,7 +173,7 @@ export function parseDiagram(source: string): DiagramFile {
   // A file that only reaches for other libraries is a library too: it declares
   // no parts of its own, and what it offers is what it was built on.
   if (!mode && uses.length > 0) mode = 'parts';
-  if (!mode) throw new DiagramParseError('free / flow / overlay のいずれのセクションも無い', 1);
+  if (!mode) throw new DiagramParseError(dgm('diagram.parse.noSection'), 1);
   return {
     mode, comments, nodes, edges, body, layout, bends, containers, layoutBlock, styleBlock,
     theme, style, styleSpans, image, callouts, uses, parts, partOf, partSizes: new Map(),
@@ -238,7 +239,7 @@ function parseParts(body: readonly SourceLine[], out: Map<string, Part>): void {
     }
     if (text === '') continue;
     const named = PART_NAME.exec(text);
-    if (!named) throw new DiagramParseError(`部品として読めない行: ${text}`, source.number);
+    if (!named) throw new DiagramParseError(dgm('diagram.parse.unreadablePart', { text }), source.number);
 
     // Taken apart from the outside in: the style is the only part with braces,
     // the size is the only part at the end, and a shape such as `[ ]` holds a
@@ -258,7 +259,7 @@ function parseParts(body: readonly SourceLine[], out: Map<string, Part>): void {
 
     const written = rest.trim();
     const shape = shapeOf(written);
-    if (!shape) throw new DiagramParseError(`部品の図形が分からない: ${written}`, source.number);
+    if (!shape) throw new DiagramParseError(dgm('diagram.parse.unknownPartShape', { text: written }), source.number);
     out.set(named[1]!, {
       name: named[1]!, shape, style,
       width: sized === null ? undefined : Number(sized[1]),
@@ -359,7 +360,7 @@ function parseBody(
         const tail = listed[2]!;
         if (tail.includes('}')) {
           if (tail.slice(0, tail.indexOf('}')).trim() !== '') {
-            throw new DiagramParseError(`一覧は行ごとに書く: ${text}`, line);
+            throw new DiagramParseError(dgm('diagram.parse.itemsPerLine', { text }), line);
           }
         } else {
           while (++i < body.length) {
@@ -368,7 +369,7 @@ function parseBody(
             if (last.text !== '' && !last.text.startsWith('#')) rows.push(last);
           }
           if (last.text !== '}') {
-            throw new DiagramParseError(`'${listed[1]}' の一覧が閉じられていない`, line);
+            throw new DiagramParseError(dgm('diagram.parse.unclosedItems', { name: listed[1]! }), line);
           }
         }
         span = { start: source.span.start, end: last.span.end };
@@ -390,7 +391,7 @@ function parseBody(
         continue;
       }
       const shaped = readShape(written);
-      if (!shaped) throw new DiagramParseError(`図形の記法が読めない: ${text}`, line);
+      if (!shaped) throw new DiagramParseError(dgm('diagram.parse.unreadableShape', { text }), line);
       nodes.push({
         id: node[1]!, text: shaped.text, shape: shaped.shape, className: node[3],
         children: [], items: [], span,
@@ -398,7 +399,7 @@ function parseBody(
       continue;
     }
 
-    throw new DiagramParseError(`解釈できない行: ${text}`, line);
+    throw new DiagramParseError(dgm('diagram.parse.unreadableLine', { text }), line);
   }
 }
 
@@ -413,7 +414,7 @@ function readItems(rows: readonly SourceLine[]): Item[] {
   const steps: number[] = [];
   for (const row of rows) {
     const found = ITEM.exec(row.text);
-    if (!found) throw new DiagramParseError(`一覧の行が読めない: ${row.text}`, row.number);
+    if (!found) throw new DiagramParseError(dgm('diagram.parse.unreadableItem', { text: row.text }), row.number);
     while (steps.length > 0 && row.indent < steps[steps.length - 1]!) steps.pop();
     if (steps.length === 0 || row.indent > steps[steps.length - 1]!) steps.push(row.indent);
     const written = found[2]!.trim();
@@ -442,7 +443,7 @@ function parseCallouts(body: readonly SourceLine[], out: Callout[]): void {
     const text = source.text;
     if (text === '' || text.startsWith('#')) return;
     const m = CALLOUT.exec(text);
-    if (!m) throw new DiagramParseError(`注釈の記法が読めない: ${text}`, source.number);
+    if (!m) throw new DiagramParseError(dgm('diagram.parse.unreadableCallout', { text }), source.number);
     out.push({
       marker: m[1]!,
       x: Number(m[2]), y: Number(m[3]),
@@ -487,7 +488,7 @@ function parseLayout(
           if (last.text !== '' && !last.text.startsWith('#')) rows.push(last.text);
         }
         if (last.text !== '}') {
-          throw new DiagramParseError(`'${container[1]}' が閉じられていない`, source.number);
+          throw new DiagramParseError(dgm('diagram.parse.unclosed', { kind: container[1]! }), source.number);
         }
       }
       const one = readContainer(container, rows, source.number);
@@ -503,14 +504,14 @@ function parseLayout(
         points.push({ x: Number(found[1]), y: Number(found[2]) });
       }
       if (points.length === 0) {
-        throw new DiagramParseError(`折れ点が読めない: ${text}`, source.number);
+        throw new DiagramParseError(dgm('diagram.parse.unreadableBend', { text }), source.number);
       }
       bends.set(`${bend[1]}->${bend[2]}`, { points, span: source.span });
       return;
     }
 
     const m = PLACEMENT.exec(text);
-    if (!m) throw new DiagramParseError(`配置の記法が読めない: ${text}`, source.number);
+    if (!m) throw new DiagramParseError(dgm('diagram.parse.unreadablePlacement', { text }), source.number);
     out.set(m[1]!, {
       x: Number(m[2]), y: Number(m[3]),
       width: m[4] ? Number(m[4]) : undefined,
@@ -546,14 +547,14 @@ function readContainer(
     const kv = /^([\w-]+)\s*:\s*(.+?)$/.exec(written);
     // A misspelt setting is refused rather than ignored: a gap nobody applied
     // is a drawing that silently disagrees with its own file.
-    if (!kv) throw new DiagramParseError(`入れ物の設定が読めない: ${written}`, line);
+    if (!kv) throw new DiagramParseError(dgm('diagram.parse.unreadableContainerSetting', { text: written }), line);
     const value = kv[2]!.trim();
     if (kv[1] === 'cols') cols = value.split(',').map(one => one.trim()).filter(one => one !== '');
     else if (kv[1] === 'pad') pad = Number(value);
     else if (kv[1] === 'show') show = value;
     else if (kv[1] === 'scroll') {
       if (value !== 'down' && value !== 'right') {
-        throw new DiagramParseError(`スクロールの向きは down か right: ${value}`, line);
+        throw new DiagramParseError(dgm('diagram.parse.scrollDirection', { value }), line);
       }
       scroll = value;
     }
@@ -561,13 +562,13 @@ function readContainer(
       // `gap: 8 12` is the rows then the columns, as CSS writes it.
       const two = value.split(/\s+/).map(Number);
       gap = { y: two[0] ?? DEFAULT_GAP, x: two[1] ?? two[0] ?? DEFAULT_GAP };
-    } else throw new DiagramParseError(`入れ物の設定が読めない: ${written}`, line);
+    } else throw new DiagramParseError(dgm('diagram.parse.unreadableContainerSetting', { text: written }), line);
   }
 
   const cells = rows
     .map(row => row.split(';').map(cell => cell.trim()).filter(cell => cell !== ''))
     .filter(row => row.length > 0);
-  if (cells.length === 0) throw new DiagramParseError(`入れ物の中身が無い: ${id}`, line);
+  if (cells.length === 0) throw new DiagramParseError(dgm('diagram.parse.emptyContainer', { id }), line);
 
   // A stack is a grid of one column — or, laid across, one row. Saying it this
   // way means one arrangement to compute rather than two.

@@ -60,6 +60,7 @@ describe('VS Code のカスタムエディタ', () => {
     // 図のファイルも一緒に渡る。読み込みは同期で聞かれるので、後から取りには行けない。
     expect(opened.files['docs/auth/login.dgm']).toBe(DGM);
     expect(opened.commitKey).toBe('ctrl-enter');
+    expect(opened.locale).toBe('ja');
   });
 
   // 画面はこの拡張のスクリプトだけを動かす。設計書の中身を読み込む画面が、

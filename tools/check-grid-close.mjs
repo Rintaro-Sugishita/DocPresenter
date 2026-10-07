@@ -3,7 +3,7 @@ import { chromium } from 'playwright-core';
 const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' });
 const page = await browser.newPage({ viewport: { width: 1320, height: 880 } });
 page.on('pageerror', e => { console.log('✗ ページエラー:', e.message); process.exitCode = 1; });
-await page.goto('file://' + process.cwd() + '/out/editor.html');
+await page.goto('file://' + process.cwd() + '/out/editor.html?lang=ja');
 await page.waitForTimeout(400);
 const check = (name, ok, detail = '') => {
   console.log(`${ok ? '○' : '✗'} ${name}${detail ? ' — ' + detail : ''}`);
@@ -72,7 +72,7 @@ await page.waitForTimeout(300);
 check('1 列目の左に列を足せる', (await firstCol()).trim() === '', `「${await firstCol()}」`);
 
 // セルの一部に色（行や列を足したあとの表では名前付き範囲が崩れるので、開き直す）
-await page.goto('file://' + process.cwd() + '/out/editor.html');
+await page.goto('file://' + process.cwd() + '/out/editor.html?lang=ja');
 await page.waitForTimeout(500);
 await page.click('.dp-tab:has-text("用語")');
 await page.waitForTimeout(250);

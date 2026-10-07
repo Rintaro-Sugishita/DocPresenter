@@ -4,12 +4,16 @@
 // else. Un-pinning is just as important as pinning — a layer that only ever
 // grows is a layout nobody can hand back to the engine.
 
-import { byteLength, pastLineBreak, sliceBytes, type ByteSpan, type Edit } from '@docpresenter/base';
+import {
+  byteLength, described, LocalizedError, pastLineBreak, sliceBytes,
+  type ByteSpan, type Edit, type Phrase,
+} from '@docpresenter/base';
+import { dgm } from './messages.js';
 import { containerOf, members, EMPTY_CELL } from './arrange.js';
 import type { Container, DiagramFile, Item, Node, ShapeKind } from './model.js';
 
-export class DiagramEditError extends Error {
-  constructor(message: string) {
+export class DiagramEditError extends LocalizedError {
+  constructor(message: Phrase) {
     super(message);
     this.name = 'DiagramEditError';
   }
@@ -41,14 +45,14 @@ export function pinNode(file: DiagramFile, source: string, id: string, pin: Pin)
 export function pinNodes(
   file: DiagramFile, source: string, pins: ReadonlyMap<string, Pin>,
 ): Edit {
-  if (pins.size === 0) throw new DiagramEditError('動かす図形が無い');
+  if (pins.size === 0) throw new DiagramEditError(dgm('diagram.edit.nothingToMove'));
   const changes: Change[] = [];
   const added: string[] = [];
   let anyNew = false;
 
   for (const [id, pin] of pins) {
     if (!file.nodes.some(node => node.id === id)) {
-      throw new DiagramEditError(`図形が見つからない: ${id}`);
+      throw new DiagramEditError(dgm('diagram.edit.missingShape', { id }));
     }
     const existing = file.layout.get(id);
     if (existing) {
@@ -83,7 +87,7 @@ export function pinNodes(
       });
     }
   }
-  return splice(source, changes, anyNew ? '配置を固定' : '配置を変更');
+  return splice(source, changes, anyNew ? dgm('diagram.did.pin') : dgm('diagram.did.move'));
 }
 
 /**
@@ -96,32 +100,32 @@ export function bendEdge(
   points: readonly { readonly x: number; readonly y: number }[],
 ): Edit {
   if (!file.edges.some(e => e.from === from && e.to === to)) {
-    throw new DiagramEditError(`${from} から ${to} への線が無い`);
+    throw new DiagramEditError(dgm('diagram.edit.missingLine', { from, to }));
   }
   const existing = file.bends.get(`${from}->${to}`);
   const line = `${from} -> ${to} @ `
     + points.map(p => `(${Math.round(p.x)}, ${Math.round(p.y)})`).join('; ');
 
   if (points.length === 0) {
-    if (!existing) throw new DiagramEditError(`${from} から ${to} の線は折れていない`);
-    return splice(source, [whole(source, existing.span, '')], '折れ点を消す');
+    if (!existing) throw new DiagramEditError(dgm('diagram.edit.notBent', { from, to }));
+    return splice(source, [whole(source, existing.span, '')], dgm('diagram.did.dropBend'));
   }
   if (existing) {
-    return { span: existing.span, text: line, description: '折れ点を動かす' };
+    return { span: existing.span, text: line, ...described(dgm('diagram.did.moveBend')) };
   }
   if (file.layoutBlock) {
     const { insertAt, indent } = file.layoutBlock;
     return {
       span: { start: insertAt, end: insertAt },
       text: `\n${indent}${line}`,
-      description: '線を折る',
+      ...described(dgm('diagram.did.bend')),
     };
   }
   const end = byteLength(source.replace(/\s+$/, ''));
   return {
     span: { start: end, end: byteLength(source) },
     text: `\n\nlayout {\n  ${line}\n}\n`,
-    description: '線を折る',
+    ...described(dgm('diagram.did.bend')),
   };
 }
 
@@ -149,9 +153,9 @@ export function groupMembers(file: DiagramFile, id: string): string[] {
  */
 export function unpinNode(file: DiagramFile, source: string, id: string): Edit {
   const existing = file.layout.get(id);
-  if (!existing) throw new DiagramEditError(`${id} は自動配置のまま`);
+  if (!existing) throw new DiagramEditError(dgm('diagram.edit.alreadyAuto', { id }));
   if (!canUnpin(file, id)) {
-    throw new DiagramEditError(`自由配置の図では位置を外せない（${id} の置き場所が無くなる）`);
+    throw new DiagramEditError(dgm('diagram.edit.freeNeedsPin', { id }));
   }
   // The span starts after the indent, so take the indent with it: leaving it
   // behind would push the next line sideways.
@@ -163,7 +167,7 @@ export function unpinNode(file: DiagramFile, source: string, id: string): Edit {
       end: pastLineBreak(source, existing.span.end),
     },
     text: '',
-    description: '配置を自動に戻す',
+    ...described(dgm('diagram.did.unpin')),
   };
 }
 
@@ -189,7 +193,7 @@ export function moveCallout(
   file: DiagramFile, source: string, marker: string, to: CalloutAt,
 ): Edit {
   const callout = file.callouts.find(c => c.marker === marker);
-  if (!callout) throw new DiagramEditError(`注釈が見つからない: ${marker}`);
+  if (!callout) throw new DiagramEditError(dgm('diagram.edit.missingCallout', { marker }));
   const like = sliceBytes(source, callout.span.start, callout.span.end);
   const text = `${padTo(marker, markerWidth(file))}@ (${round(to.x)}, ${round(to.y)})`
     + ` -> (${round(to.targetX)}, ${round(to.targetY)})`
@@ -197,7 +201,7 @@ export function moveCallout(
   return {
     span: callout.span,
     text: keepColumns(text, like),
-    description: '注釈を移動',
+    ...described(dgm('diagram.did.moveCallout')),
   };
 }
 
@@ -344,7 +348,7 @@ export interface NewShape {
  * change however many lines it took.
  */
 export function addNode(file: DiagramFile, source: string, shape: NewShape): Edit {
-  if (!file.body) throw new DiagramEditError('図形を書くセクションが無い');
+  if (!file.body) throw new DiagramEditError(dgm('diagram.edit.noBody'));
   const named = shape.part !== undefined;
   const id = nextShapeId(file, shape.icon === undefined && !named ? shape.shape : 'part');
   const [open, close] = BRACKETS[shape.shape];
@@ -366,7 +370,7 @@ export function addNode(file: DiagramFile, source: string, shape: NewShape): Edi
   // over the container that was just asked to place it.
   if (shape.into) {
     const container = file.containers.get(shape.into.container);
-    if (!container) throw new DiagramEditError(`入れ物が見つからない: ${shape.into.container}`);
+    if (!container) throw new DiagramEditError(dgm('diagram.edit.missingContainer', { id: shape.into.container }));
     changes.push({
       span: container.span,
       text: containerText(container,
@@ -405,15 +409,15 @@ export function addNode(file: DiagramFile, source: string, shape: NewShape): Edi
     });
   }
   return splice(source, changes,
-    shape.icon === undefined && !named ? '図形を追加' : '部品を追加');
+    shape.icon === undefined && !named ? dgm('diagram.did.addShape') : dgm('diagram.did.addPart'));
 }
 
 /** Removes several shapes as one change. */
 export function removeNodes(file: DiagramFile, source: string, ids: readonly string[]): Edit {
-  if (ids.length === 0) throw new DiagramEditError('消す図形が無い');
+  if (ids.length === 0) throw new DiagramEditError(dgm('diagram.edit.nothingToDelete'));
   return splice(
     source, removalOf(file, source, ids),
-    ids.length === 1 ? '図形を削除' : '図形をまとめて削除',
+    ids.length === 1 ? dgm('diagram.did.deleteShape') : dgm('diagram.did.deleteShapes'),
   );
 }
 
@@ -425,14 +429,14 @@ export function removeNodes(file: DiagramFile, source: string, ids: readonly str
 export function groupNodes(
   file: DiagramFile, source: string, ids: readonly string[], text: string,
 ): Edit {
-  if (!file.body) throw new DiagramEditError('図形を書くセクションが無い');
-  if (ids.length < 2) throw new DiagramEditError('2 つ以上の図形を選ぶ');
+  if (!file.body) throw new DiagramEditError(dgm('diagram.edit.noBody'));
+  if (ids.length < 2) throw new DiagramEditError(dgm('diagram.edit.pickTwo'));
   for (const id of ids) find(file, id);
   const id = nextShapeId(file, 'group');
   return splice(source, [{
     span: { start: file.body.insertAt, end: file.body.insertAt },
     text: `\n${file.body.indent}group ${id} "${text}" { ${ids.join('; ')} }`,
-  }], 'グループにする');
+  }], dgm('diagram.did.group'));
 }
 
 /**
@@ -452,7 +456,7 @@ export function removeNode(file: DiagramFile, source: string, id: string): Edit 
 function removalOf(file: DiagramFile, source: string, ids: readonly string[]): Change[] {
   const going = new Set<string>();
   for (const id of ids) {
-    if (!file.nodes.some(n => n.id === id)) throw new DiagramEditError(`図形が見つからない: ${id}`);
+    if (!file.nodes.some(n => n.id === id)) throw new DiagramEditError(dgm('diagram.edit.missingShape', { id }));
     going.add(id);
   }
 
@@ -511,11 +515,11 @@ export function setContainerCells(
   file: DiagramFile, source: string, id: string, cells: readonly (readonly string[])[],
 ): Edit {
   const container = file.containers.get(id);
-  if (!container) throw new DiagramEditError(`入れ物が見つからない: ${id}`);
+  if (!container) throw new DiagramEditError(dgm('diagram.edit.missingContainer', { id }));
   const text = sliceBytes(source, container.span.start, container.span.end);
   const written = containerText(container, text, cells);
-  if (written === text) throw new DiagramEditError('並びは既にそうなっている');
-  return { span: container.span, text: written, description: '並びを変える' };
+  if (written === text) throw new DiagramEditError(dgm('diagram.edit.sameOrder'));
+  return { span: container.span, text: written, ...described(dgm('diagram.did.reorder')) };
 }
 
 /**
@@ -558,9 +562,9 @@ export function putIntoContainer(
   cells: readonly (readonly string[])[], id: string,
 ): Edit {
   const container = file.containers.get(name);
-  if (!container) throw new DiagramEditError(`入れ物が見つからない: ${name}`);
+  if (!container) throw new DiagramEditError(dgm('diagram.edit.missingContainer', { id: name }));
   find(file, id);
-  if (containerOf(file).get(id) === name) throw new DiagramEditError(`${id} は既に ${name} の中`);
+  if (containerOf(file).get(id) === name) throw new DiagramEditError(dgm('diagram.edit.alreadyIn', { id, name }));
   const text = sliceBytes(source, container.span.start, container.span.end);
   const changes: Change[] = [
     { span: container.span, text: containerText(container, text, cells) },
@@ -578,7 +582,7 @@ export function putIntoContainer(
       text: '',
     });
   }
-  return splice(source, changes, '入れ物に入れる');
+  return splice(source, changes, dgm('diagram.did.putInto'));
 }
 
 /**
@@ -614,7 +618,7 @@ export function setNodeText(
   const line = node.shape === 'group'
     ? groupLine({ ...node, text }, node.children)
     : nodeLine(node, node.shape, text, gapOf(node, source));
-  return { span: node.span, text: line, description: '文字を変更' };
+  return { span: node.span, text: line, ...described(dgm('diagram.did.text')) };
 }
 
 /**
@@ -656,7 +660,7 @@ export function setNodeStyle(
     if (merged.get(property) !== value) moved = true;
     merged.set(property, value);
   }
-  if (!moved) throw new DiagramEditError('見た目は既にそうなっている');
+  if (!moved) throw new DiagramEditError(dgm('diagram.edit.sameLook'));
 
   const span = file.styleSpans.get(id);
   const written = [...merged].map(([property, value]) => `${property}: ${value}`).join(', ');
@@ -665,13 +669,13 @@ export function setNodeStyle(
   if (span) {
     return splice(source, [merged.size === 0
       ? whole(source, span, '')
-      : { span, text: line }], '見た目を変更');
+      : { span, text: line }], dgm('diagram.did.look'));
   }
   if (file.styleBlock) {
     return splice(source, [{
       span: { start: file.styleBlock.insertAt, end: file.styleBlock.insertAt },
       text: `\n${file.styleBlock.indent}${line}`,
-    }], '見た目を変更');
+    }], dgm('diagram.did.look'));
   }
   // No style section yet: one is written at the end, the way adding a shape to
   // a file with no layout section writes that one.
@@ -679,7 +683,7 @@ export function setNodeStyle(
   return splice(source, [{
     span: { start: end, end: byteLength(source) },
     text: `\n\nstyle {\n  ${line}\n}\n`,
-  }], '見た目を変更');
+  }], dgm('diagram.did.look'));
 }
 
 /** The spaces the author left between the id and its `{`, for the same reason. */
@@ -710,8 +714,8 @@ export function setItems(
   // of braces is a thing someone would have to read and then ignore.
   if (items.length === 0) {
     const bare = head.replace(/\s*\{$/, '');
-    if (bare === text) throw new DiagramEditError('一覧は既に空である');
-    return { span: node.span, text: bare, description: '一覧を変える' };
+    if (bare === text) throw new DiagramEditError(dgm('diagram.edit.alreadyEmpty'));
+    return { span: node.span, text: bare, ...described(dgm('diagram.did.items')) };
   }
 
   const lines = text.split('\n');
@@ -727,23 +731,23 @@ export function setItems(
     ' '.repeat(base + Math.max(0, item.depth) * Math.max(1, step))
     + `${item.closed ? '+' : '-'} ${item.text}${item.picked ? ' *' : ''}`);
   const next = `${head}\n${written.join('\n')}\n${close}}`;
-  if (next === text) throw new DiagramEditError('一覧は既にそうなっている');
-  return { span: node.span, text: next, description: '一覧を変える' };
+  if (next === text) throw new DiagramEditError(dgm('diagram.edit.sameItems'));
+  return { span: node.span, text: next, ...described(dgm('diagram.did.items')) };
 }
 
 /** Rewrites which shape it is, by changing the brackets around the text. */
 export function setNodeShape(file: DiagramFile, id: string, shape: ShapeKind): Edit {
   const node = find(file, id);
-  if (node.shape === 'group') throw new DiagramEditError('グループの種類は変えられない');
+  if (node.shape === 'group') throw new DiagramEditError(dgm('diagram.edit.groupShape'));
   // The shape's range covers the rows as well, so writing one line over it
   // would take them with it. Rows belong to a part; stop rather than drop.
-  if (node.items.length > 0) throw new DiagramEditError('行を持つ部品の種類は変えられない');
+  if (node.items.length > 0) throw new DiagramEditError(dgm('diagram.edit.rowsShape'));
   // A shape written as a part stops being one: the part said what it looked
   // like, and what it looks like is what was just chosen. Said in the
   // description, because an edit that quietly drops a word is one nobody finds.
   return {
     span: node.span, text: nodeLine(node, shape, node.text),
-    description: file.partOf.has(id) ? '部品をやめて図形にする' : '図形の種類を変更',
+    ...described(file.partOf.has(id) ? dgm('diagram.did.unpart') : dgm('diagram.did.shape')),
   };
 }
 
@@ -757,8 +761,8 @@ export function setNodeShape(file: DiagramFile, id: string, shape: ShapeKind): E
  */
 export function setNodePart(file: DiagramFile, source: string, id: string, name: string): Edit {
   const node = find(file, id);
-  if (node.shape === 'group') throw new DiagramEditError('グループは部品にできない');
-  if (file.partOf.get(id) === name) throw new DiagramEditError(`${id} は既に ${name} である`);
+  if (node.shape === 'group') throw new DiagramEditError(dgm('diagram.edit.groupPart'));
+  if (file.partOf.get(id) === name) throw new DiagramEditError(dgm('diagram.edit.alreadyPart', { id, name }));
 
   const whole = sliceBytes(source, node.span.start, node.span.end);
   const head = whole.slice(0, whole.indexOf('\n') < 0 ? whole.length : whole.indexOf('\n'));
@@ -777,23 +781,23 @@ export function setNodePart(file: DiagramFile, source: string, id: string, name:
   return {
     span: { start: node.span.start, end: node.span.start + byteLength(head) },
     text: line,
-    description: token ? '部品を変える' : '部品にする',
+    ...described(token ? dgm('diagram.did.changePart') : dgm('diagram.did.makePart')),
   };
 }
 
 /** Draws a connection. One line at the end of the semantics section. */
 export function connectNodes(file: DiagramFile, source: string, from: string, to: string): Edit {
-  if (!file.body) throw new DiagramEditError('図形を書くセクションが無い');
+  if (!file.body) throw new DiagramEditError(dgm('diagram.edit.noBody'));
   find(file, from);
   find(file, to);
-  if (from === to) throw new DiagramEditError('同じ図形どうしは繋げない');
+  if (from === to) throw new DiagramEditError(dgm('diagram.edit.selfLoop'));
   if (file.edges.some(e => e.from === from && e.to === to)) {
-    throw new DiagramEditError(`${from} から ${to} へは既に繋がっている`);
+    throw new DiagramEditError(dgm('diagram.edit.alreadyConnected', { from, to }));
   }
   return splice(source, [{
     span: { start: file.body.insertAt, end: file.body.insertAt },
     text: `\n${file.body.indent}${from} --> ${to}`,
-  }], '線を引く');
+  }], dgm('diagram.did.connect'));
 }
 
 /**
@@ -806,15 +810,15 @@ export function reconnect(
   ends: { readonly from?: string; readonly to?: string },
 ): Edit {
   const found = file.edges.find(e => e.from === edge.from && e.to === edge.to);
-  if (!found) throw new DiagramEditError(`${edge.from} から ${edge.to} への線が無い`);
+  if (!found) throw new DiagramEditError(dgm('diagram.edit.missingLine', { from: edge.from, to: edge.to }));
   const from = ends.from ?? found.from;
   const to = ends.to ?? found.to;
-  if (from === to) throw new DiagramEditError('同じ図形どうしは繋げない');
+  if (from === to) throw new DiagramEditError(dgm('diagram.edit.selfLoop'));
   find(file, from);
   find(file, to);
   if (from !== found.from || to !== found.to) {
     if (file.edges.some(e => e.from === from && e.to === to)) {
-      throw new DiagramEditError(`${from} から ${to} へは既に繋がっている`);
+      throw new DiagramEditError(dgm('diagram.edit.alreadyConnected', { from, to }));
     }
   }
   const line = sliceBytes(source, found.span.start, found.span.end);
@@ -835,7 +839,7 @@ export function reconnect(
       text: `${from} -> ${to} @ ` + bend.points.map(p => `(${p.x}, ${p.y})`).join('; '),
     });
   }
-  return splice(source, changes, '線をつなぎ替え');
+  return splice(source, changes, dgm('diagram.did.reconnect'));
 }
 
 /** Removes one connection, named by its two ends. */
@@ -843,18 +847,18 @@ export function disconnectNodes(
   file: DiagramFile, source: string, from: string, to: string,
 ): Edit {
   const edge = file.edges.find(e => e.from === from && e.to === to);
-  if (!edge) throw new DiagramEditError(`${from} から ${to} への線が無い`);
+  if (!edge) throw new DiagramEditError(dgm('diagram.edit.missingLine', { from, to }));
   const changes: Change[] = [whole(source, edge.span, '')];
   const bend = file.bends.get(`${from}->${to}`);
   // The corners were corners of this line. With the line gone they name
   // nothing, and a layout line naming nothing is a line nobody can read.
   if (bend) changes.push(whole(source, bend.span, ''));
-  return splice(source, changes, '線を消す');
+  return splice(source, changes, dgm('diagram.did.disconnect'));
 }
 
 function find(file: DiagramFile, id: string): Node {
   const node = file.nodes.find(n => n.id === id);
-  if (!node) throw new DiagramEditError(`図形が見つからない: ${id}`);
+  if (!node) throw new DiagramEditError(dgm('diagram.edit.missingShape', { id }));
   return node;
 }
 
@@ -913,20 +917,20 @@ interface Change {
  * still shows the lines that changed and nothing else, while the write-back
  * stays a single byte range.
  */
-function splice(source: string, changes: readonly Change[], description: string): Edit {
+function splice(source: string, changes: readonly Change[], description: Phrase): Edit {
   const sorted = [...changes].sort((a, b) => a.span.start - b.span.start);
   const first = sorted[0];
-  if (!first) throw new DiagramEditError('変更が無い');
+  if (!first) throw new DiagramEditError(dgm('diagram.edit.noChange'));
   const start = first.span.start;
   const end = Math.max(...sorted.map(c => c.span.end));
 
   let text = '';
   let at = start;
   for (const change of sorted) {
-    if (change.span.start < at) throw new DiagramEditError('重なった変更');
+    if (change.span.start < at) throw new DiagramEditError(dgm('diagram.edit.overlap'));
     text += sliceBytes(source, at, change.span.start) + change.text;
     at = change.span.end;
   }
   text += sliceBytes(source, at, end);
-  return { span: { start, end }, text, description };
+  return { span: { start, end }, text, ...described(description) };
 }

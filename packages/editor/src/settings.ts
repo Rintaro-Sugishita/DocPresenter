@@ -11,6 +11,9 @@
 // the block commits, in every configuration: those are not in dispute, and a
 // setting for each would be a choice nobody wants to make.
 
+import { DEFAULT_LOCALE, type Locale } from '@docpresenter/base';
+import { EDITOR_MESSAGES } from './messages.js';
+
 /** Which Enter commits the open block. Every other Enter inserts a newline. */
 export type CommitKey = 'ctrl-enter' | 'enter' | 'shift-enter' | 'alt-enter';
 
@@ -20,6 +23,12 @@ export const COMMIT_KEYS: readonly CommitKey[] = [
 
 export interface EditorSettings {
   readonly commitKey: CommitKey;
+  /**
+   * Which language the editor speaks. The shell decides: VS Code follows its
+   * display language, the web shell asks once and remembers. Japanese when
+   * nobody says.
+   */
+  readonly locale: Locale;
 }
 
 /**
@@ -27,7 +36,7 @@ export interface EditorSettings {
  * document far more often than it is the end of a paragraph, and a default
  * that ends the block on Enter loses text for anyone who assumed otherwise.
  */
-export const DEFAULT_SETTINGS: EditorSettings = { commitKey: 'ctrl-enter' };
+export const DEFAULT_SETTINGS: EditorSettings = { commitKey: 'ctrl-enter', locale: DEFAULT_LOCALE };
 
 export interface KeyPress {
   readonly key: string;
@@ -50,10 +59,7 @@ export function isCommit(event: KeyPress, key: CommitKey): boolean {
   }
 }
 
-/** How the choice reads in a settings list. */
-export const COMMIT_KEY_LABEL: Readonly<Record<CommitKey, string>> = {
-  'ctrl-enter': 'Ctrl+Enter で確定 / Enter で改行',
-  'enter': 'Enter で確定 / Shift+Enter で改行',
-  'shift-enter': 'Shift+Enter で確定 / Enter で改行',
-  'alt-enter': 'Alt+Enter で確定 / Enter で改行',
-};
+/** How the choice reads in a settings list, in the language of that list. */
+export function commitKeyLabel(key: CommitKey, locale: Locale = DEFAULT_LOCALE): string {
+  return EDITOR_MESSAGES.in(locale)(`editor.commitKey.${key}`);
+}

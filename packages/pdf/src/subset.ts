@@ -16,7 +16,9 @@
 // The module holds no file access: the caller hands over the WebAssembly, the
 // same way it hands over the fonts.
 
+import { LocalizedError } from '@docpresenter/base';
 import type { Subsetter } from './fonts.js';
+import { pdf } from './messages.js';
 
 /** What HarfBuzz's subsetter exports. Only what is used is named. */
 interface Harfbuzz {
@@ -65,7 +67,7 @@ function tagOf(name: string): number {
     | (name.charCodeAt(2) << 8) | name.charCodeAt(3)) >>> 0;
 }
 
-export class SubsetError extends Error {}
+export class SubsetError extends LocalizedError {}
 
 /**
  * Builds a subsetter from HarfBuzz's WebAssembly.
@@ -80,7 +82,7 @@ export async function createSubsetter(wasm: BufferSource): Promise<Subsetter> {
 
   return (bytes: Uint8Array, codePoints: ReadonlySet<number>, faceIndex = 0): Uint8Array => {
     const fontPointer = hb.malloc(bytes.byteLength);
-    if (fontPointer === 0) throw new SubsetError('フォントを載せる領域が取れない');
+    if (fontPointer === 0) throw new SubsetError(pdf('pdf.subset.memory'));
     // The heap is re-read after every allocation: growing it detaches the old
     // view, and writing through a detached view silently does nothing.
     new Uint8Array(hb.memory.buffer, fontPointer, bytes.byteLength).set(bytes);
@@ -98,7 +100,7 @@ export async function createSubsetter(wasm: BufferSource): Promise<Subsetter> {
       blob = hb.hb_blob_create(fontPointer, bytes.byteLength, WRITABLE, 0, 0);
       face = hb.hb_face_create(blob, faceIndex);
       input = hb.hb_subset_input_create_or_fail();
-      if (input === 0) throw new SubsetError('サブセットの指定を作れない');
+      if (input === 0) throw new SubsetError(pdf('pdf.subset.input'));
 
       const unicodes = hb.hb_subset_input_unicode_set(input);
       for (const codePoint of codePoints) hb.hb_set_add(unicodes, codePoint);
@@ -108,7 +110,7 @@ export async function createSubsetter(wasm: BufferSource): Promise<Subsetter> {
 
       subset = hb.hb_subset_or_fail(face, input);
       if (subset === 0) {
-        throw new SubsetError('フォントを削れない（壊れているか、面の番号が違う）');
+        throw new SubsetError(pdf('pdf.subset.failed'));
       }
 
       result = hb.hb_face_reference_blob(subset);

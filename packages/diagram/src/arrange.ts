@@ -14,6 +14,8 @@
 import type { Box } from './layout.js';
 import type { TextLine } from './inline.js';
 import type { Container, DiagramFile, Point } from './model.js';
+import type { Phrase } from '@docpresenter/base';
+import { dgm } from './messages.js';
 
 /** An empty cell. Written as a full stop because there is nothing to name. */
 export const EMPTY_CELL = '.';
@@ -104,7 +106,7 @@ export function members(container: Container): readonly string[] {
  */
 export function arrangeContainers(
   diagram: DiagramFile, sizeOf: (id: string) => Size,
-  boxes: Map<string, Box>, diagnostics: string[], holes?: Hole[],
+  boxes: Map<string, Box>, diagnostics: Phrase[], holes?: Hole[],
 ): ReadonlySet<string> {
   const hidden = new Set<string>();
   if (diagram.containers.size === 0) return hidden;
@@ -113,16 +115,16 @@ export function arrangeContainers(
 
   for (const container of diagram.containers.values()) {
     if (!byId.has(container.id)) {
-      diagnostics.push(`入れ物が見つからない: ${container.id}`);
+      diagnostics.push(dgm('diagram.arrange.missingContainer', { id: container.id }));
       continue;
     }
     for (const row of container.cells) {
       for (const cell of row) {
         if (cell === EMPTY_CELL) continue;
         if (!byId.has(cell)) {
-          diagnostics.push(`入れ物の中身が見つからない: ${cell}（${container.id}）`);
+          diagnostics.push(dgm('diagram.arrange.missingCell', { cell, id: container.id }));
         } else if (held.has(cell) && held.get(cell) !== container.id) {
-          diagnostics.push(`2 つの入れ物に入っている: ${cell}`);
+          diagnostics.push(dgm('diagram.arrange.inTwo', { cell }));
         } else held.set(cell, container.id);
       }
     }
@@ -137,7 +139,7 @@ export function arrangeContainers(
     if (found) return found;
     const container = diagram.containers.get(id);
     if (!container || open.has(id)) {
-      if (open.has(id)) diagnostics.push(`入れ物が入れ子で自分を含んでいる: ${id}`);
+      if (open.has(id)) diagnostics.push(dgm('diagram.arrange.containsItself', { id }));
       return sizeOf(id);
     }
     open.add(id);
@@ -194,15 +196,15 @@ export function arrangeContainers(
       // that scrolls is not too small: being cut off is what it says.
       const needs = intrinsic(container.id);
       if (container.scroll === 'none' && needs.height > box.height + 1) {
-        diagnostics.push(
-          `入れ物に中身が入りきらない: ${container.id}`
-          + `（${Math.round(box.height)} に ${Math.round(needs.height)} ぶん）`);
+        diagnostics.push(dgm('diagram.arrange.overflow', {
+          id: container.id, height: Math.round(box.height), needs: Math.round(needs.height),
+        }));
       }
     }
   }
   for (const container of diagram.containers.values()) {
     if (!done.has(container.id) && !hidden.has(container.id) && byId.has(container.id)) {
-      diagnostics.push(`入れ物の置き場所がない: ${container.id}`);
+      diagnostics.push(dgm('diagram.arrange.nowhere', { id: container.id }));
     }
   }
   return hidden;

@@ -14,6 +14,9 @@ import {
   build, readGraph, renderPage, type Artifact, type FormatWriter,
 } from '@docpresenter/build';
 import { createSubsetter, writePdf, type Subsetter } from '@docpresenter/pdf';
+import { BUILD_MESSAGES } from '@docpresenter/build';
+import { describeError } from '@docpresenter/base';
+import { hostLocale, t } from './l10n.js';
 import { systemFonts } from './pdf-fonts.js';
 import type { ExportFormat, FromView, ToView } from './protocol.js';
 import { outDirOf, readWorkspace } from './workspace-files.js';
@@ -70,13 +73,14 @@ let subsetter: Promise<Subsetter> | undefined;
 /** Builds, writes the artifacts into the workspace, and reports in the output panel. */
 export async function writeOut(options: WriteOutOptions): Promise<WriteOutResult> {
   const folder = vscode.workspace.workspaceFolders?.[0];
-  if (!folder) throw new Error('フォルダを開いてから実行してください');
+  if (!folder) throw new Error(t('vscode.noFolder'));
   const { output } = options;
+  const locale = hostLocale();
   output.clear();
-  options.progress?.('作業場を読んでいます…');
+  options.progress?.(t('vscode.export.reading'));
 
   const { workspace, text } = await readWorkspace();
-  const graph = readGraph(workspace);
+  const graph = readGraph(workspace, locale);
   const roots = options.only === undefined ? graph.roots.map(root => root.path) : options.only;
   const wanted = new Set<string>(options.formats ?? graph.roots
     .filter(root => roots.includes(root.path)).flatMap(root => root.formats));
@@ -84,7 +88,7 @@ export async function writeOut(options: WriteOutOptions): Promise<WriteOutResult
   // A browser only when something needs one: a PDF, or a slide with Mermaid.
   let renderer: Renderer | OpenView | undefined;
   if ((wanted.has('pdf') || wanted.has('pptx')) && options.renderer) {
-    options.progress?.('組版の準備をしています…');
+    options.progress?.(t('vscode.export.preparing'));
     renderer = await options.renderer();
   }
   try {
@@ -97,8 +101,9 @@ export async function writeOut(options: WriteOutOptions): Promise<WriteOutResult
     if (renderer && wasm) writers['pdf'] = await pdfWriter(renderer, wasm, report, options.progress);
 
     const view = renderer;
-    options.progress?.('書き出しています…');
+    options.progress?.(t('vscode.export.writing'));
     const result = await build(workspace, {
+      locale,
       ...(options.only === undefined ? {} : { only: options.only }),
       ...(options.formats === undefined ? {} : { formats: options.formats }),
       outDir: outDirOf(),
@@ -116,8 +121,8 @@ export async function writeOut(options: WriteOutOptions): Promise<WriteOutResult
     });
 
     for (const trouble of result.diagnostics) {
-      if (trouble.message.includes('どの成果物にも含まれていない')) continue;
-      if (trouble.message.includes('pdf 出力はこの環境では書けない')) continue;
+      if (trouble.id === 'build.orphan') continue;
+      if (trouble.id === 'build.noWriter' && trouble.message.includes('pdf')) continue;
       const where = trouble.path ? `${trouble.path}: ` : '';
       output.appendLine(`  ${trouble.severity === 'error' ? '✗' : '!'} ${where}${trouble.message}`);
     }
@@ -127,16 +132,20 @@ export async function writeOut(options: WriteOutOptions): Promise<WriteOutResult
       written.push(artifact.path);
       const bytes = artifact.bytes?.length ?? new TextEncoder().encode(artifact.text).length;
       const pdf = report.get(artifact.path);
-      const pages = pdf ? `、${pdf.pages} ページ、${pdf.font}` : '';
-      output.appendLine(`${artifact.path}（${artifact.root} → ${artifact.format}、${(bytes / 1024).toFixed(0)} KB${pages}）`);
+      const pages = pdf ? t('vscode.export.pages', { pages: pdf.pages, font: pdf.font }) : '';
+      output.appendLine(t('vscode.export.artifact', {
+        path: artifact.path, root: artifact.root, format: artifact.format,
+        size: (bytes / 1024).toFixed(0), pages,
+      }));
       for (const message of pdf?.diagnostics ?? []) output.appendLine(`  ! ${message}`);
     }
     const skipped = wanted.has('pdf') && !writers['pdf'] ? ['pdf'] : [];
     if (skipped.length > 0) {
-      output.appendLine('PDF は、文書を DocPresenter で開いて上の「PDF」ボタンで書き出せます'
-        + '（コマンド「DocPresenter: この文書を PDF に書き出す」でも可）。');
+      output.appendLine(t('vscode.export.pdfHint'));
     }
-    output.appendLine(`ルート ${result.graph.roots.length} 件 / 成果物 ${result.artifacts.length} 件`);
+    output.appendLine(t('vscode.export.summary', {
+      roots: result.graph.roots.length, artifacts: result.artifacts.length,
+    }));
     return {
       written,
       failed: result.diagnostics.some(one => one.severity === 'error'),
@@ -169,7 +178,7 @@ export async function exportDocument(
   output: vscode.OutputChannel,
 ): Promise<void> {
   const label = FORMAT_LABEL[format];
-  view.post({ kind: 'export-state', busy: true, message: `${label} を書き出しています…` });
+  view.post({ kind: 'export-state', busy: true, message: t('vscode.export.busy', { format: label }) });
   try {
     // Saved first: the build reads the files on disk, and an export of what
     // the file said a minute ago is not what the author is looking at.
@@ -185,16 +194,16 @@ export async function exportDocument(
     const path = result.written[0];
     if (!path) {
       output.show(true);
-      view.post({ kind: 'export-state', busy: false, message: `${label} を書き出せませんでした` });
-      void vscode.window.showErrorMessage(`DocPresenter: ${label} を書き出せませんでした（出力パネルに理由）`);
+      view.post({ kind: 'export-state', busy: false, message: t('vscode.export.failed', { format: label }) });
+      void vscode.window.showErrorMessage(`DocPresenter: ${t('vscode.export.failedSeeOutput', { format: label })}`);
       return;
     }
-    view.post({ kind: 'export-state', busy: false, message: `${path} に書き出しました` });
+    view.post({ kind: 'export-state', busy: false, message: t('vscode.export.done', { path }) });
     await offerToOpen(path);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    view.post({ kind: 'export-state', busy: false, message: `${label} を書き出せませんでした` });
-    void vscode.window.showErrorMessage(`DocPresenter: ${label} を書き出せませんでした: ${message}`);
+    view.post({ kind: 'export-state', busy: false, message: t('vscode.export.failed', { format: label }) });
+    void vscode.window.showErrorMessage(`DocPresenter: ${t('vscode.export.failedBecause', { format: label, message })}`);
   }
 }
 
@@ -224,20 +233,21 @@ export async function exportAll(
     }));
     output.show(true);
     const outDir = outDirOf();
-    const said = `${result.written.length} 件を ${outDir} に書き出しました`
-      + (result.failed ? '（書けなかったものがある。出力パネルを見てください）' : '');
+    const said = t('vscode.export.batchDone', { count: result.written.length, outDir })
+      + (result.failed ? t('vscode.export.batchSomeFailed') : '');
+    const reveal = t('vscode.export.reveal');
     const choice = await (result.failed
-      ? vscode.window.showWarningMessage(`DocPresenter: ${said}`, 'フォルダに表示')
-      : vscode.window.showInformationMessage(`DocPresenter: ${said}`, 'フォルダに表示'));
+      ? vscode.window.showWarningMessage(`DocPresenter: ${said}`, reveal)
+      : vscode.window.showInformationMessage(`DocPresenter: ${said}`, reveal));
     const folder = vscode.workspace.workspaceFolders?.[0];
-    if (choice === 'フォルダに表示' && folder && result.written[0]) {
+    if (choice === reveal && folder && result.written[0]) {
       await vscode.commands.executeCommand('revealFileInOS',
         vscode.Uri.joinPath(folder.uri, ...result.written[0].split('/')));
     }
   } catch (error) {
     output.show(true);
     void vscode.window.showErrorMessage(
-      `DocPresenter: 書き出せませんでした: ${error instanceof Error ? error.message : String(error)}`);
+      `DocPresenter: ${t('vscode.export.batchFailed', { message: describeError(error, hostLocale()) })}`);
   }
 }
 
@@ -245,10 +255,12 @@ async function offerToOpen(path: string): Promise<void> {
   const folder = vscode.workspace.workspaceFolders?.[0];
   if (!folder) return;
   const uri = vscode.Uri.joinPath(folder.uri, ...path.split('/'));
+  const opening = t('vscode.export.open');
+  const reveal = t('vscode.export.reveal');
   const open = await vscode.window.showInformationMessage(
-    `DocPresenter: ${path} に書き出しました`, '開く', 'フォルダに表示');
-  if (open === '開く') await vscode.env.openExternal(uri);
-  if (open === 'フォルダに表示') await vscode.commands.executeCommand('revealFileInOS', uri);
+    `DocPresenter: ${t('vscode.export.done', { path })}`, opening, reveal);
+  if (open === opening) await vscode.env.openExternal(uri);
+  if (open === reveal) await vscode.commands.executeCommand('revealFileInOS', uri);
 }
 
 /**
@@ -258,7 +270,7 @@ async function offerToOpen(path: string): Promise<void> {
  */
 async function openExporter(context: vscode.ExtensionContext): Promise<Renderer> {
   const panel = vscode.window.createWebviewPanel(
-    'docpresenter.exporter', 'DocPresenter 書き出し',
+    'docpresenter.exporter', t('vscode.export.panelTitle'),
     { viewColumn: vscode.ViewColumn.Beside, preserveFocus: true },
     { enableScripts: true, localResourceRoots: [vscode.Uri.joinPath(context.extensionUri, 'media')] },
   );
@@ -269,7 +281,7 @@ async function openExporter(context: vscode.ExtensionContext): Promise<Renderer>
     'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'[
       Math.floor(Math.random() * 62)]).join('');
   webview.html = `<!doctype html>
-<html lang="ja"><head><meta charset="utf-8">
+<html lang="${hostLocale()}"><head><meta charset="utf-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${webview.cspSource} data:; style-src ${webview.cspSource} 'unsafe-inline'; font-src ${webview.cspSource} data:; script-src 'nonce-${nonce}';">
 <link rel="stylesheet" href="${media('theme.css')}">
 <style>
@@ -277,7 +289,7 @@ async function openExporter(context: vscode.ExtensionContext): Promise<Renderer>
   .dp-exporter { font: 13px system-ui, sans-serif; color: #3a4048; padding: 24px; }
 </style>
 </head><body>
-<div class="dp-exporter"><p>文書を組んで書き出しています。終わるとこの画面は閉じます。</p>
+<div class="dp-exporter"><p>${t('vscode.export.panelBody')}</p>
 <p class="dp-exporter-status" role="status" aria-live="polite"></p></div>
 <script nonce="${nonce}" src="${media('exporter.js')}"></script>
 </body></html>`;
@@ -296,7 +308,7 @@ async function openExporter(context: vscode.ExtensionContext): Promise<Renderer>
   const post = (message: ToView): void => { void webview.postMessage(message); };
   await Promise.race([
     opened,
-    new Promise((_, reject) => setTimeout(() => reject(new Error('書き出しの画面が開かない')), 30_000)),
+    new Promise((_, reject) => setTimeout(() => reject(new Error(t('vscode.export.panelNotOpen'))), 30_000)),
   ]);
   return {
     documentPath: '',
@@ -305,12 +317,12 @@ async function openExporter(context: vscode.ExtensionContext): Promise<Renderer>
       const id = ++asked;
       const timer = setTimeout(() => {
         waiting.delete(id);
-        reject(new Error('書き出しの画面から応答がない'));
+        reject(new Error(t('vscode.export.panelNoAnswer')));
       }, 120_000);
       waiting.set(id, message => {
         clearTimeout(timer);
         if (message.kind === answer) resolve(message as Extract<FromView, { kind: typeof answer }>);
-        else reject(new Error(`思わぬ応答: ${message.kind}`));
+        else reject(new Error(t('vscode.unexpected', { kind: message.kind })));
       });
       post(make(id));
     }),
@@ -335,8 +347,9 @@ async function pdfWriter(
   const subset = await subsetter;
 
   return async input => {
-    progress?.(`${input.root.path} の PDF を組んでいます…`);
-    view.post({ kind: 'export-state', busy: true, message: `${input.root.path} の PDF を組んでいます…` });
+    const composing = t('vscode.export.composing', { path: input.root.path });
+    progress?.(composing);
+    view.post({ kind: 'export-state', busy: true, message: composing });
     const html = renderPage({
       workspace: input.workspace,
       document: input.prepared.document,
@@ -350,16 +363,20 @@ async function pdfWriter(
     const body = html.slice(html.indexOf('<body>') + '<body>'.length, html.lastIndexOf('</body>'));
     const raw = input.root.document.frontmatter.raw;
     const title = String(raw['title'] ?? '');
-    const foot = [raw['document'], raw['version'] ? `版 ${String(raw['version'])}` : '']
+    const { locale } = input.prepared.resolved;
+    const version = raw['version']
+      ? BUILD_MESSAGES.in(locale)('build.foot.version', { version: String(raw['version']) }) : '';
+    const foot = [raw['document'], version]
       .filter(value => value !== undefined && value !== '').map(String).join('　');
 
-    const measured = await view.ask(id => ({ kind: 'measure', id, body, foot, title }), 'measured');
+    const measured = await view.ask(id => ({ kind: 'measure', id, body, foot, title, locale }), 'measured');
     if (measured.error !== undefined || !measured.plan) {
-      throw new Error(measured.error ?? '組版の結果が返ってこなかった');
+      throw new Error(measured.error ?? t('vscode.export.noPlan'));
     }
     const { bytes, missing } = await writePdf(measured.plan, { fonts: set, subset });
     for (const one of missing) input.diagnostics.push({
-      severity: 'warning', path: input.root.path, message: `フォントに無い字: ${one.character}`,
+      severity: 'warning', path: input.root.path,
+      message: t('vscode.export.missingGlyph', { character: one.character }),
     });
     const path = `${input.out}.pdf`;
     report.set(path, {

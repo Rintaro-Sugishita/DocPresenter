@@ -8,7 +8,7 @@ import { EDGE_LABEL, layOutDiagram, type Box, type EdgeRoute } from '../layout.j
 import { lineText, parseRuns, type TextLine } from '../inline.js';
 import { textWidth } from '../text.js';
 import type { DiagramFile, Item, Node, Point, ShapeKind } from '../model.js';
-import { escapeAttr, escapeHtml } from '@docpresenter/base';
+import { DEFAULT_LOCALE, escapeAttr, escapeHtml, type Locale } from '@docpresenter/base';
 import { isIconPath, stencilArt, textPlace } from './stencil.js';
 import { isListing, listingArt } from './listing.js';
 import { members, shownPage, tabPages, SCROLL_BAR, TAB_STRIP } from '../arrange.js';
@@ -34,8 +34,9 @@ export interface DiagramMarks {
  */
 export function renderDiagram(
   diagram: DiagramFile, url?: (path: string) => string, marks?: DiagramMarks,
+  locale: Locale = DEFAULT_LOCALE,
 ): string {
-  const laid = layOutDiagram(diagram);
+  const laid = layOutDiagram(diagram, locale);
   const byId = new Map(diagram.nodes.map(n => [n.id, n]));
 
   const behind: string[] = [];
@@ -73,8 +74,8 @@ export function renderDiagram(
 }
 
 /** The diagnostics the layout pass produced, for callers that surface them. */
-export function diagramDiagnostics(diagram: DiagramFile): readonly string[] {
-  return layOutDiagram(diagram).diagnostics;
+export function diagramDiagnostics(diagram: DiagramFile, locale: Locale = DEFAULT_LOCALE): readonly string[] {
+  return layOutDiagram(diagram, locale).diagnostics;
 }
 
 function renderNode(

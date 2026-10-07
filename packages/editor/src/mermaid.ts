@@ -7,6 +7,8 @@
 // drawing. A block that cannot be drawn says so and keeps showing its source.
 
 import mermaid from 'mermaid';
+import { DEFAULT_LOCALE, LocalizedError, type Locale } from '@docpresenter/base';
+import { EDITOR_MESSAGES } from './messages.js';
 
 let initialised = false;
 let counter = 0;
@@ -44,7 +46,7 @@ export async function mermaidSvg(source: string): Promise<string> {
  * Draws every Mermaid block under `root` that is not drawn yet. Resolves when
  * all of them are done, so a caller about to measure the page can wait.
  */
-export async function drawMermaid(root: ParentNode): Promise<void> {
+export async function drawMermaid(root: ParentNode, locale: Locale = DEFAULT_LOCALE): Promise<void> {
   const hosts = [...root.querySelectorAll<HTMLElement>('.dp-mermaid-diagram:not([data-drawn])')];
   for (const host of hosts) {
     const source = host.dataset['source'] ?? '';
@@ -56,7 +58,7 @@ export async function drawMermaid(root: ParentNode): Promise<void> {
       const message = error instanceof Error ? error.message : String(error);
       const note = host.ownerDocument.createElement('p');
       note.className = 'dp-mermaid-error';
-      note.textContent = `Mermaid の図を描けない: ${message.split('\n')[0] ?? ''}`;
+      note.textContent = EDITOR_MESSAGES.in(locale)('editor.mermaid.failed', { message: message.split('\n')[0] ?? '' });
       host.prepend(note);
       host.dataset['drawn'] = 'error';
     }
@@ -111,7 +113,7 @@ export async function mermaidPicture(
   canvas.width = width * scale;
   canvas.height = height * scale;
   const context = canvas.getContext('2d');
-  if (!context) throw new Error('canvas が使えない');
+  if (!context) throw new LocalizedError(EDITOR_MESSAGES.phrase('editor.mermaid.noCanvas'));
   context.fillStyle = '#ffffff';
   context.fillRect(0, 0, canvas.width, canvas.height);
   context.drawImage(image, 0, 0, canvas.width, canvas.height);

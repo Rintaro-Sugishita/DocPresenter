@@ -9,6 +9,7 @@
 
 import * as vscode from 'vscode';
 import { writeOut, type WriteOutOptions } from './export-command.js';
+import { t } from './l10n.js';
 
 /**
  * @param shipped The theme the extension carries, for a workspace with none of
@@ -20,7 +21,7 @@ export async function runBuild(
   options: Pick<WriteOutOptions, 'renderer' | 'media' | 'formats'> = {},
 ): Promise<void> {
   if (!vscode.workspace.workspaceFolders?.[0]) {
-    void vscode.window.showErrorMessage('DocPresenter: フォルダを開いてから実行してください');
+    void vscode.window.showErrorMessage(`DocPresenter: ${t('vscode.noFolder')}`);
     return;
   }
   output.show(true);

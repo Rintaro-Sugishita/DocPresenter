@@ -10,6 +10,8 @@ import { DEFAULT_SIZE, type DiagramFile, type Edge, type Node, type Point } from
 import { isListing } from './draw/listing.js';
 import { textPlace } from './draw/stencil.js';
 import { textWidth, wrapRuns } from './text.js';
+import { DEFAULT_LOCALE, say, type Locale, type Phrase } from '@docpresenter/base';
+import { dgm } from './messages.js';
 
 export interface Box {
   readonly x: number;
@@ -83,8 +85,8 @@ const PART_ART = 44;
  *  has to know its size so the label is not left outside the canvas. */
 export const EDGE_LABEL = { fontSize: 12, padding: 8, height: 18 } as const;
 
-export function layOutDiagram(diagram: DiagramFile): LaidOutDiagram {
-  const diagnostics: string[] = [];
+export function layOutDiagram(diagram: DiagramFile, locale: Locale = DEFAULT_LOCALE): LaidOutDiagram {
+  const diagnostics: Phrase[] = [];
   const byId = new Map(diagram.nodes.map(n => [n.id, n]));
   const plain = diagram.nodes.filter(n => n.shape !== 'group');
   const groups = diagram.nodes.filter(n => n.shape === 'group');
@@ -104,7 +106,7 @@ export function layOutDiagram(diagram: DiagramFile): LaidOutDiagram {
     // between a decision and a loss.
     if (node.text !== '' && (node.shape === 'line'
       || textPlace(diagram.style.get(node.id)?.get('icon')) === 'none')) {
-      diagnostics.push(`この部品は文字を持たない。書いた文字は出ない: ${node.id}`);
+      diagnostics.push(dgm('diagram.layout.noText', { id: node.id }));
     }
     for (const problem of lookProblems(node, diagram.style.get(node.id))) {
       diagnostics.push(problem);
@@ -112,7 +114,7 @@ export function layOutDiagram(diagram: DiagramFile): LaidOutDiagram {
     // P6 again: rows written into a part that does not draw rows are rows
     // nobody sees. A tree holds them; a text box has nowhere to put them.
     if (node.items.length > 0 && !isListing(diagram.style.get(node.id)?.get('icon'))) {
-      diagnostics.push(`この部品は一覧を持たない。書いた行は出ない: ${node.id}`);
+      diagnostics.push(dgm('diagram.layout.noItems', { id: node.id }));
     }
     const size = sizes.get(node.id)!;
     const pin = diagram.layout.get(node.id);
@@ -122,7 +124,7 @@ export function layOutDiagram(diagram: DiagramFile): LaidOutDiagram {
       // container with nowhere to be is reported by the arranging pass, which
       // can say the useful thing about it.
       if (!inside.has(node.id) && !diagram.containers.has(node.id)) {
-        diagnostics.push(`配置がない: ${node.id}`);
+        diagnostics.push(dgm('diagram.layout.unplaced', { id: node.id }));
       }
       continue;
     }
@@ -155,17 +157,17 @@ export function layOutDiagram(diagram: DiagramFile): LaidOutDiagram {
 
   for (const edge of diagram.edges) {
     for (const end of [edge.from, edge.to]) {
-      if (!byId.has(end)) diagnostics.push(`接続先が見つからない: ${end}`);
+      if (!byId.has(end)) diagnostics.push(dgm('diagram.layout.missingEnd', { id: end }));
     }
   }
   for (const key of diagram.bends.keys()) {
     if (!diagram.edges.some(edge => `${edge.from}->${edge.to}` === key)) {
-      diagnostics.push(`折れ点の線が見つからない: ${key}`);
+      diagnostics.push(dgm('diagram.layout.missingBendLine', { key }));
     }
   }
 
   const routes = route(diagram, boxes, auto.rank);
-  return normalize(boxes, routes, diagram, diagnostics, holes);
+  return normalize(boxes, routes, diagram, diagnostics.map(one => say(locale, one)), holes);
 }
 
 /**
@@ -409,20 +411,20 @@ const LINE_ONLY: Readonly<Record<string, readonly string[]>> = {
   slope: ['down', 'up'],
 };
 
-function lookProblems(node: Node, rule: ReadonlyMap<string, string> | undefined): string[] {
+function lookProblems(node: Node, rule: ReadonlyMap<string, string> | undefined): Phrase[] {
   if (!rule) return [];
-  const found: string[] = [];
+  const found: Phrase[] = [];
   for (const [property, choices] of Object.entries(LINE_ONLY)) {
     const value = rule.get(property);
     if (value === undefined) continue;
-    if (node.shape !== 'line') found.push(`線だけが ${property} を持つ: ${node.id}`);
+    if (node.shape !== 'line') found.push(dgm('diagram.layout.lineOnly', { property, id: node.id }));
     else if (!choices.includes(value)) {
-      found.push(`${property} に書けるのは ${choices.join(' / ')}: ${value}（${node.id}）`);
+      found.push(dgm('diagram.layout.choices', { property, choices: choices.join(' / '), value, id: node.id }));
     }
   }
   const weight = rule.get('weight');
   if (weight !== undefined && !(Number(weight) > 0)) {
-    found.push(`太さは正の数で書く: ${weight}（${node.id}）`);
+    found.push(dgm('diagram.layout.weight', { value: weight, id: node.id }));
   }
   return found;
 }
@@ -574,12 +576,12 @@ function orderRanks(ranks: string[][], edges: readonly { from: string; to: strin
 }
 
 function groupBox(
-  group: Node, diagram: DiagramFile, boxes: ReadonlyMap<string, Box>, diagnostics: string[],
+  group: Node, diagram: DiagramFile, boxes: ReadonlyMap<string, Box>, diagnostics: Phrase[],
 ): Box | undefined {
   const pin = diagram.layout.get(group.id);
   const children = group.children.map(id => boxes.get(id)).filter((b): b is Box => b !== undefined);
   for (const id of group.children) {
-    if (!boxes.has(id)) diagnostics.push(`グループ ${group.id} の要素が見つからない: ${id}`);
+    if (!boxes.has(id)) diagnostics.push(dgm('diagram.layout.missingMember', { group: group.id, id }));
   }
   if (pin) {
     return {
@@ -612,7 +614,7 @@ function spread(boxes: readonly Box[], axis: 'x' | 'y'): number {
 /** Shifts everything into positive coordinates and reports the canvas size. */
 function normalize(
   boxes: Map<string, Box>, routes: readonly EdgeRoute[],
-  diagram: DiagramFile, diagnostics: string[], holes: readonly Hole[],
+  diagram: DiagramFile, diagnostics: readonly string[], holes: readonly Hole[],
 ): LaidOutDiagram {
   // Detouring connections and their labels run outside the shapes, so they
   // move the origin and stretch the canvas too.

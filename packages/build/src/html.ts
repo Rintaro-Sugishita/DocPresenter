@@ -6,11 +6,12 @@
 // Nothing about the result depends on where it is put.
 
 import {
-  NOUN_BY_KIND, headingsOf, isAddress, renderDocument,
+  describe, headingsOf, isAddress, renderDocument,
   type DiffMarks, type DocumentFile,
   type ResolvedDocument, type ResourceLoader,
 } from '@docpresenter/markdown';
 import { asLf, type Workspace } from './workspace.js';
+import { BUILD_MESSAGES } from './messages.js';
 
 export interface PageOptions {
   readonly workspace: Workspace;
@@ -58,7 +59,7 @@ export function renderPage(options: PageOptions): string {
 
   return [
     '<!doctype html>',
-    `<html lang="ja"><head><meta charset="utf-8">`,
+    `<html lang="${resolved.locale}"><head><meta charset="utf-8">`,
     `<meta name="viewport" content="width=device-width, initial-scale=1">`,
     `<title>${escape(title)}</title>`,
     ...meta(options),
@@ -111,12 +112,13 @@ function meta(options: PageOptions): string[] {
  */
 function cover(options: PageOptions): string {
   const raw = options.document.frontmatter.raw;
+  const t = BUILD_MESSAGES.in(options.resolved.locale);
   const fields: [string, string | undefined][] = [
-    ['文書番号', text(raw['document'])],
-    ['版', text(raw['version'])],
-    ['状態', text(raw['status'])],
-    ['作成', text(raw['author'])],
-    ['更新', text(raw['updated'])],
+    [t('build.cover.document'), text(raw['document'])],
+    [t('build.cover.version'), text(raw['version'])],
+    [t('build.cover.status'), text(raw['status'])],
+    [t('build.cover.author'), text(raw['author'])],
+    [t('build.cover.updated'), text(raw['updated'])],
   ];
   const shown = fields.filter((f): f is [string, string] => f[1] !== undefined && f[1] !== '');
   if (shown.length === 0) return '';
@@ -184,9 +186,10 @@ function contents(options: PageOptions): string {
   const headings = headingsOf(options.document, options.resolved)
     .filter(heading => heading.level >= 2 && heading.level <= CONTENTS_DEPTH && heading.id);
   if (!wanted(options, 'contents', headings.length)) return '';
+  const title = escape(BUILD_MESSAGES.in(options.resolved.locale)('build.contents'));
   return [
-    '<nav class="dp-index dp-index-contents" aria-label="目次">',
-    '<h2 class="dp-index-title" id="dp-contents">目次</h2>',
+    `<nav class="dp-index dp-index-contents" aria-label="${title}">`,
+    `<h2 class="dp-index-title" id="dp-contents">${title}</h2>`,
     ...headings.map(heading => line({
       id: heading.id!, number: heading.number, text: heading.text, level: heading.level,
     })),
@@ -210,12 +213,13 @@ function figures(options: PageOptions): string {
   const order: readonly string[] = ['figure', 'table'];
   // A stable sort, so each series keeps the order it appears in the document.
   const sorted = [...listed].sort((a, b) => order.indexOf(a.kind) - order.indexOf(b.kind));
+  const title = escape(BUILD_MESSAGES.in(options.resolved.locale)('build.figures'));
   return [
-    '<nav class="dp-index dp-index-figures" aria-label="図表一覧">',
-    '<h2 class="dp-index-title" id="dp-figures">図表一覧</h2>',
+    `<nav class="dp-index dp-index-figures" aria-label="${title}">`,
+    `<h2 class="dp-index-title" id="dp-figures">${title}</h2>`,
     ...sorted.map(element => line({
       id: element.label!,
-      number: `${NOUN_BY_KIND[element.kind] ?? ''} ${element.number!}`.trim(),
+      number: describe(element, options.resolved.locale),
       // A numbered figure with no caption is still worth a line: it says where
       // 図 3 is, which is the one thing a running number cannot.
       text: element.caption ?? '',
