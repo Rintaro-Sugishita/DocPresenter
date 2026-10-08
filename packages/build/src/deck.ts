@@ -164,9 +164,23 @@ function proseBlocks(text: string, options: DeckOptions): Block[] {
     paragraphs = [];
   };
   const prose = (line: string): readonly Run[] => parseRuns(substitute(line, options.resolved));
+  /** The lines from..to, as text — and as a table wherever a Markdown table stands. */
+  const take = (from: number, to: number): void => {
+    for (let at = from; at < to;) {
+      const table = markdownTable(lines, at, to);
+      if (table) {
+        flush();
+        blocks.push(tableBlock(table, line => prose(line)));
+        at = table.end;
+        continue;
+      }
+      paragraphs.push(prose(lines[at]!));
+      at += 1;
+    }
+  };
   let at = 0;
   for (const fence of fencesOf(text)) {
-    for (; at < fence.from; at++) paragraphs.push(prose(lines[at]!));
+    take(at, fence.from);
     if (fence.language === 'mermaid') {
       flush();
       blocks.push(...mermaidBlocks(fence.content, viewOf(fence.attributes.get('view')), options));
@@ -175,9 +189,84 @@ function proseBlocks(text: string, options: DeckOptions): Block[] {
     }
     at = fence.to + 1;
   }
-  for (; at < lines.length; at++) paragraphs.push(prose(lines[at]!));
+  take(at, lines.length);
   flush();
   return blocks;
+}
+
+/** A Markdown table found in prose: its header, its rows, and how each column is aligned. */
+interface MarkdownTable {
+  readonly header: readonly string[];
+  readonly align: readonly ('left' | 'center' | 'right' | undefined)[];
+  readonly rows: readonly (readonly string[])[];
+  /** The line after its last row. */
+  readonly end: number;
+}
+
+/** `| --- | :-: | --: |` — the line under a table's header. */
+const DELIMITER = /^\s*\|?\s*:?-+:?\s*(?:\|\s*:?-+:?\s*)*\|?\s*$/;
+
+/**
+ * The GFM table starting at line `at`, if one does: a header line, the
+ * delimiter line under it with as many columns, and every line after that
+ * holds a `|` until a blank line or the end. The same lines markdown-it reads
+ * as a table for the page, so the slide and the page agree on what a table is.
+ */
+function markdownTable(lines: readonly string[], at: number, end: number): MarkdownTable | undefined {
+  const head = lines[at];
+  const under = lines[at + 1];
+  if (at + 1 >= end || head === undefined || under === undefined) return undefined;
+  if (!head.includes('|') || !DELIMITER.test(under)) return undefined;
+  const header = cellsOf(head);
+  const marks = cellsOf(under);
+  if (header.length !== marks.length) return undefined;
+  const align = marks.map(mark => {
+    const left = mark.startsWith(':');
+    const right = mark.endsWith(':');
+    return left && right ? 'center' as const : right ? 'right' as const : left ? 'left' as const : undefined;
+  });
+  const rows: string[][] = [];
+  let next = at + 2;
+  for (; next < end; next += 1) {
+    const line = lines[next]!;
+    if (line.trim() === '' || !line.includes('|')) break;
+    // A row with too few cells is padded and one with too many is cut, as GFM does.
+    const cells = cellsOf(line);
+    rows.push(header.map((_, i) => cells[i] ?? ''));
+  }
+  return { header, align, rows, end: next };
+}
+
+/** The cells of one table line: split on `|` that is not escaped, the outer pipes dropped. */
+function cellsOf(line: string): string[] {
+  const cells: string[] = [];
+  let cell = '';
+  for (let i = 0; i < line.length; i += 1) {
+    const character = line[i]!;
+    if (character === '\\' && line[i + 1] === '|') { cell += '|'; i += 1; continue; }
+    if (character === '|') { cells.push(cell); cell = ''; continue; }
+    cell += character;
+  }
+  cells.push(cell);
+  const trimmed = cells.map(one => one.trim());
+  if (line.trim().startsWith('|')) trimmed.shift();
+  if (line.trim().endsWith('|') && !line.trim().endsWith('\\|')) trimmed.pop();
+  return trimmed;
+}
+
+/** A Markdown table as a native one on the slide, set the way the page sets it. */
+function tableBlock(table: MarkdownTable, runs: (text: string) => readonly Run[]): Block {
+  const cell = (text: string, align: 'left' | 'center' | 'right'): TableCell => ({
+    runs: runs(text) as Run[], rowSpan: 1, colSpan: 1, covered: 'none', align,
+  });
+  return {
+    kind: 'table',
+    columns: table.header.map(() => 1),
+    rows: [
+      { header: true, cells: table.header.map((text, i) => cell(text, table.align[i] ?? 'center')) },
+      ...table.rows.map(row => ({ header: false, cells: row.map((text, i) => cell(text, table.align[i] ?? 'left')) })),
+    ],
+  };
 }
 
 /** Code, one paragraph per line, set in the code face and never parsed. */
