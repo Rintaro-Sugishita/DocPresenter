@@ -12,6 +12,7 @@ import type { DiagramFile, Item, ShapeKind } from '../model.js';
 import { renderDiagram } from '../draw/render.js';
 import { roundedPath } from '../draw/geometry.js';
 import { stencilArt, stencilParts } from '../draw/stencil.js';
+import { DEFAULT_GROUPS } from '../default-parts.js';
 import {
   BASE_MESSAGES, DEFAULT_LOCALE, described, type Edit, type Locale, type Phrase,
 } from '@docpresenter/base';
@@ -1256,7 +1257,11 @@ export function createCanvas(options: CanvasOptions): Canvas {
         disabled: name === current,
         run: () => run(name),
       };
-      const group = part.group ?? t('diagram.stencil.group.other');
+      // A heading of the shipped library is shown in the reader's language;
+      // one the author wrote is the author's own words, and stays as written.
+      const shipped = part.group === undefined ? undefined : DEFAULT_GROUPS[part.group];
+      const group = part.group === undefined ? t('diagram.stencil.group.other')
+        : shipped ? t(shipped as never) : part.group;
       const kind = kinds.get(group);
       if (kind) kind.push(one);
       else kinds.set(group, [one]);

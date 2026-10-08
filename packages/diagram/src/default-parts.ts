@@ -36,6 +36,22 @@ export function iconParts(): string {
   return `# 同梱の絵（自動生成）\n\nparts {\n${lines.join('\n')}\n}\n`;
 }
 
+/**
+ * The headings the shipped library is written under, and the message each is
+ * shown as. The library is text a person reads and copies from, so it keeps one
+ * language; a menu built from it speaks the reader's.
+ */
+export const DEFAULT_GROUPS: Readonly<Record<string, `diagram.parts.group.${string}`>> = {
+  '面': 'diagram.parts.group.surfaces',
+  '文字': 'diagram.parts.group.text',
+  '入力': 'diagram.parts.group.inputs',
+  'ボタン': 'diagram.parts.group.buttons',
+  '一覧': 'diagram.parts.group.lists',
+  '中身を行で持つもの': 'diagram.parts.group.rows',
+  '線': 'diagram.parts.group.lines',
+  '飾り・見せるもの': 'diagram.parts.group.decoration',
+};
+
 export const DEFAULT_PARTS = `# 同梱の画面部品
 # 自分のシステムの見た目は、作業場の parts ファイルに書いて上書きする。
 
