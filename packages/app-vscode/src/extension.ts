@@ -8,6 +8,7 @@ import * as vscode from 'vscode';
 import { exportAll, FORMAT_LABEL } from './export-command.js';
 import { initWorkspace } from './init-command.js';
 import { readBackDeck } from './pptx-back-command.js';
+import { importReview } from './review-command.js';
 import { t } from './l10n.js';
 import type { ExportFormat } from './protocol.js';
 import { SheetEditorProvider } from './sheet-editor.js';
@@ -64,6 +65,8 @@ export function activate(context: vscode.ExtensionContext): void {
     // A deck edited in PowerPoint, read back into the drawings it came from.
     // The explorer's menu hands over the deck that was right-clicked.
     vscode.commands.registerCommand('docpresenter.readBackPptx', (uri?: vscode.Uri) => readBackDeck(output, uri)),
+    // A PDF a reviewer annotated, taken into a review file as anchored comments.
+    vscode.commands.registerCommand('docpresenter.importPdfReview', (uri?: vscode.Uri) => importReview(output, uri)),
   );
 }
 

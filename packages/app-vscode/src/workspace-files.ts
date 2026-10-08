@@ -4,6 +4,7 @@
 // both the build command and the export buttons read the folder once, here,
 // over `vscode.workspace.fs`, and hand the same shape to the same build.
 
+import { execFile } from 'node:child_process';
 import * as vscode from 'vscode';
 import type { Workspace } from '@docpresenter/build';
 
@@ -41,6 +42,21 @@ export async function readWorkspace(): Promise<ReadWorkspace> {
       dataUrl: path => data.get(path),
     },
   };
+}
+
+/**
+ * The commit the folder is at, and whether its files are that commit. Empty
+ * when it is not a repository or git is not there: the build then says nothing
+ * about a commit rather than a wrong one.
+ */
+export async function gitState(folder: string): Promise<{ commit?: string; clean?: boolean }> {
+  const git = (args: readonly string[]): Promise<string | undefined> => new Promise(done => {
+    execFile('git', [...args], { cwd: folder, encoding: 'utf8' }, (error, out) => done(error ? undefined : out));
+  });
+  const commit = (await git(['rev-parse', 'HEAD']))?.trim();
+  if (!commit) return {};
+  const status = await git(['status', '--porcelain']);
+  return status === undefined ? { commit } : { commit, clean: status.trim() === '' };
 }
 
 /** Where artifacts go, as the setting says. */

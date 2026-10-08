@@ -123,6 +123,13 @@ const commit = (() => {
     return execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
   } catch { return undefined; }
 })();
+// Whether what is built is that commit. Only the folder being built counts:
+// a change elsewhere in the repository does not make these files different.
+const clean = commit === undefined ? undefined : (() => {
+  try {
+    return execFileSync('git', ['status', '--porcelain', '--', root], { encoding: 'utf8' }).trim() === '';
+  } catch { return undefined; }
+})();
 
 const wantsPdf = files.some(path => /\.md$/i.test(path)
   && (workspace.read(path) ?? '').includes('pdf'));
@@ -171,6 +178,7 @@ const result = await build(workspace, {
   ...(showRemoved ? { showRemoved } : {}),
   ...(only.length ? { only } : {}),
   ...(commit ? { commit } : {}),
+  ...(clean === undefined ? {} : { clean }),
   builtAt: new Date().toISOString(),
 });
 

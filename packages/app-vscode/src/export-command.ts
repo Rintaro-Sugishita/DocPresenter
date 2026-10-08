@@ -11,7 +11,7 @@
 
 import * as vscode from 'vscode';
 import {
-  build, readGraph, renderPage, type Artifact, type FormatWriter,
+  build, readGraph, renderPage, reviewSourceOf, type Artifact, type FormatWriter,
 } from '@docpresenter/build';
 import { createSubsetter, writePdf, type Subsetter } from '@docpresenter/pdf';
 import { BUILD_MESSAGES } from '@docpresenter/build';
@@ -19,7 +19,7 @@ import { describeError } from '@docpresenter/base';
 import { hostLocale, t } from './l10n.js';
 import { systemFonts } from './pdf-fonts.js';
 import type { ExportFormat, FromView, ToView } from './protocol.js';
-import { outDirOf, readWorkspace } from './workspace-files.js';
+import { gitState, outDirOf, readWorkspace } from './workspace-files.js';
 
 /** A WebView that answers the build's requests: an open editor, or the export panel. */
 export interface OpenView {
@@ -102,8 +102,12 @@ export async function writeOut(options: WriteOutOptions): Promise<WriteOutResult
 
     const view = renderer;
     options.progress?.(t('vscode.export.writing'));
+    // The commit goes into the PDF, so an annotated copy that comes back says
+    // which version the reviewer read.
+    const git = await gitState(folder.uri.fsPath);
     const result = await build(workspace, {
       locale,
+      ...git,
       ...(options.only === undefined ? {} : { only: options.only }),
       ...(options.formats === undefined ? {} : { formats: options.formats }),
       outDir: outDirOf(),
@@ -373,7 +377,7 @@ async function pdfWriter(
     if (measured.error !== undefined || !measured.plan) {
       throw new Error(measured.error ?? t('vscode.export.noPlan'));
     }
-    const { bytes, missing } = await writePdf(measured.plan, { fonts: set, subset });
+    const { bytes, missing } = await writePdf(measured.plan, { fonts: set, subset, review: reviewSourceOf(input) });
     for (const one of missing) input.diagnostics.push({
       severity: 'warning', path: input.root.path,
       message: t('vscode.export.missingGlyph', { character: one.character }),

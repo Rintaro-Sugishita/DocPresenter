@@ -34,6 +34,12 @@ export interface WriteInput {
   readonly marks?: DiffMarks;
   /** Pictures from the web, fetched once before any writer ran. */
   readonly inlined?: ReadonlyMap<string, string>;
+  /**
+   * Every file the document was built from, the document first, as workspace
+   * paths. A PDF carries their text so a reviewer's annotation can be traced
+   * back to the bytes it is about.
+   */
+  readonly sources: readonly string[];
   /** Mermaid drawings as pictures, by source, made once before any writer ran. */
   readonly pictures?: ReadonlyMap<string, MermaidPicture>;
 }
@@ -64,6 +70,11 @@ export interface BuildOptions {
    */
   readonly style?: (theme: string) => string | undefined;
   readonly commit?: string;
+  /**
+   * False when the working tree held changes the commit does not: the output
+   * is then not that commit, and an anchor into it says so.
+   */
+  readonly clean?: boolean;
   readonly builtAt?: string;
   /**
    * Another version to mark changes against: a folder, a commit, whatever the
@@ -165,7 +176,8 @@ export async function build(
 
     for (const format of options.formats ?? root.formats) {
       const artifact = await write(
-        workspace, root, prepared, format, outDir, options, diagnostics, marks, inlined, pictures);
+        workspace, root, prepared, format, outDir, options, diagnostics, marks, inlined, pictures,
+        graph.closure.get(root.path) ?? [root.path]);
       if (artifact) artifacts.push(artifact);
     }
   }
@@ -300,7 +312,7 @@ async function write(
   workspace: Workspace, root: Root, prepared: PreparedDocument, format: string,
   outDir: string, options: BuildOptions, diagnostics: BuildDiagnostic[],
   marks: DiffMarks | undefined, inlined: ReadonlyMap<string, string>,
-  pictures: ReadonlyMap<string, MermaidPicture>,
+  pictures: ReadonlyMap<string, MermaidPicture>, sources: readonly string[],
 ): Promise<Artifact | undefined> {
   const builtIn: Record<string, FormatWriter | undefined> = { html, pptx };
   const { locale } = prepared.resolved;
@@ -328,7 +340,7 @@ async function write(
 
   try {
     return await writer({
-      workspace, root, prepared, style, options, diagnostics, inlined, pictures,
+      workspace, root, prepared, style, options, diagnostics, inlined, pictures, sources,
       ...(marks === undefined ? {} : { marks }),
       out: `${outDir}/${basename(root.path)}`,
     });
@@ -339,6 +351,27 @@ async function write(
     });
     return undefined;
   }
+}
+
+/**
+ * Where a PDF came from, for the review map it carries: the files it was built
+ * from as the build read them (LF), and the commit. A PDF writer passes this to
+ * `writePdf` as `review`.
+ */
+export function reviewSourceOf(input: WriteInput): {
+  document: string; commit?: string; clean?: boolean; files: Record<string, string>;
+} {
+  const files: Record<string, string> = {};
+  for (const path of input.sources) {
+    const text = input.workspace.read(path);
+    if (text !== undefined) files[path] = text;
+  }
+  return {
+    document: input.root.path,
+    ...(input.options.commit === undefined ? {} : { commit: input.options.commit }),
+    ...(input.options.clean === undefined ? {} : { clean: input.options.clean }),
+    files,
+  };
 }
 
 /**

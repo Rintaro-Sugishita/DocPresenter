@@ -34,6 +34,9 @@ export class WorkspaceEdit {
   replace(uri: Uri, range: Range, text: string): void {
     this.changes.push({ uri, range, text });
   }
+  insert(uri: Uri, at: Position, text: string): void {
+    this.changes.push({ uri, range: new Range(at, at), text });
+  }
   renameFile(from: Uri, to: Uri, options: { overwrite?: boolean } = {}): void {
     this.renames.push({ from, to, overwrite: options.overwrite ?? false });
   }
@@ -93,8 +96,8 @@ export const workspace = {
   asRelativePath: (uri: Uri) => relative(uri),
   findFiles: async (pattern: string) => {
     // Only the part of glob this extension uses: `**/*` for everything,
-    // `**/*.{a,b}` for a set of kinds, and `**/*.a` for one.
-    const kinds = /\{([^}]*)\}/.exec(pattern)?.[1]?.split(',') ?? /\*\.(\w+)$/.exec(pattern)?.slice(1);
+    // `**/*.{a,b}` for a set of kinds, and `**/*.a` (or `*.a.b`) for one.
+    const kinds = /\{([^}]*)\}/.exec(pattern)?.[1]?.split(',') ?? /\*\.([\w.]+)$/.exec(pattern)?.slice(1);
     return [...held.keys(), ...written.keys()]
       .filter((path, at, all) => all.indexOf(path) === at)
       .filter(path => kinds === undefined
@@ -109,6 +112,10 @@ export const workspace = {
       const text = held.get(relative(uri));
       if (text === undefined) throw new Error(`no such file: ${relative(uri)}`);
       return new TextEncoder().encode(text);
+    },
+    stat: async (uri: Uri) => {
+      if (!held.has(relative(uri)) && !written.has(relative(uri))) throw new Error(`no such file: ${relative(uri)}`);
+      return { type: 1 };
     },
     writeFile: async (uri: Uri, bytes: Uint8Array) => {
       written.set(relative(uri), bytes);
@@ -155,11 +162,15 @@ export const window = {
   showErrorMessage: (message: string) => { shown.push(message); },
   showWarningMessage: (message: string) => { shown.push(message); },
   showInformationMessage: (message: string) => { shown.push(message); },
+  showTextDocument: async () => undefined,
   /** What the next file dialog answers. */
   showOpenDialog: async () => picks.dialog,
   /** Picks what the test said to, or every item that was offered as picked. */
-  showQuickPick: async <T extends { picked?: boolean }>(items: readonly T[]) =>
-    picks.quick ? await picks.quick(items) : items.filter(item => item.picked),
+  // As VS Code does: a list back when many may be picked, one item otherwise.
+  showQuickPick: async <T extends { picked?: boolean }>(items: readonly T[], options: { canPickMany?: boolean } = {}) => {
+    const chosen = picks.quick ? await picks.quick(items) : items.filter(item => item.picked);
+    return options.canPickMany ? chosen : chosen?.[0];
+  },
   createOutputChannel: () => ({
     lines: [] as string[],
     clear() { this.lines.length = 0; },

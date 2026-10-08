@@ -20,6 +20,7 @@ import {
   FALLBACK, drawsGlyphs, isCff, missingGlyphs,
   type FontOptions, type FontSource, type FontStyle, type MissingGlyph,
 } from './fonts.js';
+import { REVIEW_ATTACHMENT, reviewMapOf, type ReviewSource } from './review.js';
 
 export interface WriteResult {
   readonly bytes: Uint8Array;
@@ -34,7 +35,16 @@ function faceKey(source: FontSource): string {
   return `${source.name}#${source.faceIndex ?? 0}#${source.bytes.length}`;
 }
 
-export async function writePdf(plan: PagePlan, options: FontOptions): Promise<WriteResult> {
+export interface WriteOptions extends FontOptions {
+  /**
+   * Where the document came from. Given, the PDF carries a review map as an
+   * attachment, so the annotations a reviewer leaves on it can be traced back
+   * to the source (review.ts).
+   */
+  readonly review?: ReviewSource | undefined;
+}
+
+export async function writePdf(plan: PagePlan, options: WriteOptions): Promise<WriteResult> {
   const byFace = codePointsByFace(plan);
   const missing: MissingGlyph[] = [];
 
@@ -87,7 +97,14 @@ export async function writePdf(plan: PagePlan, options: FontOptions): Promise<Wr
   pdf.setProducer('DocPresenter');
   // The commit the artifact was built from, so a printed page can be traced
   // back to the source it came from.
-  if (plan.commit) pdf.setKeywords([`commit:${plan.commit}`]);
+  const commit = plan.commit ?? options.review?.commit;
+  if (commit) pdf.setKeywords([`commit:${commit}`]);
+  if (options.review) {
+    await pdf.attach(new TextEncoder().encode(JSON.stringify(reviewMapOf(plan, options.review))), REVIEW_ATTACHMENT, {
+      mimeType: 'application/json',
+      description: 'DocPresenter: where each line of this PDF came from, for importing review comments',
+    });
+  }
 
   // Where every destination sits, gathered as the pages are drawn: a link and a
   // bookmark both need a page and a height, and only the plan knows them.

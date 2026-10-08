@@ -32,7 +32,8 @@
       { "command": "docpresenter.exportHtml", "title": "%command.exportHtml.title%", "category": "DocPresenter" },
       { "command": "docpresenter.exportPdf", "title": "%command.exportPdf.title%", "category": "DocPresenter" },
       { "command": "docpresenter.exportPptx", "title": "%command.exportPptx.title%", "category": "DocPresenter" },
-      { "command": "docpresenter.readBackPptx", "title": "%command.readBackPptx.title%", "category": "DocPresenter" }
+      { "command": "docpresenter.readBackPptx", "title": "%command.readBackPptx.title%", "category": "DocPresenter" },
+      { "command": "docpresenter.importPdfReview", "title": "%command.importPdfReview.title%", "category": "DocPresenter" }
     ],
     "menus": {
       "editor/title": [
@@ -43,11 +44,13 @@
       ],
       "explorer/context": [
         { "command": "docpresenter.openEditor", "when": "resourceExtname =~ /^\\.(md|dgm)$/", "group": "navigation@9" },
-        { "command": "docpresenter.readBackPptx", "when": "resourceExtname == .pptx", "group": "navigation@9" }
+        { "command": "docpresenter.readBackPptx", "when": "resourceExtname == .pptx", "group": "navigation@9" },
+        { "command": "docpresenter.importPdfReview", "when": "resourceExtname == .pdf", "group": "navigation@9" }
       ],
       "commandPalette": [
         { "command": "docpresenter.init", "when": "workspaceFolderCount > 0" },
         { "command": "docpresenter.readBackPptx", "when": "workspaceFolderCount > 0" },
+        { "command": "docpresenter.importPdfReview", "when": "workspaceFolderCount > 0" },
         { "command": "docpresenter.openEditor", "when": "resourceExtname =~ /^\\.(md|dgm)$/" },
         { "command": "docpresenter.exportHtml", "when": "activeCustomEditorId == docpresenter.sheets" },
         { "command": "docpresenter.exportPdf", "when": "activeCustomEditorId == docpresenter.sheets" },

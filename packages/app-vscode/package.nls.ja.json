@@ -9,6 +9,7 @@
   "command.exportPdf.title": "DocPresenter: この文書を PDF に書き出す",
   "command.exportPptx.title": "DocPresenter: この文書を PPTX に書き出す",
   "command.readBackPptx.title": "DocPresenter: PPTX の修正を図に読み戻す…",
+  "command.importPdfReview.title": "DocPresenter: PDF の注釈を指摘として取り込む…",
   "config.commitKey.description": "開いているブロックを確定するキー。ほかの Enter は改行になる。",
   "config.commitKey.ctrl-enter": "Ctrl+Enter で確定 / Enter で改行",
   "config.commitKey.enter": "Enter で確定 / Shift+Enter で改行",

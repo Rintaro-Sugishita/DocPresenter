@@ -8,7 +8,7 @@ import { existsSync, readFileSync, mkdirSync, writeFileSync } from 'node:fs';
 import { platform } from 'node:process';
 import { chromium } from 'playwright-core';
 import { rolldown } from 'rolldown';
-import { BUILD_MESSAGES, renderPage } from '../packages/build/dist/index.js';
+import { BUILD_MESSAGES, renderPage, reviewSourceOf } from '../packages/build/dist/index.js';
 import { createRequire } from 'node:module';
 import { createSubsetter, writePdf } from '../packages/pdf/dist/index.js';
 
@@ -226,7 +226,7 @@ export async function createPdfWriter(options = {}) {
     await page.close();
     if (errors.length) throw new Error(errors.join(' / '));
 
-    const { bytes, missing } = await writePdf(measured.plan, { fonts: set, subset });
+    const { bytes, missing } = await writePdf(measured.plan, { fonts: set, subset, review: reviewSourceOf(input) });
     for (const one of missing) {
       input.diagnostics?.push(`フォントに無い字: ${one.character}`);
     }
