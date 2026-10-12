@@ -8,6 +8,7 @@
     { "path": "packages/pptx" },
     { "path": "packages/build" },
     { "path": "packages/editor" },
-    { "path": "packages/app-vscode" }
+    { "path": "packages/app-vscode" },
+    { "path": "packages/app-web" }
   ]
 }
