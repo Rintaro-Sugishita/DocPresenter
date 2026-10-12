@@ -3,7 +3,7 @@ import { applyEdit, type Edit } from '@docpresenter/base';
 import { runBuild } from '../src/build-command.js';
 import { SheetEditorProvider } from '../src/sheet-editor.js';
 import type { FromView, ToView } from '../src/protocol.js';
-import { documentAt, give, held, saved, shown, written } from './fake-vscode.js';
+import { documentAt, give, held, picks, saved, shown, written } from './fake-vscode.js';
 
 const DOC = [
   '# 認証機能 設計書',
@@ -61,6 +61,15 @@ describe('VS Code のカスタムエディタ', () => {
     expect(opened.files['docs/auth/login.dgm']).toBe(DGM);
     expect(opened.commitKey).toBe('ctrl-enter');
     expect(opened.locale).toBe('ja');
+  });
+
+  it('作業場にチームのテーマがあれば画面に渡り、無ければ同梱のままと伝える', async () => {
+    const team = await open({ 'docs/design.md': DOC, '.docpresenter/themes/default/theme.css': 'h1 { color: red }' });
+    await team.say({ kind: 'ready' });
+    expect(team.sent.find(one => one.kind === 'theme')).toEqual({ kind: 'theme', css: 'h1 { color: red }' });
+    const plain = await open({ 'docs/design.md': DOC });
+    await plain.say({ kind: 'ready' });
+    expect(plain.sent.find(one => one.kind === 'theme')).toEqual({ kind: 'theme' });
   });
 
   // 画面はこの拡張のスクリプトだけを動かす。設計書の中身を読み込む画面が、
@@ -201,6 +210,65 @@ describe('CRLF で取り出したファイル', () => {
       span: { start: 0, end: 0 }, text: '# 足した\r\n',
     });
     expect(held.get('docs/auth/login.dgm')).toBe(`# 足した\n${DGM}`);
+  });
+});
+
+describe('レビューの指摘', () => {
+  const REVIEW = [
+    'round: "第 1 回"', 'via: pdf', '', 'comments:',
+    '  - id: 1',
+    '    anchor:',
+    '      file:   docs/design.md',
+    '      start:  29', '      end:    47',
+    '      quote:  "最初の段落。"',
+    '    context:', '      document: docs/design.md',
+    '    body:   "言い回しを直して"', '    status: open',
+    '  - id: 2',
+    '    anchor:', '      file: docs/other.md', '      start: 0', '      end: 3', '      quote: "x"',
+    '    context:', '      document: docs/other.md',
+    '    body: "ほかの文書への指摘"', '    status: open',
+    '',
+  ].join('\n');
+  const reviewsSent = (sent: ToView[]) => sent.filter(one => one.kind === 'reviews').pop();
+
+  it('開くと、この文書への指摘だけが画面に渡る', async () => {
+    const view = await open({ 'docs/design.md': DOC, 'docs/auth/login.dgm': DGM, 'reviews/r1.review.yml': REVIEW });
+    await view.say({ kind: 'ready' });
+    const told = reviewsSent(view.sent);
+    expect(told?.kind === 'reviews' && told.notes.map(note => [note.key, note.body, note.quote])).toEqual([
+      ['reviews/r1.review.yml#1', '言い回しを直して', '最初の段落。'],
+    ]);
+  });
+
+  it('画面で付けた指摘は、選んだレビューファイルの後ろに足され、画面に渡り直す', async () => {
+    const view = await open({ 'docs/design.md': DOC, 'docs/auth/login.dgm': DGM, 'reviews/r1.review.yml': REVIEW });
+    await view.say({ kind: 'ready' });
+    picks.quick = <T>(items: readonly T[]) => [items.find(item => (item as { path?: string }).path === 'reviews/r1.review.yml')!];
+    const quote = '最初の段落。';
+    const start = new TextEncoder().encode(DOC.slice(0, DOC.indexOf(quote))).length;
+    await view.say({
+      kind: 'review-add', precision: 'text', body: 'ここは図の前に',
+      anchor: { file: 'docs/design.md', start, end: start + new TextEncoder().encode(quote).length, quote },
+    });
+    const after = held.get('reviews/r1.review.yml')!;
+    expect(after.startsWith(REVIEW)).toBe(true);
+    expect(after).toContain('  - id: 3\n');
+    expect(after).toContain('    body:   "ここは図の前に"');
+    expect(after).toContain('      via:        editor');
+    const told = reviewsSent(view.sent);
+    expect(told?.kind === 'reviews' && told.notes.map(note => note.id)).toEqual([1, 3]);
+  });
+
+  it('画面で状態と回答を変えると、その指摘の行だけが書き換わり、画面に渡り直す', async () => {
+    const view = await open({ 'docs/design.md': DOC, 'docs/auth/login.dgm': DGM, 'reviews/r1.review.yml': REVIEW });
+    await view.say({ kind: 'ready' });
+    await view.say({ kind: 'review-update', round: 'reviews/r1.review.yml', id: 1, status: 'resolved' });
+    await view.say({ kind: 'review-update', round: 'reviews/r1.review.yml', id: 1, reply: '直しました' });
+    const after = held.get('reviews/r1.review.yml')!;
+    expect(after).toBe(REVIEW.replace('    status: open\n  - id: 2', '    status: resolved\n    reply: "直しました"\n  - id: 2'));
+    expect(saved).toContain('reviews/r1.review.yml');
+    const told = reviewsSent(view.sent);
+    expect(told?.kind === 'reviews' && told.notes[0]).toMatchObject({ status: 'resolved', reply: '直しました' });
   });
 });
 

@@ -57,17 +57,25 @@ export function renderTable(table: TableFile, marks?: TableMarks): string {
 }
 
 /**
- * Column widths are a measurement, not a token, so they are written as a real
- * width on a `<col>`. A theme cannot decide how wide the "備考" column should
- * be in one particular table.
+ * The width each column's style gives it (`col:説明 { width: 38% }`), or
+ * undefined where none is given. The page and the slide read the same rule.
  */
-function columnGroup(table: TableFile): string {
-  const widths = table.columns.map(column => {
+export function columnWidths(table: TableFile): (string | undefined)[] {
+  return table.columns.map(column => {
     const rule = table.style.find(r =>
       r.selector.kind === 'column' && r.selector.name === column.header);
     const width = rule?.declarations.get('width');
     return width !== undefined && LENGTH.test(width) ? width : undefined;
   });
+}
+
+/**
+ * Column widths are a measurement, not a token, so they are written as a real
+ * width on a `<col>`. A theme cannot decide how wide the "備考" column should
+ * be in one particular table.
+ */
+function columnGroup(table: TableFile): string {
+  const widths = columnWidths(table);
   if (widths.every(width => width === undefined)) return '';
   return `<colgroup>${widths
     .map(width => width === undefined ? '<col>' : `<col style="width:${width}">`)

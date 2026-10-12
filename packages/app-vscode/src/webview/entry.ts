@@ -14,11 +14,16 @@ import {
   type EditorSettings, type Picture, type ResourceKind, type SheetView,
 } from '@docpresenter/editor';
 import { drawMermaid } from '@docpresenter/editor/mermaid';
-import { answerRenderRequest } from './render-requests.js';
+import { answerRenderRequest, useTheme } from './render-requests.js';
+import { createReviewUi } from './review-ui.js';
 import { freeName, inDocument, inWorkspace, resourceFolder } from '../paths.js';
 import type { ExportFormat, FromView, ToView } from '../protocol.js';
 
-declare function acquireVsCodeApi(): { postMessage(message: FromView): void };
+declare function acquireVsCodeApi(): {
+  postMessage(message: FromView): void;
+  getState(): unknown;
+  setState(state: unknown): void;
+};
 
 const vscode = acquireVsCodeApi();
 const send = (message: FromView): void => { vscode.postMessage(message); };
@@ -31,9 +36,24 @@ let settings: EditorSettings = DEFAULT_SETTINGS;
 /** A `.dgm` opened on its own: `source` is only the line that shows it. */
 let drawingOnly = false;
 let view: SheetView | undefined;
+/** Puts the shipped theme back, while the workspace's own is on screen. */
+let restoreTheme: (() => void) | undefined;
 
 
 const here = (written: string): string => inWorkspace(documentPath, written);
+
+// The editing and review modes, and the review comments on the page.
+const reviews = createReviewUi({
+  send,
+  read: path => (path === documentPath && !drawingOnly ? source : files[path]),
+  documentPath: () => documentPath,
+  locale: () => settings.locale,
+  view: () => view,
+  state: {
+    get: () => vscode.getState() as { mode?: 'edit' | 'view'; marks?: boolean } | undefined,
+    set: state => vscode.setState(state),
+  },
+});
 
 const loader = {
   read: (path: string): string | undefined => files[here(path)],
@@ -128,9 +148,13 @@ function mount(): void {
       });
     },
     onError: message => send({ kind: 'error', message }),
-    decorate: page => { void drawMermaid(page, settings.locale); },
+    decorate: page => {
+      void drawMermaid(page, settings.locale);
+      if (!drawingOnly) reviews.paint(page);
+    },
   });
   if (at > 0) view.select(at);
+  if (!drawingOnly) reviews.apply();
 }
 
 window.addEventListener('message', (event: MessageEvent<ToView>) => {
@@ -165,6 +189,16 @@ window.addEventListener('message', (event: MessageEvent<ToView>) => {
   if (message.kind === 'settings') {
     settings = { ...settings, commitKey: message.commitKey };
     view?.configure(settings);
+    return;
+  }
+  if (message.kind === 'theme') {
+    // The workspace's own theme in place of the shipped one, or back to it.
+    restoreTheme?.();
+    restoreTheme = message.css === undefined ? undefined : useTheme(message.css);
+    return;
+  }
+  if (message.kind === 'reviews') {
+    reviews.setNotes(message.notes);
     return;
   }
   if (message.kind === 'export-state') {

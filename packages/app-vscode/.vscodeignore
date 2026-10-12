@@ -5,3 +5,4 @@ templates/**
 tsconfig.json
 tsconfig.tsbuildinfo
 .vscodeignore
+README.ja.md

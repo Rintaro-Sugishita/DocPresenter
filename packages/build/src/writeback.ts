@@ -40,10 +40,19 @@ export interface WriteBackResult {
 const MOVED = 2;
 
 export function writeBack(pptx: Uint8Array, workspace: Workspace, locale: Locale = DEFAULT_LOCALE): WriteBackResult {
-  const { drawings, diagnostics: read } = readDrawings(pptx, locale);
+  const { drawings, tables, diagnostics: read } = readDrawings(pptx, locale);
   const diagnostics: BuildDiagnostic[] = read.map(message => ({
     severity: 'warning', message, path: '',
   }));
+  // A table changed in PowerPoint is not written back. Said, so the edit is
+  // carried over by hand rather than lost.
+  for (const table of tables) {
+    if (!table.changed) continue;
+    diagnostics.push({
+      severity: 'warning', path: table.source,
+      ...said(locale, 'build.writeback.table', { path: table.source, slide: table.slide }),
+    });
+  }
   const files: WriteBack[] = [];
 
   for (const drawing of drawings) {
@@ -147,6 +156,19 @@ export function writeBack(pptx: Uint8Array, workspace: Workspace, locale: Locale
       diagnostics.push({
         severity: 'warning', path: drawing.source,
         ...said(locale, 'build.writeback.unreadable', { id }),
+      });
+    }
+
+    // A line's label retyped in PowerPoint is not written back yet. Said out
+    // loud rather than passed over: an edit someone made by hand is never
+    // dropped in silence.
+    for (const label of drawing.edgeLabels) {
+      const edge = file.edges.find(one => one.from === label.from && one.to === label.to);
+      const was = edge?.label === undefined ? '' : lineText(parseRuns(edge.label));
+      if (!edge || label.text === was) continue;
+      diagnostics.push({
+        severity: 'warning', path: drawing.source,
+        ...said(locale, 'build.writeback.edgeLabel', { from: label.from, to: label.to, was, now: label.text }),
       });
     }
 

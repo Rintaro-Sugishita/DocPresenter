@@ -25,6 +25,18 @@ export interface TableBlock {
   readonly kind: 'table';
   readonly columns: readonly number[];          // relative widths
   readonly rows: readonly TableRow[];
+  /**
+   * The width the author gave a column, as a share of the table (`0.14` for
+   * `width: 14%`), or undefined. A table with any of these is as wide as the
+   * slide, like the page; one with none is as wide as its contents need.
+   */
+  readonly widths?: readonly (number | undefined)[];
+  /**
+   * The file the table was written in, as a workspace path. The slide names
+   * the table after it, so a deck that comes back can say which table was
+   * changed in PowerPoint — tables are not read back.
+   */
+  readonly source?: string;
 }
 
 export interface TableRow {
@@ -94,6 +106,14 @@ export interface DrawnConnector {
   /** Thickness in drawing units; the default is the one the theme draws with. */
   readonly weight?: number;
   readonly label?: readonly Run[];
+  /**
+   * Where the label is set, in drawing units: the plate the screen draws it on,
+   * centred where the layout put it. A connector cannot hold text, so the slide
+   * carries it as a text box of its own, laid over the line as the screen does.
+   */
+  readonly labelBox?: { readonly x: number; readonly y: number; readonly width: number; readonly height: number };
+  /** The ends it joins, by node id, to name the label's text box after the connection. */
+  readonly between?: { readonly from: string; readonly to: string };
   /** The shape and side each end leaves through, so PowerPoint keeps the line on it. */
   readonly start?: Attachment;
   readonly end?: Attachment;

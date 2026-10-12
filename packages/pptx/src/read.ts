@@ -14,6 +14,7 @@
 import { unzipSync, strFromU8 } from 'fflate';
 import { DEFAULT_LOCALE, type Locale } from '@docpresenter/base';
 import { PPTX_MESSAGES } from './messages.js';
+import { tableSum } from './shapes.js';
 
 export interface ReadShape {
   readonly id: string;
@@ -33,10 +34,22 @@ export interface ReadDrawing {
   readonly shapes: readonly ReadShape[];
   /** Shapes on the slide that carry no id: added in PowerPoint, or ours. */
   readonly unknown: readonly string[];
+  /** The labels of connections, as the slide has them now. */
+  readonly edgeLabels: readonly { readonly from: string; readonly to: string; readonly text: string }[];
+}
+
+/** A table we wrote, and whether what it says now is what we wrote. */
+export interface ReadTable {
+  /** The file it was written in. */
+  readonly source: string;
+  readonly slide: number;
+  readonly changed: boolean;
 }
 
 export interface ReadResult {
   readonly drawings: readonly ReadDrawing[];
+  /** Tables are not read back; a changed one is named so it is not lost in silence. */
+  readonly tables: readonly ReadTable[];
   readonly diagnostics: readonly string[];
 }
 
@@ -46,6 +59,7 @@ export function readDrawings(bytes: Uint8Array, locale: Locale = DEFAULT_LOCALE)
   const files = unzipSync(bytes);
   const diagnostics: string[] = [];
   const drawings: ReadDrawing[] = [];
+  const tables: ReadTable[] = [];
 
   const slides = Object.keys(files)
     .filter(name => /^ppt\/slides\/slide\d+\.xml$/.test(name))
@@ -54,6 +68,16 @@ export function readDrawings(bytes: Uint8Array, locale: Locale = DEFAULT_LOCALE)
   for (const name of slides) {
     const xml = strFromU8(files[name]!);
     const index = number(name);
+    // A table carries the file it came from and a sum of what it said. What it
+    // says now is summed the same way: cell by cell, row by row.
+    for (const [frame] of xml.matchAll(/<p:graphicFrame>[\s\S]*?<\/p:graphicFrame>/g)) {
+      const named = /name="dp:table=([^"]*?);sum=([0-9a-f]+)"/.exec(frame);
+      if (!named) continue;
+      const rows = [...frame.matchAll(/<a:tr\b[\s\S]*?<\/a:tr>/g)].map(row =>
+        [...row[0].matchAll(/<a:tc\b[\s\S]*?<\/a:tc>/g)].map(cell =>
+          [...cell[0].matchAll(/<a:t>([^<]*)<\/a:t>/g)].map(found => unescapeXml(found[1] ?? '')).join('')));
+      tables.push({ source: unescapeXml(named[1]!), slide: index, changed: tableSum(rows) !== named[2] });
+    }
     const marked = MARK.exec(nameOf(xml) ?? '');
     const hasShapes = /<p:sp>/.test(xml);
     if (!marked) {
@@ -69,11 +93,18 @@ export function readDrawings(bytes: Uint8Array, locale: Locale = DEFAULT_LOCALE)
 
     const shapes: ReadShape[] = [];
     const unknown: string[] = [];
+    const edgeLabels: { from: string; to: string; text: string }[] = [];
     // Each shape up to its own end: what follows it on the slide — a table, a
     // picture, the next text box — is not part of it, and its text is not the
     // shape's label.
     for (const [shape] of xml.matchAll(/<p:sp>[\s\S]*?<\/p:sp>/g)) {
       const id = attribute(shape, 'p:cNvPr', 'name');
+      // A connection's label is a text box of its own, named after the connection.
+      const edge = id === undefined ? undefined : /^edge (.+?)->(.+)$/.exec(unescapeXml(id));
+      if (edge) {
+        edgeLabels.push({ from: edge[1]!, to: edge[2]!, text: textOf(shape) });
+        continue;
+      }
       const frame = xfrmOf(shape);
       if (!frame) continue;
       // Our own text boxes are named `text 7`; the drawing's shapes are named
@@ -91,10 +122,10 @@ export function readDrawings(bytes: Uint8Array, locale: Locale = DEFAULT_LOCALE)
         text: textOf(shape),
       });
     }
-    drawings.push({ source: source ?? '', slide: index, shapes, unknown });
+    drawings.push({ source: source ?? '', slide: index, shapes, unknown, edgeLabels });
   }
 
-  return { drawings, diagnostics };
+  return { drawings, tables, diagnostics };
 }
 
 function number(path: string): number {

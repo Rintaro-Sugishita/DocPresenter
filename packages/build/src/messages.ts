@@ -20,6 +20,8 @@ export const BUILD_MESSAGES = defineMessages({
   'build.unreadable': '読めない: {message}',
   'build.unreadableFile': '{path} を読めない: {message}',
   'build.noRoots': 'frontmatter に output を持つ文書が無い。ビルドするものが何も無い',
+  'build.duplicateNumber': '文書番号 {number} が {others} と重なっている（レビューの指摘がどちらの文書のものか分からなくなる）',
+  'build.noNumber': '文書番号（frontmatter の document:）が無い。レビューの指摘は文書を動かすと離れる（「新しい文書を作る」なら自動で採番する）',
   'build.orphan': 'どの成果物にも含まれていない',
   'build.cycle': '参照が循環している: {chain}',
   'build.missing': '参照先が見つからない: {target}',
@@ -33,6 +35,8 @@ export const BUILD_MESSAGES = defineMessages({
   'build.writeback.text': '{id} の文字を「{text}」に',
   'build.writeback.moved': '{ids} の位置を更新',
   'build.writeback.unreadable': '読み戻せない図形がある: {id}',
+  'build.writeback.edgeLabel': '{from} → {to} の線のラベルが「{was}」から「{now}」に変わっているが、線のラベルはまだ読み戻せない（図で直すこと）',
+  'build.writeback.table': '{slide} 枚目の表（{path}）が PowerPoint で書き換えられているが、表は読み戻せない（{path} を直すこと）',
 
   // --- in the document ---------------------------------------------------------------
   'build.cover.document': '文書番号',
@@ -56,6 +60,8 @@ export const BUILD_MESSAGES = defineMessages({
   'build.unreadable': 'Cannot read: {message}',
   'build.unreadableFile': 'Cannot read {path}: {message}',
   'build.noRoots': 'No document has output in its frontmatter, so there is nothing to build',
+  'build.duplicateNumber': 'The document number {number} is also used by {others} (review comments could not tell the two apart)',
+  'build.noNumber': 'No document number (document: in the frontmatter). Review comments come loose if the document is moved ("New Document" numbers one for you)',
   'build.orphan': 'Not part of any output',
   'build.cycle': 'References go round in a circle: {chain}',
   'build.missing': 'Reference not found: {target}',
@@ -69,6 +75,8 @@ export const BUILD_MESSAGES = defineMessages({
   'build.writeback.text': 'Text of {id} to "{text}"',
   'build.writeback.moved': 'Moved {ids}',
   'build.writeback.unreadable': 'A shape cannot be read back: {id}',
+  'build.writeback.edgeLabel': 'The label of the line {from} → {to} changed from "{was}" to "{now}", but line labels cannot be read back yet (change it in the diagram)',
+  'build.writeback.table': 'The table on slide {slide} ({path}) was changed in PowerPoint, but tables cannot be read back (change {path})',
 
   'build.cover.document': 'Document No.',
   'build.cover.version': 'Version',

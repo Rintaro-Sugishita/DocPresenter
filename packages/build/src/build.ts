@@ -6,11 +6,11 @@
 // from the HTML's is worse than no PDF.
 
 import {
-  expandDocument, fencesOf, isAddress, parseDocument, resolveDocument, viewOf,
+  anchorFileOf, expandDocument, fencesOf, isAbout, isAddress, parseDocument, parseReviewFile, resolveDocument, viewOf,
   type DiffMarks, type DocumentFile, type ResolvedDocument,
 } from '@docpresenter/markdown';
 import { writePptx } from '@docpresenter/pptx';
-import { DEFAULT_LOCALE, describeError, type Locale } from '@docpresenter/base';
+import { DEFAULT_LOCALE, describeError, locateAnchor, type Locale } from '@docpresenter/base';
 import { BUILD_MESSAGES, said } from './messages.js';
 import { deckOf } from './deck.js';
 import { diffOf, type Previous } from './diff.js';
@@ -75,6 +75,11 @@ export interface BuildOptions {
    * is then not that commit, and an anchor into it says so.
    */
   readonly clean?: boolean;
+  /**
+   * Whether a PDF carries the review so far as annotations a customer can read
+   * and reply to. On unless turned off — a copy for delivery, say.
+   */
+  readonly reviewNotes?: boolean;
   readonly builtAt?: string;
   /**
    * Another version to mark changes against: a folder, a commit, whatever the
@@ -330,7 +335,7 @@ async function write(
   const theme = root.document.frontmatter.theme ?? options.theme ?? 'default';
   const style = options.style
     ? options.style(theme)
-    : workspace.read(`themes/${theme}/theme.css`);
+    : themeOf(path => workspace.read(path), theme);
   if (style === undefined) {
     diagnostics.push({
       severity: 'error', path: root.path, ...said(locale, 'build.noTheme', { theme }),
@@ -342,7 +347,7 @@ async function write(
     return await writer({
       workspace, root, prepared, style, options, diagnostics, inlined, pictures, sources,
       ...(marks === undefined ? {} : { marks }),
-      out: `${outDir}/${basename(root.path)}`,
+      out: `${outDir}/${outputStem(root.path)}`,
     });
   } catch (error) {
     diagnostics.push({
@@ -359,7 +364,8 @@ async function write(
  * `writePdf` as `review`.
  */
 export function reviewSourceOf(input: WriteInput): {
-  document: string; commit?: string; clean?: boolean; files: Record<string, string>;
+  document: string; number?: string; commit?: string; clean?: boolean; files: Record<string, string>;
+  notes: ReviewNoteSource[]; locale: Locale;
 } {
   const files: Record<string, string> = {};
   for (const path of input.sources) {
@@ -371,7 +377,85 @@ export function reviewSourceOf(input: WriteInput): {
     ...(input.options.commit === undefined ? {} : { commit: input.options.commit }),
     ...(input.options.clean === undefined ? {} : { clean: input.options.clean }),
     files,
+    ...(numberOf(input.root.document.frontmatter.raw) ? { number: numberOf(input.root.document.frontmatter.raw)! } : {}),
+    notes: input.options.reviewNotes === false ? []
+      : reviewNotesOf(input.workspace, input.root.path, numberOf(input.root.document.frontmatter.raw)),
+    locale: input.prepared.resolved.locale,
   };
+}
+
+/**
+ * Where a workspace keeps a theme, in the order they are looked for: the
+ * team's own, set up with the folder (`.docpresenter/themes/<name>/`), then a
+ * `themes/<name>/` at the root.
+ */
+export function themePaths(theme: string): string[] {
+  return [`.docpresenter/themes/${theme}/theme.css`, `themes/${theme}/theme.css`];
+}
+
+/** A workspace's own theme, or undefined when it has none and the shipped one applies. */
+export function themeOf(read: (path: string) => string | undefined, theme: string): string | undefined {
+  for (const path of themePaths(theme)) {
+    const css = read(path);
+    if (css !== undefined) return css;
+  }
+  return undefined;
+}
+
+/** A document's number from its frontmatter, or undefined. */
+function numberOf(raw: Readonly<Record<string, unknown>>): string | undefined {
+  const value = raw['document'];
+  return typeof value === 'string' || typeof value === 'number' ? String(value) : undefined;
+}
+
+/** A comment the PDF carries, where its words are now (pdf/src/review-notes.ts). */
+export interface ReviewNoteSource {
+  readonly key: string;
+  readonly file: string;
+  readonly start: number;
+  readonly end: number;
+  readonly body: string;
+  readonly status: string;
+  readonly author?: string;
+  readonly date?: string;
+  readonly replies: { key: string; body: string; author?: string; date?: string }[];
+}
+
+/**
+ * The comments made on a document, from every review file in the workspace,
+ * each where its words are now (design/review-model.md §3.2). One whose words
+ * are gone is left out of the PDF; it stays in the review file.
+ */
+export function reviewNotesOf(workspace: Workspace, document: string, number?: string): ReviewNoteSource[] {
+  const read = asLf(workspace);
+  const notes: ReviewNoteSource[] = [];
+  for (const round of workspace.list().filter(path => /\.review\.yml$/i.test(path)).sort()) {
+    for (const comment of parseReviewFile(read.read(round) ?? '', round)) {
+      if (!isAbout(comment, document, number) || comment.status === 'orphaned') continue;
+      const file = anchorFileOf(comment, document);
+      if (!file || comment.start === undefined || comment.end === undefined || comment.quote === undefined) continue;
+      const current = read.read(file);
+      if (current === undefined) continue;
+      const at = locateAnchor({ start: comment.start, end: comment.end, quote: comment.quote }, current);
+      if (at.state === 'lost') continue;
+      const key = `dp-review:${round}#${comment.id}`;
+      notes.push({
+        key, file, start: at.start, end: at.end,
+        body: comment.body, status: comment.status,
+        ...(comment.author ? { author: comment.author } : {}),
+        ...(comment.date ? { date: comment.date } : {}),
+        // The answer first, then what was said after it, as a thread reads.
+        replies: [
+          ...(comment.reply ? [{ key: `${key}/answer`, body: comment.reply }] : []),
+          ...comment.replies.map((reply, i) => ({
+            key: `${key}/r${i + 1}`, body: reply.body,
+            ...(reply.author ? { author: reply.author } : {}), ...(reply.date ? { date: reply.date } : {}),
+          })),
+        ],
+      });
+    }
+  }
+  return notes;
 }
 
 /**
@@ -388,6 +472,7 @@ function pptx(input: WriteInput): Artifact {
     raw['version'] ? BUILD_MESSAGES.in(locale)('build.foot.version', { version: String(raw['version']) }) : '']
     .filter(value => value !== undefined && value !== '').join('　');
   const deck = deckOf({
+    root: root.path,
     workspace: input.workspace,
     document: prepared.document,
     resolved: prepared.resolved,
@@ -429,8 +514,13 @@ function html(input: WriteInput): Artifact {
   return { path: `${input.out}.html`, text, root: root.path, format: 'html' };
 }
 
-/** `docs/auth-design.md` becomes `auth-design`. */
-function basename(path: string): string {
-  const last = path.slice(path.lastIndexOf('/') + 1);
-  return last.replace(/\.[^.]+$/, '');
+/**
+ * Where a document's exports go under the output folder: its own path, so
+ * documents in folders keep their folders and two `design.md` in two folders
+ * never write over each other. `docs/`, where documents live, is left off:
+ * `docs/order/design.md` becomes `order/design`, `docs/auth-design.md`
+ * `auth-design`.
+ */
+export function outputStem(path: string): string {
+  return path.replace(/^\.?\/+/, '').replace(/^docs\//, '').replace(/\.[^./]+$/, '');
 }

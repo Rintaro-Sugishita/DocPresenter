@@ -15,7 +15,7 @@
 import { readFileSync, readdirSync, writeFileSync, mkdirSync, statSync } from 'node:fs';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { dirname, join, relative, resolve } from 'node:path';
-import { build } from '../packages/build/dist/index.js';
+import { build, themeOf } from '../packages/build/dist/index.js';
 import { isLocale, pickLocale } from '../packages/base/dist/index.js';
 import { createPdfWriter } from './pdf-writer.mjs';
 import { createMermaidPainter, mermaidScript } from './mermaid-script.mjs';
@@ -37,6 +37,9 @@ const outDir = option('--out', 'out/build');
 // 何と比べるか。コミット・タグ・ブランチ、またはフォルダ（design/diff-marking.md §2）
 const diffFrom = option('--diff-from', undefined);
 const showRemoved = option('--show-removed', undefined);
+// A PDF carries the review so far for the customer to answer; a copy for
+// delivery leaves it out.
+const reviewNotes = !process.argv.includes('--no-review-notes');
 // PDF を書くのに要る、この機械のもの。見つからなければ既定の置き場所を順に探す。
 const chromiumAt = option('--chromium', undefined);
 const fontAt = option('--font', undefined);
@@ -172,13 +175,14 @@ const result = await build(workspace, {
   ...(painter ? { mermaidPicture: painter.picture } : {}),
   outDir,
   // The workspace's own theme wins; otherwise the one the product ships.
-  style: theme => workspace.read(`themes/${theme}/theme.css`)
+  style: theme => themeOf(path => workspace.read(path), theme)
     ?? tryRead(`themes/${theme}/theme.css`),
   ...(previous ? { diffFrom: previous } : {}),
   ...(showRemoved ? { showRemoved } : {}),
   ...(only.length ? { only } : {}),
   ...(commit ? { commit } : {}),
   ...(clean === undefined ? {} : { clean }),
+  reviewNotes,
   builtAt: new Date().toISOString(),
 });
 

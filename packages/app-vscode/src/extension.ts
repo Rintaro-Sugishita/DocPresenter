@@ -7,6 +7,8 @@
 import * as vscode from 'vscode';
 import { exportAll, FORMAT_LABEL } from './export-command.js';
 import { initWorkspace } from './init-command.js';
+import { newDocument } from './document-command.js';
+import { newDiagram } from './diagram-command.js';
 import { readBackDeck } from './pptx-back-command.js';
 import { importReview } from './review-command.js';
 import { t } from './l10n.js';
@@ -62,11 +64,17 @@ export function activate(context: vscode.ExtensionContext): void {
     }),
     // The recommended folders, a first document, and the guide an agent writes by.
     vscode.commands.registerCommand('docpresenter.init', () => initWorkspace(context)),
+    // A new document with a number nobody in the repository uses.
+    // From the Explorer, the folder right-clicked is where it goes.
+    vscode.commands.registerCommand('docpresenter.newDocument', (target?: vscode.Uri) => newDocument(target)),
+    vscode.commands.registerCommand('docpresenter.newDiagram', (target?: vscode.Uri) => newDiagram(target)),
     // A deck edited in PowerPoint, read back into the drawings it came from.
     // The explorer's menu hands over the deck that was right-clicked.
     vscode.commands.registerCommand('docpresenter.readBackPptx', (uri?: vscode.Uri) => readBackDeck(output, uri)),
     // A PDF a reviewer annotated, taken into a review file as anchored comments.
-    vscode.commands.registerCommand('docpresenter.importPdfReview', (uri?: vscode.Uri) => importReview(output, uri)),
+    // The explorer hands over the PDF right-clicked and every one selected with it.
+    vscode.commands.registerCommand('docpresenter.importPdfReview',
+      (uri?: vscode.Uri, selected?: vscode.Uri[]) => importReview(output, uri, selected)),
   );
 }
 

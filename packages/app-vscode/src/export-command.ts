@@ -11,7 +11,7 @@
 
 import * as vscode from 'vscode';
 import {
-  build, readGraph, renderPage, reviewSourceOf, type Artifact, type FormatWriter,
+  build, readGraph, renderPage, reviewSourceOf, themeOf, type Artifact, type FormatWriter,
 } from '@docpresenter/build';
 import { createSubsetter, writePdf, type Subsetter } from '@docpresenter/pdf';
 import { BUILD_MESSAGES } from '@docpresenter/build';
@@ -108,10 +108,11 @@ export async function writeOut(options: WriteOutOptions): Promise<WriteOutResult
     const result = await build(workspace, {
       locale,
       ...git,
+      reviewNotes: vscode.workspace.getConfiguration('docpresenter').get<boolean>('pdfReviewNotes') !== false,
       ...(options.only === undefined ? {} : { only: options.only }),
       ...(options.formats === undefined ? {} : { formats: options.formats }),
       outDir: outDirOf(),
-      style: theme => text.get(`themes/${theme}/theme.css`) ?? options.shipped,
+      style: theme => themeOf(path => text.get(path), theme) ?? options.shipped,
       builtAt: new Date().toISOString(),
       writers,
       ...(mermaidScript === undefined ? {} : { mermaidScript }),
@@ -373,7 +374,9 @@ async function pdfWriter(
     const foot = [raw['document'], version]
       .filter(value => value !== undefined && value !== '').map(String).join('　');
 
-    const measured = await view.ask(id => ({ kind: 'measure', id, body, foot, title, locale }), 'measured');
+    // Laid out in the theme the document is built with — the team's own when
+    // the workspace has one — not the one the WebView happens to have loaded.
+    const measured = await view.ask(id => ({ kind: 'measure', id, body, foot, title, locale, style: input.style }), 'measured');
     if (measured.error !== undefined || !measured.plan) {
       throw new Error(measured.error ?? t('vscode.export.noPlan'));
     }

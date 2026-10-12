@@ -6,6 +6,7 @@
   "publisher": "docpresenter",
   "private": true,
   "license": "SEE LICENSE IN legal/LICENSE.draft.md",
+  "repository": { "type": "git", "url": "https://github.com/Rintaro-Sugishita/DocPresenter.git", "directory": "packages/app-vscode" },
   "engines": { "vscode": "^1.95.0" },
   "categories": ["Other"],
   "main": "./media/extension.cjs",
@@ -26,6 +27,8 @@
     ],
     "commands": [
       { "command": "docpresenter.init", "title": "%command.init.title%", "category": "DocPresenter" },
+      { "command": "docpresenter.newDocument", "title": "%command.newDocument.title%", "category": "DocPresenter" },
+      { "command": "docpresenter.newDiagram", "title": "%command.newDiagram.title%", "category": "DocPresenter" },
       { "command": "docpresenter.openEditor", "title": "%command.openEditor.title%", "category": "DocPresenter" },
       { "command": "docpresenter.build", "title": "%command.build.title%", "category": "DocPresenter" },
       { "command": "docpresenter.buildAs", "title": "%command.buildAs.title%", "category": "DocPresenter" },
@@ -43,12 +46,16 @@
         { "command": "docpresenter.exportPptx", "when": "activeCustomEditorId == docpresenter.sheets", "group": "docpresenter@3" }
       ],
       "explorer/context": [
+        { "command": "docpresenter.newDocument", "when": "explorerResourceIsFolder", "group": "navigation@8" },
+        { "command": "docpresenter.newDiagram", "when": "explorerResourceIsFolder", "group": "navigation@8" },
         { "command": "docpresenter.openEditor", "when": "resourceExtname =~ /^\\.(md|dgm)$/", "group": "navigation@9" },
         { "command": "docpresenter.readBackPptx", "when": "resourceExtname == .pptx", "group": "navigation@9" },
         { "command": "docpresenter.importPdfReview", "when": "resourceExtname == .pdf", "group": "navigation@9" }
       ],
       "commandPalette": [
         { "command": "docpresenter.init", "when": "workspaceFolderCount > 0" },
+        { "command": "docpresenter.newDocument", "when": "workspaceFolderCount > 0" },
+        { "command": "docpresenter.newDiagram", "when": "workspaceFolderCount > 0" },
         { "command": "docpresenter.readBackPptx", "when": "workspaceFolderCount > 0" },
         { "command": "docpresenter.importPdfReview", "when": "workspaceFolderCount > 0" },
         { "command": "docpresenter.openEditor", "when": "resourceExtname =~ /^\\.(md|dgm)$/" },
@@ -74,6 +81,11 @@
           "type": "string",
           "default": "out/build",
           "description": "%config.outDir.description%"
+        },
+        "docpresenter.pdfReviewNotes": {
+          "type": "boolean",
+          "default": true,
+          "description": "%config.pdfReviewNotes.description%"
         }
       }
     }

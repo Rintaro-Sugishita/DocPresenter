@@ -6,10 +6,10 @@
 // drawing vocabulary was restricted to what DrawingML can express for exactly
 // this reason.
 
-import type { Run } from '@docpresenter/diagram';
+import { EDGE_LABEL, type Run } from '@docpresenter/diagram';
 import { EMU_PER_PT, EMU_PER_PX } from './model.js';
 import type {
-  Attachment, DrawingBlock, DrawnConnector, DrawnShape, PictureBlock, TableBlock, TextBlock,
+  Attachment, DrawingBlock, DrawnConnector, DrawnShape, PictureBlock, TableBlock, TableCell, TextBlock,
 } from './model.js';
 import { escapeXml, hex } from './xml.js';
 
@@ -106,7 +106,34 @@ export function drawing(
     ...behind.map(shape => shapeXml(shape, ids.get(shape.id)!, at, size, scale)),
     ...block.connectors.map(connector => connectorXml(connector, block.shapes, ids, at, scale)),
     ...front.map(shape => shapeXml(shape, ids.get(shape.id)!, at, size, scale)),
+    // On top, as on screen: a label's plate covers the line it names, and no
+    // shape is laid over a label.
+    ...block.connectors.map(connector => edgeLabelXml(connector, at, size, scale)),
   ].join('');
+}
+
+/**
+ * A connection's label, as a text box on a white plate. Named `edge from->to`
+ * after the connection, so reading the deck back knows it for a label and not
+ * a shape somebody added.
+ */
+function edgeLabelXml(
+  connector: DrawnConnector,
+  at: (x: number, y: number) => { x: number; y: number },
+  size: (value: number) => number,
+  scale: number,
+): string {
+  if (!connector.label || !connector.labelBox) return '';
+  const box = connector.labelBox;
+  const origin = at(box.x, box.y);
+  const frame: Frame = { x: origin.x, y: origin.y, width: size(box.width), height: size(box.height) };
+  const name = connector.between ? `edge ${connector.between.from}->${connector.between.to}` : `text ${nextId()}`;
+  return `<p:sp><p:nvSpPr><p:cNvPr id="${nextId()}" name="${escapeXml(name)}"/>`
+    + `<p:cNvSpPr txBox="1"/><p:nvPr/></p:nvSpPr>`
+    + `<p:spPr>${xfrm(frame)}<a:prstGeom prst="rect"><a:avLst/></a:prstGeom>`
+    + `<a:solidFill><a:srgbClr val="FFFFFF"/></a:solidFill><a:ln><a:noFill/></a:ln></p:spPr>`
+    + `<p:txBody><a:bodyPr anchor="ctr" wrap="none" lIns="0" tIns="0" rIns="0" bIns="0"><a:noAutofit/></a:bodyPr>`
+    + `<a:lstStyle/>${paragraph(connector.label, EDGE_LABEL.fontSize * (EMU_PER_PX / EMU_PER_PT) * scale, '#3a4048', 'ctr')}</p:txBody></p:sp>`;
 }
 
 function shapeXml(
@@ -274,27 +301,110 @@ function elbow(
   };
 }
 
+/** The margins inside a cell, in EMU: left and right, top and bottom. */
+const CELL_SIDE = 91440;     // 0.1 in
+const CELL_EDGE = 54864;     // 0.06 in
+/** The size a table is set in — the size of the prose beside it — and the least it is shrunk to before it overflows. */
+export const TABLE_SIZE = 14;
+const TABLE_LEAST = 8;
+
+/** How wide a run of text is, in ems: a full-width character is one, the rest about half. */
+function ems(text: string): number {
+  let width = 0;
+  for (const character of text) width += character.codePointAt(0)! > 0xff ? 1 : 0.55;
+  return width;
+}
+
+const cellText = (cell: TableCell): string => cell.runs.map(run => run.text).join('');
+
+/** Where a table's columns and rows fall, worked out from what is in them. */
+export interface TableLayout {
+  readonly size: number;
+  readonly widths: readonly number[];
+  readonly heights: readonly number[];
+  readonly width: number;
+  readonly height: number;
+}
+
+/**
+ * Lays a table out in the room it has: each column as wide as the author said
+ * or as its contents need, each row as tall as its text — not stretched to the
+ * height of the slide, where a two-row table becomes two bands of empty space.
+ * A table too tall for the room is set smaller, down to a floor.
+ */
+export function layOutTable(block: TableBlock, room: { width: number; height: number }): TableLayout {
+  const count = block.columns.length;
+  // What each column holds at its widest, in ems: a cell that spans columns
+  // says nothing about any one of them.
+  const content = Array.from({ length: count }, (_, c) => Math.min(40, Math.max(2, ...block.rows.map(row => {
+    const cell = row.cells[c];
+    return cell && cell.covered === 'none' && cell.colSpan === 1 ? ems(cellText(cell)) + 1 : 0;
+  }))));
+
+  for (let size = TABLE_SIZE; ; size -= 0.5) {
+    const em = size * EMU_PER_PT;
+    const fixed = block.widths ?? [];
+    let widths: number[];
+    if (fixed.some(width => width !== undefined)) {
+      // As wide as the slide, as the page is: the author's shares first, and
+      // the columns they left open divide the rest by what they hold.
+      const given = fixed.reduce<number>((sum, width) => sum + (width ?? 0), 0);
+      const open = content.reduce((sum, ems, c) => sum + (fixed[c] === undefined ? ems : 0), 0);
+      const rest = Math.max(0, 1 - given);
+      widths = content.map((ems, c) => room.width * (fixed[c] ?? (open > 0 ? rest * ems / open : 0)));
+    } else {
+      // As wide as its contents, and no wider than the slide.
+      const natural = content.map(ems => ems * em + CELL_SIDE * 2);
+      const total = natural.reduce((a, b) => a + b, 0);
+      widths = total <= room.width ? natural : natural.map(width => width * room.width / total);
+    }
+    widths = widths.map(width => Math.round(width));
+
+    const line = Math.round(size * 1.25 * EMU_PER_PT);
+    const heights = block.rows.map(row => Math.max(...row.cells.map((cell, c) => {
+      if (cell.covered !== 'none' || cell.rowSpan > 1) return 0;
+      const across = widths.slice(c, c + cell.colSpan).reduce((a, b) => a + b, 0) - CELL_SIDE * 2;
+      const lines = Math.max(1, Math.ceil((ems(cellText(cell)) * em) / Math.max(em, across)));
+      return lines * line;
+    }), line) + CELL_EDGE * 2);
+    const height = heights.reduce((a, b) => a + b, 0);
+    if (height <= room.height || size <= TABLE_LEAST) {
+      return { size, widths, heights, width: widths.reduce((a, b) => a + b, 0), height };
+    }
+  }
+}
+
+/** A short sum of what a table says, cell by cell, to tell later whether it was changed. */
+export function tableSum(rows: readonly (readonly string[])[]): string {
+  let h = 2166136261;
+  const text = rows.map(row => row.join('\t')).join('\n');
+  for (let i = 0; i < text.length; i += 1) h = Math.imul(h ^ text.charCodeAt(i), 16777619) >>> 0;
+  return h.toString(16).padStart(8, '0');
+}
+
 /** A table, as a native table: the rows stay rows in PowerPoint. */
-export function table(block: TableBlock, frame: Frame, size: number): string {
+export function table(block: TableBlock, frame: Frame): string {
   const id = nextId();
-  const total = block.columns.reduce((a, b) => a + b, 0) || block.columns.length;
-  const widths = block.columns.map(share => Math.round((share / total) * frame.width));
-  const rowHeight = Math.max(1, Math.round(frame.height / Math.max(1, block.rows.length)));
+  const laid = layOutTable(block, frame);
 
-  const rows = block.rows.map(row =>
-    `<a:tr h="${rowHeight}">${row.cells.map(cell => cellXml(cell, size, row.header)).join('')}</a:tr>`,
+  const rows = block.rows.map((row, r) =>
+    `<a:tr h="${laid.heights[r]}">${row.cells.map(cell => cellXml(cell, laid.size, row.header)).join('')}</a:tr>`,
   ).join('');
+  // Named after the file it came from, with a sum of what it says, so that a
+  // deck that comes back can tell a table changed in PowerPoint.
+  const name = block.source === undefined ? `table ${id}`
+    : `dp:table=${block.source};sum=${tableSum(block.rows.map(row => row.cells.map(cellText)))}`;
 
-  return `<p:graphicFrame><p:nvGraphicFramePr><p:cNvPr id="${id}" name="table ${id}"/>`
+  return `<p:graphicFrame><p:nvGraphicFramePr><p:cNvPr id="${id}" name="${escapeXml(name)}"/>`
     + `<p:cNvGraphicFramePr><a:graphicFrameLocks noGrp="1"/></p:cNvGraphicFramePr><p:nvPr/></p:nvGraphicFramePr>`
-    + `<p:xfrm><a:off x="${frame.x}" y="${frame.y}"/><a:ext cx="${frame.width}" cy="${frame.height}"/></p:xfrm>`
+    + `<p:xfrm><a:off x="${frame.x}" y="${frame.y}"/><a:ext cx="${laid.width}" cy="${laid.height}"/></p:xfrm>`
     + `<a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/table">`
     + `<a:tbl><a:tblPr firstRow="1" bandRow="0"/>`
-    + `<a:tblGrid>${widths.map(width => `<a:gridCol w="${width}"/>`).join('')}</a:tblGrid>`
+    + `<a:tblGrid>${laid.widths.map(width => `<a:gridCol w="${width}"/>`).join('')}</a:tblGrid>`
     + `${rows}</a:tbl></a:graphicData></a:graphic></p:graphicFrame>`;
 }
 
-function cellXml(cell: import('./model.js').TableCell, size: number, header: boolean): string {
+function cellXml(cell: TableCell, size: number, header: boolean): string {
   const span = [
     cell.rowSpan > 1 ? ` rowSpan="${cell.rowSpan}"` : '',
     cell.colSpan > 1 ? ` gridSpan="${cell.colSpan}"` : '',
@@ -307,7 +417,7 @@ function cellXml(cell: import('./model.js').TableCell, size: number, header: boo
     : header ? '<a:solidFill><a:srgbClr val="EEF0F3"/></a:solidFill>' : '';
   return `<a:tc${span}><a:txBody><a:bodyPr/><a:lstStyle/>`
     + `${paragraph(cell.runs, size, '#1c1f24', align)}</a:txBody>`
-    + `<a:tcPr marL="45720" marR="45720" marT="27432" marB="27432" anchor="ctr">`
+    + `<a:tcPr marL="${CELL_SIDE}" marR="${CELL_SIDE}" marT="${CELL_EDGE}" marB="${CELL_EDGE}" anchor="ctr">`
     + `${border()}${fill}</a:tcPr></a:tc>`;
 }
 

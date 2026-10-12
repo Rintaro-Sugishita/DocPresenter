@@ -56,7 +56,7 @@ describe('色付け', () => {
     expect(render(['```', 'x', '```'].join(NL))).not.toContain('dp-code-language');
   });
 
-  // packages/app-vscode/README.md「色が付く言語」の表と同じ一覧。表を変えたらここも変える。
+  // packages/app-vscode/README.md「Languages that are coloured」（README.ja.md「色が付く言語」）の表と同じ一覧。表を変えたらここも変える。
   it('文書に載せた言語名は、どれも色が付く', () => {
     const names = [
       'bash', 'sh', 'zsh', 'shell', 'console', 'powershell', 'ps', 'ps1',

@@ -76,3 +76,75 @@ describe('読み戻し', () => {
     expect(login.text).not.toContain('150x56');
   });
 });
+
+describe('線のラベル', () => {
+  const FLOW = 'flow {\n  a [受付]\n  b [確定]\n  c [取消]\n  a --> b "在庫引き当て"\n  a --> c "顧客が **取消**"\n  b --> c\n}\n';
+  const files = workspace({
+    'docs/a.md': '---\ntitle: T\noutput: [pptx]\n---\n\n# A\n\n@import "flow.dgm" {#fig-flow}\n',
+    'docs/flow.dgm': FLOW,
+    'themes/default/theme.css': 'body { color: #000 }\n',
+  });
+  const deck = async (): Promise<Uint8Array> =>
+    (await build(files)).artifacts.find(a => a.format === 'pptx')!.bytes!;
+  const slideOf = (pptx: Uint8Array): string => {
+    const parts = unzipSync(pptx);
+    return strFromU8(parts[Object.keys(parts).find(name =>
+      /^ppt\/slides\/slide\d+\.xml$/.test(name) && strFromU8(parts[name]!).includes('flow.dgm'))!]!);
+  };
+
+  it('ラベルのある線ごとに、線の名前の付いた文字の箱がスライドに載る', async () => {
+    const slide = slideOf(await deck());
+    const boxes = [...slide.matchAll(/<p:sp>(?:(?!<\/p:sp>)[\s\S])*?name="edge ([^"]*)"[\s\S]*?<\/p:sp>/g)];
+    expect(boxes.map(found => found[1])).toEqual(['a-&gt;b', 'a-&gt;c']);
+    const text = (xml: string) => [...xml.matchAll(/<a:t>([^<]*)<\/a:t>/g)].map(found => found[1]).join('');
+    expect(text(boxes[0]![0])).toBe('在庫引き当て');
+    // The inline formatting of a label reaches the slide as it does the screen.
+    expect(text(boxes[1]![0])).toBe('顧客が 取消');
+    expect(boxes[1]![0]).toMatch(/<a:rPr[^>]*\bb="1"[^>]*>(?:(?!<\/a:r>)[\s\S])*取消/);
+    // Laid over the lines and the shapes, as on screen: after every connector.
+    expect(slide.lastIndexOf('<p:cxnSp>')).toBeLessThan(slide.indexOf('name="edge '));
+  });
+
+  it('触っていないデッキを読み戻すと、ラベルは図形として数えられず、何も変わらない', async () => {
+    const back = writeBack(await deck(), files);
+    expect(back.files.find(file => file.path === 'docs/flow.dgm')!.text).toBe(FLOW);
+    expect(back.diagnostics).toEqual([]);
+  });
+
+  it('PowerPoint でラベルを直すと、黙って捨てずに読み戻せないと言う', async () => {
+    const changed = edited(await deck(), 'flow.dgm', '<a:t>在庫引き当て</a:t>', '<a:t>引き当て済み</a:t>');
+    const back = writeBack(changed, files);
+    expect(back.files.find(file => file.path === 'docs/flow.dgm')!.text).toBe(FLOW);
+    expect(back.diagnostics.map(one => one.message)).toEqual([
+      'a → b の線のラベルが「在庫引き当て」から「引き当て済み」に変わっているが、線のラベルはまだ読み戻せない（図で直すこと）',
+    ]);
+  });
+});
+
+describe('表の書き換え', () => {
+  const files = workspace({
+    'docs/a.md': '---\ntitle: T\noutput: [pptx]\n---\n\n# A\n\n@import "terms.table" {#tbl-terms}\n',
+    'docs/terms.table': '| 用語 | 説明 |\n| ---- | ---- |\n| トークン | 認可に用いる |\n',
+    'themes/default/theme.css': 'body { color: #000 }\n',
+  });
+  const deck = async (): Promise<Uint8Array> =>
+    (await build(files)).artifacts.find(a => a.format === 'pptx')!.bytes!;
+
+  it('触っていない表は何も言わない', async () => {
+    expect(writeBack(await deck(), files).diagnostics).toEqual([]);
+  });
+
+  it('PowerPoint で表を直すと、読み戻せないことをその表のファイルの名前で言う', async () => {
+    const pptx = await deck();
+    const parts = unzipSync(pptx);
+    const slide = Object.keys(parts).find(name =>
+      /^ppt\/slides\/slide\d+\.xml$/.test(name) && strFromU8(parts[name]!).includes('dp:table='))!;
+    parts[slide] = strToU8(strFromU8(parts[slide]!).replace('<a:t>認可に用いる</a:t>', '<a:t>認可に使う</a:t>'));
+    const back = writeBack(zipSync(parts), files);
+    expect(back.diagnostics).toEqual([expect.objectContaining({
+      severity: 'warning', path: 'docs/terms.table',
+      message: '1 枚目の表（docs/terms.table）が PowerPoint で書き換えられているが、表は読み戻せない（docs/terms.table を直すこと）',
+    })]);
+    expect(back.files).toEqual([]);
+  });
+});

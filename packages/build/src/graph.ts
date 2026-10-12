@@ -9,7 +9,7 @@
 
 import { parseDiagram } from '@docpresenter/diagram';
 import {
-  isAddress, isBuildRoot, joinPath, parseDocument, type DocumentFile,
+  duplicateNumbers, isAddress, isBuildRoot, joinPath, parseDocument, type DocumentFile,
 } from '@docpresenter/markdown';
 import { asLf, type BuildDiagnostic, type Workspace } from './workspace.js';
 import { DEFAULT_LOCALE, describeError, type Locale } from '@docpresenter/base';
@@ -77,6 +77,27 @@ export function readGraph(given: Workspace, locale: Locale = DEFAULT_LOCALE): Re
     const found = walk(root, workspace, parsed, present, diagnostics, locale);
     closure.set(root.path, found);
     for (const path of found) reached.add(path);
+  }
+
+  // A number names one document. Two sharing it would share each other's
+  // review comments, which are tied to the number as well as to the path.
+  const numbered = [...parsed].map(([path, document]) => {
+    const value = document.frontmatter.raw['document'];
+    return { path, number: typeof value === 'string' || typeof value === 'number' ? String(value) : undefined };
+  });
+  for (const [number, paths] of duplicateNumbers(numbered)) {
+    for (const path of paths) {
+      diagnostics.push({
+        severity: 'warning', path,
+        ...said(locale, 'build.duplicateNumber', { number, others: paths.filter(other => other !== path).join(', ') }),
+      });
+    }
+  }
+
+  // A document that is built is reviewed, and its review is tied to its number.
+  for (const root of roots) {
+    if (numbered.find(one => one.path === root.path)?.number) continue;
+    diagnostics.push({ severity: 'warning', path: root.path, ...said(locale, 'build.noNumber') });
   }
 
   if (roots.length === 0) {

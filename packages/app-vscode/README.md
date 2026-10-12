@@ -1,111 +1,181 @@
-# DocPresenter（VS Code 拡張）
+# DocPresenter (VS Code extension)
 
-設計書（`.md` ＋ `.dgm` ＋ `.table`）を、VS Code の中で**画面のまま**編集する。
+[日本語](https://github.com/Rintaro-Sugishita/DocPresenter/blob/HEAD/packages/app-vscode/README.ja.md)
 
-## 始める
+Edit design documents (`.md` + `.dgm` + `.table`) inside VS Code, **on the page as it will be printed**.
 
-新しいリポジトリでは、コマンド **「DocPresenter: 作業場を初期化する」** を実行する。題・ファイル名・文書番号を
-聞いたあと、次のものを置いて最初の文書を開く。**既にあるファイルは書き換えない**（そのままと報告する）。
+## Getting started
+
+To add a document, run **"DocPresenter: New Document (numbered)…"** (or right-click a folder in the Explorer).
+It asks for a title, the folder, a file name, **assigns a document number**, and makes the document and its
+revision history from the templates (`.docpresenter/templates/`, below). The number is picked from the next free number of a series the repository
+already uses (`SD-AUTH-` and so on); a new series or a number of your own also works, but a number in use is refused.
+Review comments are tied to the document number, so **every document has one, and no two share one**
+(the build warns otherwise).
+
+To add a diagram, run **"DocPresenter: New Diagram (flow or free)…"** (or right-click a folder). It asks for the kind
+first — **flow** (laid out from its arrows: processes, procedures, state changes) or **free** (shapes stay where you put
+them: system diagrams, screen sketches) — then the folder (each document's own folder first, then folders that already
+hold diagrams, then `shared/`) and the name, and opens it. To show it in a document, choose it from "+ Reference" at the
+end of the document.
+
+### Folders
+
+Documents can be split into folders as the application grows (`docs/order/design.md`, `docs/billing/design.md`, …).
+
+- When making a document or a diagram, pick a folder from the list, type another (it is made if missing), or put a `/`
+  in the name (`order/design`).
+- File names may use upper case, spaces and Japanese. Only what some platform refuses is refused:
+  `\ : * ? " < > |`, a leading space, a trailing space or period, and names Windows keeps (`CON`, `NUL`, …).
+- `@import` paths are relative to the document, so a document finds its figures however deep it sits. The templates'
+  `{{root}}` is the way up to the workspace root (`../../` from `docs/order/design.md`), so `{{root}}shared/` always reaches `shared/`.
+- **Exports keep the folders**: `docs/order/design.md` goes to `out/build/order/design.html` (`docs/` is left off), so two
+  `design.md` in two folders never write over each other.
+- Document numbers are unique across the whole repository, whatever folder a document is in.
+
+In a new repository, run **"DocPresenter: Set Up This Folder"**. After asking for a title, a file name and a
+document number, it puts the following in place and opens the first document.
+**Files that are already there are never overwritten** (they are reported as kept).
 
 ```
-docs/<ファイル名>.md            最初の文書。frontmatter・概要（目的・対象範囲・用語）・改訂履歴の取り込みまで書いてある
-docs/<ファイル名>/revision.md   その文書の改訂履歴
-docs/assets/                   画像の置き場
-shared/glossary.table          複数の文書から引く用語集
-.docpresenter/guide.md         書き方の仕様書（Claude Code などのエージェント向け）
-.docpresenter/spec/            .dgm・.table・ラベル内書式の形式の仕様
-CLAUDE.md / AGENTS.md          guide.md を読むよう指示する節を追記（無ければ作る）
-.gitignore                     書き出し先（out/）を追記
+docs/<name>.md                 The first document (made from the template below): frontmatter, an overview, the revision history taken in
+docs/<name>/revision.md        Its revision history
+docs/assets/                   Where images go
+shared/glossary.table          A glossary several documents can take in
+.docpresenter/guide.md         The writing guide (for agents such as Claude Code)
+.docpresenter/spec/            The formats of .dgm, .table and text inside labels
+.docpresenter/templates/       Templates for new documents (document.md, revision.md). Change them to your team's format
+.docpresenter/themes/default/  The theme (theme.css), a copy of the shipped one. Change it to your team's look
+CLAUDE.md / AGENTS.md          A section telling agents to read guide.md is appended (the file is made if missing)
+.gitignore                     The output folder (out/) is appended
 ```
 
-追記は一度だけなので、もう一度実行しても増えない。
+Appending happens once, so running the command again adds nothing.
 
-## 開く
+### Your team's templates and theme
 
-- エクスプローラーで `.md` か `.dgm` を右クリック → **「DocPresenter で開く」**。エディタ右上のボタンからも開ける。
-  - `.md` はシートが並び、図や表はその場で編集できる。
-  - `.dgm` はその図だけを開く。図を押すと編集できる。書き換わるのはその `.dgm` だけである。
-- 編集は **1 操作 ＝ 1 つのバイト範囲**として書き戻される。VS Code の取り消し・未保存の点・git の差分が
-  そのまま効くのは、編集を `WorkspaceEdit` として渡しているからである。
+The templates and theme set up by the command are **files in your repository**: change them and commit them.
 
-## 図表の名前を変える
+- **Templates** (`.docpresenter/templates/document.md`, `revision.md`) are used every time a new document is made.
+  The placeholders are `{{title}}`, `{{number}}` (the document number), `{{name}}` (the file name without its
+  folder, used to take in the revision history), `{{today}}` and `{{root}}` (the way up to the workspace root). A placeholder that is a whole frontmatter value is written as valid YAML
+  (a title containing `:` is quoted). Even when a template has no `document:`, the assigned number always goes into
+  the frontmatter. Without the files, the shipped templates are used.
+- **Themes** are looked for in `.docpresenter/themes/<name>/theme.css`, then `themes/<name>/theme.css`, then the
+  shipped theme (`<name>` is the frontmatter's `theme:`, `default` when absent). The theme found is used for exports
+  (HTML, PDF) and for the editor's screen; saving it shows the change in the editor at once.
 
-図や表に乗ると右上に **「名前・題・ラベル」** が出る（図の上で右クリックしても同じ）。3 つをまとめて変えられる。
+## Opening
 
-| 変えるもの | 書き換わるところ |
+- Right-click a `.md` or `.dgm` in the Explorer → **"Open in DocPresenter"**, or use the button at the top right of the editor.
+  - A `.md` opens as a row of sheets; diagrams and tables are edited in place.
+  - A `.dgm` opens just that diagram. Click it to edit; only that `.dgm` changes.
+- Every edit is written back as **one byte range per action**. Undo, the unsaved dot and the Git diff all work as usual,
+  because edits are handed to VS Code as a `WorkspaceEdit`.
+
+## Renaming figures and tables
+
+Hover over a figure or table and **"Name, caption, label"** appears at its top right (right-clicking a figure does the same).
+All three can be changed at once.
+
+| What you change | What is rewritten |
 |---|---|
-| **ファイル名** | ファイルが同じフォルダの中で改名され、**この文書とほかの文書の `@import` 行**が新しい名前を指す。フォルダと拡張子は変わらない |
-| **題** | `@import` 行の `caption="…"`。番号（図 3 など）は自動で前に付く。空にすると題を外す |
-| **ラベル** | `@import` 行の `#fig-…` と、**本文のすべての `@fig-…`**。図は `fig-`、表は `tbl-` で始める |
+| **File name** | The file is renamed within its folder, and the `@import` lines of **this and every other document** point to the new name. The folder and extension stay |
+| **Caption** | `caption="…"` on the `@import` line. The number (Figure 3 etc.) is added in front automatically. Empty removes the caption |
+| **Label** | `#fig-…` on the `@import` line and **every `@fig-…` in the text**. Figures start with `fig-`, tables with `tbl-` |
 
-- 書き換わるのは名前が書かれた行だけで、文書は 1 つの編集として書き戻される（取り消しも 1 回）。ほかの文書の書き換えとファイルの改名は、まとめて 1 つの `WorkspaceEdit` になる。
-- 使えない名前（同じ文書で使われているラベル、本文から参照されているラベルを外す、すでにあるファイル名など）は、理由を言って断る。
-- ラベルの参照を直すのは**この文書の中だけ**。別の文書から `@文書:ラベル` で参照しているものは直らない。
-- `.dgm` の中からほかのファイルを指している行（`overlay` の画像、部品ライブラリ）は直らない。
+- Only the lines that carry the name change, and the document is written back as one edit (one undo). The other documents' changes and the rename go into one `WorkspaceEdit`.
+- Names that cannot be used (a label already used in the document, removing a label the text refers to, an existing file name, …) are refused with the reason.
+- References are fixed **only within this document**. References from another document as `@doc:label` are not.
+- Lines inside a `.dgm` that point to other files (`overlay` images, part libraries) are not fixed.
 
-## 書き出す
+## Edit and Read (review)
 
-| やりたいこと | 操作 |
+Switch with **"Edit / Read (review)"** at the top of the screen (remembered per editor).
+
+- **Read (review):** clicking the text does not start editing, so text can be selected. Selecting shows
+  **"Add a comment"**; the comment is appended to a review file (`reviews/*.review.yml`). The first time, you are asked
+  which review file to use. A list of the comments on this document is shown beside the page; click one to go to it.
+- **Edit:** comments are marked **where they are now**. Hover to see the comment, its answer and status.
+  Turn the marks off with **"Comment marks"** at the top when they get in the way.
+- Where the text has changed since the comment, the mark is dotted and says so. Comments whose place can no longer
+  be found stay in the list.
+- **Status and answer:** in the list in Read mode, choose each comment's status (Open / Resolved / Won't fix / Question)
+  and write an answer with "Write an answer". Only that comment's `status:` and `reply:` lines in the review file change.
+  The answer goes into the next PDF you export.
+
+## Exporting
+
+| What you want | How |
 |---|---|
-| 開いている文書を 1 つの形式で | 文書の上の **「書き出し: HTML / PDF / PPTX」**。エディタ右上の「…」メニュー、コマンド「DocPresenter: この文書を PDF に書き出す」なども同じ |
-| `output:` を持つ文書をすべて、各文書の指定どおりに | コマンド **「DocPresenter: 出力対象をすべて書き出す（各文書の output: どおり）」** |
-| `output:` を持つ文書をすべて、形式を指定して | コマンド **「DocPresenter: 出力対象をすべて、形式を指定して書き出す…」**（HTML / PDF / PPTX から選ぶ。`output:` より優先） |
+| The open document, in one format | **"Export: HTML / PDF / PPTX"** above the document. The "…" menu at the editor's top right and commands such as "DocPresenter: Export This Document as PDF" do the same |
+| Every document with `output:`, as each one says | **"DocPresenter: Export Every Output (as each document's output: says)"** |
+| Every document with `output:`, in formats you choose | **"DocPresenter: Export Every Output in Formats of My Choice…"** (choose from HTML / PDF / PPTX; this overrides `output:`) |
 
-- 書き出し先は `out/build`（設定 `docpresenter.outDir` で変更可）。
-- PDF の組版は DocPresenter の画面がする。まとめて書き出すときは「DocPresenter 書き出し」という画面が横に開き、
-  終わると閉じる。フォントはこの PC のもの（Windows では游ゴシック、コードは MS ゴシック）を埋め込む。
+- Exports go to `out/build` (set `docpresenter.outDir` to change it), keeping the documents' folders (`docs/` left off).
+- PDF pages are laid out by DocPresenter's own screen. When exporting several documents, a "DocPresenter export" panel
+  opens beside the editor and closes when done. Fonts installed on this PC are embedded
+  (on Windows, Yu Gothic, and MS Gothic for code).
 
-## PowerPoint で直された図を読み戻す
+## Reading diagrams changed in PowerPoint back
 
-PPTX に書き出した図は、PowerPoint で直されたあと**元の `.dgm` に読み戻せる**。
+Diagrams exported to PPTX can be **read back into the original `.dgm`** after they have been changed in PowerPoint.
 
-1. エクスプローラーで `.pptx` を右クリック →「**PPTX の修正を図に読み戻す…**」（コマンドパレットからも。そのときはファイルを選ぶ）
-2. 変わる図の一覧が出る。変わる行は出力パネルに `-` / `+` で出るので、確かめてから選ぶ
-3. 選んだ図が、**変わった範囲だけ**書き換えられて保存される。取り消しも git の差分も VS Code のものが効く
+1. Right-click the `.pptx` in the Explorer → "**Read PPTX Changes Back into the Diagrams…**" (also in the Command Palette, where you choose the file)
+2. The diagrams that would change are listed. The lines that would change are shown with `-` / `+` in the Output panel; check them, then choose
+3. The chosen diagrams are rewritten **only where they changed**, and saved. Undo and the Git diff work as usual
 
-| PowerPoint での編集 | 読み戻し |
+| Change in PowerPoint | Read back |
 |---|:--:|
-| 図形を動かした・大きさを変えた | ○（その図形の位置の 1 行） |
-| 図形の文字を直した | ○（その図形の 1 行。太字などの書式は落ちるので警告が出る） |
-| 図形を足した・線をつなぎ替えた | ✗（警告に出す） |
-| 本文や表の文字を直した | ✗（戻すのは図だけ） |
+| A shape moved or resized | ✓ (the one line with that shape's position) |
+| A shape's text changed | ✓ (that shape's line. Bold and other formatting are dropped, with a warning) |
+| A shape added, a line reconnected | ✗ (a warning says so) |
+| A line's label changed | ✗ (a warning says so. Change it in the diagram) |
+| A table changed | ✗ (a warning names the table. Change the `.table` or the Markdown table) |
+| Body text changed | ✗ (only diagrams are read back) |
 
-- 読んでから書き戻すまでのあいだに図が変わっていたら（未保存の変更を含む）、その図は書き戻さずに名前を言う。
-- 実際の PowerPoint（Microsoft 365）で保存し直したデッキで確かめてある。コマンドラインでは
-  `node tools/pptx-back.mjs <deck.pptx> --in <作業場>`（`--write` で書き込む）。
+- If a diagram changed between reading and writing (unsaved changes included), it is not written, and its name is given.
+- Checked with decks saved again in real PowerPoint (Microsoft 365). From the command line:
+  `node tools/pptx-back.mjs <deck.pptx> --in <workspace>` (`--write` to write).
 
-## PDF に書かれた指摘を取り込む
+## Importing comments written on a PDF
 
-書き出した PDF には、各行がどのファイルのどこから来たかが添付ファイルとして入っている。顧客が PDF に
-注釈（ハイライト・付箋など）を書いて返してきたら、それを**指摘管理表（`reviews/*.review.yml`）に取り込める**。
+An exported PDF carries, as an attachment, where each line came from (which file, which place). When a customer returns
+the PDF with annotations (highlights, sticky notes, …), they can be **imported into the review files (`reviews/*.review.yml`)**.
 
-1. エクスプローラーで `.pdf` を右クリック →「**PDF の注釈を指摘として取り込む…**」（コマンドパレットからも）
-2. 注釈ごとの戻り先が出力パネルに出る。取り込み先を、新しいレビューファイルか既にあるものから選ぶ
-3. 指摘が後ろに追記される。前の行は変えず、同じ注釈は二度入らない
+1. Right-click the `.pdf` in the Explorer → "**Import PDF Annotations as Review Comments…**" (also in the Command Palette).
+   **Several PDFs can be imported at once**: each PDF knows which document it is (its path and document number)
+2. Where each annotation goes is shown in the Output panel. Choose the review file to import into: a new one or an existing one
+3. The comments are appended. Earlier lines are not changed, and the same annotation never goes in twice
 
-| 注釈 | 指摘が指す場所 |
+| Annotation | Where the comment points |
 |---|---|
-| 語に付けたハイライト・下線 | **その語**（図や表の中なら、その `.dgm` / `.table` の中） |
-| 付箋・囲み | その段落や図表の全体 |
-| 余白など、何もないところ | 場所なし（`status: orphaned` として残す） |
+| Highlight or underline on words | **Those words** (inside the `.dgm` / `.table` when in a figure or table) |
+| Sticky note, box | The whole paragraph, figure or table |
+| Nothing under it (a margin, …) | No place (kept as `status: orphaned`) |
 
-- 指摘にはコミットが付く（PDF を書き出したときのもの）。未コミットの変更を含む版から書き出した PDF なら `uncommitted: true` が付く。
-- コマンドラインでは `node tools/pdf-review.mjs <pdf> --in <作業場> [--write]`。
+- Each comment carries the commit the PDF was exported from. A PDF exported with uncommitted changes gets `uncommitted: true`.
+- **Answers travel in the PDF.** An exported PDF has the comments on that document as annotations (a highlight on the
+  words), with the status and answer (`reply:`) in the annotation's text. The customer reads the answer in the PDF and
+  replies to the annotation (or writes below it). On import, replies go **under the original comment** in `replies:`,
+  and the comments and answers we put in the PDF are not imported again.
+- For a PDF that should carry no comments (a copy to deliver), turn off the setting `docpresenter.pdfReviewNotes` before exporting.
+- From the command line: `node tools/pdf-review.mjs <pdf> --in <workspace> [--write]`.
 
-## コードと Mermaid
+## Code and Mermaid
 
-- コードブロックは言語名（` ```sql ` など）で色が付き、上に言語名が出る。DocPresenter の画面では、
-  その横の **「コピー」** でコードブロックの全文をコピーできる。
-- ` ```mermaid ` と `.mmd` は図になる。ブロックにマウスを載せると右上に **「図 / コード / 両方」** の切り替えが出る。
-  押すと `{view="…"}` がファイルに書かれ、書き出した HTML・PDF・PPTX もそのとおりになる。
+- Code blocks are coloured by their language name (` ```sql ` and so on), which is shown above the block. On
+  DocPresenter's screen, **"Copy"** beside it copies the whole block.
+- ` ```mermaid ` blocks and `.mmd` files become diagrams. Hover over the block and **"Diagram / Code / Both"** appears at
+  its top right. Choosing writes `{view="…"}` into the file, and exported HTML, PDF and PPTX follow it.
 
-### 色が付く言語
+### Languages that are coloured
 
-開きの行に書く言語名（別名も可）。これ以外の名前は色を付けず、書いた名前をそのまま上に出す。
+The language name on the opening line (aliases work too). Other names are not coloured, and shown above the block as written.
 
-| 言語 | 書ける名前 |
+| Language | Names |
 |---|---|
-| Bash / シェル | `bash` `sh` `zsh` `shell` `console` |
+| Bash / shell | `bash` `sh` `zsh` `shell` `console` |
 | PowerShell | `powershell` `ps` `ps1` |
 | JavaScript | `javascript` `js` `jsx` `mjs` `cjs` |
 | TypeScript | `typescript` `ts` `tsx` `mts` `cts` |
@@ -123,43 +193,46 @@ PPTX に書き出した図は、PowerPoint で直されたあと**元の `.dgm` 
 | INI / TOML | `ini` `toml` |
 | Dockerfile | `dockerfile` `docker` |
 | Markdown | `markdown` `md` |
-| テキスト（色なし） | `plaintext` `text` `txt` |
-| Mermaid（図になる） | `mermaid` |
+| Text (no colour) | `plaintext` `text` `txt` |
+| Mermaid (becomes a diagram) | `mermaid` |
 
-## 作る
-
-```
-npx tsc --build                  # 型検査（packages/app-vscode を含む）
-node tools/build-vscode.mjs      # media/ に extension.cjs ＋ webview.js ＋ exporter.js ＋ theme.css ＋ mermaid-page.js ＋ harfbuzz-subset.wasm
-```
-
-## 表示言語
-
-**VS Code の表示言語に従う。** 日本語なら日本語、それ以外は英語になる（コマンド名・設定の説明・通知・
-編集画面・書き出した文書の表紙や目次まで）。切り替えは VS Code の「Configure Display Language」で行い、
-この拡張に専用の設定は無い。
-
-- 拡張ホストの文言は `src/messages.ts`、`package.json` の文言は `package.nls.json`（英）/ `package.nls.ja.json`（日）。
-- 編集画面（WebView）へは、`open` メッセージの `locale` で同じ言語を渡す。
-- 「作業場を初期化する」で置く最初の文書・用語集・`CLAUDE.md` への追記も、その言語で書く
-  （`.docpresenter/guide.md` は今のところ日本語のみ）。
-
-## 試す
-
-リポジトリを VS Code で開いて **F5**（`npm run build:vscode` でビルドしてから、標本の `sample/` を
-開いた拡張ホストが立ち上がる）。
-
-## 配る
+## Building
 
 ```
-cd packages/app-vscode && npx @vscode/vsce package --no-dependencies
-code --install-extension docpresenter-0.1.0.vsix
+npx tsc --build                  # type check (packages/app-vscode included)
+node tools/build-vscode.mjs      # into media/: extension.cjs + webview.js + exporter.js + theme.css + mermaid-page.js + harfbuzz-subset.wasm
 ```
 
-## この版でやらないこと
+## Display language
+
+**It follows VS Code's display language.** Japanese when VS Code is in Japanese, English otherwise (command names,
+setting descriptions, notifications, the editor, and the cover and contents of exported documents). Change it with
+VS Code's "Configure Display Language"; the extension has no setting of its own.
+
+- The extension host's words are in `src/messages.ts`; `package.json`'s are in `package.nls.json` (English) / `package.nls.ja.json` (Japanese).
+- The editor (WebView) is told the same language by the `locale` of the `open` message.
+- The first document, the glossary and the `CLAUDE.md` section written by "Set Up This Folder" are in that language too
+  (`.docpresenter/guide.md` is Japanese only for now).
+- This page is in English whatever the display language: VS Code shows one README for every language.
+  The Japanese version is linked at the top.
+
+## Trying it
+
+Open the repository in VS Code and press **F5** (it builds with `npm run build:vscode`, then starts an extension host
+with the `sample/` folder open).
+
+## Packaging
+
+```
+tools\package-vscode.bat            # builds and writes out\vsix\docpresenter-<version>.vsix
+tools\package-vscode.bat install    # the same, then installs it into this PC's VS Code
+code --install-extension out\vsix\docpresenter-0.1.0.vsix   # to install on another PC
+```
+
+## Not in this version
 
 | | |
 |---|---|
-| **PDF をまとめて書く** | まとめてのビルドには組版する画面が無いので、PDF は文書ごとにボタンで書く。まとめて書くなら `node tools/build.mjs` |
-| **PowerPoint で Mermaid を編集** | Mermaid の図は画像で載る。PowerPoint で動かせる図形にしたいなら `.dgm` で描く |
-| **部品ライブラリの編集** | 画面からは選べるが、部品そのものはソースで書く |
+| **Exporting PDFs in bulk** | A bulk build has no screen to lay pages out, so PDFs are exported one document at a time with the button. Use `node tools/build.mjs` for bulk |
+| **Editing Mermaid in PowerPoint** | Mermaid diagrams go in as images. Draw with `.dgm` to get shapes you can move in PowerPoint |
+| **Editing part libraries** | Parts can be chosen on screen, but the parts themselves are written in source |

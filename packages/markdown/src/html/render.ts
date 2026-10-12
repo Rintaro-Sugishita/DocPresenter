@@ -8,7 +8,7 @@ import {
 } from '@docpresenter/diagram';
 import { describe } from '../numbering/resolve.js';
 import { parseTable } from '../table/parse.js';
-import { sheetsOf } from '../document/sheets.js';
+import { importedHeadingOf, sheetsOf } from '../document/sheets.js';
 import type { Block, DocumentFile, Import } from '../document/model.js';
 import type { NumberedElement, ResolvedDocument } from '../numbering/model.js';
 import { markdown, mermaidFigure, viewOf, type RenderEnv } from './markdown.js';
@@ -60,8 +60,11 @@ export function renderDocument(
     const blocks = sheet.blocks
       .map(block => renderBlock(block, elementByBlock, resolved, options))
       .join('\n');
+    // A sheet with no heading of its own is named by the document it takes in.
+    const borrowed = importedHeadingOf(sheet.blocks, path => options.loader.read(path));
+    const title = borrowed ? borrowed.heading.text : sheet.title;
     return `<section class="dp-sheet" data-sheet="${sheet.index}"`
-      + ` data-title="${escapeAttr(sheet.title)}"`
+      + ` data-title="${escapeAttr(title)}"`
       + ` data-span="${sheet.span.start},${sheet.span.end}">\n${blocks}\n</section>`;
   }).join('\n');
   // The legend belongs to the build, not to the document: it explains marks the

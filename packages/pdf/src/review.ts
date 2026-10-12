@@ -16,7 +16,9 @@ import {
   PDFArray, PDFDict, PDFDocument, PDFHexString, PDFName, PDFNumber, PDFRawStream, PDFRef,
   PDFString, decodePDFRawStream, type PDFObject,
 } from 'pdf-lib';
+import type { Locale } from '@docpresenter/base';
 import type { Item, PagePlan } from './plan.js';
+import type { ReviewPdfNote } from './review-notes.js';
 
 /** The attachment the map travels as. */
 export const REVIEW_ATTACHMENT = 'docpresenter-review.json';
@@ -25,11 +27,20 @@ export const REVIEW_ATTACHMENT = 'docpresenter-review.json';
 export interface ReviewSource {
   /** The document the PDF was built from, as a workspace path. */
   readonly document: string;
+  /** Its number (`document:` in the frontmatter), which outlives the path. */
+  readonly number?: string | undefined;
   readonly commit?: string | undefined;
   /** False when the working tree had changes the commit does not hold. */
   readonly clean?: boolean | undefined;
   /** Every file the document was built from, by workspace path, read as LF. */
   readonly files: Readonly<Record<string, string>>;
+  /**
+   * The review so far, to carry in the PDF as annotations a customer can read
+   * and reply to (review-notes.ts). Not part of the map.
+   */
+  readonly notes?: readonly ReviewPdfNote[] | undefined;
+  /** The language of the words the notes are labelled with. */
+  readonly locale?: Locale | undefined;
 }
 
 /** One run of the page and where it came from. Coordinates in points, from the top left. */
@@ -47,14 +58,17 @@ export interface ReviewBox {
 
 export interface ReviewMap extends ReviewSource {
   readonly version: 1;
+  /** What was written into each comment's annotation, by its name, and whose name it carried. */
+  readonly written?: readonly { readonly key: string; readonly text: string; readonly author?: string | undefined }[];
   readonly pages: readonly { readonly width: number; readonly height: number; readonly boxes: readonly ReviewBox[] }[];
 }
 
 /** The map for a plan: what is printed where, and what it was printed from. */
 export function reviewMapOf(plan: PagePlan, source: ReviewSource): ReviewMap {
+  const { notes: _notes, locale: _locale, ...kept } = source;
   return {
     version: 1,
-    ...source,
+    ...kept,
     pages: plan.pages.map(page => ({
       width: page.width ?? plan.width,
       height: page.height ?? plan.height,

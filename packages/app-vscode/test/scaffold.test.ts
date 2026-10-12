@@ -6,10 +6,12 @@ import { describe, expect, it } from 'vitest';
 import { build, type Workspace } from '@docpresenter/build';
 import { parseDiagram } from '@docpresenter/diagram';
 import { parseTable } from '@docpresenter/markdown';
-import { planScaffold, type ScaffoldAnswers, type Shipped } from '../src/scaffold.js';
+import {
+  documentFiles, ensureNumber, planScaffold, renderTemplate, type ScaffoldAnswers, type Shipped,
+} from '../src/scaffold.js';
 
 const GUIDE = readFileSync(new URL('../templates/guide.md', import.meta.url), 'utf-8');
-const SHIPPED: Shipped = { guide: GUIDE, specs: { 'dgm.md': '# dgm\n', 'table.md': '# table\n' } };
+const SHIPPED: Shipped = { guide: GUIDE, specs: { 'dgm.md': '# dgm\n', 'table.md': '# table\n' }, theme: 'body { color: #111 }\n' };
 const ANSWERS: ScaffoldAnswers = {
   name: 'auth-design', title: '認証機能 設計書', number: 'SD-AUTH-001', today: '2026-10-06', outDir: 'out/build',
 };
@@ -34,6 +36,9 @@ describe('作業場の初期化', () => {
       '.docpresenter/guide.md',
       '.docpresenter/spec/dgm.md',
       '.docpresenter/spec/table.md',
+      '.docpresenter/templates/document.md',
+      '.docpresenter/templates/revision.md',
+      '.docpresenter/themes/default/theme.css',
       '.gitignore',
       'AGENTS.md',
       'CLAUDE.md',
@@ -65,6 +70,58 @@ describe('作業場の初期化', () => {
     expect(text).toContain('# 設計: 認証');
   });
 
+  it('テンプレートは差し込み口を残して置かれ、最初の文書はそれから作られる', () => {
+    const files = after({});
+    const template = files['.docpresenter/templates/document.md']!;
+    expect(template).toContain('document: {{number}}');
+    expect(template).toContain('title: {{title}}');
+    expect(template).toContain('# {{title}}');
+    expect(template).toContain('@import "{{name}}/revision.md"');
+    expect(files['.docpresenter/templates/revision.md']).toContain('| 0.1 | {{today}} |');
+    expect(files['docs/auth-design.md']).toBe(documentFiles(ANSWERS)[0]!.text);
+    expect(files['.docpresenter/themes/default/theme.css']).toBe(SHIPPED.theme);
+  });
+
+  it('チームが書き換えたテンプレートが既にあれば、それを残し、最初の文書もそれから作る', () => {
+    const team = '---\ntitle: {{title}}\nowner: 開発部\n---\n\n# {{title}}\n\n## 背景\n';
+    const result = plan({ '.docpresenter/templates/document.md': team, '.docpresenter/themes/default/theme.css': 'h1 {}' });
+    expect(result.kept).toEqual(['.docpresenter/templates/document.md', '.docpresenter/themes/default/theme.css']);
+    const document = result.files.find(file => file.path === 'docs/auth-design.md')!.text;
+    // The number goes in even though the team's template forgot it.
+    expect(document).toBe('---\ndocument: SD-AUTH-001\ntitle: 認証機能 設計書\nowner: 開発部\n---\n\n# 認証機能 設計書\n\n## 背景\n');
+  });
+});
+
+describe('テンプレートの差し込み', () => {
+  const VALUES = { title: '設計: 認証', number: 'SD-001', name: 'auth', today: '2026-10-12' };
+
+  it('frontmatter の値まるごとの差し込みは YAML として正しく、本文にはそのまま入る', () => {
+    const text = renderTemplate('---\ntitle: {{title}}\nupdated: {{today}}\n---\n\n# {{title}}（{{number}}）\n', VALUES);
+    expect(text).toBe('---\ntitle: "設計: 認証"\nupdated: 2026-10-12\n---\n\n# 設計: 認証（SD-001）\n');
+  });
+
+  it('知らない差し込み口はそのまま残す', () => {
+    expect(renderTemplate('{{author}} / {{name}}', VALUES)).toBe('{{author}} / auth');
+  });
+
+  it('文書番号は、テンプレートに無くても空でも入る', () => {
+    expect(ensureNumber('---\ntitle: a\n---\n', 'X-1')).toBe('---\ndocument: X-1\ntitle: a\n---\n');
+    expect(ensureNumber('---\ndocument: ""\n---\n', 'X-1')).toBe('---\ndocument: X-1\n---\n');
+    expect(ensureNumber('---\ndocument: Y-2\n---\n', 'X-1')).toBe('---\ndocument: Y-2\n---\n');
+    expect(ensureNumber('# 見出しだけ\n', 'X-1')).toBe('---\ndocument: X-1\n---\n\n# 見出しだけ\n');
+  });
+
+  it('新しい文書は、リポジトリのテンプレートから作られる', () => {
+    const [document, history] = documentFiles(
+      { name: 'auth', title: '認証', number: 'SD-001', today: '2026-10-12' },
+      { document: '---\ndocument: {{number}}\ntitle: {{title}}\n---\n\n@import "{{name}}/revision.md"\n', revision: '| {{today}} |\n' },
+    );
+    expect(document).toEqual({ path: 'docs/auth.md', text: '---\ndocument: SD-001\ntitle: 認証\n---\n\n@import "auth/revision.md"\n' });
+    expect(history).toEqual({ path: 'docs/auth/revision.md', text: '| 2026-10-12 |\n' });
+  });
+});
+
+describe('作業場の初期化（続き）', () => {
   it('既にあるファイルは書き換えず、そのままと報告する', () => {
     const result = plan({ 'docs/auth-design.md': '# 先にある\n', 'shared/glossary.table': '| a |\n|---|\n' });
     expect(result.files.some(file => file.path === 'docs/auth-design.md')).toBe(false);

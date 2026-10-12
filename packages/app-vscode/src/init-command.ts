@@ -2,9 +2,12 @@
 // title, writes what `planScaffold` lays out, and opens the document.
 
 import * as vscode from 'vscode';
-import { DOCUMENT_NAME, planScaffold, type Shipped } from './scaffold.js';
+import {
+  TEAM_THEME, TEMPLATE_DOCUMENT, TEMPLATE_REVISION, documentPaths, planScaffold, type Shipped,
+} from './scaffold.js';
 import { hostLocale, t } from './l10n.js';
 import { SheetEditorProvider } from './sheet-editor.js';
+import { nameMessage, pickNumber, withoutExtension } from './document-command.js';
 import { outDirOf } from './workspace-files.js';
 
 /** The format specs the extension ships beside the guide, in `media/init/spec/`. */
@@ -24,18 +27,18 @@ export async function initWorkspace(context: vscode.ExtensionContext): Promise<v
     validateInput: value => value.trim() === '' ? t('vscode.init.titleEmpty') : undefined,
   });
   if (title === undefined) return;
-  const name = await vscode.window.showInputBox({
+  const typed = await vscode.window.showInputBox({
     title: t('vscode.init.step', { step: 2 }),
     prompt: t('vscode.init.name'),
     value: 'design',
-    validateInput: value => DOCUMENT_NAME.test(value) ? undefined : t('vscode.init.nameInvalid'),
+    validateInput: value => nameMessage(withoutExtension(value, 'md')),
   });
-  if (name === undefined) return;
-  const number = await vscode.window.showInputBox({
-    title: t('vscode.init.step', { step: 3 }),
-    prompt: t('vscode.init.number'),
-    placeHolder: 'SD-AUTH-001',
-  });
+  if (typed === undefined) return;
+  const name = withoutExtension(typed, 'md');
+  const paths = documentPaths(undefined, name);
+  // Every document has a number, and no two share one: review comments are
+  // tied to it (document-command.ts).
+  const number = await pickNumber(t('vscode.init.step', { step: 3 }));
   if (number === undefined) return;
 
   const at = (path: string): vscode.Uri => vscode.Uri.joinPath(folder.uri, ...path.split('/'));
@@ -54,13 +57,16 @@ export async function initWorkspace(context: vscode.ExtensionContext): Promise<v
     const text = await read(media(`spec/${spec}`));
     if (text !== undefined) specs[spec] = text;
   }
-  const shipped: Shipped = { guide, specs };
+  // The shipped theme, copied into the folder for the team to make its own.
+  const theme = await read(vscode.Uri.joinPath(context.extensionUri, 'media', 'theme.css'));
+  const shipped: Shipped = { guide, specs, theme };
 
   // Every path the plan might touch, read once, so the plan itself stays a
   // function of what is there.
   const candidates = [
-    `docs/${name}.md`, `docs/${name}/revision.md`, 'docs/assets/.gitkeep', 'shared/glossary.table',
+    paths.document, paths.revision, 'docs/assets/.gitkeep', 'shared/glossary.table',
     '.docpresenter/guide.md', ...SPECS.map(spec => `.docpresenter/spec/${spec}`),
+    TEMPLATE_DOCUMENT, TEMPLATE_REVISION, TEAM_THEME,
     'CLAUDE.md', 'AGENTS.md', '.gitignore',
   ];
   const existing = new Map<string, string>();
@@ -70,7 +76,7 @@ export async function initWorkspace(context: vscode.ExtensionContext): Promise<v
   }
 
   const plan = planScaffold({
-    name, title: title.trim(), number: number.trim() || undefined,
+    name, title: title.trim(), number,
     today: localDate(new Date()), outDir: outDirOf(), locale: hostLocale(),
   }, shipped, path => existing.get(path));
 

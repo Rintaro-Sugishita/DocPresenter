@@ -12,8 +12,13 @@
 import { DEFAULT_LOCALE, type Locale } from '@docpresenter/base';
 
 export interface ScaffoldAnswers {
-  /** The first document's file name, without `.md`: `auth-design`. */
+  /**
+   * The document's file name, without `.md`: `auth-design`. A `/` puts it in a
+   * folder below `folder`: `order/design`.
+   */
   readonly name: string;
+  /** The folder the document goes in, from the workspace root. `docs` when absent. */
+  readonly folder?: string | undefined;
   readonly title: string;
   /** The document number for the cover, when the author has one. */
   readonly number?: string | undefined;
@@ -23,6 +28,144 @@ export interface ScaffoldAnswers {
   readonly outDir: string;
   /** The language the starting documents are written in. Japanese when absent. */
   readonly locale?: Locale | undefined;
+  /** Whether the document takes in the shared glossary. Yes unless said otherwise. */
+  readonly glossary?: boolean | undefined;
+}
+
+/**
+ * A new document and its revision history, from the repository's templates
+ * (`.docpresenter/templates/`) when it has them and the shipped ones when it
+ * does not. The number goes in whatever the template says.
+ */
+export function documentFiles(
+  answers: Omit<ScaffoldAnswers, 'outDir'>,
+  templates?: { readonly document?: string | undefined; readonly revision?: string | undefined },
+): { path: string; text: string }[] {
+  const shipped = defaultTemplates(answers.locale ?? DEFAULT_LOCALE, answers.glossary !== false);
+  const where = documentPaths(answers.folder, answers.name);
+  const values: TemplateValues = {
+    title: answers.title, number: answers.number ?? '', name: where.base, today: answers.today, root: where.root,
+  };
+  const document = renderTemplate(templates?.document ?? shipped.document, values);
+  return [
+    { path: where.document, text: answers.number ? ensureNumber(document, answers.number) : document },
+    { path: where.revision, text: renderTemplate(templates?.revision ?? shipped.revision, values) },
+  ];
+}
+
+/**
+ * Where a document and its revision history go, and what its imports start
+ * with to reach the workspace root (`../` from `docs/a.md`, `../../` from
+ * `docs/order/a.md`).
+ */
+export function documentPaths(folder: string | undefined, name: string): {
+  document: string; revision: string; base: string; root: string;
+} {
+  const stem = [folder ?? 'docs', name].map(part => part.replace(/^\/+|\/+$/g, '')).filter(Boolean).join('/');
+  const depth = stem.split('/').length - 1;
+  return {
+    document: `${stem}.md`,
+    revision: `${stem}/revision.md`,
+    base: stem.slice(stem.lastIndexOf('/') + 1),
+    root: '../'.repeat(depth),
+  };
+}
+
+/** Characters no file name may hold on Windows, where they are the strictest. */
+const FORBIDDEN = /[<>:"\\|?*\u0000-\u001f]/;
+/** Names Windows keeps for devices, with or without an extension. */
+const RESERVED = /^(con|prn|aux|nul|com[0-9]|lpt[0-9])(\..*)?$/i;
+
+/**
+ * Why a name cannot be a file name, or undefined when it can. A `/` divides
+ * folders, each of which must be a name too. Upper case, spaces and Japanese
+ * are all fine; what is refused is what one of the platforms would refuse.
+ */
+export function nameProblem(name: string): 'empty' | 'characters' | 'reserved' | 'ending' | undefined {
+  const parts = name.split('/');
+  if (name.trim() === '' || parts.some(part => part.trim() === '')) return 'empty';
+  for (const part of parts) {
+    if (FORBIDDEN.test(part)) return 'characters';
+    if (RESERVED.test(part) || part === '.' || part === '..') return 'reserved';
+    if (/[. ]$/.test(part) || /^ /.test(part)) return 'ending';
+  }
+  return undefined;
+}
+
+/** Where a repository keeps its own templates and theme, set up with the folder. */
+export const TEMPLATE_DOCUMENT = '.docpresenter/templates/document.md';
+export const TEMPLATE_REVISION = '.docpresenter/templates/revision.md';
+export const TEAM_THEME = '.docpresenter/themes/default/theme.css';
+
+/** The two templates a new document is made from. */
+export interface DocumentTemplates {
+  /** The document. `{{name}}` is its file name, so it can take in its revision history. */
+  readonly document: string;
+  readonly revision: string;
+}
+
+/**
+ * What a template can say: `{{title}}`, `{{number}}`, `{{name}}` (the file
+ * name, without its folder), `{{today}}`, and `{{root}}` — the way from the
+ * document up to the workspace root, so that `{{root}}shared/` is found
+ * however deep the document sits.
+ */
+export type TemplateValues = Readonly<Record<'title' | 'number' | 'name' | 'today' | 'root', string>>;
+
+/**
+ * The templates the extension ships, in the language given: the same document
+ * the folder used to start with, its values left as placeholders for a team
+ * to rearrange.
+ */
+export function defaultTemplates(locale: Locale = DEFAULT_LOCALE, glossary = true): DocumentTemplates {
+  const words = WORDS[locale];
+  // Plain words a YAML value takes as it is, swapped for the placeholders after.
+  const marks = { title: 'DPTITLE', number: 'DPNUMBER', name: 'dpname', today: 'DPTODAY', root: 'DPROOT/' } as const;
+  const unmark = (text: string): string => text
+    .replaceAll(marks.title, '{{title}}').replaceAll(marks.number, '{{number}}')
+    .replaceAll(marks.name, '{{name}}').replaceAll(marks.today, '{{today}}').replaceAll(marks.root, '{{root}}');
+  return { document: unmark(firstDocument(marks, words, glossary)), revision: unmark(revision(marks, words)) };
+}
+
+/**
+ * A template with its placeholders filled in. A placeholder that is the whole
+ * value of a frontmatter key is written as YAML would want it — a title with
+ * a colon in it is quoted — and everywhere else the value goes in as it is. A
+ * placeholder this does not know is left as written, to be seen and fixed.
+ */
+export function renderTemplate(template: string, values: TemplateValues): string {
+  const lines = template.replace(/\r\n/g, '\n').split('\n');
+  const end = lines[0]?.trim() === '---' ? lines.findIndex((line, i) => i > 0 && line.trim() === '---') : -1;
+  const known = (key: string): key is keyof TemplateValues => key in values;
+  return lines.flatMap((line, i) => {
+    if (i > 0 && i < end) {
+      const whole = /^(\s*[A-Za-z_][\w-]*:\s*)\{\{(\w+)\}\}\s*$/.exec(line);
+      if (whole && known(whole[2]!)) {
+        // A key with nothing to say is left out, not written empty.
+        const value = values[whole[2]!];
+        return value === '' ? [] : [`${whole[1]}${yamlText(value)}`];
+      }
+    }
+    return [line.replace(/\{\{(\w+)\}\}/g, (all, key: string) => (known(key) ? values[key] : all))];
+  }).join('\n');
+}
+
+/**
+ * The document with its number in the frontmatter, whatever its template
+ * said: a number is what review comments are tied to, so no document goes
+ * without one.
+ */
+export function ensureNumber(text: string, number: string): string {
+  const lines = text.split('\n');
+  const end = lines[0]?.trim() === '---' ? lines.findIndex((line, i) => i > 0 && line.trim() === '---') : -1;
+  if (end > 0) {
+    const at = lines.findIndex((line, i) => i > 0 && i < end && /^document:/.test(line));
+    if (at > 0 && lines[at]!.replace(/^document:\s*/, '').replace(/^["']|["']$/g, '').trim() !== '') return text;
+    if (at > 0) lines.splice(at, 1, `document: ${yamlText(number)}`);
+    else lines.splice(1, 0, `document: ${yamlText(number)}`);
+    return lines.join('\n');
+  }
+  return `---\ndocument: ${yamlText(number)}\n---\n\n${text}`;
 }
 
 /** What the extension ships for the folder: the guide and the format specs. */
@@ -30,6 +173,8 @@ export interface Shipped {
   readonly guide: string;
   /** `dgm.md` → its text, and so on. */
   readonly specs: Readonly<Record<string, string>>;
+  /** The theme documents are printed in, copied for the team to change. */
+  readonly theme?: string | undefined;
 }
 
 export interface PlannedFile {
@@ -47,9 +192,6 @@ export interface ScaffoldPlan {
   readonly document: string;
 }
 
-/** A name that works as a file name and as a folder name on every platform. */
-export const DOCUMENT_NAME = /^[a-z0-9][a-z0-9-]*$/;
-
 /** Marks the block this command appends, so that it is appended once. */
 const MARKER = '<!-- docpresenter:init -->';
 
@@ -58,7 +200,7 @@ export function planScaffold(
 ): ScaffoldPlan {
   const files: PlannedFile[] = [];
   const kept: string[] = [];
-  const document = `docs/${answers.name}.md`;
+  const document = documentPaths(answers.folder, answers.name).document;
   const words = WORDS[answers.locale ?? DEFAULT_LOCALE];
 
   const create = (path: string, text: string): void => {
@@ -73,8 +215,17 @@ export function planScaffold(
     else files.push({ path, text: `${now === '' || now.endsWith('\n') ? '' : '\n'}\n${block}`, mode: 'append' });
   };
 
-  create(document, firstDocument(answers, words));
-  create(`docs/${answers.name}/revision.md`, revision(answers, words));
+  // The templates and theme go in first and the first document is made from
+  // them — the team's own, when the folder already has them.
+  const templates = defaultTemplates(answers.locale ?? DEFAULT_LOCALE, answers.glossary !== false);
+  create(TEMPLATE_DOCUMENT, templates.document);
+  create(TEMPLATE_REVISION, templates.revision);
+  if (shipped.theme !== undefined) create(TEAM_THEME, shipped.theme);
+  const [first, history] = documentFiles(answers, {
+    document: existing(TEMPLATE_DOCUMENT), revision: existing(TEMPLATE_REVISION),
+  });
+  create(first!.path, first!.text);
+  create(history!.path, history!.text);
   create('docs/assets/.gitkeep', '');
   create('shared/glossary.table', glossary(words));
   create('.docpresenter/guide.md', shipped.guide);
@@ -179,10 +330,10 @@ const WORDS: Readonly<Record<Locale, Words>> = {
   },
 };
 
-function firstDocument(answers: ScaffoldAnswers, words: Words): string {
+function firstDocument(answers: TemplateValues, words: Words, withGlossary: boolean): string {
   return [
     '---',
-    ...(answers.number ? [`document: ${yamlText(answers.number)}`] : []),
+    `document: ${yamlText(answers.number)}`,
     `title: ${yamlText(answers.title)}`,
     'version: 0.1',
     'status: draft',
@@ -210,12 +361,14 @@ function firstDocument(answers: ScaffoldAnswers, words: Words): string {
     '',
     `- ${words.scopeOutItem}`,
     '',
-    `### ${words.terms} {#sec-terms}`,
-    '',
-    words.termsText,
-    '',
-    `@import "../shared/glossary.table" {#tbl-glossary caption="${words.glossaryCaption}"}`,
-    '',
+    ...(!withGlossary ? [] : [
+      `### ${words.terms} {#sec-terms}`,
+      '',
+      words.termsText,
+      '',
+      `@import "${answers.root}shared/glossary.table" {#tbl-glossary caption="${words.glossaryCaption}"}`,
+      '',
+    ]),
     '---',
     '',
     `@import "${answers.name}/revision.md"`,
@@ -223,7 +376,7 @@ function firstDocument(answers: ScaffoldAnswers, words: Words): string {
   ].join('\n');
 }
 
-function revision(answers: ScaffoldAnswers, words: Words): string {
+function revision(answers: TemplateValues, words: Words): string {
   const [version, date, changes] = words.revisionHead;
   return [
     `## ${words.revision} {#sec-revision}`,

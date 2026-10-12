@@ -50,13 +50,18 @@ export async function readWorkspace(): Promise<ReadWorkspace> {
  * about a commit rather than a wrong one.
  */
 export async function gitState(folder: string): Promise<{ commit?: string; clean?: boolean }> {
-  const git = (args: readonly string[]): Promise<string | undefined> => new Promise(done => {
-    execFile('git', [...args], { cwd: folder, encoding: 'utf8' }, (error, out) => done(error ? undefined : out));
-  });
-  const commit = (await git(['rev-parse', 'HEAD']))?.trim();
+  const commit = (await git(folder, ['rev-parse', 'HEAD']))?.trim();
   if (!commit) return {};
-  const status = await git(['status', '--porcelain']);
+  const status = await git(folder, ['status', '--porcelain']);
   return status === undefined ? { commit } : { commit, clean: status.trim() === '' };
+}
+
+/** What git prints, or undefined when it fails or is not there. */
+export function git(folder: string, args: readonly string[]): Promise<string | undefined> {
+  return new Promise(done => {
+    execFile('git', [...args], { cwd: folder, encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 },
+      (error, out) => done(error ? undefined : out));
+  });
 }
 
 /** Where artifacts go, as the setting says. */

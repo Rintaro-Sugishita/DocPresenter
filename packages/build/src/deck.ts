@@ -9,7 +9,7 @@
 
 import { parseDiagram, parseRuns, withParts, type Run } from '@docpresenter/diagram';
 import {
-  cellAt, describe, fencesOf, joinPath, parseTable, selectRows, sheetsOf, viewOf,
+  cellAt, columnWidths, describe, fencesOf, joinPath, parseTable, selectRows, sheetsOf, viewOf,
   type Block as DocBlock, type Cell, type DiffMarks, type DocumentFile,
   type MermaidView, type NumberedElement, type ResolvedDocument, type TableFile,
 } from '@docpresenter/markdown';
@@ -29,6 +29,8 @@ export interface DeckOptions {
   readonly marks?: DiffMarks;
   /** Mermaid drawings as pictures, by source. A drawing not here is shown as code. */
   readonly pictures?: ReadonlyMap<string, MermaidPicture>;
+  /** The document's own path, which a table written in its prose is named after. */
+  readonly root?: string;
 }
 
 export function deckOf(options: DeckOptions): Deck {
@@ -70,7 +72,7 @@ function blockOf(
   block: DocBlock, options: DeckOptions,
   byBlock: ReadonlyMap<unknown, NumberedElement>, diagnostics: string[],
 ): Block | Block[] | undefined {
-  if (block.kind === 'prose') return proseBlocks(block.text, options);
+  if (block.kind === 'prose') return proseBlocks(block.text, options, block.doc ?? options.root);
   if (block.kind !== 'import') return undefined;
 
   const source = asLf(options.workspace).read(block.path);
@@ -112,7 +114,7 @@ function blockOf(
         diagnostics.push(t('build.missingRange', { rows: rows ?? '' }));
         return undefined;
       }
-      return tableOf(chosen);
+      return tableOf(chosen, block.path);
     } catch (error) {
       diagnostics.push(t('build.unreadableFile', { path: block.path, message: describeError(error, locale) }));
       return undefined;
@@ -155,7 +157,7 @@ function captionOf(
  * the author chose. A drawing goes on the slide as a picture: Mermaid has no
  * shapes PowerPoint could hand back, unlike a `.dgm`.
  */
-function proseBlocks(text: string, options: DeckOptions): Block[] {
+function proseBlocks(text: string, options: DeckOptions, source?: string): Block[] {
   const lines = text.split('\n').map(line => line.replace(/\r$/, ''));
   const blocks: Block[] = [];
   let paragraphs: (readonly Run[])[] = [];
@@ -170,7 +172,7 @@ function proseBlocks(text: string, options: DeckOptions): Block[] {
       const table = markdownTable(lines, at, to);
       if (table) {
         flush();
-        blocks.push(tableBlock(table, line => prose(line)));
+        blocks.push(tableBlock(table, line => prose(line), source));
         at = table.end;
         continue;
       }
@@ -255,13 +257,14 @@ function cellsOf(line: string): string[] {
 }
 
 /** A Markdown table as a native one on the slide, set the way the page sets it. */
-function tableBlock(table: MarkdownTable, runs: (text: string) => readonly Run[]): Block {
+function tableBlock(table: MarkdownTable, runs: (text: string) => readonly Run[], source?: string): Block {
   const cell = (text: string, align: 'left' | 'center' | 'right'): TableCell => ({
     runs: runs(text) as Run[], rowSpan: 1, colSpan: 1, covered: 'none', align,
   });
   return {
     kind: 'table',
     columns: table.header.map(() => 1),
+    ...(source === undefined ? {} : { source }),
     rows: [
       { header: true, cells: table.header.map((text, i) => cell(text, table.align[i] ?? 'center')) },
       ...table.rows.map(row => ({ header: false, cells: row.map((text, i) => cell(text, table.align[i] ?? 'left')) })),
@@ -299,8 +302,12 @@ function substitute(text: string, resolved: ResolvedDocument): string {
     });
 }
 
-function tableOf(table: TableFile): Block {
+function tableOf(table: TableFile, source: string): Block {
   const columns = table.columns.map(() => 1);
+  // The widths the author wrote as a share of the table, the way the page
+  // reads them. A width in another unit says nothing about a slide.
+  const widths = columnWidths(table).map(width =>
+    width !== undefined && width.endsWith('%') ? Number(width.slice(0, -1)) / 100 : undefined);
   const header: TableCell[] = table.columns.map(column => ({
     runs: parseRuns(column.header) as Run[],
     rowSpan: 1, colSpan: 1, covered: 'none', align: 'center',
@@ -321,7 +328,11 @@ function tableOf(table: TableFile): Block {
     }),
   }));
 
-  return { kind: 'table', columns, rows: [{ header: true, cells: header }, ...rows] };
+  return {
+    kind: 'table', columns, source,
+    ...(widths.some(width => width !== undefined) ? { widths } : {}),
+    rows: [{ header: true, cells: header }, ...rows],
+  };
 }
 
 function empty(): TableCell {

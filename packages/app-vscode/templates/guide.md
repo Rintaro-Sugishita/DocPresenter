@@ -19,17 +19,22 @@ docs/
   <文書名>.md            文書の本文。frontmatter に output: を持つものが書き出しの対象
   <文書名>/              その文書だけが使う図・表・取り込み（例: login-flow.dgm）
     revision.md          その文書の改訂履歴
+  <領域>/                大きなアプリでは領域ごとのフォルダに分けてよい（例: order/design.md）
   assets/                画面キャプチャなどの画像
 shared/                  複数の文書から引く図・表（用語集・全体構成図など）
-.docpresenter/           この仕様書と、図・表の形式の仕様（spec/）
+.docpresenter/           この仕様書、図・表の形式の仕様（spec/）、新しい文書のテンプレート（templates/）、テーマ（themes/）
 out/                     書き出しの成果物。Git に入れない
 ```
 
 - **`docs/<文書名>/` はその文書専用**である。別の文書から引いてはいけない。
   2 つ以上の文書で使うものは `shared/` に置く。
 - **改訂履歴は共有しない。** 文書ごとに `docs/<文書名>/revision.md` を持つ。
-- 1 つのフォルダに文書が何本あってもよい。文書名は英小文字・数字・`-` で付ける（`auth-design`）。
-- 新しい図や表のファイル名も同じく英小文字・数字・`-`。中身を表す名前にする（`login-flow.dgm`）。
+- 1 つのフォルダに文書が何本あってもよい。フォルダは何段に分けてもよく、`docs/<領域>/<文書名>.md` の文書も
+  `<文書名>/` に専用の図表と revision.md を持つ。書き出しはフォルダの構成のまま `out/build/<領域>/<文書名>.*` になる。
+- ファイル名は中身を表す名前にする（`auth-design.md`、`login-flow.dgm`）。大文字・日本語も使えるが、
+  リポジトリの既存の名前の付け方に揃える。`\ : * ? " < > |` と、末尾の空白・ピリオドは使わない。
+- 新しい文書は `.docpresenter/templates/document.md` から作る。差し込み口 `{{root}}` はリポジトリ直下への相対パスで、
+  深いフォルダの文書でも `{{root}}shared/…` で共有の図表を引ける。
 - パスはすべて**そのファイルからの相対**で書く（`docs/a.md` から `shared/x.dgm` は `../shared/x.dgm`）。
 
 ## 2. 文書（`.md`）
@@ -45,7 +50,7 @@ out/                     書き出しの成果物。Git に入れない
 
 ```yaml
 ---
-document: SD-AUTH-001     # 文書番号
+document: SD-AUTH-001     # 文書番号。必須で、リポジトリの中で重複させない
 title: 認証機能 設計書
 version: 1.0              # 版。改訂履歴の版と揃える
 status: draft             # draft / review / approved など
@@ -57,6 +62,10 @@ output: [html, pdf]       # 書き出す形式（html / pdf / pptx）。無い�
 ```
 
 - 表紙は frontmatter から**生成される**。本文に文書番号や版を書き写さない。
+- 新しい文書は `.docpresenter/templates/document.md`（チームのテンプレート）の構成に合わせる。
+  見た目は `.docpresenter/themes/<theme>/theme.css` が決めるので、本文で見た目を作り込まない。
+- **文書番号（`document:`）は必須で、ほかの文書と重複させない。** レビューの指摘は文書番号に結び付くため、
+  番号を変えたり使い回したりしない。新しい文書は、既存の文書番号の系列（`SD-AUTH-` など）の次の番号にする。
 - `contents: true / false`、`figures: true / false` で目次・図表目次を出す／出さないを決められる
   （書かなければ項目数で自動）。
 - 内容を変えたら `updated` を更新する。版を上げるかどうかは人が決める。勝手に上げない。

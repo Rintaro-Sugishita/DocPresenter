@@ -18,6 +18,10 @@ import { inWorkspace } from './paths.js';
 import type { FromView, ToView } from './protocol.js';
 import { hostLocale, t } from './l10n.js';
 import { exportDocument, type OpenView } from './export-command.js';
+import { addNote, loadNotes, updateNote, watchReviews } from './review-host.js';
+import { documentNumberOf, parseDocument } from '@docpresenter/markdown';
+import { themePaths } from '@docpresenter/build';
+import { PAGE_STYLE } from './page-style.js';
 
 /** Text the document could refer to, and pictures it could show. */
 const TEXT_FILES = '**/*.{dgm,table,mmd,ermlx,md}';
@@ -134,7 +138,30 @@ export class SheetEditorProvider implements vscode.CustomTextEditorProvider {
         locale: hostLocale(),
         ...(diagram ? { diagram: true } : {}),
       });
+      if (!diagram) await sendReviews();
+      await sendTheme();
     };
+
+    /**
+     * The workspace's own theme for this document, to the screen — so what is
+     * edited looks as it will be printed. Nothing when it has none.
+     */
+    const sendTheme = async (): Promise<void> => {
+      const raw = diagram ? {} : parseFrontmatter(document.getText());
+      const name = typeof raw['theme'] === 'string' ? raw['theme'] : 'default';
+      let css: string | undefined;
+      for (const path of themePaths(name)) {
+        try { css = new TextDecoder().decode(await vscode.workspace.fs.readFile(vscode.Uri.joinPath(root, ...path.split('/')))); break; } catch { /* 次の置き場所へ */ }
+      }
+      post(css === undefined ? { kind: 'theme' } : { kind: 'theme', css });
+    };
+
+    /** The review comments on this document, to the screen. */
+    const sendReviews = async (): Promise<void> => {
+      post({ kind: 'reviews', notes: await loadNotes(root, documentPath, document.getText()) });
+    };
+    /** The review file comments made here go into, once one was picked. */
+    const reviewFile: { file?: string } = {};
 
     const write = async (path: string, bytes: Uint8Array): Promise<void> => {
       const uri = vscode.Uri.joinPath(root, ...path.split('/'));
@@ -246,6 +273,25 @@ export class SheetEditorProvider implements vscode.CustomTextEditorProvider {
         }
         if (message.kind === 'change') { await inTurn(() => apply(message)); return; }
         if (message.kind === 'move') { await inTurn(() => move(message.from, message.to)); return; }
+        if (message.kind === 'review-update') {
+          await inTurn(async () => {
+            const refused = await updateNote(root, message.round, message.id, {
+              ...(message.status === undefined ? {} : { status: message.status }),
+              ...(message.reply === undefined ? {} : { reply: message.reply }),
+            });
+            if (refused !== undefined) void vscode.window.showWarningMessage(`DocPresenter: ${refused}`);
+            await sendReviews();
+          });
+          return;
+        }
+        if (message.kind === 'review-add') {
+          await inTurn(async () => {
+            const refused = await addNote(root, documentPath, message, reviewFile, documentNumberOf(document.getText()));
+            if (refused !== undefined) void vscode.window.showWarningMessage(`DocPresenter: ${refused}`);
+            await sendReviews();
+          });
+          return;
+        }
         if (message.kind === 'create') {
           const bytes = message.bytes
             ? Uint8Array.from(message.bytes)
@@ -286,7 +332,16 @@ export class SheetEditorProvider implements vscode.CustomTextEditorProvider {
       }
     });
 
+    const reviews = diagram ? undefined : watchReviews(() => { void sendReviews(); });
+    // A theme saved, made or removed is on the screen at once.
+    const themeWatcher = vscode.workspace.createFileSystemWatcher('**/themes/**/theme.css');
+    const themeChanged = [themeWatcher.onDidChange, themeWatcher.onDidCreate, themeWatcher.onDidDelete]
+      .map(on => on(() => { void sendTheme(); }));
+
     panel.onDidDispose(() => {
+      reviews?.dispose();
+      for (const one of themeChanged) one.dispose();
+      themeWatcher.dispose();
       watching.dispose();
       settings.dispose();
       this.views.delete(panel);
@@ -298,6 +353,11 @@ function commitKey(): 'ctrl-enter' | 'enter' | 'shift-enter' | 'alt-enter' {
   const written = vscode.workspace.getConfiguration('docpresenter').get<string>('commitKey');
   return written === 'enter' || written === 'shift-enter' || written === 'alt-enter'
     ? written : 'ctrl-enter';
+}
+
+/** A document's frontmatter, or nothing when it has none or it cannot be read. */
+function parseFrontmatter(source: string): Readonly<Record<string, unknown>> {
+  try { return parseDocument(source).frontmatter.raw; } catch { return {}; }
 }
 
 /** The page the WebView loads: our own script, the theme, and nothing else. */
@@ -315,34 +375,23 @@ function page(webview: vscode.Webview, extensionUri: vscode.Uri, exportBar = tru
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${webview.cspSource} data:; style-src ${webview.cspSource} 'unsafe-inline'; font-src ${webview.cspSource} data:; script-src 'nonce-${nonce}';">
 <link rel="stylesheet" href="${media('theme.css')}">
 <style>
-  html, body { height: 100%; margin: 0; padding: 0; max-width: none; background: #fff; }
-  body { display: flex; flex-direction: column; }
-  #editor { flex: 1; min-height: 0; }
-  /* 書き出しのボタン。編集画面の飾りであって、文書には出ない。 */
-  .dp-export {
-    flex: none; display: flex; align-items: center; gap: 6px; padding: 6px 12px;
-    border-bottom: 1px solid #e3e6ea; background: #f7f8fa;
-    font: 12px system-ui, sans-serif; color: #3a4048;
-  }
-  .dp-export-label { margin-right: 2px; }
-  .dp-export button {
-    font: inherit; padding: 3px 12px; border: 1px solid #c9ced6; border-radius: 4px;
-    background: #fff; color: #1c1f24; cursor: pointer;
-  }
-  .dp-export button:hover:not(:disabled) { background: #eef3fa; border-color: #1f5fa8; }
-  .dp-export button:focus-visible { outline: 2px solid #1f5fa8; outline-offset: 1px; }
-  .dp-export button:disabled { color: #a7aeb8; cursor: default; }
-  .dp-export-status { margin-left: 8px; color: #5a6270; }
+${PAGE_STYLE}
 </style>
 </head><body>
 ${exportBar ? `<div class="dp-export" role="toolbar" aria-label="${t('vscode.exportBar')}">
+  <span class="dp-modes" role="group" aria-label="${t('vscode.mode.group')}">
+    <button type="button" data-mode="edit" aria-pressed="true">${t('vscode.mode.edit')}</button>
+    <button type="button" data-mode="view" aria-pressed="false">${t('vscode.mode.view')}</button>
+  </span>
+  <label class="dp-marks" title="${t('vscode.mode.marksTitle')}"><input type="checkbox" checked> ${t('vscode.mode.marks')}</label>
+  <span class="dp-bar-gap"></span>
   <span class="dp-export-label">${t('vscode.exportBar')}</span>
   <button type="button" data-format="html">HTML</button>
   <button type="button" data-format="pdf">PDF</button>
   <button type="button" data-format="pptx">PPTX</button>
   <span class="dp-export-status" role="status" aria-live="polite"></span>
 </div>` : ''}
-<div id="editor"></div>
+<div class="dp-main"><div id="editor"></div><aside class="dp-review-panel" hidden></aside></div>
 <script nonce="${nonce}" src="${media('webview.js')}"></script>
 </body></html>`;
 }

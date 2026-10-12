@@ -7,7 +7,7 @@
 import { zipSync, strToU8 } from 'fflate';
 import { EMU_PER_INCH, EMU_PER_PT, SLIDE, type Block, type Deck, type Slide } from './model.js';
 import {
-  drawing, picture, resetIds, table, textBox, type Frame, type Placement,
+  drawing, layOutTable, picture, resetIds, table, textBox, type Frame, type Placement,
 } from './shapes.js';
 import {
   APP, CONTENT_TYPES, CORE, PRESENTATION, PRESENTATION_RELS, PRES_PROPS, ROOT_RELS,
@@ -135,8 +135,15 @@ function isCode(block: Block): boolean {
     && block.paragraphs.every(runs => runs.length === 0 || runs.every(run => run.code));
 }
 
-/** The height a block of text needs at its own size, in EMU. */
+/** The width a block is laid out across. */
+const CONTENT_WIDTH = SLIDE.width - MARGIN * 2;
+
+/**
+ * The height a block needs at its own size, in EMU: text for its lines, a
+ * table for its rows. A picture or a drawing needs whatever it is given.
+ */
 function needed(block: Block): number | undefined {
+  if (block.kind === 'table') return layOutTable(block, { width: CONTENT_WIDTH, height: Infinity }).height;
   if (block.kind !== 'text') return undefined;
   const size = isCode(block) ? CODE_SIZE : PROSE_SIZE;
   return Math.round((block.paragraphs.length * size * 1.3 + 10) * EMU_PER_PT);
@@ -171,7 +178,7 @@ function blockXml(
       const fitted = want > frame.height ? Math.max(7, size * (frame.height / want)) : size;
       return textBox(block, frame, Math.round(fitted * 2) / 2);
     }
-    case 'table':  return table(block, frame, 10);
+    case 'table':  return table(block, frame);
     case 'drawing': return drawing(block, frame, placement => placements.push(placement));
     case 'picture': {
       const decoded = dataUrl(block.data);

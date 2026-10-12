@@ -84,7 +84,7 @@ writeFileSync('out/vscode-webview.html', `<!doctype html>
 <div id="editor"></div>
 <script>
   window.__sent = [];
-  window.acquireVsCodeApi = () => ({ postMessage: m => window.__sent.push(m) });
+  window.acquireVsCodeApi = () => ({ postMessage: m => window.__sent.push(m), getState: () => window.__state, setState: s => { window.__state = s; } });
 </script>
 <script src="../packages/app-vscode/media/webview.js"></script>
 </body></html>

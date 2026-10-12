@@ -4,9 +4,9 @@
 import { describe, expect, it } from 'vitest';
 import { parse } from 'yaml';
 import { PDFDocument, PDFName, PDFRef, PDFString } from 'pdf-lib';
-import { byteLength } from '@docpresenter/base';
+import { byteLength, findPrinted as findIn } from '@docpresenter/base';
 import {
-  appendReview, findIn, readReviewPdf, resolveAnnotations, writePdf, type PagePlan,
+  appendReview, readReviewPdf, resolveAnnotations, writePdf, type PagePlan,
 } from '../src/index.js';
 
 const DOC = '# Design\n\nThe login screen locks after five failures.\nUnlock is manual only.\n\n@import "a/flow.dgm" {#fig-flow}\n';

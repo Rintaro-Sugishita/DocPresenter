@@ -48,11 +48,16 @@ export const held = new Map<string, string>();
 /** Files written through `fs.writeFile` rather than through an edit. */
 export const written = new Map<string, Uint8Array>();
 export const saved: string[] = [];
+const watchers: { matches(path: string): boolean; fire(): void }[] = [];
 /** How the dialogs answer, for a test that drives a command. */
 export const picks: {
   dialog?: Uri[] | undefined;
   quick?: (<T>(items: readonly T[]) => T[] | undefined | Promise<T[] | undefined>) | undefined;
-} = {};
+  /** What the next input boxes are typed into, in order. */
+  inputs?: string[] | undefined;
+  /** What an input box's check said when it refused an answer. */
+  refused: string[];
+} = { refused: [] };
 export const shown: string[] = [];
 
 export class TextDocument {
@@ -78,7 +83,11 @@ export class TextDocument {
     held.set(relative(this.uri), this.body);
     for (const listen of changed) listen({ document: this });
   }
-  async save(): Promise<boolean> { saved.push(relative(this.uri)); return true; }
+  async save(): Promise<boolean> {
+    saved.push(relative(this.uri));
+    for (const watch of watchers) if (watch.matches(relative(this.uri))) watch.fire();
+    return true;
+  }
 }
 
 const open = new Map<string, TextDocument>();
@@ -114,13 +123,29 @@ export const workspace = {
       return new TextEncoder().encode(text);
     },
     stat: async (uri: Uri) => {
-      if (!held.has(relative(uri)) && !written.has(relative(uri))) throw new Error(`no such file: ${relative(uri)}`);
-      return { type: 1 };
+      const path = relative(uri);
+      if (held.has(path) || written.has(path)) return { type: 1 };
+      // A folder is there when something is in it.
+      if ([...held.keys(), ...written.keys()].some(one => one.startsWith(`${path}/`))) return { type: 2 };
+      throw new Error(`no such file: ${path}`);
     },
     writeFile: async (uri: Uri, bytes: Uint8Array) => {
       written.set(relative(uri), bytes);
       held.set(relative(uri), new TextDecoder().decode(bytes));
+      for (const watch of watchers) if (watch.matches(relative(uri))) watch.fire();
     },
+  },
+  /** Fires for a file written through `fs.writeFile` or saved, whose path ends as the glob's does. */
+  createFileSystemWatcher: (pattern: string) => {
+    const tail = /\*([^*]*)$/.exec(pattern)?.[1] ?? '';
+    const listeners: (() => void)[] = [];
+    const watch = { matches: (path: string) => path.endsWith(tail), fire: () => { for (const one of listeners) one(); } };
+    watchers.push(watch);
+    const on = (listen: () => void) => { listeners.push(listen); return { dispose: () => undefined }; };
+    return {
+      onDidChange: on, onDidCreate: on, onDidDelete: on,
+      dispose: () => { watchers.splice(watchers.indexOf(watch), 1); },
+    };
   },
   openTextDocument: async (uri: Uri) => {
     const path = relative(uri);
@@ -165,6 +190,17 @@ export const window = {
   showTextDocument: async () => undefined,
   /** What the next file dialog answers. */
   showOpenDialog: async () => picks.dialog,
+  /**
+   * Answers with the next of `picks.inputs`, as if typed, after asking the box's
+   * own check — an answer the check refuses is recorded and the box is cancelled.
+   */
+  showInputBox: async (options: { validateInput?: (value: string) => unknown } = {}) => {
+    const value = picks.inputs?.shift();
+    if (value === undefined) return undefined;
+    const refused = await options.validateInput?.(value);
+    if (refused) { picks.refused.push(String(refused)); return undefined; }
+    return value;
+  },
   /** Picks what the test said to, or every item that was offered as picked. */
   // As VS Code does: a list back when many may be picked, one item otherwise.
   showQuickPick: async <T extends { picked?: boolean }>(items: readonly T[], options: { canPickMany?: boolean } = {}) => {
@@ -193,7 +229,7 @@ export const env = { language: 'ja', openExternal: async () => true };
 /** Sets up a workspace for one test. */
 export function give(files: Readonly<Record<string, string>>, config: Record<string, unknown> = {}): void {
   held.clear(); written.clear(); open.clear(); saved.length = 0; shown.length = 0;
-  picks.dialog = undefined; picks.quick = undefined;
+  picks.dialog = undefined; picks.quick = undefined; picks.inputs = undefined; picks.refused.length = 0;
   changed.length = 0; configured.length = 0;
   configuration = config;
   for (const [path, text] of Object.entries(files)) held.set(path, text);

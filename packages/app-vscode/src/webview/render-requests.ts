@@ -12,7 +12,7 @@ import type { FromView, ToView } from '../protocol.js';
 /** Answers a request if it is one of these. Returns whether it was. */
 export function answerRenderRequest(message: ToView, send: (message: FromView) => void): boolean {
   if (message.kind === 'measure') {
-    void measurePage(message.id, message.body, message.foot, message.title, message.locale, send);
+    void measurePage(message.id, message.body, message.foot, message.title, message.locale, send, message.style);
     return true;
   }
   if (message.kind === 'picture') {
@@ -35,8 +35,11 @@ export function answerRenderRequest(message: ToView, send: (message: FromView) =
  */
 async function measurePage(
   id: number, body: string, foot: string, title: string, locale: Locale,
-  send: (message: FromView) => void,
+  send: (message: FromView) => void, style?: string,
 ): Promise<void> {
+  // The build's theme while the page is measured, and nothing of another:
+  // the stylesheets the WebView loaded are switched off, then back on.
+  const restore = style === undefined ? undefined : useTheme(style);
   const stage = document.createElement('div');
   stage.style.cssText = 'position:absolute; left:-20000px; top:0; width:800px;';
   stage.innerHTML = body;
@@ -53,5 +56,25 @@ async function measurePage(
     send({ kind: 'measured', id, error: error instanceof Error ? error.message : String(error) });
   } finally {
     stage.remove();
+    restore?.();
   }
+}
+
+/**
+ * Puts a theme in place of whatever the page has loaded, and returns how to
+ * put things back. Used for the measure of one page, and by the editor for
+ * the workspace's own theme.
+ */
+export function useTheme(css: string): () => void {
+  const others = [...document.querySelectorAll<HTMLLinkElement | HTMLStyleElement>('link[rel="stylesheet"], style[data-dp-theme]')]
+    .filter(node => !node.disabled);
+  for (const node of others) node.disabled = true;
+  const style = document.createElement('style');
+  style.setAttribute('data-dp-theme', '');
+  style.textContent = css;
+  document.head.append(style);
+  return () => {
+    style.remove();
+    for (const node of others) node.disabled = false;
+  };
 }

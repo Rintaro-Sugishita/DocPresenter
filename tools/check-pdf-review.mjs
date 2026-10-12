@@ -7,9 +7,9 @@
 //
 // Usage: node tools/check-pdf-review.mjs   (after node tools/build.mjs --in sample)
 import { readFileSync, writeFileSync } from 'node:fs';
-import { PDFDocument, PDFHexString, PDFName, PDFString } from 'pdf-lib';
+import { PDFArray, PDFDict, PDFDocument, PDFHexString, PDFName, PDFString } from 'pdf-lib';
 import { getDocument } from 'pdfjs-dist/legacy/build/pdf.mjs';
-import { appendReview, readReviewPdf, resolveAnnotations } from '../packages/pdf/dist/index.js';
+import { appendReplies, appendReview, planImport, readReviewPdf, resolveAnnotations } from '../packages/pdf/dist/index.js';
 import { parse } from 'yaml';
 
 const check = (name, ok, detail = '') => {
@@ -72,7 +72,8 @@ writeFileSync('out/auth-design-annotated.pdf', annotated);
 
 const review = await readReviewPdf(annotated);
 check('PDF から対応表とコミットが読める', review.map !== undefined && /^[0-9a-f]{40}$/.test(review.commit ?? ''), review.commit);
-const resolved = resolveAnnotations(review);
+// The PDF also carries the review so far (ours); only what was added here counts.
+const resolved = planImport(resolveAnnotations(review), review.map?.written).fresh;
 check('注釈はすべて読める', resolved.length === 3, `${resolved.length} 件`);
 for (const mark of marks) {
   const one = resolved.find(r => r.annotation.body === mark.body);
@@ -93,3 +94,60 @@ const { text } = appendReview(undefined, resolved, {
 });
 const yaml = parse(text);
 check('レビューファイルとして読める', yaml.comments.length === 3 && yaml.comments.every(c => c.anchor.commit === review.commit));
+
+// --- 往復: PDF に載せた指摘と回答、それへの顧客の返信 ------------------------------------
+//
+// The PDF as built carries the sample's review so far (reviews/*.review.yml).
+// A customer replies to one comment the way a viewer does — a note with IRT
+// pointing at it — and the import must put the reply under that comment and
+// take nothing of ours back in.
+const built = await PDFDocument.load(bytes);
+const ours = [];
+built.getPages().forEach((page, index) => {
+  const annots = page.node.lookupMaybe(PDFName.of('Annots'), PDFArray);
+  for (let i = 0; annots && i < annots.size(); i += 1) {
+    const dict = built.context.lookup(annots.get(i), PDFDict);
+    const name = dict.get(PDFName.of('NM'))?.decodeText?.() ?? '';
+    if (name.startsWith('dp-review:')) ours.push({ page: index, ref: annots.get(i), dict, name, subtype: String(dict.get(PDFName.of('Subtype'))) });
+  }
+});
+// The sample's own review file has three comments, one answered; any other
+// review file in the sample (one made while trying things) adds to that.
+const customer = ['#1', '#2', '#3'].map(tail => `dp-review:reviews/2026-10-01-customer.review.yml${tail}`);
+check('PDF にはサンプルの指摘が載っている', customer.every(name => ours.some(one => one.name === name)),
+  ours.map(one => `p.${one.page + 1} ${one.subtype} ${one.name.replace('dp-review:reviews/', '')}`).join(', '));
+// The answer is in the comment's own text: Edge shows no thread under it.
+const answered = ours.find(one => one.name.endsWith('customer.review.yml#2'));
+const answeredText = answered?.dict.get(PDFName.of('Contents'))?.decodeText() ?? '';
+check('回答は指摘の注釈そのものの文に入っている（返信のスレッドを出さない閲覧ソフトでも読める）',
+  answeredText.includes('【回答】intra グループに api を含め') && answeredText.includes('【状態】'), answeredText.replace(/\n+/g, ' / '));
+const target = ours.find(one => one.name.endsWith('#3'));
+check('語のある指摘はハイライトとして載る', target?.subtype === '/Highlight', target?.subtype);
+// Edge's way of answering: written on below our text, in the same annotation.
+const first = ours.find(one => one.name.endsWith('customer.review.yml#1'));
+const firstText = first.dict.get(PDFName.of('Contents')).decodeText();
+first.dict.set(PDFName.of('Contents'), PDFHexString.fromText(`${firstText}\r\n\r\n12 文字で了承します`));
+// Acrobat's way: a reply threaded under ours.
+const page = built.getPage(target.page);
+page.node.lookup(PDFName.of('Annots'), PDFArray).push(built.context.register(built.context.obj({
+  Type: 'Annot', Subtype: 'Text', IRT: target.ref, Rect: [10, 10, 28, 28],
+  Contents: PDFHexString.fromText('24 時間での自動解除で合意します'), T: PDFHexString.fromText('発注者'),
+  NM: PDFHexString.fromText('check-reply-1'),
+})));
+const back = await built.save();
+writeFileSync('out/auth-design-replied.pdf', back);
+const returned = await readReviewPdf(back);
+const plan = planImport(resolveAnnotations(returned), returned.map?.written);
+check('載せたものは取り込まない', plan.ours === ours.length && plan.fresh.length === 0, `ours ${plan.ours} / fresh ${plan.fresh.length}`);
+const replies = plan.replies.get('reviews/2026-10-01-customer.review.yml') ?? [];
+check('スレッドの返信も、注釈への書き足しも、元の指摘の番号に向かう',
+  replies.length === 2 && replies.some(one => one.id === 3 && one.body === '24 時間での自動解除で合意します')
+  && replies.some(one => one.id === 1 && one.body === '12 文字で了承します'), JSON.stringify(replies.map(one => [one.id, one.body])));
+const reviewText = readFileSync('sample/reviews/2026-10-01-customer.review.yml', 'utf8').replace(/\r\n/g, '\n');
+const placed = appendReplies(reviewText, replies);
+const third = parse(placed.text).comments.find(c => c.id === 3);
+const firstEntry = parse(placed.text).comments.find(c => c.id === 1);
+check('返信は指摘の下の replies: に入る', third?.replies?.[0]?.body === '24 時間での自動解除で合意します' && third.replies[0].author === '発注者'
+  && firstEntry?.replies?.[0]?.body === '12 文字で了承します', JSON.stringify([third?.replies, firstEntry?.replies]));
+check('　前の行は変わらない', reviewText.split('\n').every(line => placed.text.split('\n').includes(line)));
+check('　二度は入らない', appendReplies(placed.text, replies).added === 0);

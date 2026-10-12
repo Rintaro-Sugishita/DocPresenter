@@ -12,3 +12,4 @@ export * from './write.js';
 export * from './review.js';
 export * from './review-anchor.js';
 export * from './review-file.js';
+export * from './review-notes.js';

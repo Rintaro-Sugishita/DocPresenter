@@ -128,6 +128,32 @@ export const EDITOR_STYLE = `
   border: 1px solid #c9ced6; background: #f7f8fa; color: #3a4048;
 }
 .dp-names-buttons .dp-names-ok { background: #1f5fa8; border-color: #1f5fa8; color: #fff; }
+/* Review comments on the page: the words they are about, and the card that
+   shows the comment under the pointer. A comment whose text changed since is
+   drawn dashed, so it reads as "this may no longer apply". */
+mark.dp-review-mark {
+  background: rgba(255, 196, 0, .32); color: inherit; border-bottom: 2px solid #e0a800;
+  padding: 0; cursor: help;
+}
+mark.dp-review-mark[data-review-state="changed"] { background: rgba(255, 196, 0, .16); border-bottom-style: dashed; }
+.dp-review-block { outline: 2px solid rgba(224, 168, 0, .8); outline-offset: 3px; cursor: help; }
+.dp-review-block[data-review-state="changed"] { outline-style: dashed; }
+text.dp-review-svg, .dp-review-svg text { fill: #8a5a00; font-weight: 700; }
+.dp-review-card {
+  position: fixed; z-index: 60; max-width: 360px; box-sizing: border-box;
+  background: #fff; color: #1f2329; border: 1px solid #d3d7dd; border-radius: 6px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, .18); padding: 8px 10px; font: 12px/1.5 system-ui, sans-serif;
+  pointer-events: none;
+}
+.dp-review-item + .dp-review-item { border-top: 1px solid #eceef1; margin-top: 6px; padding-top: 6px; }
+.dp-review-head { color: #6b7280; margin-bottom: 2px; }
+.dp-review-body { white-space: pre-wrap; }
+.dp-review-changed { color: #8a5a00; margin-top: 4px; }
+.dp-review-reply { margin-top: 4px; padding-left: 8px; border-left: 3px solid #c3d3e6; color: #3a4048; white-space: pre-wrap; }
+/* Reading (the review mode): nothing on the page offers to change the file. */
+.dp-readonly .dp-append, .dp-readonly .dp-figure-names, .dp-readonly .dp-tab-add,
+.dp-readonly .dp-tab-close, .dp-readonly .dp-import-line, .dp-readonly .dp-mermaid-switch { display: none; }
+.dp-readonly .dp-editor-pane { cursor: text; }
 /* Copying a code block. In its header, beside the language. */
 .dp-code-copy {
   margin-left: auto; font: 11px system-ui, sans-serif; color: #3a4048; cursor: pointer;

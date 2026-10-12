@@ -6,7 +6,7 @@
 // because that is what changed. The joins inside that run are normalised to
 // `\n\n---\n\n`; everything inside each sheet is carried across verbatim.
 
-import { sheetsOf, type DocumentFile, type Sheet } from '@docpresenter/markdown';
+import { importedHeadingOf, sheetsOf, type DocumentFile, type Sheet } from '@docpresenter/markdown';
 import { described, LocalizedError, sliceBytes, type Edit } from '@docpresenter/base';
 import { ed } from './messages.js';
 
@@ -65,27 +65,50 @@ export function removeSheet(document: DocumentFile, source: string, index: numbe
 
 /**
  * Renames a sheet by rewriting the heading it takes its name from — the name
- * is not stored anywhere else, so there is nothing else to rewrite. A sheet
- * with no heading has no name to change.
+ * is not stored anywhere else, so there is nothing else to rewrite.
+ *
+ * Where the heading is depends on the sheet. Its own heading is rewritten in
+ * place. A sheet that is only `@import "revision.md"` is named by that file's
+ * heading, so the edit goes to that file (`read` gets it, as the document
+ * writes its path). A sheet with no heading anywhere is given one: `## name`
+ * at its top, which is what naming a sheet means in a format that stores the
+ * name nowhere else.
  */
 export function renameSheet(
   document: DocumentFile, source: string, index: number, title: string,
+  read: (path: string) => string | undefined = () => undefined,
 ): Edit {
   const sheet = at(sheetsOf(document), index);
+  const said = (from: string) => described(ed('editor.sheet.rename', { from, to: title }));
   const heading = sheet.blocks.find(block => block.kind === 'heading');
-  if (!heading || heading.kind !== 'heading') {
-    throw new SheetEditError(ed('editor.sheet.noHeading'));
+  if (heading && heading.kind === 'heading') {
+    return { ...rewrite(source, heading, title), ...said(sheet.title) };
   }
+
+  const borrowed = importedHeadingOf(sheet.blocks, read);
+  const imported = borrowed && read(borrowed.path);
+  if (borrowed && imported !== undefined) {
+    return { ...rewrite(imported, borrowed.heading, title), path: borrowed.path, ...said(borrowed.heading.text) };
+  }
+
+  // No heading anywhere: one goes at the top of the sheet. An empty sheet sits
+  // right after its separator, so the heading takes a blank line from it.
+  const at0 = sheet.span.start;
+  const text = sheet.blocks.length > 0 ? `## ${title}\n\n`
+    : at0 === 0 ? `## ${title}\n` : `\n\n## ${title}`;
+  return { span: { start: at0, end: at0 }, text, ...said(sheet.title) };
+}
+
+/** A heading with its words replaced, keeping its marks and its label. */
+function rewrite(
+  source: string, heading: Extract<DocumentFile['blocks'][number], { kind: 'heading' }>, title: string,
+): { span: { start: number; end: number }; text: string } {
   const written = sliceBytes(source, heading.span.start, heading.span.end);
   const renamed = written.replace(heading.text, title);
   if (renamed === written && heading.text !== title) {
     throw new SheetEditError(ed('editor.sheet.renameFailed'));
   }
-  return {
-    span: heading.span,
-    text: renamed,
-    ...described(ed('editor.sheet.rename', { from: sheet.title, to: title })),
-  };
+  return { span: heading.span, text: renamed };
 }
 
 function at(sheets: readonly Sheet[], index: number): Sheet {

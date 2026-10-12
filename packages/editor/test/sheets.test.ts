@@ -82,8 +82,32 @@ describe('シートの改名', () => {
     expect(source).toContain('## 新 {#sec-x}');
   });
 
-  it('見出しの無いシートは改名できない', () => {
+  it('見出しの無いシートに名前を付けると、その名前の見出しが先頭に入る', () => {
     const doc = '# T\n\n---\n\n本文だけ。';
-    expect(() => renameSheet(parseDocument(doc), doc, 2, '名前')).toThrow(SheetEditError);
+    const source = run(doc, renameSheet(parseDocument(doc), doc, 2, '名前'));
+    expect(source).toBe('# T\n\n---\n\n## 名前\n\n本文だけ。');
+    expect(titles(source)).toEqual(['T', '名前']);
+  });
+
+  it('空のシートにも名前を付けられる', () => {
+    const doc = '# T\n\n---\n\n---\n\n## 三枚目';
+    const source = run(doc, renameSheet(parseDocument(doc), doc, 2, '二枚目'));
+    expect(titles(source)).toEqual(['T', '二枚目', '三枚目']);
+    expect(source).toBe('# T\n\n---\n\n## 二枚目\n\n---\n\n## 三枚目');
+  });
+
+  it('取り込んだ文書の見出しで名前が付いているシートは、その文書の見出しを書き換える', () => {
+    const doc = '# T\n\n---\n\n@import "a/revision.md"\n';
+    const revision = '## 改訂履歴 {#sec-revision}\n\n| 版 | 日付 |\n|---|---|\n| 1.0 | 2026-10-08 |\n';
+    const edit = renameSheet(parseDocument(doc), doc, 2, '変更履歴', path => path === 'a/revision.md' ? revision : undefined);
+    expect(edit.path).toBe('a/revision.md');
+    expect(applyEdit(revision, edit)).toBe(revision.replace('改訂履歴', '変更履歴'));
+    expect(edit.description).toBe('シート「改訂履歴」を「変更履歴」に改名');
+  });
+
+  it('取り込んだ文書が読めなければ、見出しを先頭に足す', () => {
+    const doc = '# T\n\n---\n\n@import "a/revision.md"\n';
+    const source = run(doc, renameSheet(parseDocument(doc), doc, 2, '変更履歴'));
+    expect(source).toBe('# T\n\n---\n\n## 変更履歴\n\n@import "a/revision.md"\n');
   });
 });

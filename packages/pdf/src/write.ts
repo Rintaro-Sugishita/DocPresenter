@@ -6,8 +6,8 @@
 // measurement side free to think in the coordinates it actually sees.
 
 import fontkit from '@pdf-lib/fontkit';
-import { LocalizedError } from '@docpresenter/base';
-import { pdf as says } from './messages.js';
+import { DEFAULT_LOCALE, LocalizedError } from '@docpresenter/base';
+import { PDF_MESSAGES, pdf as says } from './messages.js';
 import {
   PDFArray, PDFDict, PDFDocument, PDFHexString, PDFName, PDFNumber, PDFRef,
   rgb, type PDFContext, type PDFFont, type PDFPage,
@@ -21,6 +21,7 @@ import {
   type FontOptions, type FontSource, type FontStyle, type MissingGlyph,
 } from './fonts.js';
 import { REVIEW_ATTACHMENT, reviewMapOf, type ReviewSource } from './review.js';
+import { addReviewNotes, noteContents } from './review-notes.js';
 
 export interface WriteResult {
   readonly bytes: Uint8Array;
@@ -99,8 +100,17 @@ export async function writePdf(plan: PagePlan, options: WriteOptions): Promise<W
   // back to the source it came from.
   const commit = plan.commit ?? options.review?.commit;
   if (commit) pdf.setKeywords([`commit:${commit}`]);
-  if (options.review) {
-    await pdf.attach(new TextEncoder().encode(JSON.stringify(reviewMapOf(plan, options.review))), REVIEW_ATTACHMENT, {
+  const map = options.review ? {
+    ...reviewMapOf(plan, options.review),
+    written: (options.review.notes ?? []).map(note => ({
+      // The name exactly as the annotation carries it, so a reply written on
+      // below ours is not taken for the commenter's own.
+      key: note.key, text: noteContents(note, options.review!.locale),
+      author: note.author ?? PDF_MESSAGES.in(options.review!.locale ?? DEFAULT_LOCALE)('pdf.review.reviewer'),
+    })),
+  } : undefined;
+  if (map) {
+    await pdf.attach(new TextEncoder().encode(JSON.stringify(map)), REVIEW_ATTACHMENT, {
       mimeType: 'application/json',
       description: 'DocPresenter: where each line of this PDF came from, for importing review comments',
     });
@@ -127,6 +137,8 @@ export async function writePdf(plan: PagePlan, options: WriteOptions): Promise<W
 
   for (const { page, item } of wanted) link(pdf, page, item, anchors);
   if (plan.outline) bookmarks(pdf, plan.outline, anchors);
+  // The review so far, where its words are, for the customer to read and answer.
+  if (map && options.review?.notes?.length) addReviewNotes(pdf, map, options.review.notes, options.review.locale);
 
   // The same character missing from two faces is one thing to say once.
   const said = new Set<string>();

@@ -5,6 +5,7 @@ export * from './edit.js';
 export * from './line-ending.js';
 export * from './inline.js';
 export * from './i18n.js';
+export * from './anchor.js';
 export * from './messages.js';
 export * from './view/style.js';
 export * from './view/menu.js';

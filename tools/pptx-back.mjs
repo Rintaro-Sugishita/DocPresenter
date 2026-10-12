@@ -72,14 +72,18 @@ if (!write && result.files.some(file => file.text !== file.source)) {
 }
 
 /** The changed lines, so what would be written can be read before it is. */
+// Between the first and the last line that differ: a pin added to the layout
+// block is one new line, not every line below it shifted by one.
 function diff(before, after) {
   const a = before.split('\n');
   const b = after.split('\n');
-  const out = [];
-  for (let i = 0; i < Math.max(a.length, b.length); i++) {
-    if (a[i] === b[i]) continue;
-    if (a[i] !== undefined) out.push(`- ${a[i]}`);
-    if (b[i] !== undefined) out.push(`+ ${b[i]}`);
-  }
-  return out;
+  let head = 0;
+  while (head < a.length && head < b.length && a[head] === b[head]) head++;
+  let tail = 0;
+  while (tail < a.length - head && tail < b.length - head
+    && a[a.length - 1 - tail] === b[b.length - 1 - tail]) tail++;
+  return [
+    ...a.slice(head, a.length - tail).map(line => `- ${line}`),
+    ...b.slice(head, b.length - tail).map(line => `+ ${line}`),
+  ];
 }

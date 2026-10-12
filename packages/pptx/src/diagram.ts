@@ -7,7 +7,8 @@
 // below is a table rather than an approximation.
 
 import {
-  border, layOutDiagram, type Box, type DiagramFile, type Point, type Run, type ShapeKind,
+  EDGE_LABEL, border, layOutDiagram, parseRuns, textWidth,
+  type Box, type DiagramFile, type Point, type Run, type ShapeKind,
 } from '@docpresenter/diagram';
 import type { Attachment, DrawingBlock, DrawnConnector, DrawnShape } from './model.js';
 import { DEFAULT_LOCALE, type Locale } from '@docpresenter/base';
@@ -153,7 +154,17 @@ export function drawingOf(diagram: DiagramFile, options: DrawingOptions = {}): D
       points,
       arrow: route.edge.arrow === 'arrow',
       dashed: route.edge.line === 'dashed',
-      ...(route.edge.label ? { label: [{ text: route.edge.label, bold: false, italic: false, code: false, colour: undefined }] as Run[] } : {}),
+      ...(route.edge.label ? { label: parseRuns(route.edge.label) as Run[] } : {}),
+      // The plate the screen sets the label on, the same size in the same place.
+      ...(route.edge.label && route.labelAt ? {
+        labelBox: {
+          x: route.labelAt.x - (textWidth(route.edge.label, EDGE_LABEL.fontSize) + EDGE_LABEL.padding) / 2,
+          y: route.labelAt.y - EDGE_LABEL.height / 2,
+          width: textWidth(route.edge.label, EDGE_LABEL.fontSize) + EDGE_LABEL.padding,
+          height: EDGE_LABEL.height,
+        },
+        between: { from: route.edge.from, to: route.edge.to },
+      } : {}),
       ...(start ? { start: { shape: route.edge.from, side: start } } : {}),
       ...(end ? { end: { shape: route.edge.to, side: end } } : {}),
     };

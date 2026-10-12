@@ -7,6 +7,7 @@ import { DEFAULT_LOCALE, type Locale } from '@docpresenter/base';
 import type { ResolvedDocument } from '../numbering/model.js';
 import { MARKDOWN_MESSAGES } from '../messages.js';
 import type { Block, ByteSpan, DocumentFile } from './model.js';
+import { parseDocument } from './parse.js';
 
 export interface Sheet {
   /** 1-based, in source order. */
@@ -44,6 +45,28 @@ export function sheetsOf(
       ? { start: at, end: at }
       : { start: blocks[0]!.span.start, end: blocks[blocks.length - 1]!.span.end },
   }));
+}
+
+/**
+ * The heading a sheet borrows from the document it takes in, when it has none
+ * of its own: a sheet that is only `@import "revision.md"` is named by the
+ * `## 改訂履歴` in that file. `read` gets the file as the sheet's document
+ * writes its path; the heading's span is in that file.
+ */
+export function importedHeadingOf(
+  blocks: readonly Block[], read: (path: string) => string | undefined,
+): { path: string; heading: Extract<Block, { kind: 'heading' }> } | undefined {
+  if (blocks.some(block => block.kind === 'heading')) return undefined;
+  for (const block of blocks) {
+    if (block.kind !== 'import' || !/\.md$/i.test(block.path)) continue;
+    const source = read(block.path);
+    if (source === undefined) continue;
+    try {
+      const heading = parseDocument(source).blocks.find(one => one.kind === 'heading');
+      if (heading && heading.kind === 'heading') return { path: block.path, heading };
+    } catch { /* 読めない文書は名前を貸さない */ }
+  }
+  return undefined;
 }
 
 function titleOf(

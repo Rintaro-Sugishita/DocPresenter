@@ -111,6 +111,13 @@ export interface SheetView {
   readonly source: string;
   readonly active: number;
   select(index: number): void;
+  /**
+   * Reading rather than writing: a click selects text instead of opening the
+   * block under it, and nothing on the page offers to change the file. The
+   * place is kept. Review comments are made in this state (the host paints
+   * them, through `decorate`).
+   */
+  setReadOnly(on: boolean): void;
   /** Applies changed settings without losing the place. */
   configure(settings: EditorSettings): void;
   destroy(): void;
@@ -122,6 +129,8 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
   let active = 1;
   let continuous = false;
   let dragging: number | undefined;
+  /** Reading only: see `SheetView.setReadOnly`. */
+  let readOnly = false;
   let sections: HTMLElement[] = [];
   let tabs: HTMLElement[] = [];
   let editing: BlockEdit | undefined;
@@ -164,6 +173,7 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
   // A figure's names are asked for from its button, or from the menu on it.
   // The grid and the canvas have menus of their own, and keep them.
   pane.addEventListener('contextmenu', event => {
+    if (readOnly) return;
     const target = event.target as HTMLElement | null;
     if (target?.closest('.dp-grid, .dp-canvas, .dp-canvas-host, .dp-block-source')) return;
     const figure = target?.closest<HTMLElement>('.dp-figure');
@@ -298,7 +308,7 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
   // - **Text.** Not ours; the browser's own paste handles it.
 
   function onPaste(event: ClipboardEvent): void {
-    if (!pane.isConnected || !options.createImage) return;
+    if (readOnly || !pane.isConnected || !options.createImage) return;
     const data = event.clipboardData;
     if (!data) return;
     const file = [...data.files].find(one => one.type.startsWith('image/'));
@@ -308,7 +318,7 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
   }
 
   function onDragOver(event: DragEvent): void {
-    if (!carriesPicture(event)) return;
+    if (readOnly || !carriesPicture(event)) return;
     event.preventDefault();
     const target = (event.target as HTMLElement | null)?.closest<HTMLElement>('.dp-append');
     for (const node of pane.querySelectorAll('.dp-append-over')) node.classList.remove('dp-append-over');
@@ -321,7 +331,7 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
   }
 
   function onDrop(event: DragEvent): void {
-    if (!carriesPicture(event)) return;
+    if (readOnly || !carriesPicture(event)) return;
     event.preventDefault();
     for (const node of pane.querySelectorAll('.dp-append-over')) node.classList.remove('dp-append-over');
     const at = spanOf((event.target as HTMLElement | null)?.closest<HTMLElement>('.dp-append')
@@ -841,6 +851,8 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
     + ' .dp-import-line, .dp-figure, .dp-append, .dp-prose, h1, h2, h3, h4, h5, h6';
 
   function onPointerDown(event: MouseEvent): void {
+    // Reading: the press is the browser's, which is how text gets selected.
+    if (readOnly) return;
     // The switch on a Mermaid block is a button, not a way into the text.
     if ((event.target as HTMLElement | null)?.closest('.dp-mermaid-switch, .dp-code-copy, .dp-figure-names')) return;
     // A right press on a figure is for its menu. Opening the caption or the
@@ -1262,8 +1274,9 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
       tab.append(owner.createTextNode(label.title));
 
       tab.addEventListener('click', () => select(index));
-      tab.addEventListener('dblclick', () => beginRename(tab, index, label.title));
+      tab.addEventListener('dblclick', () => { if (!readOnly) beginRename(tab, index, label.title); });
       tab.addEventListener('dragstart', event => {
+        if (readOnly) { event.preventDefault(); return; }
         dragging = index;
         event.dataTransfer?.setData('text/plain', String(index));
       });
@@ -1290,6 +1303,7 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
         close.title = t('editor.sheet.removeTitle');
         close.addEventListener('click', event => {
           event.stopPropagation();
+          if (readOnly) return;
           commit(() => removeSheet(parseDocument(source), source, index), Math.max(1, index - 1));
         });
         tab.append(close);
@@ -1303,6 +1317,7 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
     add.textContent = '＋';
     add.title = t('editor.sheet.addTitle');
     add.addEventListener('click', () => {
+      if (readOnly) return;
       const last = labels.length;
       commit(() => insertSheet(parseDocument(source), source, last), last + 1);
     });
@@ -1340,7 +1355,7 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
       const name = input.value.trim();
       tab.style.width = '';
       if (!accept || name === '' || name === title) { draw(); return; }
-      commit(() => renameSheet(parseDocument(source), source, index, name), index);
+      commit(() => renameSheet(parseDocument(source), source, index, name, path => options.readResource?.(path)), index);
     };
     input.addEventListener('blur', () => finish(true));
     input.addEventListener('keydown', event => {
@@ -1369,6 +1384,20 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
     get source() { return source; },
     get active() { return active; },
     select,
+    setReadOnly(on) {
+      if (on === readOnly) return;
+      if (on) {
+        // Whatever was open is put away first, so nothing typed is lost.
+        endEdit(true);
+        namesForm?.close();
+        grid = undefined;
+        canvas = undefined;
+        picture = undefined;
+      }
+      readOnly = on;
+      root.classList.toggle('dp-readonly', on);
+      draw();
+    },
     configure(next) {
       const relabel = next.locale !== settings.locale;
       settings = next;

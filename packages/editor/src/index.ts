@@ -6,3 +6,4 @@ export * from './table.js';
 export * from './view/style.js';
 export * from './view/grid.js';
 export * from './view/sheet-view.js';
+export * from './view/reviews.js';

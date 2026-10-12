@@ -11,18 +11,12 @@
 // - something on nothing the map knows (a margin, a page with no map) has no
 //   anchor — `none` — and is kept regardless (§7).
 
-import { byteLength, sliceBytes } from '@docpresenter/base';
+import { narrowAnchor, type Anchor, type Precision } from '@docpresenter/base';
 import { estimateWidth, type PdfAnnotation, type Rect, type ReviewBox, type ReviewMap, type ReviewPdf } from './review.js';
 
-export interface ReviewAnchor {
-  readonly file: string;
-  /** Bytes of the file read as LF. */
-  readonly start: number;
-  readonly end: number;
-  readonly quote: string;
-}
-
-export type Precision = 'text' | 'block' | 'none';
+/** The anchor the review model fixes (base/src/anchor.ts). */
+export type ReviewAnchor = Anchor;
+export type { Precision };
 
 export interface ResolvedAnnotation {
   readonly annotation: PdfAnnotation;
@@ -53,26 +47,11 @@ function resolveOne(annotation: PdfAnnotation, map: ReviewMap | undefined): Reso
 
   const marked = annotation.quads.length > 0 ? markedText(hits, annotation.quads) : undefined;
   // The block most of the annotation lies on. A highlight across two
-  // paragraphs is about where it starts.
+  // paragraphs is about where it starts. Words in a figure or a table were
+  // printed from the file the import line names, not from the line itself.
   const first = hits[0]!;
-  const block: ReviewAnchor = {
-    file: first.file, start: first.start, end: first.end,
-    quote: sliceBytes(map.files[first.file] ?? '', first.start, first.end),
-  };
-
-  if (marked && marked.trim() !== '') {
-    const within = findIn(map.files[first.file] ?? '', first.start, first.end, marked);
-    if (within) return { annotation, anchor: { file: first.file, ...within }, precision: 'text', marked };
-    // Words in a figure or a table were printed from the file the import line
-    // names, not from the line itself.
-    const imported = importedPath(first.file, block.quote);
-    const source = imported === undefined ? undefined : map.files[imported];
-    if (imported && source !== undefined) {
-      const found = findIn(source, 0, byteLength(source), marked);
-      if (found) return { annotation, anchor: { file: imported, ...found }, precision: 'text', marked };
-    }
-  }
-  return { annotation, anchor: block, precision: 'block', ...(marked ? { marked } : {}) };
+  const { anchor, precision } = narrowAnchor(first, marked, path => map.files[path]);
+  return { annotation, anchor, precision, ...(marked ? { marked } : {}) };
 }
 
 /** Whether a mark covers a run: a marked line must sit on it, a box need only touch it. */
@@ -122,52 +101,4 @@ function markedText(boxes: readonly ReviewBox[], quads: readonly Rect[]): string
     parts.push(taken);
   }
   return parts.join('');
-}
-
-/** Characters the page does not print: spaces, line breaks, and the marks of inline formatting. */
-const UNPRINTED = /[\s*_`~]/u;
-
-/**
- * Finds printed words in a stretch of source, ignoring what the source has
- * and the page does not (spaces, line breaks, `**`). Returns the bytes of the
- * match within the whole file, and the source text it covers.
- */
-export function findIn(
-  source: string, start: number, end: number, printed: string,
-): { start: number; end: number; quote: string } | undefined {
-  const wanted = [...printed].filter(character => !UNPRINTED.test(character)).join('');
-  if (wanted === '') return undefined;
-  const stretch = sliceBytes(source, start, end);
-  const kept: string[] = [];
-  const at: number[] = [];
-  let offset = 0;
-  for (const character of stretch) {
-    if (!UNPRINTED.test(character)) { kept.push(character); at.push(offset); }
-    offset += character.length;
-  }
-  const hay = kept.join('');
-  const index = hay.indexOf(wanted);
-  // Only an unambiguous match narrows the anchor: the same words twice in a
-  // paragraph cannot be told apart by their text alone.
-  if (index < 0 || hay.indexOf(wanted, index + 1) >= 0) return undefined;
-  const characters = [...wanted].length;
-  const keptIndex = [...hay.slice(0, index)].length;
-  const from = at[keptIndex]!;
-  const lastAt = at[keptIndex + characters - 1]!;
-  const to = lastAt + String.fromCodePoint(stretch.codePointAt(lastAt)!).length;
-  const quote = stretch.slice(from, to);
-  const head = start + byteLength(stretch.slice(0, from));
-  return { start: head, end: head + byteLength(quote), quote };
-}
-
-/** The file an `@import` line brings in, as a workspace path, when the block is one. */
-function importedPath(document: string, line: string): string | undefined {
-  const found = /^\s*@import\s+"([^"]+)"/.exec(line) ?? /^\s*!\[[^\]]*\]\(([^)]+)\)/.exec(line);
-  if (!found) return undefined;
-  const parts = document.split('/').slice(0, -1);
-  for (const part of found[1]!.replace(/^\.\//, '').split('/')) {
-    if (part === '..') parts.pop();
-    else if (part !== '.') parts.push(part);
-  }
-  return parts.join('/');
 }

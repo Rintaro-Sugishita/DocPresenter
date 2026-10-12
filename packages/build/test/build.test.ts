@@ -2,7 +2,7 @@
 // build says when something is wrong — which is most of what a build is for.
 
 import { describe, expect, it } from 'vitest';
-import { build, readGraph, type Workspace } from '../src/index.js';
+import { build, outputStem, readGraph, themeOf, type Workspace } from '../src/index.js';
 
 const workspace = (files: Record<string, string>): Workspace => ({
   list: () => Object.keys(files),
@@ -352,5 +352,45 @@ describe('Mermaid', () => {
       },
     });
     expect(drawn).toEqual(['flowchart TD\n  A --> B']);
+  });
+});
+
+describe('チームのテーマ', () => {
+  it('.docpresenter/themes/ のテーマが、ルートの themes/ より先に使われる', async () => {
+    const result = await build(workspace({
+      'a.md': root('# A'),
+      ...THEME,
+      '.docpresenter/themes/default/theme.css': 'body { color: #123456 }',
+    }), { formats: ['html'] });
+    const html = result.artifacts[0]!.text!;
+    expect(html).toContain('#123456');
+    expect(html).not.toContain('color: #000');
+  });
+
+  it('文書が選んだテーマも、.docpresenter/themes/ から探す', () => {
+    const files: Record<string, string> = { '.docpresenter/themes/print/theme.css': 'p {}' };
+    expect(themeOf(path => files[path], 'print')).toBe('p {}');
+    expect(themeOf(path => files[path], 'default')).toBeUndefined();
+  });
+});
+
+describe('フォルダ分けした文書の書き出し先', () => {
+  it('フォルダの構成を保つので、別のフォルダの同じ名前の文書が上書きし合わない', async () => {
+    const result = await build(workspace({
+      'docs/order/design.md': root('# A'),
+      'docs/billing/design.md': root('# B'),
+      'docs/top.md': root('# C'),
+      'specs/other.md': root('# D'),
+      ...THEME,
+    }), { formats: ['html'] });
+    expect(result.artifacts.map(a => a.path).sort()).toEqual([
+      'dist/billing/design.html', 'dist/order/design.html', 'dist/specs/other.html', 'dist/top.html',
+    ]);
+  });
+
+  it('docs/ は書き出し先に含めない', () => {
+    expect(outputStem('docs/auth-design.md')).toBe('auth-design');
+    expect(outputStem('docs/order/v1.2/design.md')).toBe('order/v1.2/design');
+    expect(outputStem('README.md')).toBe('README');
   });
 });
