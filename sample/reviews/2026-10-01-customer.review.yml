@@ -7,24 +7,25 @@ comments:
   - id: 1
     anchor:
       commit: a3f9c21
-      file:   sample/docs/auth-design/screen-items.table
+      file:   docs/auth-design/screen-items.table
       start:  612
       end:    668
       quote:  "8 文字以上。英大文字・小文字・数字・記号を各 1 文字以上"
     context:
-      document: sample/docs/auth-design.md
+      document: docs/auth-design.md
     body:   "パスワードの最小長は次期方針で 12 文字に変更します。反映してください。"
-    status: open
+    status: wontfix
+    reply: "最小が長すぎると考えます"
 
   - id: 2
     anchor:
       commit: a3f9c21
-      file:   sample/shared/system-architecture.dgm
+      file:   shared/system-architecture.dgm
       start:  241
       end:    259
       quote:  "api     [認証 API]"
     context:
-      document: sample/docs/auth-design.md      # 共有要素だが、この文書に閉じる
+      document: docs/auth-design.md      # 共有要素だが、この文書に閉じる
     body:   "認証 API は社内 NW の枠内に入っているべきでは。図では枠の外に見えます。"
     status: resolved
     reply:  "intra グループに api を含め、枠の位置を調整しました。"
@@ -32,11 +33,11 @@ comments:
   - id: 3
     anchor:
       commit: a3f9c21
-      file:   sample/docs/auth-design.md
+      file:   docs/auth-design.md
       start:  1104
       end:    1168
       quote:  "ロックの解除は\n管理者による手動操作のみとし、時間経過による自動解除は行わない。"
     context:
-      document: sample/docs/auth-design.md
+      document: docs/auth-design.md
     body:   "運用負荷が高いため、24 時間での自動解除も検討したい。別途協議。"
     status: question

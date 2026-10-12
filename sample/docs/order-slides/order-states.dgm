@@ -1,0 +1,22 @@
+# 注文の状態遷移
+# kind: graph — 1 つだけピン留め（自動レイアウトと同じ位置）。残りは自動レイアウト。
+
+flow {
+  received  ([受付])
+  confirmed [確定]
+  shipped   [出荷済み]
+  cancelled [取消]:::removed
+
+  received  --> confirmed "在庫引き当て"
+  confirmed --> shipped   "出荷"
+  received  --> cancelled "顧客が取消"
+  confirmed --> cancelled "期限切れ"
+}
+
+layout {
+  shipped @ (0, 256)
+}
+
+style {
+  theme: default
+}

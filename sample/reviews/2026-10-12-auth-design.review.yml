@@ -1,0 +1,26 @@
+# auth-design へのレビュー。PDF の注釈から取り込んだ指摘（指摘管理表）。
+# 書いた行は書き換えない。回答は reply:、対応状況は status:（open / resolved / wontfix / question）に書く。
+round: "auth-design へのレビュー"
+via:   pdf
+
+comments:
+  - id: 1
+    anchor:
+      commit: 682c5c02490a7b0757e61b9cae4199d8be7f28cc
+      uncommitted: true
+      file:   docs/auth-design/error-codes.table
+      start:  657
+      end:    662
+      quote:  "E1003"
+    context:
+      document: docs/auth-design.md
+    body:   "テストコメント1"
+    status: resolved
+    reply: "対応しました"
+    date:   "2026-10-12T18:34:09+09:00"
+    source:
+      pdf:        "out/build/auth-design.pdf"
+      page:       16
+      kind:       Highlight
+      precision:  text
+      annotation: "0f51adc5-9013-43fc-9b32-0e34dd4e03ad"

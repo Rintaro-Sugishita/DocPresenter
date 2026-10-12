@@ -21,6 +21,13 @@ sample/
       revision.md                     この文書の改訂履歴
     auth-overview.md                  同じフォルダに置かれたもう 1 本の文書
     code-and-mermaid.md               コードの色付けと Mermaid（図 / コード / 両方）の見本
+    order-slides.md                   PPTX の読み戻しを試すための短い説明資料（1 枚に見出し・1 文・図 1 つ）
+    order-slides/
+      order-flow.dgm                  グラフ型（注文の流れ）— ピン留めなし
+      order-system.dgm                自由配置（システム構成）— 全要素に位置あり、グループあり
+      order-states.dgm                グラフ型（状態遷移）— 1 つだけピン留め
+      order-states.table              結合表（状態の一覧）— 区分を ^ で結合
+      revision.md                     改訂履歴
     auth-overview/
       revision.md                     こちらの改訂履歴。設計書のものとは別である
     assets/
@@ -35,6 +42,27 @@ sample/
 ```
 
 要件 R1〜R10 と、設計上の主要な判断をひととおり通している。
+
+## PPTX の読み戻しを試す（`order-slides.md`）
+
+`auth-design.md` は 1 枚に載る量が多く、PowerPoint で直すには窮屈なので、読み戻しを試すための
+短い資料を別に置いた。1 枚に見出し・1 文・図か表 1 つだけで、図は読み戻しで扱いの違う 3 種類にしてある。
+
+| スライド | 図 | 試せること |
+|---|---|---|
+| 1 注文の流れ | `order-flow.dgm`（ピン留めなし） | 図形を動かすと、**動かした図形だけ**が `layout {}` にピンとして足される |
+| 2 システム構成 | `order-system.dgm`（全要素に位置あり） | 図形を動かすと、その図形の位置の行だけが書き換わる。文字を直すと、その図形の行だけが書き換わる |
+| 3 注文の状態 | `order-states.dgm`（1 つだけピン留め） | 大きさを変えると、位置と大きさがピンに書かれる |
+| 4 状態の一覧 | `order-states.table`（結合表） | 結合セル（`^`）が PowerPoint の結合された表になる。列の幅は `.table` の `width` どおり。表は読み戻さない——PowerPoint で直すと、どの表が変わったかを警告に出す |
+| 5 改訂履歴 | `revision.md` の Markdown の表 | 本文の中の Markdown の表も、PowerPoint の表になる |
+
+1. 書き出す: `node tools/build.mjs --in sample`（VS Code なら文書を開いて「書き出し: PPTX」）
+2. `out/build/order-slides.pptx` を PowerPoint で開き、図形を動かす・文字を直す・大きさを変える。保存する
+3. 読み戻す: `node tools/pptx-back.mjs out/build/order-slides.pptx --in sample`
+   （VS Code なら `.pptx` を右クリック →「PPTX の修正を図に読み戻す…」）。何が変わるかが出るので、
+   よければ `--write` を付けて書き込む
+
+何も触らずに読み戻すと「変更なし」になる。図形を足す・線をつなぎ替える・線のラベルを直すのは読み戻せず、警告に出る。
 
 ## 意図どおりに機能した点
 

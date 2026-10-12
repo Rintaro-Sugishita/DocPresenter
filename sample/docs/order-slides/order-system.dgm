@@ -1,0 +1,32 @@
+# 注文受付のシステム構成
+# kind: free — 自由配置。すべての図形に位置がある。PowerPoint で動かすと、その行だけが書き換わる。
+
+free {
+  shop  [注文画面]
+  api   [注文 API]
+  stock [在庫サービス]
+  db    [(注文 DB)]
+  note1 >夜間はバッチで在庫を同期]
+
+  group back "社内" { api; stock; db }
+
+  shop  -> api   "HTTPS"
+  api   -> stock
+  api   -> db
+  note1 -- stock
+}
+
+layout {
+  shop  @ ( 40, 100) 140x60
+  api   @ (260, 100) 140x60
+  stock @ (480,  40) 140x60
+  db    @ (480, 160) 140x60
+  note1 @ (440, 260) 220x40
+
+  back  @ (240,  20) 400x220  z:-1
+}
+
+style {
+  theme: default
+  back { line: dashed }
+}

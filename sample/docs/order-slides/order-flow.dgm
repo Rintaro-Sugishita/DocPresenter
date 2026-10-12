@@ -1,0 +1,23 @@
+# 注文の流れ
+# kind: graph — ピン留めなし。PowerPoint で動かした図形だけがピンになることを試す。
+
+flow {
+  start   ([注文受付])
+  check   {在庫あり？}
+  reserve [在庫を引き当て]
+  backord [取り寄せ手配]
+  ship    ([出荷])
+
+  start   --> check
+  check   --> reserve "あり"
+  check   --> backord "なし"
+  reserve --> ship
+  backord --> ship    "入荷後"
+}
+
+layout {
+}
+
+style {
+  theme: default
+}
