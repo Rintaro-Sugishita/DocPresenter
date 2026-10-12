@@ -75,6 +75,10 @@ await context.route('https://raw.githubusercontent.com/**', route => {
 });
 
 const page = await context.newPage();
+// The split-off scripts the page loaded: Mermaid is among them, and only a
+// document that draws with it should load any.
+const chunks = [];
+page.on('request', request => { if (request.url().includes('/chunks/')) chunks.push(request.url()); });
 page.on('pageerror', e => { console.log('✗ ページエラー:', e.message); process.exitCode = 1; });
 const view = src => `${BASE}/view.html?lang=ja&src=${encodeURIComponent(src)}`;
 const idle = () => page.waitForFunction(() => document.querySelector('.dpw-status')?.dataset.kind !== 'busy', null, { timeout: 30000 });
@@ -105,6 +109,7 @@ const images = await page.$$eval('.dpw-doc img', nodes => nodes.filter(n => n.sr
 check('画像は data: URL で出る', images >= 1, `${images} 枚`);
 await page.waitForFunction(() => document.querySelectorAll('.dpw-doc .dp-mermaid-diagram svg').length > 0, null, { timeout: 30000 }).catch(() => undefined);
 check('Mermaid が描かれる', await page.$$eval('.dpw-doc .dp-mermaid-diagram svg', n => n.length) > 0);
+check('Mermaid のある文書では描く部品を後から読む', chunks.length > 0, `${chunks.length} 本`);
 check('テーマが効いている（本文の段組み幅）', await page.$eval('.dpw-doc', n => getComputedStyle(n).maxWidth) !== 'none');
 check('API は数回で済む（中身は raw から）', api.length <= 3, api.join(', '));
 check('中身はコミット固定で取る', raw.every(path => path.startsWith(`/${OWNER}/${REPO}/${SHA}/`)));
@@ -146,6 +151,7 @@ if (!hasFonts) {
 }
 
 // --- .dgm 単体 ------------------------------------------------------------------
+chunks.length = 0;
 await page.goto(view(`https://raw.githubusercontent.com/${OWNER}/${REPO}/${BRANCH}/docs/auth-design/login-screen.dgm`));
 await page.waitForSelector('.dpw-doc svg', { timeout: 30000 });
 await idle();
@@ -153,6 +159,7 @@ check('.dgm の raw URL は図だけを出す', await page.$$eval('.dpw-doc .dp-
 check('部品ライブラリを使う図もエラーにならない', !(await page.isVisible('.dpw-notes details')) ||
   !(await page.textContent('.dpw-notes'))?.includes('読めない'));
 check('タイトルはファイル名', (await page.title()).startsWith('login-screen.dgm'));
+check('Mermaid の無い文書では Mermaid を読み込まない', chunks.length === 0, chunks.map(url => url.slice(url.lastIndexOf('/') + 1)).join(', '));
 
 // --- フォルダ -------------------------------------------------------------------
 await page.goto(view(`https://github.com/${OWNER}/${REPO}/tree/${BRANCH}/docs`));

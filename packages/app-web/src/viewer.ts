@@ -7,8 +7,7 @@
 // shared link means the same thing tomorrow.
 
 import { describeError, type Locale } from '@docpresenter/base';
-import { BUILD_MESSAGES, reviewSourceOf, takeIn, type BuildDiagnostic, type Workspace } from '@docpresenter/build';
-import { drawMermaid, flattenMermaid } from '@docpresenter/editor/mermaid';
+import { BUILD_MESSAGES, hasMermaid, reviewSourceOf, takeIn, type BuildDiagnostic, type Workspace } from '@docpresenter/build';
 import { createSubsetter, measure, writePdf, type Subsetter } from '@docpresenter/pdf';
 import { githubUrl, GitHub, parseAddress, ViewerError, type Fetch, type Location } from './github.js';
 import { localFonts } from './fonts.js';
@@ -72,6 +71,23 @@ export function startViewer(env: ViewerEnvironment): void {
     const label = element(doc, 'label', 'dpw-language');
     label.append(text(doc, t('web.language')), env.locale.select(doc, locale, useLocale));
     return label;
+  };
+
+  /**
+   * Draws the Mermaid blocks in `root`, if `body` has any. Mermaid is most of
+   * the page's weight, so it is fetched only for a document that draws with
+   * it; a document without is shown without ever loading it.
+   */
+  const drawn = async (root: HTMLElement, body: string, flatten = false): Promise<void> => {
+    if (!hasMermaid(body)) return;
+    let mermaid: typeof import('@docpresenter/editor/mermaid');
+    try {
+      mermaid = await loadMermaid();
+    } catch (error) {
+      throw new ViewerError('web.mermaid.unavailable', { message: describeError(error, locale) }, error);
+    }
+    await mermaid.drawMermaid(root, locale);
+    if (flatten) await mermaid.flattenMermaid(root);
   };
 
   const showForm = (given = ''): void => {
@@ -271,7 +287,7 @@ export function startViewer(env: ViewerEnvironment): void {
     bar.replaceChildren(...top);
     theme.textContent = composed.style;
     main.innerHTML = composed.body;
-    void drawMermaid(main, locale);
+    void drawn(main, composed.body).catch(fail);
 
     const failed = [...held.texts, ...held.images].filter(([, value]) => value === undefined).map(([path]) => path);
     const said: string[] = [
@@ -328,8 +344,7 @@ export function startViewer(env: ViewerEnvironment): void {
       stage.style.fontFamily = 'var(--font-body)';
       stage.innerHTML = composed.body;
       doc.body.append(stage);
-      await drawMermaid(stage, locale);
-      await flattenMermaid(stage);
+      await drawn(stage, composed.body, true);
       await Promise.all([...stage.querySelectorAll('img')].map(image => image.decode().catch(() => undefined)));
 
       const raw = composed.prepared.document.frontmatter.raw;
@@ -361,6 +376,17 @@ export function startViewer(env: ViewerEnvironment): void {
   if (src) void open(src);
   else showForm();
   if (env.locale.start.ask) void env.locale.ask(doc, locale).then(useLocale);
+}
+
+let mermaidModule: Promise<typeof import('@docpresenter/editor/mermaid')> | undefined;
+
+/** Mermaid's drawing code, fetched once on first use. A failed fetch may be retried. */
+function loadMermaid(): Promise<typeof import('@docpresenter/editor/mermaid')> {
+  mermaidModule ??= import('@docpresenter/editor/mermaid').catch(error => {
+    mermaidModule = undefined;
+    throw error;
+  });
+  return mermaidModule;
 }
 
 /** The workspace, able to fetch a picture the document names by its web address. */

@@ -6,7 +6,7 @@
 //
 // The page is published as view.html, the address design/web-viewer.md gives
 // out for sharing, and again as index.html so the site's root opens it too.
-import { copyFileSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { rolldown } from 'rolldown';
 
@@ -31,12 +31,21 @@ startViewer({
 mkdirSync('out', { recursive: true });
 writeFileSync('out/web-viewer-entry.js', entry);
 
+// As ES modules, so the code a document may not need is split off: Mermaid is
+// most of the weight and is loaded only for a document that draws with it
+// (packages/app-web/src/viewer.ts).
 const bundle = await rolldown({ input: 'out/web-viewer-entry.js', platform: 'browser' });
-await bundle.write({ file: `${OUT}/viewer.js`, format: 'iife', minify: true });
+await bundle.write({
+  dir: OUT, format: 'es', minify: true,
+  entryFileNames: 'viewer.js', chunkFileNames: 'chunks/[name]-[hash].js',
+});
 // A dependency holds U+FFFD as a literal character; written as an escape it
 // means the same and is not taken for broken text on the way (as in
 // tools/build-editor-demo.mjs).
-writeFileSync(`${OUT}/viewer.js`, readFileSync(`${OUT}/viewer.js`, 'utf8').split('�').join('\\uFFFD'));
+const scripts = ['viewer.js', ...readdirSync(`${OUT}/chunks`).map(name => `chunks/${name}`)];
+for (const file of scripts) {
+  writeFileSync(`${OUT}/${file}`, readFileSync(`${OUT}/${file}`, 'utf8').split('\uFFFD').join('\\uFFFD'));
+}
 
 copyFileSync(createRequire(import.meta.url).resolve('harfbuzzjs/dist/harfbuzz-subset.wasm'), `${OUT}/harfbuzz-subset.wasm`);
 
@@ -89,7 +98,7 @@ const page = `<!doctype html>
   @media print { .dpw-bar, .dpw-status, .dpw-notes { display: none; } }
 </style>
 </head><body>
-<script src="viewer.js"></script>
+<script type="module" src="viewer.js"></script>
 </body></html>
 `;
 writeFileSync(`${OUT}/view.html`, page);
@@ -98,4 +107,6 @@ writeFileSync(`${OUT}/index.html`, page);
 writeFileSync(`${OUT}/.nojekyll`, '');
 
 const size = file => `${(readFileSync(`${OUT}/${file}`).length / 1024).toFixed(0)} KB`;
-console.log(`${OUT}/ を生成: view.html / index.html ＋ viewer.js（${size('viewer.js')}）＋ harfbuzz-subset.wasm（${size('harfbuzz-subset.wasm')}）`);
+const chunks = scripts.slice(1).reduce((sum, file) => sum + statSync(`${OUT}/${file}`).size, 0);
+console.log(`${OUT}/ を生成: view.html / index.html ＋ viewer.js（${size('viewer.js')}、最初に読むのはこれだけ）`
+  + ` ＋ 必要なときに読む chunks/ ${scripts.length - 1} 本（${(chunks / 1024).toFixed(0)} KB）＋ harfbuzz-subset.wasm（${size('harfbuzz-subset.wasm')}）`);

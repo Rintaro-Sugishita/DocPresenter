@@ -52,6 +52,7 @@ export const WEB_MESSAGES = defineMessages({
   'web.error.notInRepo': '{path} はこのコミットにありません',
   'web.error.tooMany': '取り込みが多すぎます（{count} ファイルを超えました）。途中までで表示します',
   'web.error.fetchFile': '{path} を取得できませんでした',
+  'web.mermaid.unavailable': 'Mermaid の図を描く部品を読み込めませんでした。図はコードのまま出しています: {message}',
 }, {
   'web.title': 'DocPresenter Viewer',
   'web.intro': 'Paste the address of a design document (.md / .dgm) or a folder on GitHub to see it set the way DocPresenter sets it. Public repositories only.',
@@ -99,6 +100,7 @@ export const WEB_MESSAGES = defineMessages({
   'web.error.notInRepo': '{path} is not in this commit',
   'web.error.tooMany': 'Too many files taken in (more than {count}). Showing what was fetched',
   'web.error.fetchFile': 'Could not fetch {path}',
+  'web.mermaid.unavailable': 'Could not load what draws Mermaid; the drawings are shown as code: {message}',
 });
 
 export type WebMessage = (typeof WEB_MESSAGES.ids)[number];

@@ -134,5 +134,62 @@ DocPresenter の組版でそのままプレビューが出るページを作る�
 
 **分かっている残り**
 
-- 束（`viewer.js`）が 6.6 MB ある。大半は Mermaid。Mermaid を使う文書のときだけ後から読み込む形にすると軽くなる。
+- ~~束（`viewer.js`）が 6.6 MB ある~~ → **Mermaid は使う文書のときだけ読む**ようにした（ES モジュールに分割、最初に読むのは 1.6 MB。
+  残りの大半は PDF の書き出し（pdf-lib・fontkit）で、これも押されたときだけ読む形にできる）。
 - 他文書への参照 `@文書番号:ラベル` の解決は、ビルド側にまだ無い（[backlog.md](backlog.md) #13b と同じく、ビルドに入れば閲覧ページにも効く）。
+
+## 7. 非公開・社内のリポジトリへ — 段階 2 以降の方針（案、2026-10-12）
+
+[提供形態 §3.2](platforms.md) の決定（認証中継は要るが、**設計書の中身はサーバを通さない**）を、
+GitHub 以外にも広げたときの形。**要検証**と書いたものは実測するまで決めない。
+
+### 7.1 骨格：取り先を差し替えられるようにする
+
+段階 1 のうち GitHub に固有なのは [github.ts](../packages/app-web/src/github.ts) だけで、ファイル集め・組版・PDF は
+`FileSource`（一覧・テキスト・画像）しか見ていない。これを**ホストの差し替え口**に格上げする。
+
+| 口 | 役目 |
+|---|---|
+| `parse(url)` | そのホストの URL か、owner/project/repo・ref・path は何か |
+| `resolve` | ref をコミットに固定する（どのホストでもコミット固定は守る。レビューの錨がコミットに結び付くため） |
+| `files` / `text` / `image` | 一覧と中身 |
+| `authorize` | トークンの得方（無し / PAT / OAuth / Entra ID） |
+
+URL のホスト名で振り分け、社内ホストは**設定ファイル**（閲覧ページの隣の `viewer.config.json`：ホスト名・種類・API の根・OAuth の client id）で足す。
+
+### 7.2 ホストごとの経路
+
+| ホスト | 中身の取り方 | 認証 | ブラウザ直結（中身がサーバを通らない）の可否 |
+|---|---|---|---|
+| **GitHub（非公開）** | 段階 1 と同じ REST API。ただし raw ホストは使わず `contents` API（raw ホストはトークン付きの CORS を返さない、**要検証**） | OAuth（**認証中継が要る**：トークン窓口に CORS が無く、シークレット必須）。逃げ道に PAT（fine-grained・読み取り専用） | ○。中継が見るのは認可コードとトークンだけ |
+| **GitHub Enterprise Server** | 同じ API が `https://<host>/api/v3` | 同上（GHES 側に OAuth App を登録） | API の CORS は GHES の設定次第（**要検証**） |
+| **GitLab（self-managed / .com）** | `/api/v4/projects/:id/repository/tree`・`/files/:path/raw?ref=` | OAuth ＋ PKCE を公開クライアントとして持てる → **中継が要らない見込み**（**要検証**） | 見込みあり |
+| **Gitea / Forgejo** | `/api/v1/repos/{o}/{r}/git/trees`・`/raw/` | OAuth ＋ PKCE、または PAT | CORS は管理者が `app.ini` の `[cors]` で開ける |
+| **Azure DevOps Services** | `dev.azure.com/{org}/{project}/_apis/git/repositories/{repo}/items`（`recursionLevel=Full` で一覧、`versionDescriptor` で ref） | **Entra ID の SPA ＋ PKCE**（MSAL.js、公開クライアント。中継不要）。逃げ道に PAT | **API の CORS が不透明（§3.2 制約 5、要実測）**。通らなければ 7.3 の B |
+| **Azure DevOps Server（オンプレ）** | 同じ API が `https://<server>/{collection}/...` | Windows 統合認証（NTLM/Kerberos）か PAT | CORS をまず期待できない → 7.3 の B |
+| **素の Git（SSH / smart HTTP だけ）** | REST API が無い。ブラウザからは clone できない（smart HTTP に CORS が無い） | — | ✕ → 7.3 の B（`git archive` か clone して配る小さな口） |
+
+### 7.3 社内ネットワークの Git — 閲覧ページを**社内に置く**のが基本
+
+公開の github.io に置いたページから社内の Git を読むのは、次の三つで実質的に塞がれる。
+
+1. **混在コンテンツ**：https のページから http の社内サーバは読めない。
+2. **ブラウザのローカルネットワークアクセス制限**：公開サイトから私設アドレスへの要求には、Chrome などが許可の確認を挟む（または拒む）。
+3. **CORS**：社内サーバが `rintaro-sugishita.github.io` を許可しなければならない。社外のオリジンを許す設定は、審査で通りにくい。
+
+段階 1 の閲覧ページは**静的ファイルだけ**（`out/web/`）なので、そのまま社内に置ける。置き方は二通り。
+
+- **A. 社内の Web サーバに置き、Git サーバの API に CORS を開ける**（Gitea・GitLab のように設定で開けるもの）。
+- **B. 同じオリジンの逆プロキシの下に置く**：`https://docs.example.local/` に閲覧ページ、`/git/` を Git サーバへ転送。
+  **ブラウザから見て同一オリジンなので CORS が要らない**。Azure DevOps Server・素の Git・CORS を開けられないサーバはこれ。
+  中身はプロキシを通るが、**社内で完結し、開発元には渡らない**ので「中身が開発元に渡らない」訴求は保てる。
+  素の Git は、このプロキシ側に `git archive` / `ls-tree` を返す小さな口を足す（[サーバの位置づけ](server-architecture.md) の self-host 版と同じバイナリに入れる）。
+
+認証は社内 SSO（Entra ID・AD FS など）にプロキシ側で寄せられるので、閲覧者に Git のアカウントを求めずに済む道もここにある（§4 の残る検討）。
+
+### 7.4 順序（案）
+
+1. **ホストの差し替え口**（7.1）と、**PAT の入力**（`sessionStorage` にだけ置き、そのホストにしか送らない）。サーバ無しで、GitHub 非公開・GHES・GitLab・Gitea がすぐ読める。
+2. **GitHub の OAuth**：認証中継（[§3.2](platforms.md)、コメント収集と同じバイナリ）を立てる。
+3. **Azure DevOps**：まず CORS を実測。通れば Entra ID ＋ PKCE で中継なし、通らなければ B。
+4. **社内配置の手引き**：`out/web/` ＋ `viewer.config.json` ＋ 逆プロキシの設定例（nginx / IIS）。
