@@ -17,7 +17,7 @@ mkdirSync(OUT, { recursive: true });
 // The entry point. The language is picked the way every web shell picks it
 // (tools/web-shell/locale.mjs).
 const entry = `
-import { startViewer } from '@docpresenter/app-web';
+import { startViewer } from '@docpresenter/app-web/viewer';
 import { askLocale, languageSelect, startingLocale } from '../tools/web-shell/locale.mjs';
 
 startViewer({
@@ -32,8 +32,8 @@ mkdirSync('out', { recursive: true });
 writeFileSync('out/web-viewer-entry.js', entry);
 
 // As ES modules, so the code a document may not need is split off: Mermaid is
-// most of the weight and is loaded only for a document that draws with it
-// (packages/app-web/src/viewer.ts).
+// loaded only for a document that draws with it, and the PDF writer only when
+// "Download PDF" is pressed (packages/app-web/src/viewer.ts).
 const bundle = await rolldown({ input: 'out/web-viewer-entry.js', platform: 'browser' });
 await bundle.write({
   dir: OUT, format: 'es', minify: true,
@@ -95,6 +95,8 @@ const page = `<!doctype html>
   .dpw-row input { flex: 1; min-width: 0; font: inherit; padding: 6px 8px; border: 1px solid #c8ccd2; border-radius: 4px; }
   .dpw-row button { background: #1f5fa8; color: #fff; border-color: #1f5fa8; padding: 6px 16px; }
   .dpw-hint { color: #5a6270; font-size: 12px; overflow-wrap: anywhere; }
+  .dpw-form a { color: #1f5fa8; }
+  .dpw-form button[type=button] { margin-top: 12px; }
   @media print { .dpw-bar, .dpw-status, .dpw-notes { display: none; } }
 </style>
 </head><body>
@@ -107,6 +109,10 @@ writeFileSync(`${OUT}/index.html`, page);
 writeFileSync(`${OUT}/.nojekyll`, '');
 
 const size = file => `${(readFileSync(`${OUT}/${file}`).length / 1024).toFixed(0)} KB`;
-const chunks = scripts.slice(1).reduce((sum, file) => sum + statSync(`${OUT}/${file}`).size, 0);
-console.log(`${OUT}/ を生成: view.html / index.html ＋ viewer.js（${size('viewer.js')}、最初に読むのはこれだけ）`
-  + ` ＋ 必要なときに読む chunks/ ${scripts.length - 1} 本（${(chunks / 1024).toFixed(0)} KB）＋ harfbuzz-subset.wasm（${size('harfbuzz-subset.wasm')}）`);
+// What a page loads before anything is asked of it: viewer.js and what it imports itself.
+const upFront = ['viewer.js', ...[...readFileSync(`${OUT}/viewer.js`, 'utf8').matchAll(/from\s*"\.\/(chunks\/[^"]+)"/g)].map(m => m[1])];
+const bytes = files => files.reduce((sum, file) => sum + statSync(`${OUT}/${file}`).size, 0);
+const kb = n => `${(n / 1024).toFixed(0)} KB`;
+console.log(`${OUT}/ を生成: view.html / index.html ＋ 最初に読む ${upFront.length} 本（${kb(bytes(upFront))}）`
+  + ` ＋ 必要なときに読む ${scripts.length - upFront.length} 本（${kb(bytes(scripts.filter(file => !upFront.includes(file))))}：Mermaid・PDF）`
+  + ` ＋ harfbuzz-subset.wasm（${size('harfbuzz-subset.wasm')}）`);

@@ -1,17 +1,17 @@
-// The viewer page: an address on GitHub in, the document as DocPresenter sets
-// it out (design/web-viewer.md).
+// The viewer page: an address on a Git host in, the document as DocPresenter
+// sets it out (design/web-viewer.md).
 //
-// The page has three faces: the form when no address is given, a folder's
-// documents for a `tree/` address, and a document or drawing for a `blob/` or
-// raw one. Everything is read from one commit, and that commit is shown, so a
-// shared link means the same thing tomorrow.
+// The page has four faces: the form when no address is given, a folder's
+// documents for a folder address, a document or drawing for a file address,
+// and — when a host says the repository is not open to everyone — a field for
+// the reader's own access token. Everything is read from one commit, and that
+// commit is shown, so a shared link means the same thing tomorrow.
 
 import { describeError, type Locale } from '@docpresenter/base';
-import { BUILD_MESSAGES, hasMermaid, reviewSourceOf, takeIn, type BuildDiagnostic, type Workspace } from '@docpresenter/build';
-import { createSubsetter, measure, writePdf, type Subsetter } from '@docpresenter/pdf';
-import { githubUrl, GitHub, parseAddress, ViewerError, type Fetch, type Location } from './github.js';
-import { localFonts } from './fonts.js';
+import { hasMermaid, takeIn, type BuildDiagnostic, type Workspace } from '@docpresenter/build';
+import { addressOf, ViewerError, type Addressed, type Fetch, type Host, type Location } from './hosts/index.js';
 import { WEB_MESSAGES, type WebMessage } from './messages.js';
+import { Tokens } from './tokens.js';
 import { compose, gather, heldWorkspace, isViewable, viewableUnder, type Composed, type FileSource } from './view.js';
 
 /** What the shell around the page hands in: the browser, and how it picks a language. */
@@ -35,8 +35,14 @@ export function startViewer(env: ViewerEnvironment): void {
   const doc = win.document;
   let locale = env.locale.start.locale;
   let t = WEB_MESSAGES.in(locale);
-  const github = new GitHub(env.fetch);
   const src = new URLSearchParams(win.location.search).get('src');
+  const tokens = Tokens.of(win);
+  /** Tokens the browser would not keep, used while the page stays open. */
+  const unkept = new Map<string, string>();
+  const tokenFor = (origin: string): string | undefined =>
+    Tokens.allowed(origin) ? tokens.get(origin) ?? unkept.get(origin) : undefined;
+  /** Hosts already opened, so a redraw asks them nothing again. Keyed by address and token. */
+  const opened = new Map<string, Host>();
 
   doc.body.classList.add('dpw');
   const bar = element(doc, 'header', 'dpw-bar');
@@ -120,7 +126,7 @@ export function startViewer(env: ViewerEnvironment): void {
     forms.textContent = t('web.input.forms');
     form.append(heading, intro, label, row, forms);
     form.addEventListener('submit', event => {
-      if (parseAddress(input.value)) return;
+      if (addressOf(input.value)) return;
       event.preventDefault();
       say(t('web.error.address'), 'refused');
     });
@@ -137,41 +143,104 @@ export function startViewer(env: ViewerEnvironment): void {
   };
 
   const open = async (address: string): Promise<void> => {
-    const parsed = parseAddress(address);
-    if (!parsed) {
+    const addressed = addressOf(address);
+    if (!addressed) {
       showForm(address);
       say(t('web.error.address'), 'refused');
       return;
     }
-    // GitHub's answers are kept (see GitHub), so a redraw costs no requests.
+    const token = tokenFor(addressed.origin);
+    const key = `${address}\n${token ?? ''}`;
+    const host = opened.get(key) ?? addressed.open({ fetch: env.fetch, ...(token === undefined ? {} : { token }) });
+    opened.set(key, host);
+    // The host keeps its answers, so a redraw costs no requests.
     redraw = () => { void open(address); };
     bar.replaceChildren(brand(doc), spacer(doc), language());
-    say(t('web.step.resolve', { repo: `${parsed.owner}/${parsed.repo}` }), 'busy');
+    notes.replaceChildren();
+    say(t('web.step.resolve', { repo: host.label }), 'busy');
     try {
-      const location = await github.resolve(parsed);
-      const { paths, truncated } = await github.files(location);
+      const location = await host.resolve();
+      const { paths, truncated } = await host.files(location);
       const present = new Set(paths);
       const isFolder = location.path === '' || (!present.has(location.path)
         && paths.some(path => path.startsWith(`${location.path}/`)));
       if (location.kind === 'tree' || isFolder) {
-        showFolder(location, paths);
+        showFolder(host, location, paths);
       } else if (!present.has(location.path)) {
         throw new ViewerError(truncated ? 'web.truncated' : 'web.error.notInRepo', { path: location.path });
       } else if (!isViewable(location.path)) {
         throw new ViewerError('web.error.notViewable', { path: location.path });
       } else {
-        await showDocument(location, paths, truncated);
+        await showDocument(host, location, paths, truncated);
       }
     } catch (error) {
       fail(error);
+      if (error instanceof ViewerError && error.wantsToken) showTokenForm(host, addressed, address);
     }
   };
 
-  const header = (location: Location, here: string, kind: 'blob' | 'tree'): HTMLElement[] => {
+  /** Asks for the reader's token for a host that would not open without one. */
+  const showTokenForm = (host: Host, addressed: Addressed, address: string): void => {
+    const origin = addressed.origin;
+    theme.textContent = '';
+    const box = element(doc, 'form', 'dpw-form');
+    const heading = element(doc, 'h1');
+    heading.textContent = t('web.token.title', { host: host.name });
+    const intro = element(doc, 'p');
+    box.append(heading, intro);
+    if (!Tokens.allowed(origin)) {
+      intro.textContent = t('web.token.http', { origin });
+      main.replaceChildren(box);
+      return;
+    }
+    intro.textContent = t('web.token.text', { origin });
+    const make = doc.createElement('a');
+    make.href = host.tokenHelp.url;
+    make.target = '_blank';
+    make.rel = 'noopener';
+    make.textContent = t('web.token.make', { scope: host.tokenHelp.scope });
+    const label = element(doc, 'label');
+    label.htmlFor = 'dpw-token';
+    label.textContent = t('web.token.label');
+    const input = doc.createElement('input');
+    input.id = 'dpw-token';
+    input.type = 'password';
+    input.autocomplete = 'off';
+    input.required = true;
+    const use = doc.createElement('button');
+    use.type = 'submit';
+    use.textContent = t('web.token.use');
+    const row = element(doc, 'div', 'dpw-row');
+    row.append(input, use);
+    box.append(make, label, row);
+    if (tokenFor(origin) !== undefined) box.append(forgetButton(origin, address));
+    box.addEventListener('submit', event => {
+      event.preventDefault();
+      const value = input.value.trim();
+      if (value === '') return;
+      if (!tokens.set(origin, value)) {
+        unkept.set(origin, value);
+        say(t('web.token.notKept'));
+      }
+      void open(address);
+    });
+    main.replaceChildren(box);
+    redraw = () => { void open(address); };
+    input.focus();
+  };
+
+  const forgetButton = (origin: string, address: string): HTMLButtonElement => button(doc, t('web.token.forget'), () => {
+    tokens.forget(origin);
+    unkept.delete(origin);
+    for (const key of [...opened.keys()]) if (key.startsWith(`${address}\n`)) opened.delete(key);
+    void open(address).then(() => { if (status.dataset['kind'] !== 'refused') say(t('web.token.forgotten', { origin })); });
+  });
+
+  const header = (host: Host, location: Location, here: string, kind: 'blob' | 'tree'): HTMLElement[] => {
     const crumb = element(doc, 'span', 'dpw-crumb');
     const repo = doc.createElement('a');
-    repo.href = viewLink(githubUrl({ ...location, kind: 'tree', path: '' }, location.sha));
-    repo.textContent = `${location.owner}/${location.repo}`;
+    repo.href = viewLink(host.webUrl({ kind: 'tree', path: '', sha: location.sha }));
+    repo.textContent = location.label;
     crumb.append(repo);
     let walked = '';
     const parts = here === '' ? [] : here.split('/');
@@ -184,7 +253,7 @@ export function startViewer(env: ViewerEnvironment): void {
         crumb.append(last);
       } else {
         const link = doc.createElement('a');
-        link.href = viewLink(githubUrl({ ...location, kind: 'tree', path: walked }, location.sha));
+        link.href = viewLink(host.webUrl({ kind: 'tree', path: walked, sha: location.sha }));
         link.textContent = part;
         crumb.append(link);
       }
@@ -195,7 +264,7 @@ export function startViewer(env: ViewerEnvironment): void {
     commit.title = location.sha;
 
     const pinned = new URL(win.location.href);
-    pinned.search = viewLink(githubUrl({ ...location, kind, path: here }, location.sha));
+    pinned.search = viewLink(host.webUrl({ kind, path: here, sha: location.sha }));
     const copy = button(doc, t('web.copyLink'), async () => {
       try {
         await win.navigator.clipboard.writeText(pinned.toString());
@@ -205,21 +274,23 @@ export function startViewer(env: ViewerEnvironment): void {
       }
     });
     const out = doc.createElement('a');
-    out.href = githubUrl({ ...location, kind, path: here }, location.ref);
-    out.textContent = t('web.onGitHub');
+    out.href = host.webUrl({ kind, path: here, sha: location.sha }, location.ref);
+    out.textContent = t('web.onHost', { host: host.name });
     out.target = '_blank';
     out.rel = 'noopener';
     const another = doc.createElement('a');
     another.href = '?';
     another.textContent = t('web.another');
-    return [brand(doc), crumb, commit, spacer(doc), copy, out, another, language()];
+    const address = new URLSearchParams(win.location.search).get('src') ?? '';
+    const forget = tokenFor(host.origin) === undefined ? [] : [forgetButton(host.origin, address)];
+    return [brand(doc), crumb, commit, spacer(doc), copy, out, ...forget, another, language()];
   };
 
-  const showFolder = (location: Location, paths: readonly string[]): void => {
+  const showFolder = (host: Host, location: Location, paths: readonly string[]): void => {
     const folder = location.path;
     doc.documentElement.lang = locale;
-    doc.title = `${folder === '' ? location.repo : folder} — ${t('web.title')}`;
-    bar.replaceChildren(...header(location, folder, 'tree'));
+    doc.title = `${folder === '' ? location.name : folder} — ${t('web.title')}`;
+    bar.replaceChildren(...header(host, location, folder, 'tree'));
     theme.textContent = '';
     notes.replaceChildren();
     say('');
@@ -233,7 +304,7 @@ export function startViewer(env: ViewerEnvironment): void {
     if (folder !== '') {
       const up = doc.createElement('a');
       const parent = folder.includes('/') ? folder.slice(0, folder.lastIndexOf('/')) : '';
-      up.href = viewLink(githubUrl({ ...location, kind: 'tree', path: parent }, location.sha));
+      up.href = viewLink(host.webUrl({ kind: 'tree', path: parent, sha: location.sha }));
       up.textContent = `↑ ${t('web.folder.up')}`;
       list.append(up);
     }
@@ -251,7 +322,7 @@ export function startViewer(env: ViewerEnvironment): void {
       for (const path of group) {
         const item = element(doc, 'li');
         const link = doc.createElement('a');
-        link.href = viewLink(githubUrl({ ...location, kind: 'blob', path }, location.sha));
+        link.href = viewLink(host.webUrl({ kind: 'blob', path, sha: location.sha }));
         link.textContent = path.slice(prefix.length);
         item.append(link);
         items.append(item);
@@ -261,11 +332,11 @@ export function startViewer(env: ViewerEnvironment): void {
     main.replaceChildren(list);
   };
 
-  const showDocument = async (location: Location, paths: readonly string[], truncated: boolean): Promise<void> => {
+  const showDocument = async (host: Host, location: Location, paths: readonly string[], truncated: boolean): Promise<void> => {
     const source: FileSource = {
       paths,
-      text: path => github.text(location, path),
-      image: path => github.image(location, path),
+      text: path => host.text(location, path),
+      image: path => host.image(location, path),
     };
     const options = { locale, shippedTheme: env.shippedTheme };
     const { held, complete } = await gather(
@@ -281,9 +352,9 @@ export function startViewer(env: ViewerEnvironment): void {
 
     doc.documentElement.lang = locale;
     doc.title = `${composed.title} — ${t('web.title')}`;
-    const pdf = button(doc, t('web.pdf.make'), () => makePdf(pdf, composed, workspace, source, held, location));
-    const top = header(location, location.path, 'blob');
-    top.splice(top.length - 3, 0, pdf);
+    const pdf = button(doc, t('web.pdf.make'), () => downloadPdf(pdf, composed, workspace, source, held, location));
+    const top = header(host, location, location.path, 'blob');
+    top.splice(4, 0, pdf);
     bar.replaceChildren(...top);
     theme.textContent = composed.style;
     main.innerHTML = composed.body;
@@ -316,59 +387,31 @@ export function startViewer(env: ViewerEnvironment): void {
     notes.replaceChildren(box);
   };
 
-  let subsetter: Promise<Subsetter> | undefined;
-  const makePdf = async (
+  const downloadPdf = async (
     pressed: HTMLButtonElement, composed: Composed, workspace: Workspace,
     source: FileSource, held: { texts: Map<string, string | undefined> }, location: Location,
   ): Promise<void> => {
     pressed.disabled = true;
     say(t('web.pdf.composing'), 'busy');
-    const stage = doc.createElement('div');
-    stage.style.cssText = 'position:absolute; left:-20000px; top:0; width:800px;';
     try {
-      const fonts = await localFonts(win);
-      subsetter ??= env.fetch(env.subsetterUrl)
-        .then(response => { if (!response.ok) throw new ViewerError('web.pdf.noSubsetter'); return response.arrayBuffer(); })
-        .then(wasm => createSubsetter(new Uint8Array(wasm)))
-        .catch(error => { subsetter = undefined; throw error instanceof ViewerError ? error : new ViewerError('web.pdf.noSubsetter', {}, error); });
-      const subset = await subsetter;
-
-      // The review so far rides in the PDF, as it does from the extension.
+      // The PDF writer is loaded the first time it is asked for.
+      const { makePdf } = await import('./pdf.js');
+      // The review so far rides in the PDF; its files are fetched now.
       const rounds = source.paths.filter(path => /\.review\.yml$/i.test(path) && !held.texts.has(path));
       await Promise.all(rounds.map(async path => { held.texts.set(path, await source.text(path).catch(() => undefined)); }));
-
-      // Laid out in the faces that will be embedded, so the lines break where they will on paper.
-      stage.style.setProperty('--font-body', `"${fonts.families.body}"`);
-      stage.style.setProperty('--font-heading', `"${fonts.families.body}"`);
-      stage.style.setProperty('--font-mono', `"${fonts.families.mono}"`);
-      stage.style.fontFamily = 'var(--font-body)';
-      stage.innerHTML = composed.body;
-      doc.body.append(stage);
-      await drawn(stage, composed.body, true);
-      await Promise.all([...stage.querySelectorAll('img')].map(image => image.decode().catch(() => undefined)));
-
-      const raw = composed.prepared.document.frontmatter.raw;
-      const version = raw['version']
-        ? BUILD_MESSAGES.in(locale)('build.foot.version', { version: String(raw['version']) }) : '';
-      const foot = [raw['document'], version].filter(value => value !== undefined && value !== '').map(String).join('　');
-      const measured = measure(stage, { foot, title: String(raw['title'] ?? ''), locale });
-      const sources = [composed.root, ...[...held.texts.keys()].filter(path => !/\.(review\.yml|css)$/i.test(path))];
-      const review = reviewSourceOf({
-        workspace, prepared: composed.prepared, style: composed.style, out: '', diagnostics: [], sources,
-        root: { path: composed.root, document: composed.prepared.document, formats: ['pdf'] },
-        options: { commit: location.sha, clean: true },
+      const made = await makePdf({
+        window: win, composed, workspace, commit: location.sha, locale, fetch: env.fetch, subsetterUrl: env.subsetterUrl,
+        sources: [composed.root, ...[...held.texts.keys()].filter(path => !/\.(review\.yml|css)$/i.test(path))],
+        draw: stage => drawn(stage, composed.body, true),
       });
-      const { bytes, missing } = await writePdf(measured.plan, { fonts: fonts.set, subset, review });
-
+      const raw = composed.prepared.document.frontmatter.raw;
       const name = `${String(raw['document'] ?? location.path.slice(location.path.lastIndexOf('/') + 1).replace(/\.[^.]+$/, ''))}.pdf`;
-      download(doc, name, bytes);
-      const lost = [...new Set(missing.map(one => one.character))].join('');
-      say(t('web.pdf.made', { pages: String(measured.plan.pages.length), font: fonts.name })
-        + (lost ? t('web.pdf.missing', { characters: lost }) : ''), lost ? 'refused' : 'ok');
+      download(doc, name, made.bytes);
+      say(t('web.pdf.made', { pages: String(made.pages), font: made.font })
+        + (made.missing ? t('web.pdf.missing', { characters: made.missing }) : ''), made.missing ? 'refused' : 'ok');
     } catch (error) {
       say(explain(error, message => t('web.pdf.failed', { message })), 'refused');
     } finally {
-      stage.remove();
       pressed.disabled = false;
     }
   };

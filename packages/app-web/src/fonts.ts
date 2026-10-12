@@ -7,7 +7,7 @@
 
 import fontkit from '@pdf-lib/fontkit';
 import type { FontSet, FontSource } from '@docpresenter/pdf';
-import { ViewerError } from './github.js';
+import { ViewerError } from './hosts/index.js';
 
 /** What `queryLocalFonts` hands back, as far as this file needs it. */
 export interface LocalFont {

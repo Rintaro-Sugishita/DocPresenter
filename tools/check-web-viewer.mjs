@@ -39,6 +39,9 @@ const walk = dir => readdirSync(dir, { withFileTypes: true }).flatMap(entry =>
 const FILES = walk('sample');
 const api = [];
 let failRateLimit = false;
+const TOKEN = 'github_pat_test';
+/** The Authorization header each request to the private repository came with. */
+const authorized = [];
 
 const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' });
 const context = await browser.newContext({ viewport: { width: 1280, height: 900 }, acceptDownloads: true });
@@ -58,6 +61,23 @@ await context.route('https://api.github.com/**', route => {
       },
     });
   }
+  // A private repository: GitHub answers 404 until the reader's token comes with the request.
+  const secret = `/repos/${OWNER}/secret`;
+  if (url.pathname.startsWith(secret)) {
+    const authorization = route.request().headers()['authorization'];
+    authorized.push(authorization ?? '');
+    if (authorization !== `Bearer ${TOKEN}`) {
+      return route.fulfill({ status: 404, body: '{"message":"Not Found"}', headers: { 'access-control-allow-origin': '*' } });
+    }
+    if (url.pathname === `${secret}/branches`) return json([{ name: 'main', commit: { sha: SHA } }]);
+    if (url.pathname === `${secret}/tags`) return json([]);
+    if (url.pathname === `${secret}/git/trees/${SHA}`) return json({ tree: FILES.map(path => ({ path, type: 'blob' })) });
+    const path = decodeURIComponent(url.pathname.slice(`${secret}/contents/`.length));
+    if (url.pathname.startsWith(`${secret}/contents/`) && FILES.includes(path)) {
+      return route.fulfill({ status: 200, body: readFileSync(join('sample', path)), headers: { 'access-control-allow-origin': '*' } });
+    }
+    return route.fulfill({ status: 404, body: '{"message":"Not Found"}', headers: { 'access-control-allow-origin': '*' } });
+  }
   const prefix = `/repos/${OWNER}/${REPO}`;
   if (url.pathname === `${prefix}/branches`) return json([{ name: 'main', commit: { sha: 'f'.repeat(40) } }, { name: BRANCH, commit: { sha: SHA } }]);
   if (url.pathname === `${prefix}/tags`) return json([]);
@@ -73,6 +93,42 @@ await context.route('https://raw.githubusercontent.com/**', route => {
   if (!url.pathname.startsWith(prefix) || !FILES.includes(path)) return route.fulfill({ status: 404, body: '' });
   return route.fulfill({ status: 200, body: readFileSync(join('sample', path)), headers: { 'access-control-allow-origin': '*' } });
 });
+
+// A GitLab and an Azure DevOps holding the same sample, as public projects.
+const sample = (route, path) => FILES.includes(path)
+  ? route.fulfill({ status: 200, body: readFileSync(join('sample', path)), headers: { 'access-control-allow-origin': '*' } })
+  : route.fulfill({ status: 404, body: '{}', headers: { 'access-control-allow-origin': '*' } });
+const answer = (route, body) => route.fulfill({
+  status: 200, contentType: 'application/json', body: JSON.stringify(body), headers: { 'access-control-allow-origin': '*' },
+});
+await context.route('https://gitlab.example.test/api/v4/**', route => {
+  const url = new URL(route.request().url());
+  const api = '/api/v4/projects/team%2Fdesigns/repository';
+  const pathname = url.pathname.replace('/api/v4/projects/team/designs/', '/api/v4/projects/team%2Fdesigns/');
+  if (pathname === `${api}/branches` || pathname === `${api}/tags`) {
+    return answer(route, pathname.endsWith('branches') ? [{ name: BRANCH, commit: { id: SHA } }] : []);
+  }
+  if (pathname === `${api}/tree`) {
+    const page = Number(url.searchParams.get('page'));
+    return answer(route, FILES.slice((page - 1) * 100, page * 100).map(path => ({ path, type: 'blob' })));
+  }
+  const file = /\/repository\/files\/(.+)\/raw$/.exec(url.pathname);
+  if (file) return sample(route, decodeURIComponent(file[1]));
+  return route.fulfill({ status: 404, body: '{}', headers: { 'access-control-allow-origin': '*' } });
+});
+await context.route('https://dev.azure.com/org/**', route => {
+  const url = new URL(route.request().url());
+  const repo = '/org/proj/_apis/git/repositories/designs';
+  if (url.pathname === `${repo}/refs`) return answer(route, { value: [{ name: `refs/heads/${BRANCH}`, objectId: SHA }] });
+  if (url.pathname === `${repo}/items` && url.searchParams.get('recursionLevel') === 'Full') {
+    return answer(route, { value: FILES.map(path => ({ path: `/${path}`, gitObjectType: 'blob' })) });
+  }
+  if (url.pathname === `${repo}/items`) return sample(route, url.searchParams.get('path').slice(1));
+  return route.fulfill({ status: 404, body: '{}', headers: { 'access-control-allow-origin': '*' } });
+});
+
+// What viewer.js imports itself, and so comes with every page: shared code, not Mermaid.
+const UP_FRONT = new Set([...readFileSync('out/web/viewer.js', 'utf8').matchAll(/from\s*"\.\/chunks\/([^"]+)"/g)].map(m => m[1]));
 
 const page = await context.newPage();
 // The split-off scripts the page loaded: Mermaid is among them, and only a
@@ -130,6 +186,7 @@ const hasFonts = await page.evaluate(() => typeof window.queryLocalFonts === 'fu
 if (!hasFonts) {
   check('PDF: このブラウザにローカルフォントの API が無い（確認を飛ばす）', true);
 } else {
+  check('PDF の書き手は押すまで読まない', !chunks.some(url => url.includes('/chunks/pdf-')));
   const pdfButton = page.locator('.dpw-bar button', { hasText: 'PDF をダウンロード' });
   const [download] = await Promise.all([
     page.waitForEvent('download', { timeout: 90000 }).catch(() => undefined),
@@ -146,6 +203,7 @@ if (!hasFonts) {
     const words = first.items.map(item => item.str).join('');
     check('PDF: 複数ページに組まれる', pdf.numPages >= 3, `${pdf.numPages} ページ`);
     check('PDF: 日本語が文字として入っている', words.includes('認証機能'), words.slice(0, 40));
+    check('PDF: 押したら PDF の書き手を読む', chunks.some(url => url.includes('/chunks/pdf-')));
     check('PDF: 状態欄に結果を出す', (await page.textContent('.dpw-status'))?.includes('ページの PDF をダウンロードしました'));
   }
 }
@@ -159,7 +217,8 @@ check('.dgm の raw URL は図だけを出す', await page.$$eval('.dpw-doc .dp-
 check('部品ライブラリを使う図もエラーにならない', !(await page.isVisible('.dpw-notes details')) ||
   !(await page.textContent('.dpw-notes'))?.includes('読めない'));
 check('タイトルはファイル名', (await page.title()).startsWith('login-screen.dgm'));
-check('Mermaid の無い文書では Mermaid を読み込まない', chunks.length === 0, chunks.map(url => url.slice(url.lastIndexOf('/') + 1)).join(', '));
+const loadedLater = chunks.map(url => url.slice(url.lastIndexOf('/') + 1)).filter(name => !UP_FRONT.has(name));
+check('Mermaid の無い文書では Mermaid を読み込まない', loadedLater.length === 0, loadedLater.join(', '));
 
 // --- フォルダ -------------------------------------------------------------------
 await page.goto(view(`https://github.com/${OWNER}/${REPO}/tree/${BRANCH}/docs`));
@@ -187,6 +246,54 @@ await page.goto(view(`https://github.com/${OWNER}/other/blob/main/a.md`));
 await idle();
 check('回数制限は解除の時刻を言う', (await page.textContent('.dpw-status'))?.includes('回数制限'));
 failRateLimit = false;
+
+// --- 非公開リポジトリ（トークン） ----------------------------------------------------------
+const secretDoc = `https://github.com/${OWNER}/secret/blob/main/docs/auth-design.md`;
+await page.goto(view(secretDoc));
+await idle();
+check('非公開リポジトリはトークンを求める', await page.isVisible('#dpw-token'), await page.textContent('.dpw-status'));
+await page.screenshot({ path: 'out/web-viewer-token.png' });
+check('トークンを作る場所と権限を示す', (await page.getAttribute('.dpw-form a[target=_blank]', 'href'))?.includes('github.com/settings/personal-access-tokens')
+  && (await page.textContent('.dpw-form'))?.includes('Contents — Read-only'));
+await page.fill('#dpw-token', 'wrong');
+await page.click('.dpw-form button[type=submit]');
+await idle();
+check('効かないトークンはそう言って、もう一度求める', (await page.textContent('.dpw-status'))?.includes('入れたトークンには読む権限がありません')
+  && await page.isVisible('#dpw-token'));
+raw.length = 0;
+await page.fill('#dpw-token', TOKEN);
+await page.click('.dpw-form button[type=submit]');
+await page.waitForSelector('.dpw-doc .dp-figure', { timeout: 30000, state: 'attached' });
+await idle();
+check('トークンを入れると非公開の文書が出る', (await page.textContent('.dpw-doc'))?.includes('認証機能 設計書'));
+check('トークンは API にだけ付いて、raw ホストには行かない', authorized.at(-1) === `Bearer ${TOKEN}` && !raw.some(path => path.includes('/secret/')));
+check('トークンはこのタブ（sessionStorage）にだけ置く', await page.evaluate(() =>
+  sessionStorage.getItem('docpresenter.token:https://github.com') !== null && localStorage.getItem('docpresenter.token:https://github.com') === null));
+await page.reload();
+await page.waitForSelector('.dpw-doc .dp-figure', { timeout: 30000, state: 'attached' });
+await idle();
+check('開き直してもこのタブでは聞き直さない', !(await page.isVisible('#dpw-token')));
+await page.click('.dpw-bar button:has-text("トークンを消す")');
+await page.waitForSelector('#dpw-token', { timeout: 30000 });
+check('トークンを消すと、また求める', await page.evaluate(() => sessionStorage.getItem('docpresenter.token:https://github.com') === null));
+const urlWithToken = page.url();
+check('URL にトークンは載らない', !urlWithToken.includes(TOKEN));
+
+// --- GitLab と Azure DevOps ---------------------------------------------------------
+await page.goto(view(`https://gitlab.example.test/team/designs/-/blob/${BRANCH}/docs/auth-design.md`));
+await page.waitForSelector('.dpw-doc .dp-figure', { timeout: 30000, state: 'attached' });
+await idle();
+check('GitLab の文書を出す（/ 入りのブランチ）', (await page.textContent('.dpw-commit'))?.includes(`${BRANCH} @ ${SHA.slice(0, 7)}`)
+  && (await page.textContent('.dpw-doc'))?.includes('認証機能 設計書'));
+check('GitLab へのリンクは GitLab の形', (await page.getAttribute('.dpw-bar a[target=_blank]', 'href'))
+  === `https://gitlab.example.test/team/designs/-/blob/${BRANCH}/docs/auth-design.md`);
+await page.goto(view(`https://dev.azure.com/org/proj/_git/designs?path=/docs/auth-design.md&version=GB${BRANCH}`));
+await page.waitForSelector('.dpw-doc .dp-figure', { timeout: 30000, state: 'attached' });
+await idle();
+check('Azure DevOps の文書を出す', (await page.textContent('.dpw-doc'))?.includes('認証機能 設計書'));
+await page.goto(view(`https://dev.azure.com/org/proj/_git/designs?path=/docs&version=GB${BRANCH}`));
+await page.waitForSelector('.dpw-folder', { timeout: 30000 });
+check('Azure DevOps のフォルダも並べる', (await page.$$eval('.dpw-folder li a', n => n.length)) > 5);
 
 // --- 狭い画面 ----------------------------------------------------------------------
 await page.setViewportSize({ width: 375, height: 800 });

@@ -170,7 +170,7 @@ clone しない以上、Git の操作は API で行う。本設計が Git に依
 | Azure DevOps 独自の OAuth 2.0 | **非推奨。新規登録を受け付けていない** |
 | 推奨経路 | **Microsoft Entra ID** 経由 |
 | Entra ID の SPA ＋ PKCE | 公開クライアントとして対応している |
-| **Azure DevOps REST API の CORS** | **不透明。要検証** |
+| **Azure DevOps REST API の CORS** | ~~不透明。要検証~~ → **`authorization` ヘッダ付きの要求を許可する**ことを実測（2026-10-12、[閲覧ページ §7.5](web-viewer.md)） |
 
 最後の行が通らなければ、Azure DevOps では制約 2 の形（中身がサーバを通らない）を作れず、
 プロキシが要ることになる。**GitHub を先行させ、Azure DevOps は CORS の実測後に判断する。**

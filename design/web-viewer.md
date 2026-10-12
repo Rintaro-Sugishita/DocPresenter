@@ -120,12 +120,12 @@ DocPresenter の組版でそのままプレビューが出るページを作る�
 
 | 部分 | 場所 | 中身 |
 |---|---|---|
-| URL と ref | [packages/app-web/src/github.ts](../packages/app-web/src/github.ts) | `blob/` `tree/` `raw/`・raw ホスト（`refs/heads/` 付きも）・リポジトリだけの URL を受ける。ref はブランチとタグの一覧（各 1 ページ）から最長一致、無ければ `commits/{候補}` を短い順に。SHA ならそのまま。応答はページを開いているあいだ覚えておく（言語を変えても API を使わない） |
+| URL と ref | [packages/app-web/src/hosts/github.ts](../packages/app-web/src/hosts/github.ts)（§7.5 でホストごとに分けた） | `blob/` `tree/` `raw/`・raw ホスト（`refs/heads/` 付きも）・リポジトリだけの URL を受ける。ref はブランチとタグの一覧（各 1 ページ）から最長一致、無ければ `commits/{候補}` を短い順に。SHA ならそのまま。応答はページを開いているあいだ覚えておく（言語を変えても API を使わない） |
 | ファイル集め | [packages/app-web/src/view.ts](../packages/app-web/src/view.ts) `gather` | **規則を二重に持たない**ために、§2.3 の「足りないパスを返す関数」ではなく、組版そのものを回して「読もうとして無かったパス」を集め、取ってきてまた回す。取り込み・overlay の画像・部品ライブラリ・テーマは、ビルドと描画が読むとおりに集まる。400 ファイルを超えたら止めて言う |
 | `.dgm` 単体 | 同 `viewingRoot` | 図の隣に `@import "<図>"` だけの文書を組み立てる（図の中の相対パスがそのまま効く） |
 | `tree/` | 同 `viewableUnder` | フォルダの下の `.md` と `.dgm`（`.docpresenter/` などの道具の置き場は除く）。リンクは SHA 固定 |
 | 画面 | [packages/app-web/src/viewer.ts](../packages/app-web/src/viewer.ts) | 本文はビルドの HTML 出力の body。テーマはリポジトリのもの（`themeOf`）→ 同梱。Mermaid は `@docpresenter/editor/mermaid` |
-| PDF | 同 `makePdf` ＋ [fonts.ts](../packages/app-web/src/fonts.ts) | 組版は画面と同じ。フォントは**閲覧者の PC のもの**をローカルフォント API（`queryLocalFonts`、Chrome / Edge）で読む。使えないブラウザでは理由を出して作らない。レビュー指摘も注釈として載る（`.review.yml` を押したときに取る） |
+| PDF | [pdf.ts](../packages/app-web/src/pdf.ts) ＋ [fonts.ts](../packages/app-web/src/fonts.ts)（押したときに読み込む） | 組版は画面と同じ。フォントは**閲覧者の PC のもの**をローカルフォント API（`queryLocalFonts`、Chrome / Edge）で読む。使えないブラウザでは理由を出して作らない。レビュー指摘も注釈として載る（`.review.yml` を押したときに取る） |
 | 束ね・配信 | [tools/build-web-viewer.mjs](../tools/build-web-viewer.mjs) → `out/web/`、[.github/workflows/pages.yml](../.github/workflows/pages.yml) | `view.html`（と同じ中身の `index.html`）・`viewer.js`・`harfbuzz-subset.wasm`。既定ブランチへの push で Pages に出る |
 | 検証 | `packages/app-web/test/`（単体 27 件）、[tools/check-web-viewer.mjs](../tools/check-web-viewer.mjs)（ブラウザ 28 項目） | ブラウザ検証は GitHub を sample/ で差し替え、`/` 入りブランチ・図・画像・Mermaid・PDF・`.dgm`・フォルダ・404・回数制限・電話の幅を見る |
 
@@ -134,8 +134,7 @@ DocPresenter の組版でそのままプレビューが出るページを作る�
 
 **分かっている残り**
 
-- ~~束（`viewer.js`）が 6.6 MB ある~~ → **Mermaid は使う文書のときだけ読む**ようにした（ES モジュールに分割、最初に読むのは 1.6 MB。
-  残りの大半は PDF の書き出し（pdf-lib・fontkit）で、これも押されたときだけ読む形にできる）。
+- ~~束（`viewer.js`）が 6.6 MB ある~~ → **Mermaid は使う文書のときだけ、PDF の書き手（pdf-lib・fontkit・フォント読み）は押したときだけ読む**（ES モジュールに分割。最初に読むのは 450 KB）。
 - 他文書への参照 `@文書番号:ラベル` の解決は、ビルド側にまだ無い（[backlog.md](backlog.md) #13b と同じく、ビルドに入れば閲覧ページにも効く）。
 
 ## 7. 非公開・社内のリポジトリへ — 段階 2 以降の方針（案、2026-10-12）
@@ -193,3 +192,22 @@ URL のホスト名で振り分け、社内ホストは**設定ファイル**（
 2. **GitHub の OAuth**：認証中継（[§3.2](platforms.md)、コメント収集と同じバイナリ）を立てる。
 3. **Azure DevOps**：まず CORS を実測。通れば Entra ID ＋ PKCE で中継なし、通らなければ B。
 4. **社内配置の手引き**：`out/web/` ＋ `viewer.config.json` ＋ 逆プロキシの設定例（nginx / IIS）。
+
+### 7.5 実装済み：PAT で読める範囲（2026-10-12）
+
+7.4 の 1 を実装した。**閲覧者もリポジトリの持ち主もサーバを用意しなくてよい**範囲である。
+
+| | 実装 | 実物での確認 |
+|---|---|---|
+| 差し替え口 | [hosts/base.ts](../packages/app-web/src/hosts/base.ts) の `Host`（`resolve` / `files` / `text` / `image` / `webUrl` / `tokenHelp`）。どのホストかは **URL の形だけで決める**（設定ファイルは要らない）：`_git` → Azure DevOps、`/-/` → GitLab、`src/branch|tag|commit` → Gitea / Forgejo、`blob|tree` → GitHub（github.com 以外なら Enterprise）。サーバの `owner/repo` だけの URL は種類が分からないので、既知のホスト（gitlab.com・codeberg.org・gitea.com）に限って受ける | — |
+| GitHub / Enterprise | [hosts/github.ts](../packages/app-web/src/hosts/github.ts)。トークンがあるとき・Enterprise では、中身を **contents API**（`application/vnd.github.raw+json`）から取る。raw ホストはトークン付きの要求を CORS で通さない（プリフライトで 403 を実測） | API は環境の制約で未実測（段階 1 と同じ経路） |
+| GitLab | [hosts/gitlab.ts](../packages/app-web/src/hosts/gitlab.ts)。入れ子のグループ、`search=^…` で ref の候補を 1 ページに絞る、一覧はページを追う（50 ページまで）。トークンは `PRIVATE-TOKEN`（権限 `read_api`） | gitlab.com で CORS（`private-token` を許可）と読み取りを確認 |
+| Gitea / Forgejo | [hosts/gitea.ts](../packages/app-web/src/hosts/gitea.ts)。一覧は `truncated` のあいだページを追う。名前に `/` を含む ref は `commits?sha=` で引く。トークンは `Authorization: token …` | codeberg.org で CORS（`Authorization` を許可）と読み取りを確認 |
+| Azure DevOps | [hosts/azure.ts](../packages/app-web/src/hosts/azure.ts)。Services（dev.azure.com・*.visualstudio.com）と Server（コレクションまでを起点に）。ref は `version=GB…/GT…/GC…`、注釈付きタグは `peelTags`。トークンは Basic の password（権限 `Code: Read`）。サインインへの転送は追わずに「トークンが要る」と言う | dev.azure.com で **CORS が `authorization` を許可すること**を実測（§3.2 制約 5 の「不透明」はここで解けた）。公開リポジトリで読み取りを確認 |
+| トークン | [tokens.ts](../packages/app-web/src/tokens.ts)。**sessionStorage**（タブを閉じれば消える）に起点ごとに置き、**その起点にしか送らない**。localStorage には置かない（同じ github.io のページすべてから読めるため）。**http の起点には送らない**。URL には載せない。バーの「トークンを消す」で消せる | — |
+| 画面 | 非公開・サインインが要る・トークンが効かない、のどれでもトークンの入力欄を出す。作る場所（各ホストの PAT の画面）と要る権限を添える。回数制限（GitHub の 60 回/時）でも出す：トークンがあれば 5,000 回/時 | — |
+| 検証 | 単体 58 件（[test/hosts.test.ts](../packages/app-web/test/hosts.test.ts)）、ブラウザ 45 項目（非公開 GitHub をトークンで開く・効かないトークン・消す・GitLab・Azure DevOps を含む）、実物 7 項目（[tools/check-hosts-live.mjs](../tools/check-hosts-live.mjs)、ネットワークが要るので手で流す） | — |
+
+**届かない場合**（どれも画面に「接続できない／このページからの読み取りを許可していない（CORS）／社内のサーバ」と出る）：
+社内ネットワークのサーバは、公開の github.io からは 7.3 の三つの理由で読めないことが多い。そのときは `out/web/` を社内に置く（7.3 の A / B）。
+**OAuth（7.4 の 2）と社内配置の手引き（7.4 の 4）は未実装。**
