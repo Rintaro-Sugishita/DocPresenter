@@ -39,9 +39,10 @@ PDF の読み返し 21 項目（ブラウザ生成の読み返し 14 項目を�
 | 7 | **索引・横断一覧の生成** | [横断一覧](index-model.md) | R11 R12 | ビルド時インデックス。診断（壊れた参照など）の基盤も兼ねる |
 | 8 | ~~**ビルドパイプライン**~~ → **実装済み**（[§6.5](build-model.md)）。残りは出力形式を足すだけ | [ビルドモデル](build-model.md) | R4〜R6 | ルート探索・参照閉包・診断・HTML の書き出し・文書の取り込み |
 | 9 | **CLI** | [提供形態](platforms.md) | R8 | サーバ無しで全機能が動く経路 |
-| 10 | **app-web**：**次はここ。段階 1（公開リポジトリの URL からの閲覧ページ）の引き継ぎメモ [web-viewer.md](web-viewer.md)** | [提供形態 §3](platforms.md) / [閲覧ページ](web-viewer.md) | R8 | フォルダを開く / ZIP で持ち帰る / 認証中継越しのリモート Git。**PDF はデモ画面のボタンで既に出せる**（[§7.7](pdf-engine.md)） |
+| 10 | **app-web**：**段階 1（公開リポジトリの URL からの閲覧ページ）は実装済み**（[web-viewer.md §6](web-viewer.md)。GitHub Pages で配信、`.dgm` 単体・`tree/` の一覧・PDF を含む）。**非公開リポジトリは PAT で読める**（GitHub / Enterprise・GitLab・Gitea / Forgejo・Azure DevOps、[§7.5](web-viewer.md)）。**この PC のフォルダ（社内の共有フォルダを含む）も開ける**（[§8](web-viewer.md)）。残りは**OAuth（認証中継）・社内配置の手引き・段階 3（ブラウザ上のレビュー）** | [提供形態 §3](platforms.md) / [閲覧ページ](web-viewer.md) | R8 | フォルダを開く / ZIP で持ち帰る / 認証中継越しのリモート Git。**PDF はデモ画面のボタンで既に出せる**（[§7.7](pdf-engine.md)） |
 | 11 | **app-vscode**：**v1 実装済み**（カスタムエディタ・ビルドのコマンド・`contributes.configuration`）。残りは **WebView で組版して PDF**と、設定の追加 | [提供形態](platforms.md) / [設定モデル](settings-model.md) | R8 | 編集は `WorkspaceEdit`。VS Code の取り消し・未保存・git がそのまま効く |
 | 11b | **作図単独の器（Web / VS Code）** | [パッケージ分割 §6](packaging.md) | R2 R8 | パッケージは分離済み。公開名・ライセンス・器が未決 |
+| 11c | **VS Code でソースを直に書く支援**（**未設計・メモ**、2026-10-12）。GUI を充実させてきたが、VS Code では `.md` / `.dgm` を直に書く人も多い。① `.md` の直書き：箇条書きの継続（Enter で次の行頭記号、Tab / Shift+Tab で字下げ）、Ctrl+B で太字・Ctrl+I で斜体などの書式キー ② `.dgm` のシンタックスハイライト（TextMate 文法） ③ `.dgm` の入力補完（ノード ID・部品名・`use` のパス・スタイルのキー） | [提供形態](platforms.md) | R8 | 今は実装しない。GUI と同じ書き戻しの規則（バイト範囲の書き換え）に揃えるかは設計時に決める |
 | 12 | **コメント収集サーバ** | [サーバの位置づけ §8](server-architecture.md) | R10 | 認証中継と同じバイナリ。後から足せる |
 | 13 | **表の残り**：セル内改行 | [表モデル §7.6](table-model.md) | R7 | 結合・範囲選択・クリップボードは実装済み |
 | 13b | **表のセル内での相互参照**（`@fig-…` がセルの中では解決されない。HTML も PDF も同じ） | [参照記法](reference-syntax.md) | R11 | 標本の項目定義表に実例がある |
