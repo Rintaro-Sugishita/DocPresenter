@@ -1,0 +1,26 @@
+{
+  "name": "@docpresenter/app-web",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./viewer": {
+      "types": "./dist/viewer.d.ts",
+      "default": "./dist/viewer.js"
+    }
+  },
+  "dependencies": {
+    "@docpresenter/base": "*",
+    "@docpresenter/build": "*",
+    "@docpresenter/editor": "*",
+    "@docpresenter/markdown": "*",
+    "@docpresenter/pdf": "*",
+    "@pdf-lib/fontkit": "^1.1.1"
+  }
+}
