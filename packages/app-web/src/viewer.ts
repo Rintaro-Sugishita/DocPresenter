@@ -1,16 +1,21 @@
-// The viewer page: an address on a Git host in, the document as DocPresenter
-// sets it out (design/web-viewer.md).
+// The viewer page: an address on a Git host, or a folder on this computer, in;
+// the document as DocPresenter sets it out (design/web-viewer.md).
 //
-// The page has four faces: the form when no address is given, a folder's
-// documents for a folder address, a document or drawing for a file address,
-// and — when a host says the repository is not open to everyone — a field for
-// the reader's own access token. Everything is read from one commit, and that
-// commit is shown, so a shared link means the same thing tomorrow.
+// The page has four faces: the form when nothing is open yet, a folder's
+// documents, a document or drawing, and — when a host says the repository is
+// not open to everyone — a field for the reader's own access token. What is
+// read from a host is read from one commit, and that commit is shown, so a
+// shared link means the same thing tomorrow. A folder on this computer cannot
+// travel in a link; it is moved about in the page itself.
 
 import { describeError, type Locale } from '@docpresenter/base';
 import { hasMermaid, takeIn, type BuildDiagnostic, type Workspace } from '@docpresenter/build';
 import { addressOf, ViewerError, type Addressed, type Fetch, type Host, type Location } from './hosts/index.js';
 import { WEB_MESSAGES, type WebMessage } from './messages.js';
+import {
+  droppedFolder, folderPicker, mayRead, nodeOfHandle, readFolder, recallFolder, rememberFolder,
+  type FolderNode, type LocalFolder,
+} from './local.js';
 import { Tokens } from './tokens.js';
 import { compose, gather, heldWorkspace, isViewable, viewableUnder, type Composed, type FileSource } from './view.js';
 
@@ -29,6 +34,31 @@ export interface ViewerEnvironment {
   };
 }
 
+/**
+ * Where the files shown come from: a repository at a commit, or a folder on
+ * this computer. The folder list and the document are drawn the same way for
+ * both; only the header and the links differ.
+ */
+interface Place {
+  readonly source: FileSource;
+  /** The root of the breadcrumb: `owner/repo`, or the folder's name. */
+  readonly label: string;
+  /** For the page title at the root. */
+  readonly name: string;
+  /** The commit (or working folder) line, in the language of the moment. */
+  badge(): { readonly text: string; readonly title: string };
+  /** True for a folder on this computer: links move within the page. */
+  readonly local: boolean;
+  readonly truncated: boolean;
+  /** Where to view another path here. */
+  href(kind: 'blob' | 'tree', path: string): string;
+  /** What the header carries beyond the breadcrumb, for the path shown. */
+  extras(kind: 'blob' | 'tree', path: string): HTMLElement[];
+  /** The commit the PDF's review map names, and whether the files are that commit. */
+  readonly commit?: string;
+  readonly clean: boolean;
+}
+
 /** Starts the page in `env.window`. */
 export function startViewer(env: ViewerEnvironment): void {
   const win = env.window;
@@ -43,11 +73,14 @@ export function startViewer(env: ViewerEnvironment): void {
     Tokens.allowed(origin) ? tokens.get(origin) ?? unkept.get(origin) : undefined;
   /** Hosts already opened, so a redraw asks them nothing again. Keyed by address and token. */
   const opened = new Map<string, Host>();
+  /** The folder on this computer open now, if any. */
+  let here: Place | undefined;
 
   doc.body.classList.add('dpw');
   const bar = element(doc, 'header', 'dpw-bar');
   const status = element(doc, 'div', 'dpw-status');
   status.setAttribute('role', 'status');
+  status.hidden = true;
   const notes = element(doc, 'div', 'dpw-notes');
   const main = element(doc, 'main', 'dpw-doc');
   const theme = doc.createElement('style');
@@ -130,8 +163,149 @@ export function startViewer(env: ViewerEnvironment): void {
       event.preventDefault();
       say(t('web.error.address'), 'refused');
     });
-    main.replaceChildren(form);
+    main.replaceChildren(form, localSection());
     redraw = () => showForm(input.value);
+  };
+
+  /** The way in for a folder on this computer: the dialog, a drop, or the folder kept from last time. */
+  const localSection = (): HTMLElement => {
+    const section = element(doc, 'section', 'dpw-form dpw-local');
+    const heading = element(doc, 'h2');
+    heading.textContent = t('web.local.heading');
+    const intro = element(doc, 'p');
+    intro.textContent = t('web.local.text');
+    const row = element(doc, 'div', 'dpw-row');
+    const pick = folderPicker(win);
+    if (pick) {
+      row.append(button(doc, t('web.local.pick'), async () => {
+        let handle;
+        try {
+          handle = await pick();
+        } catch {
+          return; // The reader closed the dialog.
+        }
+        void rememberFolder(win, handle);
+        await openFolder(nodeOfHandle(handle), '');
+      }));
+    }
+    const drop = element(doc, 'div', 'dpw-drop');
+    drop.textContent = t('web.local.drop');
+    row.append(drop);
+    section.append(heading, intro, row);
+    if (!pick) {
+      const note = element(doc, 'p', 'dpw-hint');
+      note.textContent = t('web.local.noPicker');
+      section.append(note);
+    }
+    void recallFolder(win).then(kept => {
+      if (!kept || !section.isConnected) return;
+      section.append(button(doc, t('web.local.reopen', { name: kept.name }), () => reopen(kept, '')));
+    });
+    return section;
+  };
+
+  /** Opens a folder kept from last time. Runs in a click: the browser asks the reader first. */
+  const reopen = async (kept: Parameters<typeof nodeOfHandle>[0] & Parameters<typeof mayRead>[0], path: string): Promise<void> => {
+    try {
+      if (!await mayRead(kept)) { say(t('web.local.denied'), 'refused'); return; }
+    } catch {
+      say(t('web.local.denied'), 'refused');
+      return;
+    }
+    await openFolder(nodeOfHandle(kept), path);
+  };
+
+  /** Reads a folder in, and shows `path` in it. */
+  const openFolder = async (node: FolderNode, path: string): Promise<void> => {
+    say(t('web.local.reading', { count: '0' }), 'busy');
+    let folder: LocalFolder;
+    try {
+      folder = await readFolder(node, count => say(t('web.local.reading', { count: String(count) }), 'busy'));
+    } catch (error) {
+      say(t('web.local.failed', { message: describeError(error, locale) }), 'refused');
+      return;
+    }
+    here = localPlace(folder);
+    move(path, path === '' ? 'tree' : 'blob', true);
+  };
+
+  /** Moves within the open folder, as a link would, and keeps the browser's back button working. */
+  const move = (path: string, kind: 'blob' | 'tree', replace = false): void => {
+    if (!here) return;
+    const state = { local: path, kind };
+    const url = here.href(kind, path);
+    if (replace) win.history.replaceState(state, '', url);
+    else win.history.pushState(state, '', url);
+    void showPlace(here, path, kind);
+  };
+
+  const localPlace = (folder: LocalFolder): Place => {
+    const { branch, sha } = folder.git;
+    const short = sha?.slice(0, 7) ?? '';
+    return {
+      source: folder,
+      label: folder.name,
+      name: folder.name,
+      badge: () => ({
+        text: sha === undefined ? t('web.local.noGit')
+          : branch === undefined ? t('web.local.atSha', { sha: short }) : t('web.local.at', { branch, sha: short }),
+        title: [t('web.local.note'), sha].filter(Boolean).join('\n'),
+      }),
+      local: true,
+      truncated: folder.truncated,
+      href: (_kind, path) => `?${new URLSearchParams({ local: path, ...langParam() }).toString()}`,
+      extras: () => [],
+      ...(sha === undefined ? {} : { commit: sha }),
+      clean: false,
+    };
+  };
+
+  /** `lang=` carried over, when the page was opened with one. */
+  const langParam = (): Record<string, string> => {
+    const asked = new URLSearchParams(win.location.search).get('lang');
+    return asked ? { lang: asked } : {};
+  };
+
+  // A folder can be dropped anywhere on the page, whatever it shows.
+  doc.addEventListener('dragover', event => {
+    if (![...(event.dataTransfer?.types ?? [])].includes('Files')) return;
+    event.preventDefault();
+    doc.body.classList.add('dpw-dragging');
+  });
+  doc.addEventListener('dragleave', event => {
+    if (event.relatedTarget === null) doc.body.classList.remove('dpw-dragging');
+  });
+  doc.addEventListener('drop', event => {
+    doc.body.classList.remove('dpw-dragging');
+    const dropped = droppedFolder(event);
+    if (!dropped) return;
+    event.preventDefault();
+    void (async () => {
+      const node = await dropped.node;
+      if (!node) { say(t('web.local.notFolder'), 'refused'); return; }
+      const handle = await dropped.handle;
+      if (handle) void rememberFolder(win, handle);
+      await openFolder(node, '');
+    })();
+  });
+  win.addEventListener('popstate', event => {
+    const state = event.state as { local?: string; kind?: 'blob' | 'tree' } | null;
+    if (state?.local !== undefined && here) void showPlace(here, state.local, state.kind ?? 'tree');
+  });
+
+  /** A link to a path in a place. Within a folder on this computer it moves in the page. */
+  const linkTo = (place: Place, kind: 'blob' | 'tree', path: string, label: string): HTMLAnchorElement => {
+    const link = doc.createElement('a');
+    link.href = place.href(kind, path);
+    link.textContent = label;
+    if (place.local) {
+      link.addEventListener('click', event => {
+        if (event.ctrlKey || event.metaKey || event.shiftKey || event.button !== 0) return;
+        event.preventDefault();
+        move(path, kind);
+      });
+    }
+    return link;
   };
 
   /** A link to this page showing another address. */
@@ -161,21 +335,70 @@ export function startViewer(env: ViewerEnvironment): void {
     try {
       const location = await host.resolve();
       const { paths, truncated } = await host.files(location);
-      const present = new Set(paths);
-      const isFolder = location.path === '' || (!present.has(location.path)
-        && paths.some(path => path.startsWith(`${location.path}/`)));
-      if (location.kind === 'tree' || isFolder) {
-        showFolder(host, location, paths);
-      } else if (!present.has(location.path)) {
-        throw new ViewerError(truncated ? 'web.truncated' : 'web.error.notInRepo', { path: location.path });
-      } else if (!isViewable(location.path)) {
-        throw new ViewerError('web.error.notViewable', { path: location.path });
-      } else {
-        await showDocument(host, location, paths, truncated);
-      }
+      await showPlace(hostPlace(host, location, paths, truncated), location.path, location.kind);
     } catch (error) {
       fail(error);
       if (error instanceof ViewerError && error.wantsToken) showTokenForm(host, addressed, address);
+    }
+  };
+
+  /** A repository at a commit, as a place. */
+  const hostPlace = (host: Host, location: Location, paths: readonly string[], truncated: boolean): Place => {
+    const short = location.sha.slice(0, 7);
+    return {
+      source: { paths, text: path => host.text(location, path), image: path => host.image(location, path) },
+      label: location.label,
+      name: location.name,
+      badge: () => ({
+        text: location.ref === location.sha ? t('web.atSha', { sha: short }) : t('web.at', { ref: location.ref, sha: short }),
+        title: location.sha,
+      }),
+      local: false,
+      truncated,
+      href: (kind, path) => viewLink(host.webUrl({ kind, path, sha: location.sha })),
+      extras: (kind, path) => {
+        const pinned = new URL(win.location.href);
+        pinned.search = viewLink(host.webUrl({ kind, path, sha: location.sha }));
+        const copy = button(doc, t('web.copyLink'), async () => {
+          try {
+            await win.navigator.clipboard.writeText(pinned.toString());
+            say(t('web.copied'));
+          } catch {
+            say(t('web.copyFailed'), 'refused');
+          }
+        });
+        const out = doc.createElement('a');
+        out.href = host.webUrl({ kind, path, sha: location.sha }, location.ref);
+        out.textContent = t('web.onHost', { host: host.name });
+        out.target = '_blank';
+        out.rel = 'noopener';
+        const address = new URLSearchParams(win.location.search).get('src') ?? '';
+        const forget = tokenFor(host.origin) === undefined ? [] : [forgetButton(host.origin, address)];
+        return [copy, out, ...forget];
+      },
+      commit: location.sha,
+      clean: true,
+    };
+  };
+
+  /** Shows a path in a place: a folder's documents, a document, or why neither. */
+  const showPlace = async (place: Place, path: string, kind: 'blob' | 'tree'): Promise<void> => {
+    redraw = () => { void showPlace(place, path, kind); };
+    try {
+      const { paths } = place.source;
+      const present = new Set(paths);
+      const isFolder = path === '' || (!present.has(path) && paths.some(one => one.startsWith(`${path}/`)));
+      if (kind === 'tree' || isFolder) {
+        showFolder(place, path);
+      } else if (!present.has(path)) {
+        throw new ViewerError(place.truncated ? 'web.truncated' : 'web.error.notInRepo', { path });
+      } else if (!isViewable(path)) {
+        throw new ViewerError('web.error.notViewable', { path });
+      } else {
+        await showDocument(place, path);
+      }
+    } catch (error) {
+      fail(error);
     }
   };
 
@@ -229,6 +452,21 @@ export function startViewer(env: ViewerEnvironment): void {
     input.focus();
   };
 
+  /**
+   * A reload, or a link, that names a path in a folder on this computer: the
+   * folder itself did not come with it. The one kept from last time is offered
+   * when the browser kept one; otherwise the reader picks it again.
+   */
+  const showLost = async (path: string): Promise<void> => {
+    showForm();
+    const kept = await recallFolder(win);
+    if (!kept) { say(t('web.local.lost'), 'refused'); return; }
+    const again = button(doc, t('web.local.reopen', { name: kept.name }), () => reopen(kept, path));
+    again.classList.add('dpw-primary');
+    main.prepend(again);
+    again.focus();
+  };
+
   const forgetButton = (origin: string, address: string): HTMLButtonElement => button(doc, t('web.token.forget'), () => {
     tokens.forget(origin);
     unkept.delete(origin);
@@ -236,14 +474,11 @@ export function startViewer(env: ViewerEnvironment): void {
     void open(address).then(() => { if (status.dataset['kind'] !== 'refused') say(t('web.token.forgotten', { origin })); });
   });
 
-  const header = (host: Host, location: Location, here: string, kind: 'blob' | 'tree'): HTMLElement[] => {
+  const header = (place: Place, at: string, kind: 'blob' | 'tree'): HTMLElement[] => {
     const crumb = element(doc, 'span', 'dpw-crumb');
-    const repo = doc.createElement('a');
-    repo.href = viewLink(host.webUrl({ kind: 'tree', path: '', sha: location.sha }));
-    repo.textContent = location.label;
-    crumb.append(repo);
+    crumb.append(linkTo(place, 'tree', '', place.label));
     let walked = '';
-    const parts = here === '' ? [] : here.split('/');
+    const parts = at === '' ? [] : at.split('/');
     parts.forEach((part, i) => {
       walked = walked === '' ? part : `${walked}/${part}`;
       crumb.append(text(doc, ' / '));
@@ -252,48 +487,27 @@ export function startViewer(env: ViewerEnvironment): void {
         last.textContent = part;
         crumb.append(last);
       } else {
-        const link = doc.createElement('a');
-        link.href = viewLink(host.webUrl({ kind: 'tree', path: walked, sha: location.sha }));
-        link.textContent = part;
-        crumb.append(link);
+        crumb.append(linkTo(place, 'tree', walked, part));
       }
     });
     const commit = element(doc, 'code', 'dpw-commit');
-    const short = location.sha.slice(0, 7);
-    commit.textContent = location.ref === location.sha ? t('web.atSha', { sha: short }) : t('web.at', { ref: location.ref, sha: short });
-    commit.title = location.sha;
-
-    const pinned = new URL(win.location.href);
-    pinned.search = viewLink(host.webUrl({ kind, path: here, sha: location.sha }));
-    const copy = button(doc, t('web.copyLink'), async () => {
-      try {
-        await win.navigator.clipboard.writeText(pinned.toString());
-        say(t('web.copied'));
-      } catch {
-        say(t('web.copyFailed'), 'refused');
-      }
-    });
-    const out = doc.createElement('a');
-    out.href = host.webUrl({ kind, path: here, sha: location.sha }, location.ref);
-    out.textContent = t('web.onHost', { host: host.name });
-    out.target = '_blank';
-    out.rel = 'noopener';
+    const badge = place.badge();
+    commit.textContent = badge.text;
+    commit.title = badge.title;
     const another = doc.createElement('a');
     another.href = '?';
     another.textContent = t('web.another');
-    const address = new URLSearchParams(win.location.search).get('src') ?? '';
-    const forget = tokenFor(host.origin) === undefined ? [] : [forgetButton(host.origin, address)];
-    return [brand(doc), crumb, commit, spacer(doc), copy, out, ...forget, another, language()];
+    return [brand(doc), crumb, commit, spacer(doc), ...place.extras(kind, at), another, language()];
   };
 
-  const showFolder = (host: Host, location: Location, paths: readonly string[]): void => {
-    const folder = location.path;
+  const showFolder = (place: Place, folder: string): void => {
+    const { paths } = place.source;
     doc.documentElement.lang = locale;
-    doc.title = `${folder === '' ? location.name : folder} — ${t('web.title')}`;
-    bar.replaceChildren(...header(host, location, folder, 'tree'));
+    doc.title = `${folder === '' ? place.name : folder} — ${t('web.title')}`;
+    bar.replaceChildren(...header(place, folder, 'tree'));
     theme.textContent = '';
     notes.replaceChildren();
-    say('');
+    say(place.truncated ? t(place.local ? 'web.local.truncated' : 'web.truncated', { count: String(paths.length) }) : '');
     const { documents, drawings } = viewableUnder(paths, folder);
     const list = element(doc, 'section', 'dpw-folder');
     const heading = element(doc, 'h1');
@@ -302,11 +516,8 @@ export function startViewer(env: ViewerEnvironment): void {
     count.textContent = t('web.folder.count', { documents: String(documents.length), drawings: String(drawings.length) });
     list.append(heading, count);
     if (folder !== '') {
-      const up = doc.createElement('a');
       const parent = folder.includes('/') ? folder.slice(0, folder.lastIndexOf('/')) : '';
-      up.href = viewLink(host.webUrl({ kind: 'tree', path: parent, sha: location.sha }));
-      up.textContent = `↑ ${t('web.folder.up')}`;
-      list.append(up);
+      list.append(linkTo(place, 'tree', parent, `↑ ${t('web.folder.up')}`));
     }
     if (documents.length + drawings.length === 0) {
       const empty = element(doc, 'p');
@@ -321,10 +532,7 @@ export function startViewer(env: ViewerEnvironment): void {
       const items = element(doc, 'ul');
       for (const path of group) {
         const item = element(doc, 'li');
-        const link = doc.createElement('a');
-        link.href = viewLink(host.webUrl({ kind: 'blob', path, sha: location.sha }));
-        link.textContent = path.slice(prefix.length);
-        item.append(link);
+        item.append(linkTo(place, 'blob', path, path.slice(prefix.length)));
         items.append(item);
       }
       list.append(sub, items);
@@ -332,28 +540,24 @@ export function startViewer(env: ViewerEnvironment): void {
     main.replaceChildren(list);
   };
 
-  const showDocument = async (host: Host, location: Location, paths: readonly string[], truncated: boolean): Promise<void> => {
-    const source: FileSource = {
-      paths,
-      text: path => host.text(location, path),
-      image: path => host.image(location, path),
-    };
+  const showDocument = async (place: Place, path: string): Promise<void> => {
+    const { source, truncated } = place;
     const options = { locale, shippedTheme: env.shippedTheme };
     const { held, complete } = await gather(
-      source, workspace => { compose(workspace, location.path, options); },
+      source, workspace => { compose(workspace, path, options); },
       count => say(t('web.step.files', { count: String(count) }), 'busy'));
     const workspace = withInline(heldWorkspace(source, held), env.fetch);
 
     // Pictures on the web are taken in as the build takes them in.
-    const first = compose(workspace, location.path, options);
+    const first = compose(workspace, path, options);
     const trouble: BuildDiagnostic[] = [];
     const inlined = await takeIn(workspace, first.prepared, trouble);
-    const composed = inlined.size === 0 ? first : compose(workspace, location.path, { ...options, inlined });
+    const composed = inlined.size === 0 ? first : compose(workspace, path, { ...options, inlined });
 
     doc.documentElement.lang = locale;
     doc.title = `${composed.title} — ${t('web.title')}`;
-    const pdf = button(doc, t('web.pdf.make'), () => downloadPdf(pdf, composed, workspace, source, held, location));
-    const top = header(host, location, location.path, 'blob');
+    const pdf = button(doc, t('web.pdf.make'), () => downloadPdf(pdf, composed, workspace, place, held, path));
+    const top = header(place, path, 'blob');
     top.splice(4, 0, pdf);
     bar.replaceChildren(...top);
     theme.textContent = composed.style;
@@ -362,7 +566,7 @@ export function startViewer(env: ViewerEnvironment): void {
 
     const failed = [...held.texts, ...held.images].filter(([, value]) => value === undefined).map(([path]) => path);
     const said: string[] = [
-      ...(truncated ? [t('web.truncated')] : []),
+      ...(truncated ? [t(place.local ? 'web.local.truncated' : 'web.truncated', { count: String(source.paths.length) })] : []),
       ...(complete ? [] : [t('web.error.tooMany', { count: String(held.texts.size + held.images.size) })]),
       ...failed.map(path => t('web.error.fetchFile', { path })),
       ...[...composed.diagnostics, ...trouble].map(d => `${d.path ? `${d.path}: ` : ''}${d.message}`),
@@ -389,8 +593,9 @@ export function startViewer(env: ViewerEnvironment): void {
 
   const downloadPdf = async (
     pressed: HTMLButtonElement, composed: Composed, workspace: Workspace,
-    source: FileSource, held: { texts: Map<string, string | undefined> }, location: Location,
+    place: Place, held: { texts: Map<string, string | undefined> }, path: string,
   ): Promise<void> => {
+    const { source } = place;
     pressed.disabled = true;
     say(t('web.pdf.composing'), 'busy');
     try {
@@ -400,12 +605,13 @@ export function startViewer(env: ViewerEnvironment): void {
       const rounds = source.paths.filter(path => /\.review\.yml$/i.test(path) && !held.texts.has(path));
       await Promise.all(rounds.map(async path => { held.texts.set(path, await source.text(path).catch(() => undefined)); }));
       const made = await makePdf({
-        window: win, composed, workspace, commit: location.sha, locale, fetch: env.fetch, subsetterUrl: env.subsetterUrl,
+        window: win, composed, workspace, locale, fetch: env.fetch, subsetterUrl: env.subsetterUrl,
+        ...(place.commit === undefined ? {} : { commit: place.commit }), clean: place.clean,
         sources: [composed.root, ...[...held.texts.keys()].filter(path => !/\.(review\.yml|css)$/i.test(path))],
         draw: stage => drawn(stage, composed.body, true),
       });
       const raw = composed.prepared.document.frontmatter.raw;
-      const name = `${String(raw['document'] ?? location.path.slice(location.path.lastIndexOf('/') + 1).replace(/\.[^.]+$/, ''))}.pdf`;
+      const name = `${String(raw['document'] ?? path.slice(path.lastIndexOf('/') + 1).replace(/\.[^.]+$/, ''))}.pdf`;
       download(doc, name, made.bytes);
       say(t('web.pdf.made', { pages: String(made.pages), font: made.font })
         + (made.missing ? t('web.pdf.missing', { characters: made.missing }) : ''), made.missing ? 'refused' : 'ok');
@@ -416,7 +622,9 @@ export function startViewer(env: ViewerEnvironment): void {
     }
   };
 
+  const local = new URLSearchParams(win.location.search).get('local');
   if (src) void open(src);
+  else if (local !== null) void showLost(local);
   else showForm();
   if (env.locale.start.ask) void env.locale.ask(doc, locale).then(useLocale);
 }

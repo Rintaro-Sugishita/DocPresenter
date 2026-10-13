@@ -130,6 +130,13 @@ await context.route('https://dev.azure.com/org/**', route => {
 // What viewer.js imports itself, and so comes with every page: shared code, not Mermaid.
 const UP_FRONT = new Set([...readFileSync('out/web/viewer.js', 'utf8').matchAll(/from\s*"\.\/chunks\/([^"]+)"/g)].map(m => m[1]));
 
+// The folder dialog cannot be driven, so it hands back a folder in the page's
+// own storage (OPFS) instead: a real directory handle, filled with the sample
+// and a .git that says which commit it is (see "この PC のフォルダ" below).
+await context.addInitScript(() => {
+  window.showDirectoryPicker = async () => (await navigator.storage.getDirectory()).getDirectoryHandle('repo');
+});
+
 const page = await context.newPage();
 // The split-off scripts the page loaded: Mermaid is among them, and only a
 // document that draws with it should load any.
@@ -294,6 +301,64 @@ check('Azure DevOps の文書を出す', (await page.textContent('.dpw-doc'))?.i
 await page.goto(view(`https://dev.azure.com/org/proj/_git/designs?path=/docs&version=GB${BRANCH}`));
 await page.waitForSelector('.dpw-folder', { timeout: 30000 });
 check('Azure DevOps のフォルダも並べる', (await page.$$eval('.dpw-folder li a', n => n.length)) > 5);
+
+// --- この PC のフォルダ ------------------------------------------------------------------
+const folderFiles = Object.fromEntries([
+  ...FILES.map(path => [path, readFileSync(join('sample', path)).toString('base64')]),
+  ['.git/HEAD', Buffer.from(`ref: refs/heads/${BRANCH}\n`).toString('base64')],
+  [`.git/refs/heads/${BRANCH}`, Buffer.from(`${SHA}\n`).toString('base64')],
+  ['node_modules/pkg/README.md', Buffer.from('# not a document').toString('base64')],
+]);
+await page.goto(`${BASE}/view.html?lang=ja`);
+await page.evaluate(async files => {
+  const root = await navigator.storage.getDirectory();
+  await root.removeEntry('repo', { recursive: true }).catch(() => undefined);
+  const repo = await root.getDirectoryHandle('repo', { create: true });
+  for (const [path, base64] of Object.entries(files)) {
+    const parts = path.split('/');
+    let folder = repo;
+    for (const part of parts.slice(0, -1)) folder = await folder.getDirectoryHandle(part, { create: true });
+    const writable = await (await folder.getFileHandle(parts.at(-1), { create: true })).createWritable();
+    await writable.write(Uint8Array.from(atob(base64), c => c.charCodeAt(0)));
+    await writable.close();
+  }
+}, folderFiles);
+const outsideBefore = api.length + raw.length;
+check('フォルダを開く欄がある（選ぶボタンとドロップ先）', await page.isVisible('.dpw-local button:has-text("フォルダを選ぶ")')
+  && await page.isVisible('.dpw-drop'));
+await page.click('.dpw-local button:has-text("フォルダを選ぶ")');
+await page.waitForSelector('.dpw-folder', { timeout: 30000 });
+const localLinks = await page.$$eval('.dpw-folder li a', nodes => nodes.map(n => n.textContent));
+check('選んだフォルダの文書と図を並べる', localLinks.includes('docs/auth-design.md') && localLinks.includes('docs/auth-design/login-flow.dgm'), `${localLinks.length} 件`);
+check('node_modules の中は読まない', !localLinks.some(name => name.includes('node_modules')));
+check('.git からブランチとコミットを出す', (await page.textContent('.dpw-commit')) === `作業フォルダ（${BRANCH} @ ${SHA.slice(0, 7)}）`,
+  await page.textContent('.dpw-commit'));
+check('アドレスにはフォルダの中の位置だけ', new URL(page.url()).searchParams.get('local') === '');
+await page.click('.dpw-folder li a:text-is("docs/auth-design.md")');
+await page.waitForSelector('.dpw-doc .dp-figure', { timeout: 30000, state: 'attached' });
+await idle();
+check('フォルダの文書を開く（../shared の図・画像も）', (await page.textContent('.dpw-doc'))?.includes('認証機能 設計書')
+  && await page.$$eval('.dpw-doc img', n => n.filter(i => i.src.startsWith('data:image/')).length) >= 1
+  && !(await page.isVisible('.dpw-notes details')), await page.textContent('.dpw-notes'));
+check('ページを読み直さずに移る', new URL(page.url()).searchParams.get('local') === 'docs/auth-design.md');
+check('GitHub には何も尋ねない', api.length + raw.length === outsideBefore);
+await page.goBack();
+await page.waitForSelector('.dpw-folder', { timeout: 30000 });
+check('ブラウザの「戻る」でフォルダの一覧へ', await page.isVisible('.dpw-folder'));
+await page.goForward();
+await page.waitForSelector('.dpw-doc .dp-figure', { timeout: 30000, state: 'attached' });
+await page.reload();
+await page.waitForSelector('.dpw-doc > button.dpw-primary', { timeout: 30000 });
+check('読み直すと前回のフォルダを開き直せる', (await page.textContent('.dpw-doc > button.dpw-primary')) === '前回のフォルダ「repo」を開く');
+await page.click('.dpw-doc > button.dpw-primary');
+await page.waitForSelector('.dpw-doc .dp-figure', { timeout: 30000, state: 'attached' });
+await idle();
+check('開き直すと同じ文書に戻る', (await page.textContent('.dpw-crumb strong')) === 'auth-design.md');
+await page.screenshot({ path: 'out/web-viewer-local.png' });
+await page.goto(`${BASE}/view.html?lang=ja`);
+await page.waitForSelector('.dpw-local button:has-text("前回のフォルダ")', { timeout: 30000 });
+await page.screenshot({ path: 'out/web-viewer-form.png' });
+check('入口にも前回のフォルダを出す', true);
 
 // --- 狭い画面 ----------------------------------------------------------------------
 await page.setViewportSize({ width: 375, height: 800 });

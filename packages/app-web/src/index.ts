@@ -7,6 +7,7 @@
 export * from './messages.js';
 export * from './hosts/index.js';
 export * from './tokens.js';
+export * from './local.js';
 export * from './view.js';
 export * from './fonts.js';
 export * from './viewer.js';

@@ -96,6 +96,14 @@ const page = `<!doctype html>
   .dpw-row button { background: #1f5fa8; color: #fff; border-color: #1f5fa8; padding: 6px 16px; }
   .dpw-hint { color: #5a6270; font-size: 12px; overflow-wrap: anywhere; }
   .dpw-form a { color: #1f5fa8; }
+  .dpw-local { margin-top: 2.5em; padding-top: 1.5em; border-top: 1px solid #e2e4e8; }
+  .dpw-local h2 { font-size: 16px; margin: 0 0 .4em; }
+  .dpw-drop { flex: 1; min-width: 0; border: 2px dashed #c8ccd2; border-radius: 6px; padding: 6px 10px;
+    display: flex; align-items: center; justify-content: center; text-align: center; color: #5a6270; }
+  body.dpw-dragging::after { content: ''; position: fixed; inset: 0; z-index: 50; pointer-events: none;
+    border: 4px dashed #1f5fa8; background: rgba(31, 95, 168, .06); }
+  .dpw-doc > button.dpw-primary { font: 13px system-ui, sans-serif; margin-bottom: 1.5em; padding: 6px 16px; cursor: pointer;
+    background: #1f5fa8; color: #fff; border: 1px solid #1f5fa8; border-radius: 4px; }
   .dpw-form button[type=button] { margin-top: 12px; }
   @media print { .dpw-bar, .dpw-status, .dpw-notes { display: none; } }
 </style>

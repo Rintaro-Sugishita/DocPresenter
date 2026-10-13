@@ -17,7 +17,10 @@ export interface PdfRequest {
   readonly workspace: Workspace;
   /** The files the document was built from, for the review map the PDF carries. */
   readonly sources: readonly string[];
-  readonly commit: string;
+  /** The commit the files are, or came from; undefined when nobody knows. */
+  readonly commit?: string;
+  /** False when the files may differ from that commit (a folder on this computer). */
+  readonly clean: boolean;
   readonly locale: Locale;
   readonly fetch: Fetch;
   readonly subsetterUrl: string;
@@ -70,7 +73,7 @@ export async function makePdf(request: PdfRequest): Promise<PdfResult> {
       workspace: request.workspace, prepared: composed.prepared, style: composed.style, out: '', diagnostics: [],
       sources: request.sources,
       root: { path: composed.root, document: composed.prepared.document, formats: ['pdf'] },
-      options: { commit: request.commit, clean: true },
+      options: { ...(request.commit === undefined ? {} : { commit: request.commit }), clean: request.clean },
     });
     const { bytes, missing } = await writePdf(measured.plan, { fonts: fonts.set, subset, review });
     return {
