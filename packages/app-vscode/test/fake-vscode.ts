@@ -21,12 +21,51 @@ export class Range {
 export class Uri {
   private constructor(readonly path: string) {}
   static file(path: string): Uri { return new Uri(path); }
+  /** As VS Code's: the segments joined, and `.` and `..` resolved. */
   static joinPath(base: Uri, ...parts: string[]): Uri {
-    return new Uri([base.path, ...parts].filter(one => one !== '').join('/'));
+    const segments: string[] = [];
+    for (const one of [base.path, ...parts].join('/').split('/')) {
+      if (one === '..') segments.pop();
+      else if (one !== '.' && (one !== '' || segments.length === 0)) segments.push(one);
+    }
+    return new Uri(segments.join('/'));
   }
   get fsPath(): string { return this.path; }
   toString(): string { return `file://${this.path}`; }
 }
+
+export class SnippetString {
+  constructor(readonly value: string) {}
+}
+
+export enum CompletionItemKind {
+  Method = 1, Function = 2, Constructor = 3, Field = 4, Variable = 5, Class = 6, Struct = 21,
+  Interface = 7, Module = 8, Property = 9, Unit = 10, Value = 11, Enum = 12, Keyword = 13,
+  Snippet = 14, Color = 15, File = 16, Reference = 17, Folder = 18, EnumMember = 19,
+  Constant = 20, Event = 22, Operator = 23, TypeParameter = 24,
+}
+
+export class CompletionItem {
+  insertText?: string | SnippetString;
+  range?: Range;
+  detail?: string;
+  sortText?: string;
+  command?: { title: string; command: string };
+  constructor(readonly label: string, readonly kind?: CompletionItemKind) {}
+}
+
+type CompletionProvider = {
+  provideCompletionItems(document: TextDocument, position: Position): Promise<CompletionItem[]>;
+};
+/** What the extension registered for completions, with the characters that start one. */
+export const completions: { selector: unknown; provider: CompletionProvider; triggers: string[] }[] = [];
+
+export const languages = {
+  registerCompletionItemProvider: (selector: unknown, provider: CompletionProvider, ...triggers: string[]) => {
+    completions.push({ selector, provider, triggers });
+    return { dispose: () => undefined };
+  },
+};
 
 export class WorkspaceEdit {
   readonly changes: { uri: Uri; range: Range; text: string }[] = [];

@@ -1,0 +1,449 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "DocPresenter Diagram",
+  "scopeName": "source.dgm",
+  "comment": "The .dgm drawing format (spec/dgm.md). Each section is a region of its own, because the same line means different things in each: `a -> b` is a connection in flow and a bend's key in layout. Nested blocks (a part's rows, a multi-line container) are regions inside their section so that their closing brace does not close the section.",
+  "patterns": [
+    { "include": "#comments" },
+    { "include": "#use" },
+    { "include": "#semantics" },
+    { "include": "#overlay" },
+    { "include": "#layout" },
+    { "include": "#style" },
+    { "include": "#parts" },
+    {
+      "comment": "Any other line at the top level is an error (§1).",
+      "match": "^\\s*[^\\s#].*$",
+      "name": "invalid.illegal.unrecognized.dgm"
+    }
+  ],
+  "repository": {
+    "comments": {
+      "patterns": [
+        {
+          "comment": "`# --- Buttons ---` heads a run of parts in a library.",
+          "match": "^\\s*(#\\s*-{2,}\\s*)(.+?)(\\s*-{2,})\\s*$",
+          "captures": {
+            "0": { "name": "comment.line.number-sign.dgm" },
+            "2": { "name": "markup.heading.dgm" }
+          }
+        },
+        {
+          "match": "^\\s*(#).*$",
+          "name": "comment.line.number-sign.dgm",
+          "captures": { "1": { "name": "punctuation.definition.comment.dgm" } }
+        }
+      ]
+    },
+
+    "use": {
+      "match": "^\\s*(use)\\s+(\"[^\"]*\")\\s*$",
+      "captures": {
+        "1": { "name": "keyword.control.import.dgm" },
+        "2": { "name": "string.quoted.double.path.dgm" }
+      }
+    },
+
+    "semantics": {
+      "begin": "^\\s*(free|flow)\\b([^{]*)(\\{)\\s*$",
+      "beginCaptures": {
+        "1": { "name": "keyword.control.section.dgm" },
+        "2": { "name": "entity.name.section.dgm" },
+        "3": { "name": "punctuation.section.block.begin.dgm" }
+      },
+      "end": "^\\s*(\\})\\s*$",
+      "endCaptures": { "1": { "name": "punctuation.section.block.end.dgm" } },
+      "name": "meta.section.semantics.dgm",
+      "patterns": [
+        { "include": "#comments" },
+        { "include": "#rows-inline" },
+        { "include": "#rows-block" },
+        { "include": "#group" },
+        { "include": "#line-node" },
+        { "include": "#connection" },
+        { "include": "#part-use" },
+        { "include": "#shape" }
+      ]
+    },
+
+    "rows-inline": {
+      "comment": "`nav tree: { }` — a part that holds rows, written empty on one line.",
+      "match": "^\\s*([A-Za-z0-9_぀-鿿-]+)\\s+([A-Za-z0-9_-]+)(:)\\s*(\\{)\\s*(\\})\\s*(?:(:::)([\\w-]+))?\\s*$",
+      "captures": {
+        "1": { "name": "entity.name.tag.dgm" },
+        "2": { "name": "support.class.part.dgm" },
+        "3": { "name": "punctuation.separator.part.dgm" },
+        "4": { "name": "punctuation.section.block.begin.dgm" },
+        "5": { "name": "punctuation.section.block.end.dgm" },
+        "6": { "name": "punctuation.definition.class.dgm" },
+        "7": { "name": "entity.other.attribute-name.class.dgm" }
+      }
+    },
+
+    "rows-block": {
+      "comment": "`nav tree: {` then a markdown list, one row per line, closed by `}`.",
+      "begin": "^\\s*([A-Za-z0-9_぀-鿿-]+)\\s+([A-Za-z0-9_-]+)(:)\\s*(\\{)\\s*$",
+      "beginCaptures": {
+        "1": { "name": "entity.name.tag.dgm" },
+        "2": { "name": "support.class.part.dgm" },
+        "3": { "name": "punctuation.separator.part.dgm" },
+        "4": { "name": "punctuation.section.block.begin.dgm" }
+      },
+      "end": "^\\s*(\\})\\s*$",
+      "endCaptures": { "1": { "name": "punctuation.section.block.end.dgm" } },
+      "patterns": [
+        { "include": "#comments" },
+        {
+          "match": "^\\s*([-+])\\s+(.*?)\\s*(\\*)?\\s*$",
+          "captures": {
+            "1": { "name": "punctuation.definition.list.begin.markdown.dgm" },
+            "2": { "name": "string.unquoted.label.dgm", "patterns": [{ "include": "#inline" }] },
+            "3": { "name": "keyword.operator.picked.dgm" }
+          }
+        }
+      ]
+    },
+
+    "group": {
+      "match": "^\\s*(group)\\s+([A-Za-z0-9_぀-鿿-]+)\\s*(\"[^\"]*\")?\\s*(\\{)([^}]*)(\\})\\s*$",
+      "captures": {
+        "1": { "name": "keyword.other.group.dgm" },
+        "2": { "name": "entity.name.tag.dgm" },
+        "3": { "name": "string.quoted.double.label.dgm", "patterns": [{ "include": "#inline" }] },
+        "4": { "name": "punctuation.section.braces.begin.dgm" },
+        "5": { "patterns": [{ "include": "#members" }] },
+        "6": { "name": "punctuation.section.braces.end.dgm" }
+      }
+    },
+
+    "members": {
+      "patterns": [
+        { "match": "[A-Za-z0-9_぀-鿿-]+", "name": "variable.other.dgm" },
+        { "match": ";", "name": "punctuation.separator.dgm" }
+      ]
+    },
+
+    "line-node": {
+      "comment": "`rule1 --` — a line that joins nothing. Read before connections, as the parser does.",
+      "match": "^\\s*([A-Za-z0-9_぀-鿿-]+?)\\s*(-{2,})\\s*$",
+      "captures": {
+        "1": { "name": "entity.name.tag.dgm" },
+        "2": { "name": "keyword.operator.shape.dgm" }
+      }
+    },
+
+    "connection": {
+      "match": "^\\s*([A-Za-z0-9_぀-鿿-]+)\\s*(-\\.->|-->|->|--)\\s*([A-Za-z0-9_぀-鿿-]+)\\s*(\"[^\"]*\")?\\s*$",
+      "captures": {
+        "1": { "name": "variable.other.dgm" },
+        "2": { "name": "keyword.operator.connector.dgm" },
+        "3": { "name": "variable.other.dgm" },
+        "4": { "name": "string.quoted.double.label.dgm", "patterns": [{ "include": "#inline" }] }
+      }
+    },
+
+    "part-use": {
+      "comment": "`idBox textbox:\"…\"` — a shape written as a part of the library.",
+      "match": "^\\s*([A-Za-z0-9_぀-鿿-]+)\\s+([A-Za-z0-9_-]+)(:)\\s*(\"[^\"]*\")?\\s*(?:(:::)([\\w-]+))?\\s*$",
+      "captures": {
+        "1": { "name": "entity.name.tag.dgm" },
+        "2": { "name": "support.class.part.dgm" },
+        "3": { "name": "punctuation.separator.part.dgm" },
+        "4": { "name": "string.quoted.double.label.dgm", "patterns": [{ "include": "#inline" }] },
+        "5": { "name": "punctuation.definition.class.dgm" },
+        "6": { "name": "entity.other.attribute-name.class.dgm" }
+      }
+    },
+
+    "shape": {
+      "comment": "The bracket pair is the shape (§3.1). Longer pairs are tried first, as the reader does.",
+      "match": "^\\s*([A-Za-z0-9_぀-鿿-]+)\\s*(\\[/|\\[\\\\|\\{\\{|\\(\\[|\\[\\(|\\(\\(|>|\\[|\\{|\\(|\")(.*?)(\\\\\\]|/\\]|\\}\\}|\\]\\)|\\)\\]|\\)\\)|\\]|\\}|\\)|\")\\s*(?:(:::)([\\w-]+))?\\s*$",
+      "captures": {
+        "1": { "name": "entity.name.tag.dgm" },
+        "2": { "name": "keyword.operator.shape.dgm" },
+        "3": { "name": "string.unquoted.label.dgm", "patterns": [{ "include": "#inline" }] },
+        "4": { "name": "keyword.operator.shape.dgm" },
+        "5": { "name": "punctuation.definition.class.dgm" },
+        "6": { "name": "entity.other.attribute-name.class.dgm" }
+      }
+    },
+
+    "inline": {
+      "comment": "The inline notation of spec/inline-text.md: strong, emphasis, code, colour, escapes. `_` is never a mark.",
+      "patterns": [
+        { "match": "\\\\.", "name": "constant.character.escape.dgm" },
+        {
+          "match": "(`)([^`]*)(`)",
+          "name": "markup.inline.raw.dgm",
+          "captures": {
+            "1": { "name": "punctuation.definition.raw.dgm" },
+            "3": { "name": "punctuation.definition.raw.dgm" }
+          }
+        },
+        {
+          "match": "(\\*\\*)(.+?)(\\*\\*)",
+          "name": "markup.bold.dgm",
+          "captures": {
+            "1": { "name": "punctuation.definition.bold.dgm" },
+            "3": { "name": "punctuation.definition.bold.dgm" }
+          }
+        },
+        {
+          "match": "(\\*)([^*\\s][^*]*?)(\\*)",
+          "name": "markup.italic.dgm",
+          "captures": {
+            "1": { "name": "punctuation.definition.italic.dgm" },
+            "3": { "name": "punctuation.definition.italic.dgm" }
+          }
+        },
+        {
+          "match": "(\\[)([^\\]]*)(\\])(\\{)(color)(=)(#(?:[0-9A-Fa-f]{6}|[0-9A-Fa-f]{3}))(\\})",
+          "captures": {
+            "1": { "name": "punctuation.definition.colour.begin.dgm" },
+            "3": { "name": "punctuation.definition.colour.end.dgm" },
+            "4": { "name": "punctuation.section.braces.begin.dgm" },
+            "5": { "name": "support.type.property-name.dgm" },
+            "6": { "name": "punctuation.separator.key-value.dgm" },
+            "7": { "name": "constant.other.color.rgb-value.dgm" },
+            "8": { "name": "punctuation.section.braces.end.dgm" }
+          }
+        }
+      ]
+    },
+
+    "point": {
+      "match": "(\\()\\s*(-?\\d+)\\s*(,)\\s*(-?\\d+)\\s*(\\))",
+      "captures": {
+        "1": { "name": "punctuation.section.parens.begin.dgm" },
+        "2": { "name": "constant.numeric.dgm" },
+        "3": { "name": "punctuation.separator.dgm" },
+        "4": { "name": "constant.numeric.dgm" },
+        "5": { "name": "punctuation.section.parens.end.dgm" }
+      }
+    },
+
+    "overlay": {
+      "begin": "^\\s*(overlay)\\b\\s*(\"[^\"]*\")?([^{]*)(\\{)\\s*$",
+      "beginCaptures": {
+        "1": { "name": "keyword.control.section.dgm" },
+        "2": { "name": "string.quoted.double.path.dgm" },
+        "3": { "name": "invalid.illegal.overlay-path.dgm" },
+        "4": { "name": "punctuation.section.block.begin.dgm" }
+      },
+      "end": "^\\s*(\\})\\s*$",
+      "endCaptures": { "1": { "name": "punctuation.section.block.end.dgm" } },
+      "name": "meta.section.overlay.dgm",
+      "patterns": [
+        { "include": "#comments" },
+        {
+          "match": "^\\s*(\\S+?)\\s*(@)\\s*(\\([^)]*\\))\\s*(->)\\s*(\\([^)]*\\))\\s*(\"[^\"]*\")?\\s*$",
+          "captures": {
+            "1": { "name": "entity.name.tag.marker.dgm" },
+            "2": { "name": "keyword.operator.at.dgm" },
+            "3": { "patterns": [{ "include": "#point" }] },
+            "4": { "name": "keyword.operator.connector.dgm" },
+            "5": { "patterns": [{ "include": "#point" }] },
+            "6": { "name": "string.quoted.double.label.dgm", "patterns": [{ "include": "#inline" }] }
+          }
+        }
+      ]
+    },
+
+    "layout": {
+      "begin": "^\\s*(layout)\\b([^{]*)(\\{)\\s*$",
+      "beginCaptures": {
+        "1": { "name": "keyword.control.section.dgm" },
+        "2": { "name": "entity.name.section.dgm" },
+        "3": { "name": "punctuation.section.block.begin.dgm" }
+      },
+      "end": "^\\s*(\\})\\s*$",
+      "endCaptures": { "1": { "name": "punctuation.section.block.end.dgm" } },
+      "name": "meta.section.layout.dgm",
+      "patterns": [
+        { "include": "#comments" },
+        { "include": "#container-inline" },
+        { "include": "#container-block" },
+        { "include": "#bend" },
+        { "include": "#pin" }
+      ]
+    },
+
+    "container-settings": {
+      "comment": "`(cols: 120, 1fr; gap: 8 12)` — how a container arranges what it holds.",
+      "patterns": [
+        { "match": "\\b(show)\\s*(:)\\s*([A-Za-z0-9_぀-鿿-]+)", "captures": {
+          "1": { "name": "support.type.property-name.dgm" },
+          "2": { "name": "punctuation.separator.key-value.dgm" },
+          "3": { "name": "variable.other.dgm" }
+        } },
+        { "match": "\\b(cols|gap|pad|show|scroll)\\s*(:)", "captures": {
+          "1": { "name": "support.type.property-name.dgm" },
+          "2": { "name": "punctuation.separator.key-value.dgm" }
+        } },
+        { "match": "\\b(down|right|scroll)\\b", "name": "support.constant.dgm" },
+        { "match": "\\b\\d+(?:\\.\\d+)?(fr)?\\b", "name": "constant.numeric.dgm" },
+        { "match": "\\bauto\\b", "name": "support.constant.dgm" },
+        { "match": "[;,]", "name": "punctuation.separator.dgm" }
+      ]
+    },
+
+    "container-inline": {
+      "match": "^\\s*(stack|grid|tabs)\\s+([A-Za-z0-9_぀-鿿-]+)\\s*(?:(\\()([^)]*)(\\)))?\\s*(\\{)([^}]*)(\\})\\s*$",
+      "captures": {
+        "1": { "name": "keyword.other.container.dgm" },
+        "2": { "name": "entity.name.tag.dgm" },
+        "3": { "name": "punctuation.section.parens.begin.dgm" },
+        "4": { "patterns": [{ "include": "#container-settings" }] },
+        "5": { "name": "punctuation.section.parens.end.dgm" },
+        "6": { "name": "punctuation.section.braces.begin.dgm" },
+        "7": { "patterns": [{ "include": "#members" }] },
+        "8": { "name": "punctuation.section.braces.end.dgm" }
+      }
+    },
+
+    "container-block": {
+      "begin": "^\\s*(stack|grid|tabs)\\s+([A-Za-z0-9_぀-鿿-]+)\\s*(?:(\\()([^)]*)(\\)))?\\s*(\\{)([^}]*)$",
+      "beginCaptures": {
+        "1": { "name": "keyword.other.container.dgm" },
+        "2": { "name": "entity.name.tag.dgm" },
+        "3": { "name": "punctuation.section.parens.begin.dgm" },
+        "4": { "patterns": [{ "include": "#container-settings" }] },
+        "5": { "name": "punctuation.section.parens.end.dgm" },
+        "6": { "name": "punctuation.section.braces.begin.dgm" },
+        "7": { "patterns": [{ "include": "#members" }] }
+      },
+      "end": "^\\s*(\\})\\s*$",
+      "endCaptures": { "1": { "name": "punctuation.section.braces.end.dgm" } },
+      "patterns": [
+        { "include": "#comments" },
+        { "include": "#members" }
+      ]
+    },
+
+    "bend": {
+      "match": "^\\s*([A-Za-z0-9_぀-鿿-]+?)\\s*(-+>)\\s*([A-Za-z0-9_぀-鿿-]+)\\s*(@)(.*)$",
+      "captures": {
+        "1": { "name": "variable.other.dgm" },
+        "2": { "name": "keyword.operator.connector.dgm" },
+        "3": { "name": "variable.other.dgm" },
+        "4": { "name": "keyword.operator.at.dgm" },
+        "5": { "patterns": [
+          { "include": "#point" },
+          { "match": ";", "name": "punctuation.separator.dgm" }
+        ] }
+      }
+    },
+
+    "pin": {
+      "match": "^\\s*([A-Za-z0-9_぀-鿿-]+)\\s*(@)\\s*(\\(\\s*-?\\d+\\s*,\\s*-?\\d+\\s*\\))\\s*(?:(\\d+)(x)(\\d+))?\\s*(?:(z)\\s*(:)\\s*(-?\\d+))?\\s*$",
+      "captures": {
+        "1": { "name": "variable.other.dgm" },
+        "2": { "name": "keyword.operator.at.dgm" },
+        "3": { "patterns": [{ "include": "#point" }] },
+        "4": { "name": "constant.numeric.width.dgm" },
+        "5": { "name": "keyword.operator.size.dgm" },
+        "6": { "name": "constant.numeric.height.dgm" },
+        "7": { "name": "support.type.property-name.dgm" },
+        "8": { "name": "punctuation.separator.key-value.dgm" },
+        "9": { "name": "constant.numeric.dgm" }
+      }
+    },
+
+    "style": {
+      "begin": "^\\s*(style)\\b([^{]*)(\\{)\\s*$",
+      "beginCaptures": {
+        "1": { "name": "keyword.control.section.dgm" },
+        "2": { "name": "entity.name.section.dgm" },
+        "3": { "name": "punctuation.section.block.begin.dgm" }
+      },
+      "end": "^\\s*(\\})\\s*$",
+      "endCaptures": { "1": { "name": "punctuation.section.block.end.dgm" } },
+      "name": "meta.section.style.dgm",
+      "patterns": [
+        { "include": "#comments" },
+        {
+          "match": "^\\s*(theme)\\s*(:)\\s*(\\S+)\\s*$",
+          "captures": {
+            "1": { "name": "keyword.other.theme.dgm" },
+            "2": { "name": "punctuation.separator.key-value.dgm" },
+            "3": { "name": "support.constant.theme.dgm" }
+          }
+        },
+        {
+          "match": "^\\s*([A-Za-z0-9_぀-鿿-]+)\\s*(\\{)([^}]*)(\\})\\s*$",
+          "captures": {
+            "1": { "name": "variable.other.dgm" },
+            "2": { "name": "punctuation.section.braces.begin.dgm" },
+            "3": { "patterns": [{ "include": "#declarations" }] },
+            "4": { "name": "punctuation.section.braces.end.dgm" }
+          }
+        }
+      ]
+    },
+
+    "declarations": {
+      "patterns": [
+        {
+          "match": "([\\w-]+)\\s*(:)\\s*([^,;]*)",
+          "captures": {
+            "1": { "name": "support.type.property-name.dgm" },
+            "2": { "name": "punctuation.separator.key-value.dgm" },
+            "3": { "patterns": [{ "include": "#value" }] }
+          }
+        },
+        { "match": "[,;]", "name": "punctuation.separator.dgm" }
+      ]
+    },
+
+    "value": {
+      "comment": "A colour the author chose, or a token the theme resolves (§7.3).",
+      "patterns": [
+        { "match": "#(?:[0-9A-Fa-f]{6}|[0-9A-Fa-f]{3})\\b", "name": "constant.other.color.rgb-value.dgm" },
+        { "match": "\\S+\\.(?:svg|png)\\b", "name": "string.unquoted.path.dgm" },
+        { "match": "\\b\\d+(?:\\.\\d+)?\\b", "name": "constant.numeric.dgm" },
+        { "match": "[^\\s,;]+", "name": "support.constant.dgm" }
+      ]
+    },
+
+    "parts": {
+      "begin": "^\\s*(parts)\\b([^{]*)(\\{)\\s*$",
+      "beginCaptures": {
+        "1": { "name": "keyword.control.section.dgm" },
+        "2": { "name": "entity.name.section.dgm" },
+        "3": { "name": "punctuation.section.block.begin.dgm" }
+      },
+      "end": "^\\s*(\\})\\s*$",
+      "endCaptures": { "1": { "name": "punctuation.section.block.end.dgm" } },
+      "name": "meta.section.parts.dgm",
+      "patterns": [
+        { "include": "#comments" },
+        {
+          "comment": "`textbox [ ] { fill: …, line: … } 320x34` — a name, a shape, a look, a size.",
+          "match": "^\\s*([A-Za-z0-9_-]+)\\s+(.*)$",
+          "captures": {
+            "1": { "name": "entity.name.type.part.dgm" },
+            "2": { "patterns": [
+              {
+                "match": "(\\{)([^}]*)(\\})",
+                "captures": {
+                  "1": { "name": "punctuation.section.braces.begin.dgm" },
+                  "2": { "patterns": [{ "include": "#declarations" }] },
+                  "3": { "name": "punctuation.section.braces.end.dgm" }
+                }
+              },
+              {
+                "match": "\\b(\\d+)(x)(\\d+)\\s*$",
+                "captures": {
+                  "1": { "name": "constant.numeric.width.dgm" },
+                  "2": { "name": "keyword.operator.size.dgm" },
+                  "3": { "name": "constant.numeric.height.dgm" }
+                }
+              },
+              { "match": "-{2,}|[\\[\\](){}/\\\\>\"]", "name": "keyword.operator.shape.dgm" }
+            ] }
+          }
+        }
+      ]
+    }
+  }
+}

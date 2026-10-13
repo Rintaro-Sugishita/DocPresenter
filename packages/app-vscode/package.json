@@ -11,6 +11,21 @@
   "categories": ["Other"],
   "main": "./media/extension.cjs",
   "contributes": {
+    "languages": [
+      {
+        "id": "dgm",
+        "aliases": ["DocPresenter Diagram", "dgm"],
+        "extensions": [".dgm"],
+        "configuration": "./syntaxes/dgm.language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "dgm",
+        "scopeName": "source.dgm",
+        "path": "./syntaxes/dgm.tmLanguage.json"
+      }
+    ],
     "customEditors": [
       {
         "viewType": "docpresenter.sheets",

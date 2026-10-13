@@ -2,9 +2,11 @@
 //
 // Registered and nothing else at start-up: the editor for documents and for
 // drawings on their own, the export buttons' commands, the commands that
-// write every document at once, and the one that sets a folder up.
+// write every document at once, the one that sets a folder up, and the
+// suggestions in a drawing opened as text.
 
 import * as vscode from 'vscode';
+import { registerDgmLanguage } from './dgm-language.js';
 import { exportAll, FORMAT_LABEL } from './export-command.js';
 import { initWorkspace } from './init-command.js';
 import { newDocument } from './document-command.js';
@@ -75,6 +77,8 @@ export function activate(context: vscode.ExtensionContext): void {
     // The explorer hands over the PDF right-clicked and every one selected with it.
     vscode.commands.registerCommand('docpresenter.importPdfReview',
       (uri?: vscode.Uri, selected?: vscode.Uri[]) => importReview(output, uri, selected)),
+    // A drawing written by hand: what fits where the cursor is.
+    registerDgmLanguage(),
   );
 }
 

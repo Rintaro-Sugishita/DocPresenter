@@ -73,6 +73,20 @@ The templates and theme set up by the command are **files in your repository**: 
 - Every edit is written back as **one byte range per action**. Undo, the unsaved dot and the Git diff all work as usual,
   because edits are handed to VS Code as a `WorkspaceEdit`.
 
+### Writing a `.dgm` as text
+
+Opened as text (the usual way, without "Open in DocPresenter"), a `.dgm` is coloured by layer and offers suggestions as you type:
+
+- **At the top**: the sections (`flow` / `free` / `overlay` / `layout` / `style` / `parts`) and `use "…"`. Inside the quotes
+  of `use`: `default`, `icons`, and the workspace's files of parts, written relative to this drawing.
+- **After a shape's id**: the twelve bracket pairs (`[ ]`, `([ ])`, `[( )]` …), the parts the drawing's libraries declare
+  (`textbox:` …), and the connectors. **After a connector**: the shapes not yet joined from that one.
+- **In `layout`**: the shapes with no pin yet, the connections with no corner yet, and the containers (`stack` / `grid` / `tabs`)
+  with their settings and contents.
+- **In `style`**: the shapes with no rule yet, the properties (`fill`, `line`, `icon` …) and their values (`dashed`, `net/router` …).
+
+`#` comments the line (Ctrl+/), and errors at the top level are shown in red, as the format refuses them.
+
 ## Renaming figures and tables
 
 Hover over a figure or table and **"Name, caption, label"** appears at its top right (right-clicking a figure does the same).
