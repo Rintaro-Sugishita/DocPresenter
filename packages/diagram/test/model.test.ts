@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { sliceBytes } from '@docpresenter/base';
+import { applyEdit, sliceBytes } from '@docpresenter/base';
 import {
-  DiagramParseError, layOutDiagram, parseDiagram, parseRuns, specimenOf, withParts, wrapRuns,
+  DiagramParseError, layOutDiagram, parseDiagram, parseRuns, pinNode, specimenOf, withParts, wrapRuns,
   wrapText,
 } from '../src/index.js';
 
@@ -142,6 +142,25 @@ describe('折れ線', () => {
     expect(route.points[1]).toEqual({
       x: 0 + laid.origin.x, y: 300 + laid.origin.y,
     });
+  });
+
+  it('折れ点より下に書いた位置・折れ点・入れ物も読む', () => {
+    const d = parseDiagram([
+      'free {', '  a [A]', '  b [B]', '  c [C]', '  a --> b', '  b --> c', '}', '',
+      'layout {', '  a -> b @ (0, 300)', '  a @ (0, 0)', '  b -> c @ (300, 0)',
+      '  stack s (down) { b; c }', '}',
+    ].join('\n'));
+    expect([...d.layout.keys()]).toEqual(['a']);
+    expect([...d.bends.keys()]).toEqual(['a->b', 'b->c']);
+    expect([...d.containers.keys()]).toEqual(['s']);
+  });
+
+  it('折れ点のある図で図形を動かすと、末尾に足した位置が次に読んでも残る', () => {
+    // 書き手は layout の末尾に足すので、新しい位置は既にある折れ点の下に来る
+    const source = SOURCE.replace('  b @ (300, 300)\n', '');
+    const written = applyEdit(source, pinNode(parseDiagram(source), source, 'b', { x: 400, y: 120 }));
+    expect(written.indexOf('b @ (400, 120)')).toBeGreaterThan(written.indexOf('a -> b @'));
+    expect(parseDiagram(written).layout.get('b')).toMatchObject({ x: 400, y: 120 });
   });
 
   it('折れ点が無ければこれまで通り 2 点', () => {

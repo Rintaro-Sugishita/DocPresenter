@@ -507,7 +507,7 @@ function parseLayout(
         throw new DiagramParseError(dgm('diagram.parse.unreadableBend', { text }), source.number);
       }
       bends.set(`${bend[1]}->${bend[2]}`, { points, span: source.span });
-      return;
+      continue;
     }
 
     const m = PLACEMENT.exec(text);
