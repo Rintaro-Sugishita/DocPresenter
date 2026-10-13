@@ -29,6 +29,7 @@ import { DIAGRAM_STYLE } from '@docpresenter/diagram';
 import { createToolbar } from '@docpresenter/base';
 import { mountPicture, type Align, type PictureControls } from './picture.js';
 import { openFigureNames, type FigureNamesForm } from './figure-names.js';
+import { createHistory, redoing, undoKey, undoing, type History } from '../history.js';
 
 export interface SheetViewOptions {
   readonly root: HTMLElement;
@@ -93,6 +94,12 @@ export interface SheetViewOptions {
    * — Mermaid, which needs a library the editor does not carry.
    */
   readonly decorate?: (page: HTMLElement) => void;
+  /**
+   * What Ctrl+Z takes back. A host that mounts the view again — because a
+   * picture arrived, or a file changed — passes the same one each time, so the
+   * history outlives the view. Without it the view keeps its own.
+   */
+  readonly history?: History;
 }
 
 /** What can be added to a sheet, besides prose. */
@@ -150,6 +157,7 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
   } | undefined;
   let settings = options.settings ?? DEFAULT_SETTINGS;
   let t = EDITOR_MESSAGES.in(settings.locale);
+  const history = options.history ?? createHistory();
   /** An error in the author's language, when it can say itself in theirs. */
   const explain = (error: unknown): string => describeError(error, settings.locale);
 
@@ -610,9 +618,14 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
           if (canvas?.path === path) canvas = { ...canvas, path: moved };
           if (picture?.path === path) picture = { path: moved };
         }
+        // The file has moved, and taking back the line that names it would
+        // leave the document pointing at a file that is not there. The history
+        // before it describes a file under its old name, so it goes too.
+        if (moved !== path) history.clear();
         if (change) {
           const done = change;
-          commit(() => ({ ...done, ...described(ed('editor.did.names', { path: moved })) }), active);
+          commit(() => ({ ...done, ...described(ed('editor.did.names', { path: moved })) }), active,
+            moved === path);
         } else if (moved !== path) {
           draw();
         }
@@ -676,6 +689,7 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
       // so that a redraw after an edit can put it back.
       move: next => { if (grid) grid = { ...grid, at: next }; },
       onTarget: target => { if (grid) grid = { ...grid, target }; },
+      undo: travel,
       showSource: () => {
         grid = undefined;
         const source = options.readResource?.(current.path) ?? '';
@@ -1105,12 +1119,12 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
    * Markdown makes an unparsable document reachable, and a broken editor is
    * worse than a refused keystroke.
    */
-  function commit(make: () => Edit, select: number): void {
+  function commit(make: () => Edit, select: number, record = true): boolean {
     let edit: Edit;
     try {
       edit = make();
     } catch (error) {
-      if (error instanceof SheetEditError) { options.onError?.(explain(error)); return; }
+      if (error instanceof SheetEditError) { options.onError?.(explain(error)); return false; }
       throw error;
     }
 
@@ -1120,7 +1134,8 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
       edit.path === undefined ? source : before ?? '', edit,
     );
     if (edit.path === undefined) source = written;
-    options.onChange?.(localizeEdit(edit, settings.locale), written);
+    const said = localizeEdit(edit, settings.locale);
+    options.onChange?.(said, written);
 
     try {
       active = Math.max(1, Math.min(select, sheets().length));
@@ -1132,7 +1147,39 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
       }
       draw();
       options.onError?.(explain(error));
+      return false;
     }
+    // A file that did not exist before has no text to go back to. Writing an
+    // empty one would not be taking the edit back.
+    const from = edit.path === undefined ? previous : before;
+    if (record && from !== undefined) {
+      history.record({ path: edit.path, before: from, after: written, description: said.description, sheet: active });
+    }
+    return true;
+  }
+
+  /**
+   * Takes the last edit back, or makes the last one taken back again, as one
+   * more byte-range edit through `commit` — so the host writes it like any
+   * other, and a VS Code undo would take *that* back.
+   */
+  function travel(redo: boolean): void {
+    const step = redo ? history.nextRedo() : history.nextUndo();
+    if (!step) return;
+    const current = step.path === undefined ? source : options.readResource?.(step.path);
+    const change = redo ? redoing(step, current) : undoing(step, current);
+    if (!change) {
+      history.clear();
+      options.onError?.(t(redo ? 'editor.redo.stale' : 'editor.undo.stale', { what: step.description }));
+      return;
+    }
+    const done = commit(() => ({
+      ...change,
+      path: step.path,
+      description: t(redo ? 'editor.did.redoOf' : 'editor.did.undoOf', { what: step.description }),
+    }), step.sheet, false);
+    if (!done) return;
+    if (redo) history.redone(); else history.undone();
   }
 
   /** Rebuilds everything. Only an edit needs this. */
@@ -1371,7 +1418,19 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
   }
 
   // Ctrl+PageUp / PageDown move between sheets, as in a spreadsheet.
+  // Ctrl+Z / Ctrl+Y (or Ctrl+Shift+Z) undo and redo — unless a box that takes
+  // text has the keyboard, where they belong to what is being typed.
   const onKeyDown = (event: KeyboardEvent): void => {
+    const step = undoKey(event);
+    if (step !== undefined) {
+      if (readOnly || editing || takesText(event.target)) return;
+      event.preventDefault();
+      // Stopped here so that a host listening further out — VS Code forwards
+      // the keys a webview leaves alone — does not undo the document as well.
+      event.stopPropagation();
+      travel(step === 'redo');
+      return;
+    }
     if (!event.ctrlKey || editing) return;
     if (event.key === 'PageDown') { event.preventDefault(); select(active + 1); }
     if (event.key === 'PageUp') { event.preventDefault(); select(active - 1); }
@@ -1419,6 +1478,13 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
       root.classList.remove('dp-editor');
     },
   };
+}
+
+/** A text box, a text area or anything editable: it has an undo of its own. */
+function takesText(target: EventTarget | null): boolean {
+  const node = target as HTMLElement | null;
+  if (!node || typeof node.closest !== 'function') return false;
+  return node.isContentEditable || node.closest('input, textarea, select') !== null;
 }
 
 function injectStyle(document: Document): void {

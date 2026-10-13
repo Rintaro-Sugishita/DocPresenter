@@ -18,6 +18,7 @@ import {
 } from '@docpresenter/markdown';
 import { BASE_MESSAGES, DEFAULT_LOCALE, type Edit, type Locale } from '@docpresenter/base';
 import { EDITOR_MESSAGES } from '../messages.js';
+import { undoKey } from '../history.js';
 import {
   formatTable, insertColumn, insertRow, parseClipboardGrid, pasteGrid,
   mergeDown, mergeLoses, mergeRange, mergeRight, removeColumn, removeRow, setAlign,
@@ -49,6 +50,11 @@ export interface GridOptions {
   readonly onTarget: (target: string) => void;
   /** Leaves the grid and shows the source instead. */
   readonly showSource: () => void;
+  /**
+   * Undo (or redo, with true). The grid's selection lives in a text box, so the
+   * keys reach the box first; while no cell is open they are the host's.
+   */
+  readonly undo?: ((redo: boolean) => void) | undefined;
   /** Which language the bars and menus speak. */
   readonly locale?: Locale | undefined;
 }
@@ -357,6 +363,13 @@ export function createGrid(options: GridOptions): Grid {
       event.stopPropagation();
       // While composing, every key belongs to the IME.
       if (event.isComposing) return;
+      // An open cell undoes its own typing; a closed one undoes the last edit.
+      const travel = editing ? undefined : undoKey(event);
+      if (travel) {
+        event.preventDefault();
+        options.undo?.(travel === 'redo');
+        return;
+      }
       const step = (row: number, column: number, extend = false): void => {
         event.preventDefault();
         if (editing) commit({ row, column });

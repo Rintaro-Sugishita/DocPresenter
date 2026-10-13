@@ -1403,7 +1403,8 @@ export function createCanvas(options: CanvasOptions): Canvas {
   }
 
   /**
-   * Says what else goes with it. There is no undo, so it is said beforehand.
+   * Says what else goes with it. Ctrl+Z brings it back, but a connection
+   * that went with a shape is easy not to notice going, so it is said beforehand.
    * Deleting a group is an ungrouping: the line that names its contents goes,
    * and the contents stay where they are.
    */
@@ -1589,8 +1590,9 @@ export function createCanvas(options: CanvasOptions): Canvas {
       event.preventDefault();
       const ids = [...picked];
       const going = new Set(ids);
-      // Nothing here can be undone, so a deletion that takes connections with
-      // it is confirmed where the shape is, the way the grid confirms a merge.
+      // A deletion that takes connections with it is confirmed where the shape
+      // is, the way the grid confirms a merge: Ctrl+Z would bring them back,
+      // but only if anyone noticed they had gone.
       if (file.edges.some(e => going.has(e.from) || going.has(e.to))) {
         const box = boxOf(at);
         const rect = drawing.getBoundingClientRect();

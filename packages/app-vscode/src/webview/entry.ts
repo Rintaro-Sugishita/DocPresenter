@@ -10,7 +10,7 @@ import { isLocale, toLf } from '@docpresenter/base';
 import { VSCODE_MESSAGES } from '../messages.js';
 import { joinPath, parseDocument, renderDocument, resolveDocument } from '@docpresenter/markdown';
 import {
-  DEFAULT_SETTINGS, mountSheetView, starterResource,
+  createHistory, DEFAULT_SETTINGS, mountSheetView, starterResource,
   type EditorSettings, type Picture, type ResourceKind, type SheetView,
 } from '@docpresenter/editor';
 import { drawMermaid } from '@docpresenter/editor/mermaid';
@@ -36,6 +36,14 @@ let settings: EditorSettings = DEFAULT_SETTINGS;
 /** A `.dgm` opened on its own: `source` is only the line that shows it. */
 let drawingOnly = false;
 let view: SheetView | undefined;
+/**
+ * What Ctrl+Z takes back. Kept out here because the view is mounted again
+ * whenever a file changes or a picture arrives, and the history must outlive
+ * that. VS Code's own undo knows only the document on screen; an edit to a
+ * drawing or a table is written to another file, so it is this that takes
+ * those back. A step whose file changed since is refused, not forced.
+ */
+let history = createHistory();
 /** Puts the shipped theme back, while the workspace's own is on screen. */
 let restoreTheme: (() => void) | undefined;
 
@@ -84,6 +92,7 @@ function mount(): void {
     source,
     render,
     settings,
+    history,
     readResource: path => files[here(path)],
     listResources: () => Object.keys(files)
       .filter(path => /\.(dgm|table|mmd|ermlx)$/i.test(path))
@@ -161,6 +170,7 @@ window.addEventListener('message', (event: MessageEvent<ToView>) => {
   const message = event.data;
   if (message.kind === 'open') {
     documentPath = message.path;
+    history = createHistory();
     // The files come as they are on disk; the screen measures every range on
     // their LF text, so a range means the same on every machine (protocol.ts).
     source = toLf(message.source);

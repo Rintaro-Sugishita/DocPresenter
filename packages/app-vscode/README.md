@@ -72,6 +72,9 @@ The templates and theme set up by the command are **files in your repository**: 
   - A `.dgm` opens just that diagram. Click it to edit; only that `.dgm` changes.
 - Every edit is written back as **one byte range per action**. Undo, the unsaved dot and the Git diff all work as usual,
   because edits are handed to VS Code as a `WorkspaceEdit`.
+- On the screen, **Ctrl+Z undoes and Ctrl+Y (Ctrl+Shift+Z) redoes**. Diagrams and tables live in files of their own,
+  which VS Code's undo does not reach; the screen's undo takes those back too, again as one edit.
+  A file changed elsewhere since is never written over.
 
 ### Writing a `.dgm` as text
 
