@@ -2,7 +2,7 @@
 // left out, and what `.git` says about the commit.
 
 import { readdirSync, readFileSync, statSync } from 'node:fs';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   compose, gather, headOf, heldWorkspace, nodeOfEntry, nodeOfHandle, readFolder, type FolderNode,
@@ -29,7 +29,7 @@ function folder(name: string, tree: Tree, opened: string[] = []): FolderNode {
 function onDisk(path: string): FolderNode {
   const directory = statSync(path).isDirectory();
   return {
-    name: path.slice(path.lastIndexOf('/') + 1),
+    name: basename(path),
     kind: directory ? 'directory' : 'file',
     children: async () => (directory ? readdirSync(path).map(child => onDisk(join(path, child))) : []),
     file: async () => new Blob([readFileSync(path)]),
