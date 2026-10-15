@@ -74,7 +74,8 @@ export function asLf(workspace: Workspace): Workspace {
 }
 const LF = new WeakSet<Workspace>();
 
-export type Severity = 'error' | 'warning';
+/** `info` is said and nothing more: the normal state of something half done. */
+export type Severity = 'error' | 'warning' | 'info';
 
 /**
  * Something the build has to say. Unlike a parse diagnostic it names a file,
@@ -88,6 +89,8 @@ export interface BuildDiagnostic {
   readonly id?: string;
   readonly path: string;
   readonly span?: { readonly start: number; readonly end: number };
+  /** 1-based, for a file that could not be read at all and so has no range to give. */
+  readonly line?: number;
 }
 
 export function hasError(diagnostics: readonly BuildDiagnostic[]): boolean {

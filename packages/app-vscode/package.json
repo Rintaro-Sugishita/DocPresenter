@@ -45,8 +45,10 @@
       { "command": "docpresenter.newDocument", "title": "%command.newDocument.title%", "category": "DocPresenter" },
       { "command": "docpresenter.newDiagram", "title": "%command.newDiagram.title%", "category": "DocPresenter" },
       { "command": "docpresenter.openEditor", "title": "%command.openEditor.title%", "category": "DocPresenter" },
+      { "command": "docpresenter.openToSide", "title": "%command.openToSide.title%", "category": "DocPresenter", "icon": "$(open-preview)" },
       { "command": "docpresenter.build", "title": "%command.build.title%", "category": "DocPresenter" },
       { "command": "docpresenter.buildAs", "title": "%command.buildAs.title%", "category": "DocPresenter" },
+      { "command": "docpresenter.check", "title": "%command.check.title%", "category": "DocPresenter" },
       { "command": "docpresenter.exportHtml", "title": "%command.exportHtml.title%", "category": "DocPresenter" },
       { "command": "docpresenter.exportPdf", "title": "%command.exportPdf.title%", "category": "DocPresenter" },
       { "command": "docpresenter.exportPptx", "title": "%command.exportPptx.title%", "category": "DocPresenter" },
@@ -55,10 +57,14 @@
     ],
     "menus": {
       "editor/title": [
+        { "command": "docpresenter.openToSide", "when": "resourceExtname =~ /^\\.(md|dgm)$/ && !activeCustomEditorId", "group": "navigation" },
         { "command": "docpresenter.openEditor", "when": "resourceExtname =~ /^\\.(md|dgm)$/ && !activeCustomEditorId", "group": "navigation" },
         { "command": "docpresenter.exportHtml", "when": "activeCustomEditorId == docpresenter.sheets", "group": "docpresenter@1" },
         { "command": "docpresenter.exportPdf", "when": "activeCustomEditorId == docpresenter.sheets", "group": "docpresenter@2" },
         { "command": "docpresenter.exportPptx", "when": "activeCustomEditorId == docpresenter.sheets", "group": "docpresenter@3" }
+      ],
+      "editor/context": [
+        { "command": "docpresenter.openToSide", "when": "resourceExtname =~ /^\\.(md|dgm)$/ && !activeCustomEditorId", "group": "navigation@9" }
       ],
       "explorer/context": [
         { "command": "docpresenter.newDocument", "when": "explorerResourceIsFolder", "group": "navigation@8" },
@@ -69,16 +75,21 @@
       ],
       "commandPalette": [
         { "command": "docpresenter.init", "when": "workspaceFolderCount > 0" },
+        { "command": "docpresenter.check", "when": "workspaceFolderCount > 0" },
         { "command": "docpresenter.newDocument", "when": "workspaceFolderCount > 0" },
         { "command": "docpresenter.newDiagram", "when": "workspaceFolderCount > 0" },
         { "command": "docpresenter.readBackPptx", "when": "workspaceFolderCount > 0" },
         { "command": "docpresenter.importPdfReview", "when": "workspaceFolderCount > 0" },
         { "command": "docpresenter.openEditor", "when": "resourceExtname =~ /^\\.(md|dgm)$/" },
+        { "command": "docpresenter.openToSide", "when": "resourceExtname =~ /^\\.(md|dgm)$/" },
         { "command": "docpresenter.exportHtml", "when": "activeCustomEditorId == docpresenter.sheets" },
         { "command": "docpresenter.exportPdf", "when": "activeCustomEditorId == docpresenter.sheets" },
         { "command": "docpresenter.exportPptx", "when": "activeCustomEditorId == docpresenter.sheets" }
       ]
     },
+    "keybindings": [
+      { "command": "docpresenter.openToSide", "key": "ctrl+k v", "mac": "cmd+k v", "when": "editorLangId == dgm" }
+    ],
     "configuration": {
       "title": "DocPresenter",
       "properties": {

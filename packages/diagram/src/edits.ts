@@ -823,7 +823,7 @@ export function reconnect(
   }
   const line = sliceBytes(source, found.span.start, found.span.end);
   const written = line.replace(
-    /^(\S+)(\s*)(-->|->|--|-\.->)(\s*)(\S+)/,
+    /^(\S+?)(\s*)(<-->|<->|<-\.->|-->|->|--|-\.->)(\s*)(\S+)/,
     (_whole, _a, before: string, arrow: string, after: string) =>
       `${from}${before}${arrow}${after}${to}`,
   );
@@ -869,7 +869,8 @@ function nodeLine(node: Node, shape: ShapeKind, text: string, gap = ' '): string
 }
 
 function groupLine(group: Node, children: readonly string[]): string {
-  return `group ${group.id} "${group.text}" { ${children.join('; ')} }`;
+  const way = group.direction === undefined ? '' : ` ${group.direction}`;
+  return `group ${group.id} "${group.text}"${way} { ${children.join('; ')} }`;
 }
 
 /**

@@ -48,10 +48,27 @@ export enum CompletionItemKind {
 export class CompletionItem {
   insertText?: string | SnippetString;
   range?: Range;
-  detail?: string;
   sortText?: string;
   command?: { title: string; command: string };
-  constructor(readonly label: string, readonly kind?: CompletionItemKind) {}
+  /** The name the list shows; VS Code's label may also carry the words beside it. */
+  readonly label: string;
+  /** The words drawn right after the name, on every row (the label's `detail`). */
+  readonly labelDetail: string | undefined;
+  /** Shown only on the row the cursor is on. */
+  readonly description: string | undefined;
+  constructor(
+    label: string | { label: string; detail?: string; description?: string }, readonly kind?: CompletionItemKind,
+  ) {
+    this.label = typeof label === 'string' ? label : label.label;
+    this.labelDetail = typeof label === 'string' ? undefined : label.detail;
+    this.description = typeof label === 'string' ? undefined : label.description;
+  }
+}
+
+export enum DiagnosticSeverity { Error = 0, Warning = 1, Information = 2, Hint = 3 }
+
+export class Diagnostic {
+  constructor(readonly range: Range, readonly message: string, readonly severity: DiagnosticSeverity) {}
 }
 
 type CompletionProvider = {

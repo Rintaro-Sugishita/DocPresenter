@@ -8,6 +8,7 @@
   "scripts": {
     "test": "vitest run",
     "typecheck": "tsc --build",
+    "check": "tsc --build && node tools/check.mjs",
     "build:vscode": "tsc --build && node tools/build-vscode.mjs"
   },
   "devDependencies": {

@@ -34,6 +34,14 @@ export interface Item {
   readonly picked: boolean;
 }
 
+/**
+ * Which way a flow runs, written as Mermaid writes it: top to bottom, bottom to
+ * top, left to right, right to left. `TD` is Mermaid's other spelling of `TB`
+ * and is kept as written, so a group line rewritten by the editor does not
+ * change a word nobody touched.
+ */
+export type FlowDirection = 'TB' | 'TD' | 'BT' | 'LR' | 'RL';
+
 export interface Node {
   readonly id: string;
   readonly text: string;
@@ -47,6 +55,11 @@ export interface Node {
   readonly className: string | undefined;
   /** Ids contained by a group. */
   readonly children: readonly string[];
+  /**
+   * A group only: the way its own contents run, when it says. Absent means the
+   * way the drawing around it runs.
+   */
+  readonly direction?: FlowDirection;
   /** The shape's own line, so renaming one shape rewrites one line. */
   readonly span: ByteSpan;
 }
@@ -57,7 +70,8 @@ export interface Point {
 }
 
 export type EdgeStyle = 'solid' | 'dashed';
-export type ArrowStyle = 'none' | 'arrow';
+/** No head, a head at the far end, or one at each end (`<-->`). */
+export type ArrowStyle = 'none' | 'arrow' | 'both';
 
 export interface Edge {
   readonly from: string;
@@ -213,6 +227,8 @@ export interface Container {
 
 export interface DiagramFile {
   readonly mode: DiagramMode;
+  /** The way a `flow` runs, from its heading. Absent means top to bottom. */
+  readonly direction: FlowDirection | undefined;
   readonly comments: readonly string[];
   readonly nodes: readonly Node[];
   readonly edges: readonly Edge[];

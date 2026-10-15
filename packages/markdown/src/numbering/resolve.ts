@@ -51,7 +51,7 @@ export function resolveDocument(document: DocumentFile, locale: Locale = DEFAULT
       diagnostics.push({
         severity: 'error',
         message: t('markdown.duplicateLabel', { label: element.label }),
-        span: block.span,
+        span: block.span, ...from(block),
       });
       continue;
     }
@@ -69,7 +69,7 @@ export function resolveDocument(document: DocumentFile, locale: Locale = DEFAULT
         diagnostics.push({
           severity: 'error',
           message: t('markdown.missing', { target: `@${reference.label}` }),
-          span: reference.span,
+          span: reference.span, ...from(block),
         });
         continue;
       }
@@ -101,7 +101,7 @@ export function resolveDocument(document: DocumentFile, locale: Locale = DEFAULT
         diagnostics.push({
           severity: 'warning',
           message: t('markdown.unknownAttribute', { name }),
-          span: block.span,
+          span: block.span, ...from(block),
         });
       }
     }
@@ -120,6 +120,11 @@ export function resolveDocument(document: DocumentFile, locale: Locale = DEFAULT
   }
 }
 
+/** The file a block came from, when a build pulled it in from another. */
+function from(block: Block): { doc?: string } {
+  return block.doc === undefined ? {} : { doc: block.doc };
+}
+
 function kindOfLabel(label: string | undefined): ElementKind | undefined {
   if (!label) return undefined;
   const prefix = label.slice(0, label.indexOf('-'));
@@ -134,7 +139,7 @@ function kindOfImport(block: Import, diagnostics: Diagnostic[], locale: Locale):
     diagnostics.push({
       severity: 'warning',
       message: MARKDOWN_MESSAGES.in(locale)('markdown.kindMismatch', { label: block.label ?? '', path: block.path }),
-      span: block.span,
+      span: block.span, ...from(block),
     });
   }
   return byLabel ?? byExtension ?? 'other';

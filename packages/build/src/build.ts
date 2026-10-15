@@ -214,7 +214,7 @@ export function prepare(given: Workspace, root: Root, locale: Locale = DEFAULT_L
   const resolved = resolveDocument(expansion.document, locale);
   for (const d of resolved.diagnostics) {
     diagnostics.push({
-      severity: d.severity, message: d.message, path: root.path, span: d.span,
+      severity: d.severity, message: d.message, path: d.doc ?? root.path, span: d.span,
     });
   }
   return { root: root.path, document: expansion.document, resolved, diagnostics };

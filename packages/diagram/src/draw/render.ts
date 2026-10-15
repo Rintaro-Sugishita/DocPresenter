@@ -351,8 +351,9 @@ function renderEdge(
   if (!from || !to || points.length < 2) return { geometry: '', label: '' };
 
   const clipped = [...points];
-  clipped[0] = border(from, byId.get(edge.from)?.shape ?? 'rect', points[1]!);
-  clipped[clipped.length - 1] = border(to, byId.get(edge.to)?.shape ?? 'rect', points[points.length - 2]!);
+  clipped[0] = border(from, byId.get(edge.from)?.shape ?? 'rect', points[1]!, points[0]);
+  clipped[clipped.length - 1] = border(
+    to, byId.get(edge.to)?.shape ?? 'rect', points[points.length - 2]!, points[points.length - 1]);
 
   const change = marks?.edges.get(`${edge.from}->${edge.to}`);
   const open = `<g class="${['dp-edge', `dp-line-${edge.line}`,
@@ -365,8 +366,9 @@ function renderEdge(
     rounded
       ? `<path class="dp-edge-line" d="${roundedPath(clipped)}"/>`
       : `<polyline points="${clipped.map(p => `${n(p.x)},${n(p.y)}`).join(' ')}"/>`,
-    ...(edge.arrow === 'arrow'
+    ...(edge.arrow !== 'none'
       ? [arrowHead(clipped[clipped.length - 2]!, clipped[clipped.length - 1]!)] : []),
+    ...(edge.arrow === 'both' ? [arrowHead(clipped[1]!, clipped[0]!)] : []),
     ...(edge.label && route.labelAt ? [labelPlate(edge.label, route.labelAt)] : []),
     '</g>',
   ].join('');

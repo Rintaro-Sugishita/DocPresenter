@@ -65,6 +65,19 @@ describe('.dgm の色付け', () => {
     }
   });
 
+  it('向きの語は見出しとグループの行で色が付く', () => {
+    const file = 'flow Login LR {\n  a [A]\n  group g "G" TB { a }\n}';
+    expect(scopeOf(file, 0, 'LR')).toBe('entity.name.section.dgm keyword.other.direction.dgm');
+    expect(scopeOf(file, 2, 'TB')).toBe('keyword.other.direction.dgm');
+    expect(scopeOf(file, 2, 'a')).toBe('variable.other.dgm');
+  });
+
+  it('両端の矢印も接続記号として色が付く', () => {
+    const file = 'flow {\n  a [A]\n  b [B]\n  a <-.-> b "x"\n}';
+    expect(scopeOf(file, 3, '<-.->')).toBe('keyword.operator.connector.dgm');
+    expect(scopeOf(file, 3, 'b')).toBe('variable.other.dgm');
+  });
+
   it('層ごとに同じ形の行を読み分ける', () => {
     const file = [
       'flow Login {',                          // 0

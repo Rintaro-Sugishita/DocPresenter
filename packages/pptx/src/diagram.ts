@@ -144,15 +144,17 @@ export function drawingOf(diagram: DiagramFile, options: DrawingOptions = {}): D
     const from = laid.boxes.get(route.edge.from);
     const to = laid.boxes.get(route.edge.to);
     if (from && to && points.length >= 2) {
-      points[0] = border(from, byId.get(route.edge.from)?.shape ?? 'rect', points[1]!);
+      points[0] = border(from, byId.get(route.edge.from)?.shape ?? 'rect', points[1]!, route.points[0]);
       points[points.length - 1] = border(
-        to, byId.get(route.edge.to)?.shape ?? 'rect', points[points.length - 2]!);
+        to, byId.get(route.edge.to)?.shape ?? 'rect', points[points.length - 2]!,
+        route.points[route.points.length - 1]);
     }
     const start = from && drawn.has(route.edge.from) ? sideOf(from, points[0]!) : undefined;
     const end = to && drawn.has(route.edge.to) ? sideOf(to, points[points.length - 1]!) : undefined;
     return {
       points,
-      arrow: route.edge.arrow === 'arrow',
+      arrow: route.edge.arrow !== 'none',
+      startArrow: route.edge.arrow === 'both',
       dashed: route.edge.line === 'dashed',
       ...(route.edge.label ? { label: parseRuns(route.edge.label) as Run[] } : {}),
       // The plate the screen sets the label on, the same size in the same place.

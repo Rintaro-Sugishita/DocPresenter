@@ -198,8 +198,14 @@ export function labelLayout(
 }
 
 /** Where the line from the centre towards `towards` leaves the shape. */
-export function border(box: Box, shape: ShapeKind, towards: Point): Point {
+export function border(box: Box, shape: ShapeKind, towards: Point, from?: Point): Point {
   const c = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+  // A line that does not start at the centre — one of two drawn side by side
+  // between the same shapes — leaves along its own course, not along the ray
+  // from the centre, or it would kink as it reached the outline.
+  if (from && (Math.abs(from.x - c.x) > 0.5 || Math.abs(from.y - c.y) > 0.5)) {
+    return exitPoint(box, shape, from, towards);
+  }
   const dx = towards.x - c.x;
   const dy = towards.y - c.y;
   if (dx === 0 && dy === 0) return c;
@@ -215,6 +221,34 @@ export function border(box: Box, shape: ShapeKind, towards: Point): Point {
     t = Math.min(rx / Math.abs(dx || Number.EPSILON), ry / Math.abs(dy || Number.EPSILON));
   }
   return { x: c.x + dx * t, y: c.y + dy * t };
+}
+
+/**
+ * Where the segment from `from` (inside the shape) towards `towards` crosses
+ * its outline. A rectangle is solved exactly; the round and pointed outlines
+ * are found by halving, which is exact to well under a pixel.
+ */
+function exitPoint(box: Box, shape: ShapeKind, from: Point, towards: Point): Point {
+  const c = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+  const rx = box.width / 2;
+  const ry = box.height / 2;
+  const inside = (p: Point): boolean => {
+    const dx = Math.abs(p.x - c.x) / rx;
+    const dy = Math.abs(p.y - c.y) / ry;
+    if (shape === 'ellipse') return dx * dx + dy * dy <= 1;
+    if (shape === 'diamond') return dx + dy <= 1;
+    return dx <= 1 && dy <= 1;
+  };
+  if (!inside(from)) return from;
+  let lo = 0;
+  let hi = 1;
+  const at = (t: number): Point => ({ x: from.x + (towards.x - from.x) * t, y: from.y + (towards.y - from.y) * t });
+  if (inside(at(hi))) return at(hi);
+  for (let i = 0; i < 32; i++) {
+    const mid = (lo + hi) / 2;
+    if (inside(at(mid))) lo = mid; else hi = mid;
+  }
+  return at(lo);
 }
 
 /** The three corners of the arrowhead at the end of a line. */

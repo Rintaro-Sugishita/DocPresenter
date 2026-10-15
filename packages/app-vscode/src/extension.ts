@@ -7,6 +7,7 @@
 
 import * as vscode from 'vscode';
 import { registerDgmLanguage } from './dgm-language.js';
+import { registerWorkspaceProblems } from './workspace-problems.js';
 import { exportAll, FORMAT_LABEL } from './export-command.js';
 import { initWorkspace } from './init-command.js';
 import { newDocument } from './document-command.js';
@@ -27,7 +28,10 @@ export function activate(context: vscode.ExtensionContext): void {
   };
 
   /** Opens a document or a drawing in DocPresenter. */
-  const openInDocPresenter = async (uri: vscode.Uri | undefined): Promise<void> => {
+  // `beside` keeps the text editor where it is and opens the screen next to
+  // it: both are views of one TextDocument, so what is typed in the text is
+  // drawn as it is typed, and the typing keeps VS Code's own editing.
+  const openInDocPresenter = async (uri: vscode.Uri | undefined, beside = false): Promise<void> => {
     const target = uri ?? vscode.window.activeTextEditor?.document.uri;
     if (!target) {
       void vscode.window.showInformationMessage(`DocPresenter: ${t('vscode.noDocument')}`);
@@ -35,7 +39,8 @@ export function activate(context: vscode.ExtensionContext): void {
     }
     const viewType = /\.dgm$/i.test(target.path)
       ? SheetEditorProvider.diagramViewType : SheetEditorProvider.viewType;
-    await vscode.commands.executeCommand('vscode.openWith', target, viewType);
+    await vscode.commands.executeCommand('vscode.openWith', target, viewType,
+      beside ? { viewColumn: vscode.ViewColumn.Beside, preserveFocus: true } : undefined);
   };
 
   context.subscriptions.push(
@@ -45,6 +50,7 @@ export function activate(context: vscode.ExtensionContext): void {
     // The editor title's button acts on the editor in front; the explorer's
     // menu hands over the file that was right-clicked.
     vscode.commands.registerCommand('docpresenter.openEditor', (uri?: vscode.Uri) => openInDocPresenter(uri)),
+    vscode.commands.registerCommand('docpresenter.openToSide', (uri?: vscode.Uri) => openInDocPresenter(uri, true)),
     vscode.commands.registerCommand('docpresenter.exportHtml', () => provider.export('html')),
     vscode.commands.registerCommand('docpresenter.exportPdf', () => provider.export('pdf')),
     vscode.commands.registerCommand('docpresenter.exportPptx', () => provider.export('pptx')),
@@ -79,6 +85,7 @@ export function activate(context: vscode.ExtensionContext): void {
       (uri?: vscode.Uri, selected?: vscode.Uri[]) => importReview(output, uri, selected)),
     // A drawing written by hand: what fits where the cursor is.
     registerDgmLanguage(),
+    registerWorkspaceProblems(output),
   );
 }
 

@@ -6,11 +6,13 @@
 
 import { arrangeContainers, containerOf, type Hole } from './arrange.js';
 import { lineText, parseRuns, type TextLine } from './inline.js';
-import { DEFAULT_SIZE, type DiagramFile, type Edge, type Node, type Point } from './model.js';
+import {
+  DEFAULT_SIZE, type DiagramFile, type Edge, type FlowDirection, type Node, type Point,
+} from './model.js';
 import { isListing } from './draw/listing.js';
 import { textPlace } from './draw/stencil.js';
 import { textWidth, wrapRuns } from './text.js';
-import { DEFAULT_LOCALE, say, type Locale, type Phrase } from '@docpresenter/base';
+import { DEFAULT_LOCALE, say, type ByteSpan, type Locale, type Phrase } from '@docpresenter/base';
 import { dgm } from './messages.js';
 
 export interface Box {
@@ -28,6 +30,15 @@ export interface Box {
 }
 
 export type { Point } from './model.js';
+
+/** One thing the layout could not do as written, and where it was written. */
+export interface DiagramNote {
+  /** Which message it is, so a host can weigh one differently from another. */
+  readonly id: string;
+  readonly message: string;
+  /** The line it is about; absent when no one line is. */
+  readonly span: ByteSpan | undefined;
+}
 
 /**
  * The centre-to-centre path of one connection, with any bends it needs to get
@@ -50,6 +61,11 @@ export interface LaidOutDiagram {
   /** Ids from back to front: groups before the shapes they contain. */
   readonly order: readonly string[];
   readonly diagnostics: readonly string[];
+  /**
+   * The same, each with the line of the file it is about, so an editor can
+   * mark that line instead of saying only that something somewhere is wrong.
+   */
+  readonly notes: readonly DiagramNote[];
   /**
    * The shift applied to fit the drawing on the canvas. A box on screen sits at
    * its own coordinate plus this, so an editor subtracts it to turn a position
@@ -95,8 +111,15 @@ export function layOutDiagram(diagram: DiagramFile, locale: Locale = DEFAULT_LOC
   for (const node of plain) sizes.set(node.id, measure(node, diagram));
 
   const auto = diagram.mode === 'flow'
-    ? autoPositions(diagram, plain, sizes)
-    : { positions: new Map<string, { x: number; y: number }>(), rank: new Map<string, number>() };
+    ? autoPositions(diagram, plain, sizes, diagnostics)
+    : { positions: new Map<string, { x: number; y: number }>(), courses: new Map<Edge, Course>() };
+  // P6: a direction in a drawing that is not laid out is a word nobody acted on.
+  if (diagram.mode !== 'flow') {
+    if (diagram.direction !== undefined) diagnostics.push(dgm('diagram.layout.directionFree', { id: diagram.mode }));
+    for (const group of groups) {
+      if (group.direction !== undefined) diagnostics.push(dgm('diagram.layout.directionFree', { id: group.id }));
+    }
+  }
 
   const boxes = new Map<string, Box>();
   const inside = containerOf(diagram);
@@ -166,8 +189,9 @@ export function layOutDiagram(diagram: DiagramFile, locale: Locale = DEFAULT_LOC
     }
   }
 
-  const routes = route(diagram, boxes, auto.rank);
-  return normalize(boxes, routes, diagram, diagnostics.map(one => say(locale, one)), holes);
+  const routes = route(diagram, boxes, auto.courses);
+  const notes = diagnostics.map(one => ({ id: one.id, message: say(locale, one), span: placeOf(diagram, one) }));
+  return normalize(boxes, routes, diagram, notes, holes);
 }
 
 /**
@@ -195,15 +219,19 @@ function park(
 
 /**
  * Routes every connection. In a `free` drawing a straight line is used. In a
- * `flow`, a connection runs only up, down and across — down out of one shape,
- * across at the middle of the gap, down into the next — because a design
+ * `flow`, a connection runs only along the flow and across it — out of one
+ * shape, across at the middle of the gap, into the next — because a design
  * document is read as rows, and a diagonal reads as a third direction that is
  * not in the chart. When that path would run through a shape — which pinning
  * makes possible even between neighbouring rows — the line detours through a
  * channel beside the drawing, and if that is still blocked, all the way round.
+ *
+ * The routing is written for a flow that runs down the page. A flow that runs
+ * across it is the same routing with the page turned on its side: x and y
+ * swap on the way in and swap back on the way out.
  */
 function route(
-  diagram: DiagramFile, boxes: ReadonlyMap<string, Box>, rank: ReadonlyMap<string, number>,
+  diagram: DiagramFile, boxes: ReadonlyMap<string, Box>, courses: ReadonlyMap<Edge, Course>,
 ): EdgeRoute[] {
   const all = [...boxes.values()];
   const bounds = {
@@ -213,14 +241,16 @@ function route(
     bottom: all.length ? Math.max(...all.map(b => b.y + b.height)) + CHANNEL_GAP : 0,
   };
   const lanes = { left: 0, right: 0, top: 0, bottom: 0 };
+  const across = axisOf(diagram.direction).across;
+  const aside = parallels(diagram);
 
   const routes: EdgeRoute[] = [];
   for (const edge of diagram.edges) {
     const from = boxes.get(edge.from);
     const to = boxes.get(edge.to);
     if (!from || !to) continue;
-    const a = centre(from);
-    const b = centre(to);
+    let a = centre(from);
+    let b = centre(to);
 
     // Corners the author put in win over anything computed here, for the same
     // reason a pinned shape does: the point of writing them down is that they
@@ -239,48 +269,121 @@ function route(
     };
 
     if (diagram.mode !== 'flow') {
+      // Moved aside square to the line, measured from the end with the
+      // smaller name, so that `a -> b` and `b -> a` go to opposite sides.
+      const shift = clampShift(aside.get(edge) ?? 0, from, to);
+      if (shift !== 0) {
+        const [p, q] = edge.from < edge.to ? [a, b] : [b, a];
+        const length = Math.hypot(q.x - p.x, q.y - p.y) || 1;
+        const normal = { x: -(q.y - p.y) / length, y: (q.x - p.x) / length };
+        a = { x: a.x + normal.x * shift, y: a.y + normal.y * shift };
+        b = { x: b.x + normal.x * shift, y: b.y + normal.y * shift };
+      }
       routes.push({ edge, points: [a, b], labelAt: undefined });
       continue;
     }
 
-    const direct = elbow(a, b, from, to);
-    if (clear(direct)) {
-      routes.push({ edge, points: direct, labelAt: undefined });
+    // A connection the layout did not place — one to a group, or to a pinned
+    // shape — runs the way the drawing does.
+    const course = courses.get(edge)
+      ?? { across, back: across ? b.x < a.x : b.y < a.y };
+    const turn = course.across;
+    const t = (p: Point): Point => (turn ? { x: p.y, y: p.x } : p);
+    const turnBox = (box: Box): Box => (turn ? { ...box, x: box.y, y: box.x, width: box.height, height: box.width } : box);
+    const side = (name: keyof typeof lanes): keyof typeof lanes =>
+      (turn ? ({ left: 'top', right: 'bottom', top: 'left', bottom: 'right' } as const)[name] : name);
+    const edgeOf = (name: keyof typeof lanes): number => bounds[side(name)];
+    const fits = (points: readonly Point[]): boolean => clear(points.map(t));
+    const done = (points: readonly Point[]): void => {
+      routes.push({ edge, points: points.map(t), labelAt: undefined });
+    };
+    // Moved aside across the flow, ends and turn alike, so two connections
+    // between the same shapes run side by side the whole way.
+    const shift = clampShift(aside.get(edge) ?? 0, turnBox(from), turnBox(to), true);
+    const tail = { x: t(a).x + shift, y: t(a).y };
+    const head = { x: t(b).x + shift, y: t(b).y };
+
+    const direct = elbow(tail, head, turnBox(from), turnBox(to));
+    if (direct.length === 4) {
+      direct[1] = { ...direct[1]!, y: direct[1]!.y + shift };
+      direct[2] = { ...direct[2]!, y: direct[2]!.y + shift };
+    }
+    if (fits(direct)) { done(direct); continue; }
+
+    // Going back is drawn on one side, going on on the other, so the two never
+    // share a channel and the direction is readable at a glance.
+    const back = course.back;
+    const beside = back ? 'left' : 'right';
+    const x = beside === 'right'
+      ? edgeOf('right') + CHANNEL_GAP * lanes[side('right')]
+      : edgeOf('left') - CHANNEL_GAP * lanes[side('left')];
+
+    const besides = [tail, { x, y: tail.y }, { x, y: head.y }, head];
+    if (fits(besides)) {
+      lanes[side(beside)]++;
+      done(besides);
       continue;
     }
 
-    // Going back up is drawn on the left, going on down on the right, so the
-    // two never share a channel and the direction is readable at a glance.
-    const back = (rank.get(edge.to) ?? b.y) < (rank.get(edge.from) ?? a.y);
-    const side = back ? 'left' : 'right';
-    const x = side === 'right'
-      ? bounds.right + CHANNEL_GAP * lanes.right
-      : bounds.left - CHANNEL_GAP * lanes.left;
+    const end = back ? 'top' : 'bottom';
+    const y = end === 'bottom'
+      ? edgeOf('bottom') + CHANNEL_GAP * lanes[side('bottom')]
+      : edgeOf('top') - CHANNEL_GAP * lanes[side('top')];
 
-    const beside = [a, { x, y: a.y }, { x, y: b.y }, b];
-    if (clear(beside)) {
-      lanes[side]++;
-      routes.push({ edge, points: beside, labelAt: undefined });
+    const around = [tail, { x, y: tail.y }, { x, y }, { x: head.x, y }, head];
+    if (fits(around)) {
+      lanes[side(beside)]++;
+      lanes[side(end)]++;
+      done(around);
       continue;
     }
 
-    const vertical = back ? 'top' : 'bottom';
-    const y = vertical === 'bottom'
-      ? bounds.bottom + CHANNEL_GAP * lanes.bottom
-      : bounds.top - CHANNEL_GAP * lanes.top;
-
-    const around = [a, { x, y: a.y }, { x, y }, { x: b.x, y }, b];
-    if (clear(around)) {
-      lanes[side]++;
-      lanes[vertical]++;
-      routes.push({ edge, points: around, labelAt: undefined });
-      continue;
-    }
-
-    lanes[vertical]++;
-    routes.push({ edge, points: [a, { x: a.x, y }, { x: b.x, y }, b], labelAt: undefined });
+    lanes[side(end)]++;
+    done([tail, { x: tail.x, y }, { x: head.x, y }, head]);
   }
   return placeLabels(routes);
+}
+
+/** Between two connections that join the same two shapes. */
+const PARALLEL_GAP = 18;
+
+/**
+ * How far each connection is moved off the line between the centres. Two
+ * connections between the same shapes — `a -> b` and `b -> a`, or the same
+ * one written twice with different labels — would otherwise be drawn on top of
+ * each other, and read as one line (two dashed lines out of step even read as
+ * a solid one). A connection whose corners were written by hand is left where
+ * its author put it.
+ */
+function parallels(diagram: DiagramFile): Map<Edge, number> {
+  const groups = new Map<string, Edge[]>();
+  for (const edge of diagram.edges) {
+    if (edge.from === edge.to) continue;
+    if ((diagram.bends.get(`${edge.from}->${edge.to}`)?.points.length ?? 0) > 0) continue;
+    const key = [edge.from, edge.to].sort().join('\0');
+    const list = groups.get(key);
+    if (list) list.push(edge); else groups.set(key, [edge]);
+  }
+  const out = new Map<Edge, number>();
+  for (const list of groups.values()) {
+    if (list.length < 2) continue;
+    // Labels sit on their lines, so labelled lines need the room of a label.
+    const gap = list.some(edge => edge.label) ? EDGE_LABEL.height + 8 : PARALLEL_GAP;
+    list.forEach((edge, i) => out.set(edge, (i - (list.length - 1) / 2) * gap));
+  }
+  return out;
+}
+
+/**
+ * The shift, kept inside both shapes: a line moved off the side of the shape
+ * it leaves would look as if it came from nowhere. `across` measures only the
+ * width (a flow's lines are moved sideways); otherwise the narrower side.
+ */
+function clampShift(shift: number, from: Box, to: Box, across = false): number {
+  if (shift === 0) return 0;
+  const room = (box: Box): number => (across ? box.width : Math.min(box.width, box.height)) / 2 - 6;
+  const limit = Math.max(0, Math.min(room(from), room(to)));
+  return Math.max(-limit, Math.min(limit, shift));
 }
 
 /**
@@ -467,19 +570,181 @@ function measure(
   };
 }
 
+/** How one connection runs, decided where its two ends were laid out. */
+interface Course {
+  /** Its flow runs across the page, so it leaves and enters through the sides. */
+  readonly across: boolean;
+  /** It goes against its flow, so a detour takes the other side. */
+  readonly back: boolean;
+}
+
+/** A flow's direction as two questions: which axis it runs along, and which way. */
+function axisOf(direction: FlowDirection | undefined): { across: boolean; reversed: boolean } {
+  return {
+    across: direction === 'LR' || direction === 'RL',
+    reversed: direction === 'BT' || direction === 'RL',
+  };
+}
+
 /**
- * A layered layout: rank by longest path, order each rank by the average
- * position of its neighbours, then space the ranks out. It is not TALA, but it
- * is deterministic, which is what a diff needs.
+ * Lays out a flow, and a group that names its own direction as a flow of its
+ * own inside it.
+ *
+ * Such a group is laid out first, on its own, and then takes part in the
+ * drawing around it as one shape the size of its frame — which is what lets a
+ * left-to-right group sit in a top-to-bottom drawing without the two
+ * directions pulling at the same shapes. Mermaid drops a subgraph's direction
+ * as soon as one of its shapes is joined to something outside; here it holds,
+ * because a direction written down and then ignored is a decision lost (P6).
  */
 function autoPositions(
   diagram: DiagramFile,
   plain: readonly Node[],
   sizes: ReadonlyMap<string, { width: number; height: number }>,
-): { positions: Map<string, { x: number; y: number }>; rank: ReadonlyMap<string, number> } {
-  const ids = plain.map(n => n.id);
-  const present = new Set(ids);
-  const edges = diagram.edges.filter(e => present.has(e.from) && present.has(e.to));
+  diagnostics: Phrase[],
+): { positions: Map<string, { x: number; y: number }>; courses: ReadonlyMap<Edge, Course> } {
+  const present = new Set(plain.map(n => n.id));
+  const byId = new Map(diagram.nodes.map(n => [n.id, n]));
+
+  // A container arranges its own inside, so a direction on one is not a layout.
+  const directed = diagram.nodes.filter(n => n.shape === 'group' && n.direction !== undefined);
+  for (const group of directed) {
+    if (diagram.containers.has(group.id)) {
+      diagnostics.push(dgm('diagram.layout.directionContainer', { id: group.id }));
+    }
+  }
+  const clusters = new Set(directed.filter(n => !diagram.containers.has(n.id)).map(n => n.id));
+
+  // Which directed group lays out each shape, and each directed group that
+  // sits inside another. First come, first served: a shape is laid out once.
+  const owner = new Map<string, string>();
+  const holds = (outer: string, inner: string): boolean => {
+    for (let at: string | undefined = outer, depth = 0; at !== undefined && depth < 64; at = owner.get(at), depth++) {
+      if (at === inner) return true;
+    }
+    return false;
+  };
+  for (const group of directed) {
+    if (!clusters.has(group.id)) continue;
+    const seen = new Set<string>();
+    const take = (id: string): void => {
+      if (seen.has(id)) return;
+      seen.add(id);
+      const node = byId.get(id);
+      // A plain group inside is a frame drawn round what it holds, not a
+      // layout of its own: what it holds is laid out here.
+      if (node?.shape === 'group' && !clusters.has(id)) {
+        for (const child of node.children) take(child);
+        return;
+      }
+      if (!present.has(id) && !clusters.has(id)) return;
+      // A group named inside one it already holds would hold itself.
+      if (holds(group.id, id)) return;
+      const other = owner.get(id);
+      if (other !== undefined) {
+        if (other !== group.id) {
+          diagnostics.push(dgm('diagram.layout.twoDirections', { id, group: other, other: group.id }));
+        }
+        return;
+      }
+      owner.set(id, group.id);
+    };
+    for (const child of group.children) take(child);
+  }
+
+  // From a shape up through the groups laying it out, to the drawing itself.
+  const chain = (id: string): (string | undefined)[] => {
+    const out: (string | undefined)[] = [id];
+    for (let at = owner.get(id); at !== undefined && out.length < 64; at = owner.get(at)) out.push(at);
+    out.push(undefined);
+    return out;
+  };
+
+  // A connection belongs to the innermost layout that holds both its ends,
+  // and there it joins whatever stands for each end — the shape itself, or
+  // the group the shape is inside.
+  interface Joined { readonly from: string; readonly to: string; readonly edge: Edge }
+  const joins = new Map<string | undefined, Joined[]>();
+  for (const edge of diagram.edges) {
+    if (!present.has(edge.from) || !present.has(edge.to)) continue;
+    const a = chain(edge.from);
+    const b = chain(edge.to);
+    const level = a.slice(1).find(one => b.includes(one));
+    const one = { from: a[a.indexOf(level) - 1]!, to: b[b.indexOf(level) - 1]!, edge };
+    const list = joins.get(level);
+    if (list) list.push(one); else joins.set(level, [one]);
+  }
+
+  // What each layout places, in the order the file names it.
+  const units = new Map<string | undefined, string[]>();
+  const add = (level: string | undefined, id: string): void => {
+    const list = units.get(level);
+    if (list) list.push(id); else units.set(level, [id]);
+  };
+  for (const node of plain) add(owner.get(node.id), node.id);
+  for (const id of clusters) add(owner.get(id), id);
+
+  const courses = new Map<Edge, Course>();
+  const unitSizes = new Map<string, { width: number; height: number }>(sizes);
+  const placed = new Map<string | undefined, Map<string, { x: number; y: number }>>();
+
+  // Inner groups first: a group is as big as its own drawing, and the layout
+  // around it needs that size. A group with nothing to lay out takes no room.
+  const lay = (level: string | undefined): boolean => {
+    const done = placed.get(level);
+    if (done) return done.size > 0 || level === undefined;
+    placed.set(level, new Map());
+    const members = (units.get(level) ?? []).filter(id => !clusters.has(id) || lay(id));
+    if (level !== undefined && members.length === 0) return false;
+
+    const axis = axisOf(level === undefined ? diagram.direction : byId.get(level)!.direction);
+    const inside = new Set(members);
+    const joined = (joins.get(level) ?? []).filter(one => inside.has(one.from) && inside.has(one.to));
+    const laid = layered(members, joined, id => unitSizes.get(id)!, axis);
+    for (const one of joined) courses.set(one.edge, { across: axis.across, back: laid.back(one) });
+    placed.set(level, laid.positions);
+    if (level !== undefined) {
+      unitSizes.set(level, {
+        width: laid.width + GROUP_PAD * 2,
+        height: laid.height + GROUP_PAD * 2 + GROUP_HEADER,
+      });
+    }
+    return true;
+  };
+  lay(undefined);
+
+  // The offsets the frames give, the same `GROUP_PAD` and header the frame is
+  // drawn round its members with — so the frame lands where the room was kept.
+  const positions = new Map<string, { x: number; y: number }>();
+  const put = (level: string | undefined, dx: number, dy: number): void => {
+    for (const [id, at] of placed.get(level) ?? []) {
+      if (clusters.has(id)) put(id, dx + at.x + GROUP_PAD, dy + at.y + GROUP_PAD + GROUP_HEADER);
+      else positions.set(id, { x: dx + at.x, y: dy + at.y });
+    }
+  };
+  put(undefined, 0, 0);
+  return { positions, courses };
+}
+
+/**
+ * A layered layout: rank by longest path, order each rank by the average
+ * position of its neighbours, then space the ranks out along the flow. It is
+ * not TALA, but it is deterministic, which is what a diff needs.
+ *
+ * Worked out along the flow and across it, so one piece of code serves all
+ * four directions; a reversed flow is the same layout read from the far end.
+ */
+function layered<E extends { from: string; to: string }>(
+  ids: readonly string[],
+  edges: readonly E[],
+  sizeOf: (id: string) => { width: number; height: number },
+  axis: { across: boolean; reversed: boolean },
+): {
+  positions: Map<string, { x: number; y: number }>;
+  width: number;
+  height: number;
+  back: (edge: E) => boolean;
+} {
   const back = backEdges(ids, edges);
   const forward = edges.filter(e => !back.has(e));
 
@@ -502,25 +767,44 @@ function autoPositions(
 
   orderRanks(ranks, forward);
 
-  const positions = new Map<string, { x: number; y: number }>();
-  let y = 0;
+  // `along` is the way the flow runs, `side` the way a rank spreads.
+  const along = (id: string): number => (axis.across ? sizeOf(id).width : sizeOf(id).height);
+  const side = (id: string): number => (axis.across ? sizeOf(id).height : sizeOf(id).width);
+  const flat = new Map<string, { along: number; side: number }>();
+  let at = 0;
   for (const row of ranks) {
-    const widths = row.map(id => sizes.get(id)!.width);
-    const total = widths.reduce((a, b) => a + b, 0) + NODE_GAP * Math.max(0, row.length - 1);
-    const tallest = row.reduce((h, id) => Math.max(h, sizes.get(id)!.height), 0);
-    let x = -total / 2;
-    row.forEach((id, index) => {
-      positions.set(id, { x: Math.round(x), y: Math.round(y + (tallest - sizes.get(id)!.height) / 2) });
-      x += widths[index]! + NODE_GAP;
-    });
-    y += tallest + RANK_GAP;
+    const total = row.reduce((sum, id) => sum + side(id), 0) + NODE_GAP * Math.max(0, row.length - 1);
+    const deepest = row.reduce((h, id) => Math.max(h, along(id)), 0);
+    let across = -total / 2;
+    for (const id of row) {
+      flat.set(id, { along: Math.round(at + (deepest - along(id)) / 2), side: Math.round(across) });
+      across += side(id) + NODE_GAP;
+    }
+    at += deepest + RANK_GAP;
+  }
+  const length = Math.max(0, at - RANK_GAP);
+
+  const positions = new Map<string, { x: number; y: number }>();
+  for (const [id, one] of flat) {
+    const main = axis.reversed ? length - one.along - along(id) : one.along;
+    positions.set(id, axis.across ? { x: main, y: one.side } : { x: one.side, y: main });
   }
 
   // The computed coordinates start at the origin so that a pinned coordinate,
   // which a human reads off the drawing, means the same thing in both layers.
-  const minX = Math.min(...[...positions.values()].map(p => p.x), 0);
-  for (const [id, at] of positions) positions.set(id, { x: at.x - minX, y: at.y });
-  return { positions, rank };
+  const all = [...positions.values()];
+  const minX = Math.min(...all.map(p => p.x), 0);
+  const minY = Math.min(...all.map(p => p.y), 0);
+  let width = 0;
+  let height = 0;
+  for (const [id, p] of positions) {
+    const moved = { x: p.x - minX, y: p.y - minY };
+    positions.set(id, moved);
+    width = Math.max(width, moved.x + sizeOf(id).width);
+    height = Math.max(height, moved.y + sizeOf(id).height);
+  }
+
+  return { positions, width, height, back: edge => rank.get(edge.to)! < rank.get(edge.from)! };
 }
 
 /** The edges that close a cycle; ranking through them would never terminate. */
@@ -611,10 +895,41 @@ function spread(boxes: readonly Box[], axis: 'x' | 'y'): number {
   return max - min + GROUP_PAD * 2;
 }
 
+/**
+ * The line a diagnostic is about, read from the names it mentions: the shape
+ * it names, else the bend, the group, the container, or a connection that
+ * names it. A name nothing declares — a typo, which is what most of these
+ * are — is found where it was written, not where it was meant.
+ */
+function placeOf(diagram: DiagramFile, phrase: Phrase): ByteSpan | undefined {
+  const params = phrase.params ?? {};
+  const word = (name: string): string | undefined => {
+    const value = params[name];
+    return typeof value === 'string' ? value : undefined;
+  };
+  const id = word('id');
+  const nodeAt = (name: string | undefined): ByteSpan | undefined =>
+    name === undefined ? undefined : diagram.nodes.find(node => node.id === name)?.span;
+  const key = word('key');
+  // A cell is written in its container's block, so that is the line to mark.
+  const cell = word('cell');
+  if (cell !== undefined) {
+    const holder = [...diagram.containers.values()]
+      .find(one => one.id === id || one.cells.some(row => row.includes(cell)));
+    if (holder) return holder.span;
+  }
+  return nodeAt(id)
+    ?? (key === undefined ? undefined : diagram.bends.get(key)?.span)
+    ?? nodeAt(word('group'))
+    ?? (id === undefined ? undefined : diagram.containers.get(id)?.span)
+    ?? diagram.edges.find(edge => edge.from === id || edge.to === id)?.span
+    ?? diagram.body?.span;
+}
+
 /** Shifts everything into positive coordinates and reports the canvas size. */
 function normalize(
   boxes: Map<string, Box>, routes: readonly EdgeRoute[],
-  diagram: DiagramFile, diagnostics: readonly string[], holes: readonly Hole[],
+  diagram: DiagramFile, notes: readonly DiagramNote[], holes: readonly Hole[],
 ): LaidOutDiagram {
   // Detouring connections and their labels run outside the shapes, so they
   // move the origin and stretch the canvas too.
@@ -650,7 +965,13 @@ function normalize(
   // them in: it is the surface they sit on, and a surface painted afterwards
   // covers them. Depth does this for any nesting; `z` still decides first,
   // because that is the author's own say.
-  const held = containerOf(diagram);
+  // A group inside a group is the same: it has to be written first so the
+  // outer frame can be drawn round it, and painted first it would be covered.
+  const held = new Map(containerOf(diagram));
+  for (const group of diagram.nodes) {
+    if (group.shape !== 'group') continue;
+    for (const child of group.children) if (!held.has(child)) held.set(child, group.id);
+  }
   const depthOf = (id: string): number => {
     let depth = 0;
     for (let at = held.get(id); at !== undefined && depth < 32; at = held.get(at)) depth += 1;
@@ -665,7 +986,8 @@ function normalize(
 
   return {
     boxes: shifted, routes: shiftedRoutes,
-    width: Math.ceil(width), height: Math.ceil(height), order, diagnostics,
+    width: Math.ceil(width), height: Math.ceil(height), order,
+    diagnostics: notes.map(note => note.message), notes,
     origin: { x: -minX + PAD, y: -minY + PAD },
     // The same shift the boxes took: an empty cell sits among them, so it has
     // to be measured in the same numbers.

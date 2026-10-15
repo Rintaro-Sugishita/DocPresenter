@@ -5,7 +5,7 @@
 import { byteLength, LocalizedError, type ByteSpan, type Phrase } from '@docpresenter/base';
 import { dgm } from './messages.js';
 import type {
-  ArrowStyle, Bend, Callout, DiagramFile, DiagramMode, Edge, EdgeStyle, LayoutBlock, Node,
+  ArrowStyle, Bend, Callout, DiagramFile, DiagramMode, Edge, EdgeStyle, FlowDirection, LayoutBlock, Node,
   Container, Item, Part, Placement, Point, Section, ShapeKind,
 } from './model.js';
 
@@ -67,8 +67,13 @@ const LINE_SHAPE = /^-{2,}$/;
 const LINE_NODE = /^([A-Za-z0-9_぀-鿿-]+?)\s*(-{2,})$/;
 
 const NODE = /^([A-Za-z0-9_぀-鿿-]+)\s*(.+?)(?::::([\w-]+))?$/;
-const EDGE = /^([A-Za-z0-9_぀-鿿-]+)\s*(-->|->|--|-\.->)\s*([A-Za-z0-9_぀-鿿-]+)\s*(?:"([^"]*)")?\s*$/;
-const GROUP = /^group\s+([A-Za-z0-9_぀-鿿-]+)\s*(?:"([^"]*)")?\s*\{([^}]*)\}\s*$/;
+const EDGE = /^([A-Za-z0-9_぀-鿿-]+)\s*(<-->|<->|<-\.->|-->|->|--|-\.->)\s*([A-Za-z0-9_぀-鿿-]+)\s*(?:"([^"]*)")?\s*$/;
+const GROUP = /^group\s+([A-Za-z0-9_぀-鿿-]+)\s*(?:"([^"]*)")?\s*(?:(TB|TD|BT|LR|RL)\s*)?\{([^}]*)\}\s*$/;
+/**
+ * `flow LR {` — Mermaid's words for the way a flow runs. Written first, as
+ * Mermaid writes `flowchart LR`, or last, after a title (`flow 構成 LR {`).
+ */
+const DIRECTION = /^(TB|TD|BT|LR|RL)$/;
 const PLACEMENT = /^([A-Za-z0-9_぀-鿿-]+)\s*@\s*\(\s*(-?\d+)\s*,\s*(-?\d+)\s*\)\s*(?:(\d+)x(\d+))?\s*(?:z\s*:\s*(-?\d+))?\s*$/;
 /** `a -> b @ (120, 200); (320, 200)` — the corners a connection turns through. */
 const BEND = /^([A-Za-z0-9_぀-鿿-]+)\s*-+>\s*([A-Za-z0-9_぀-鿿-]+)\s*@\s*(.+)$/;
@@ -115,6 +120,7 @@ export function parseDiagram(source: string): DiagramFile {
   let image: string | undefined;
   let layoutBlock: LayoutBlock | undefined;
   let body: Section | undefined;
+  let direction: FlowDirection | undefined;
   let styleBlock: Section | undefined;
 
   for (let i = 0; i < lines.length; i++) {
@@ -147,6 +153,9 @@ export function parseDiagram(source: string): DiagramFile {
 
     if (kind === 'free' || kind === 'flow') {
       mode = kind;
+      const words = header.split(/\s+/);
+      const way = [words[0], words[words.length - 1]].find(word => word !== undefined && DIRECTION.test(word));
+      direction = way as FlowDirection | undefined;
       parseBody(inner, nodes, edges, partOf);
       body = blockOf(lines, raw, start, i, inner);
     } else if (kind === 'parts') {
@@ -175,7 +184,7 @@ export function parseDiagram(source: string): DiagramFile {
   if (!mode && uses.length > 0) mode = 'parts';
   if (!mode) throw new DiagramParseError(dgm('diagram.parse.noSection'), 1);
   return {
-    mode, comments, nodes, edges, body, layout, bends, containers, layoutBlock, styleBlock,
+    mode, direction, comments, nodes, edges, body, layout, bends, containers, layoutBlock, styleBlock,
     theme, style, styleSpans, image, callouts, uses, parts, partOf, partSizes: new Map(),
     // What the file can reach is known only once the parts are applied, which
     // needs a reader of other files. Until then a drawing offers nothing.
@@ -321,7 +330,8 @@ function parseBody(
         text: group[2] ?? group[1]!,
         shape: 'group',
         className: undefined, items: [],
-        children: group[3]!.split(';').map(s => s.trim()).filter(s => s !== ''),
+        children: group[4]!.split(';').map(s => s.trim()).filter(s => s !== ''),
+        ...(group[3] === undefined ? {} : { direction: group[3] as FlowDirection }),
         span,
       });
       continue;
@@ -340,7 +350,9 @@ function parseBody(
     if (edge) {
       const connector = edge[2]!;
       const line: EdgeStyle = connector.includes('.') ? 'dashed' : 'solid';
-      const arrow: ArrowStyle = connector.endsWith('>') ? 'arrow' : 'none';
+      // `<-->` reads both ways at a glance, which is the point of writing it
+      // rather than two connections drawn on top of each other.
+      const arrow: ArrowStyle = connector.startsWith('<') ? 'both' : connector.endsWith('>') ? 'arrow' : 'none';
       edges.push({ from: edge[1]!, to: edge[3]!, label: edge[4], line, arrow, span });
       continue;
     }

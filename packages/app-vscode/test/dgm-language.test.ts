@@ -37,6 +37,10 @@ describe('.dgm をテキストで書くときの補完', () => {
     expect(labels).toContain('checkbox:');   // その下敷きの同梱の部品
     const stamp = items.find(one => one.label === 'stamp:')!;
     expect(stamp.kind).toBe(CompletionItemKind.Class);
+    // 説明は選んだ行だけでなく、どの行にも出る
+    // （選んだ行にしか出ない description や detail ではなく、ラベルの detail に入れる）
+    expect(stamp.labelDetail?.trim()).toBeTruthy();
+    expect(stamp.description).toBeUndefined();
     expect((stamp.insertText as unknown as SnippetString).value).toBe('stamp:"$0"');
     // 置き換えるのはカーソルの位置まで
     expect(stamp.range!.start.character).toBe('  submit '.length);

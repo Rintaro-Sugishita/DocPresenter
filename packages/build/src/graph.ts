@@ -58,6 +58,7 @@ export function readGraph(given: Workspace, locale: Locale = DEFAULT_LOCALE): Re
       diagnostics.push({
         severity: 'warning', path,
         ...said(locale, 'build.unreadable', { message: describeError(error, locale) }),
+        ...lineOf(error),
       });
     }
   }
@@ -94,6 +95,25 @@ export function readGraph(given: Workspace, locale: Locale = DEFAULT_LOCALE): Re
     }
   }
 
+  // `@SD-AUTH-001:fig-login` points into another document by its number.
+  // Which figure that is only a build of that document can say; that the
+  // document exists can be said here, and a number nobody uses is a typo or a
+  // document that has gone.
+  const numbers = new Set(numbered.map(one => one.number).filter(one => one !== undefined));
+  for (const [path, document] of parsed) {
+    for (const block of document.blocks) {
+      const references = block.kind === 'prose' || block.kind === 'heading' ? block.references : [];
+      for (const reference of references) {
+        if (reference.document === undefined || numbers.has(reference.document)) continue;
+        diagnostics.push({
+          severity: 'warning', path,
+          ...said(locale, 'build.unknownDocument', { document: reference.document }),
+          span: reference.span,
+        });
+      }
+    }
+  }
+
   // A document that is built is reviewed, and its review is tied to its number.
   for (const root of roots) {
     if (numbered.find(one => one.path === root.path)?.number) continue;
@@ -118,6 +138,12 @@ export function readGraph(given: Workspace, locale: Locale = DEFAULT_LOCALE): Re
   }
 
   return { roots, closure, orphans, diagnostics };
+}
+
+/** The line a parse error stopped at, when it says. */
+function lineOf(error: unknown): { line?: number } {
+  const line = (error as { line?: unknown } | null)?.line;
+  return typeof line === 'number' ? { line } : {};
 }
 
 /** Extensions a document can import, and so the ones an orphan can be. */

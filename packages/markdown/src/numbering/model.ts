@@ -32,6 +32,11 @@ export interface Diagnostic {
   readonly severity: DiagnosticSeverity;
   readonly message: string;
   readonly span: ByteSpan;
+  /**
+   * The file the span is a range of, when it is not the document itself: a
+   * block a build pulled in from another file keeps that file's byte ranges.
+   */
+  readonly doc?: string;
 }
 
 export interface ResolvedDocument {

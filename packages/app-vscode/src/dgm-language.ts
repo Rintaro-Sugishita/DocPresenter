@@ -63,10 +63,14 @@ export async function suggest(
 }
 
 function item(one: Completion, position: vscode.Position): vscode.CompletionItem {
-  const made = new vscode.CompletionItem(one.label, KINDS[one.kind]);
+  // The words go in the label's own `detail`, drawn in grey right after the
+  // name on every row. The item's `detail` and the label's `description` are
+  // both shown only for the row the cursor is on, so a list of shapes read as
+  // a list of brackets until each one was stepped through.
+  const made = new vscode.CompletionItem(
+    one.detail === undefined ? one.label : { label: one.label, detail: `  ${one.detail}` }, KINDS[one.kind]);
   made.insertText = new vscode.SnippetString(one.insert);
   made.range = new vscode.Range(new vscode.Position(position.line, one.from), position);
-  if (one.detail !== undefined) made.detail = one.detail;
   if (one.sort !== undefined) made.sortText = one.sort;
   if (one.again) made.command = { title: '', command: 'editor.action.triggerSuggest' };
   return made;
@@ -80,18 +84,7 @@ function item(one: Completion, position: vscode.Position): vscode.CompletionItem
  * leaves the list without its parts rather than without suggestions.
  */
 async function reachableParts(uri: vscode.Uri, text: string): Promise<ReadonlyMap<string, Part> | undefined> {
-  const files = new Map<string, string>();
-  // `partsOf` reads synchronously, so every file it could ask for is read
-  // first. Paths are relative to this drawing, as the build resolves them.
-  const waiting = usesOf(text);
-  while (waiting.length > 0) {
-    const path = waiting.shift()!;
-    if (files.has(path) || path === 'default' || path === 'icons') continue;
-    const source = await readText(vscode.Uri.joinPath(uri, '..', ...path.split('/')));
-    if (source === undefined) continue;
-    files.set(path, source);
-    waiting.push(...usesOf(source));
-  }
+  const files = await librariesUsed(uri, text);
   const read = (path: string): string | undefined => files.get(path);
   try {
     return partsOf(parseDiagram(text), read);
@@ -102,6 +95,27 @@ async function reachableParts(uri: vscode.Uri, text: string): Promise<ReadonlyMa
       return undefined;
     }
   }
+}
+
+/**
+ * Every file of parts the drawing reaches through its `use` lines, read.
+ *
+ * Reading parts is synchronous (`partsOf`, `withParts`), so every file it could
+ * ask for is read first. Paths are relative to this drawing, as the build
+ * resolves them; the two sets shipped with the tool are not files.
+ */
+export async function librariesUsed(uri: vscode.Uri, text: string): Promise<Map<string, string>> {
+  const files = new Map<string, string>();
+  const waiting = usesOf(text);
+  while (waiting.length > 0) {
+    const path = waiting.shift()!;
+    if (files.has(path) || path === 'default' || path === 'icons') continue;
+    const source = await readText(vscode.Uri.joinPath(uri, '..', ...path.split('/')));
+    if (source === undefined) continue;
+    files.set(path, source);
+    waiting.push(...usesOf(source));
+  }
+  return files;
 }
 
 function usesOf(text: string): string[] {

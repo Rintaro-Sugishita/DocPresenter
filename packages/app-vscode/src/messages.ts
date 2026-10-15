@@ -11,6 +11,7 @@ import { defineMessages } from '@docpresenter/base';
 export const VSCODE_MESSAGES = defineMessages({
   'vscode.noFolder': 'フォルダを開いてから実行してください',
   'vscode.noDocument': '開く文書がありません',
+  'vscode.check.summary': '文書 {documents}・図 {drawings}・表 {tables} を確かめた。エラー {errors} 件、警告 {warnings} 件（何も書き出していない）',
   'vscode.openFirst': '書き出す文書を DocPresenter で開いてください',
   'vscode.noFolderPage': 'フォルダを開いてから使ってください（図や表は作業場からの相対パスで引かれます）',
   'vscode.noAnswer': 'DocPresenter の画面から応答がない',
@@ -171,6 +172,7 @@ export const VSCODE_MESSAGES = defineMessages({
 }, {
   'vscode.noFolder': 'Open a folder first',
   'vscode.noDocument': 'There is no document to open',
+  'vscode.check.summary': 'Checked {documents} documents, {drawings} drawings and {tables} tables: {errors} errors, {warnings} warnings (nothing was written)',
   'vscode.openFirst': 'Open the document to export in DocPresenter',
   'vscode.noFolderPage': 'Open a folder to use this (diagrams and tables are found by their path from the workspace)',
   'vscode.noAnswer': 'The DocPresenter screen did not answer',

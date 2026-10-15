@@ -69,8 +69,9 @@ free Authentication {
 ```
 
 The free text is a **title for people**. A reader MAY show it and MUST NOT
-attach meaning to it, with one exception: `overlay` requires it, and there it is
-a quoted path (§5). The text MUST NOT contain `{`.
+attach meaning to it, with two exceptions: `overlay` requires it, and there it is
+a quoted path (§5); and in `flow`, a first or last word that is one of Mermaid's
+directions says which way the flow runs (§3.5). The text MUST NOT contain `{`.
 
 ### 1.2 Why three layers
 
@@ -172,11 +173,19 @@ from <connector> to ["label"]
 | `->` | solid | yes |
 | `--` | solid | no |
 | `-.->` | dashed | yes |
+| `<-->` | solid | at both ends |
+| `<->` | solid | at both ends |
+| `<-.->` | dashed | at both ends |
 
 The rule a reader MUST apply is mechanical: the line is **dashed if the
-connector contains `.`**, and it has an **arrowhead if it ends with `>`**. That
-leaves room for `-.-` to mean a dashed line without an arrowhead when it is
-added, with no new rule to learn.
+connector contains `.`**, it has an **arrowhead if it ends with `>`**, and a
+second one at its start **if it begins with `<`**. That leaves room for `-.-`
+to mean a dashed line without an arrowhead when it is added, with no new rule
+to learn.
+
+`a <--> b` is one connection, keyed `a->b` like any other. It is not the same
+as writing `a --> b` and `b --> a`: those are two connections, each with its own
+label and its own bend.
 
 The label, when present, MUST be in double quotes and MUST NOT contain a double
 quote. It takes inline formatting.
@@ -192,7 +201,7 @@ find the typo.
 ### 3.3 A group
 
 ```
-group id ["label"] { member; member; … }
+group id ["label"] [direction] { member; member; … }
 ```
 
 Members are identifiers separated by `;`. The whole group is one line — this is
@@ -202,7 +211,51 @@ like any other shape's.
 
 A group is drawn as a container behind its members and MAY be given a pin of its
 own; DocPresenter writes `z:-1` for groups so that members stay clickable.
-Nested groups are not specified in version 0.1.
+Nested groups are not specified in version 0.1, beyond what §3.5 says of a group
+with a direction.
+
+### 3.5 Direction
+
+A `flow` runs top to bottom unless it says otherwise, in Mermaid's words:
+
+| Word | The flow runs |
+|---|---|
+| `TB` | top to bottom (the default) |
+| `TD` | top to bottom — Mermaid's other spelling of `TB` |
+| `BT` | bottom to top |
+| `LR` | left to right |
+| `RL` | right to left |
+
+The drawing's direction is a word of its header, first or last, so both
+Mermaid's order and a titled header read:
+
+```
+flow LR {
+flow Login LR {
+```
+
+A group takes a direction between its label and its members:
+
+```
+group back "Back end" LR { api; auth; log }
+```
+
+A group with a direction is laid out **on its own**, in its own direction, and
+then takes part in the drawing around it as a single shape the size of its
+frame. Its members' connections to shapes outside are drawn as usual. This holds
+even when members connect outside — unlike Mermaid, which drops a subgraph's
+direction in that case. A group with no direction is a frame drawn round
+wherever its members were placed, as before.
+
+A directed group MAY list another group among its members: a directed one is
+laid out inside it as one shape, and a plain one has its own members laid out in
+the outer group's direction. A shape listed in two directed groups is laid out
+in the first, and a reader SHOULD say so. A group that is also a container
+(`stack` / `grid` / `tabs` in `layout`, [diagram model §3](../design/diagram-model.md)) is
+arranged by the container, so its direction does not apply.
+
+In `free`, nothing is computed, so a direction has nothing to act on; a reader
+SHOULD say so rather than ignore it.
 
 ### 3.4 Example
 
@@ -502,13 +555,20 @@ shapes side by side), and ends already in line are joined straight. Where that
 route would cross another shape — which pinning makes possible — it detours
 through a channel beside the drawing rather than through it.
 
+Two connections between the same two shapes — `a -> b` and `b -> a`, in any
+section — are drawn side by side, 18 apart (26 when either has a label), rather
+than one on top of the other. A connection with a bend written for it is left
+where its author put it.
+
 In a `flow`, every corner of a connection — computed or written as a bend — is
 drawn turning on a short curve of the radius above, tighter where a segment is
 too short for it. This is drawing only: the corners are still the points the
 route and the file hold, so it is not the curved connection §9 leaves out.
 
 `flow` computes positions by ranking shapes along the connections, then placing
-each rank as a row. Pins override the result, which means a pinned shape can pull
+each rank as a row — or as a column, in a flow that runs across the page (§3.5).
+There a connection leaves and enters through the sides, and detours above and
+below the drawing instead of beside it. Pins override the result, which means a pinned shape can pull
 a line across the drawing; that is the author's choice and the renderer does not
 second-guess it.
 

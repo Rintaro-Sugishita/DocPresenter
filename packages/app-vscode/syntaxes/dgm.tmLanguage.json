@@ -48,7 +48,7 @@
       "begin": "^\\s*(free|flow)\\b([^{]*)(\\{)\\s*$",
       "beginCaptures": {
         "1": { "name": "keyword.control.section.dgm" },
-        "2": { "name": "entity.name.section.dgm" },
+        "2": { "name": "entity.name.section.dgm", "patterns": [{ "include": "#direction" }] },
         "3": { "name": "punctuation.section.block.begin.dgm" }
       },
       "end": "^\\s*(\\})\\s*$",
@@ -105,15 +105,22 @@
     },
 
     "group": {
-      "match": "^\\s*(group)\\s+([A-Za-z0-9_぀-鿿-]+)\\s*(\"[^\"]*\")?\\s*(\\{)([^}]*)(\\})\\s*$",
+      "match": "^\\s*(group)\\s+([A-Za-z0-9_぀-鿿-]+)\\s*(\"[^\"]*\")?\\s*(?:(TB|TD|BT|LR|RL)\\s*)?(\\{)([^}]*)(\\})\\s*$",
       "captures": {
         "1": { "name": "keyword.other.group.dgm" },
         "2": { "name": "entity.name.tag.dgm" },
         "3": { "name": "string.quoted.double.label.dgm", "patterns": [{ "include": "#inline" }] },
-        "4": { "name": "punctuation.section.braces.begin.dgm" },
-        "5": { "patterns": [{ "include": "#members" }] },
-        "6": { "name": "punctuation.section.braces.end.dgm" }
+        "4": { "name": "keyword.other.direction.dgm" },
+        "5": { "name": "punctuation.section.braces.begin.dgm" },
+        "6": { "patterns": [{ "include": "#members" }] },
+        "7": { "name": "punctuation.section.braces.end.dgm" }
       }
+    },
+
+    "direction": {
+      "comment": "Mermaid's words for the way a flow runs (spec/dgm.md §3.5): a word of its own in the header.",
+      "match": "(?<!\\S)(TB|TD|BT|LR|RL)(?!\\S)",
+      "name": "keyword.other.direction.dgm"
     },
 
     "members": {
@@ -133,7 +140,7 @@
     },
 
     "connection": {
-      "match": "^\\s*([A-Za-z0-9_぀-鿿-]+)\\s*(-\\.->|-->|->|--)\\s*([A-Za-z0-9_぀-鿿-]+)\\s*(\"[^\"]*\")?\\s*$",
+      "match": "^\\s*([A-Za-z0-9_぀-鿿-]+)\\s*(<-\\.->|<-->|<->|-\\.->|-->|->|--)\\s*([A-Za-z0-9_぀-鿿-]+)\\s*(\"[^\"]*\")?\\s*$",
       "captures": {
         "1": { "name": "variable.other.dgm" },
         "2": { "name": "keyword.operator.connector.dgm" },

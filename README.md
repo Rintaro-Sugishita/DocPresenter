@@ -41,6 +41,7 @@ node tools/build-canvas-demo.mjs   # 作図だけのページ   → out/canvas-a
 node tools/build.mjs --in sample   # サンプルをビルド     → out/build/*.{html,pdf,pptx}
                                   #   長い表はページをまたぎ、`{page="landscape"}` の表は横向きのページになる
 node tools/build.mjs --in sample --diff-from HEAD~3   # 前の版からの変更に印を付ける
+node tools/check.mjs --in sample   # 書き出さずに全部確かめる（エラーがあれば終了コード 1、--strict なら警告でも）
 node tools/pptx-back.mjs out/build/auth-overview.pptx --in sample   # 直された図を読み戻す
 
 node tools/build-vscode.mjs        # VS Code 拡張             → packages/app-vscode/media/

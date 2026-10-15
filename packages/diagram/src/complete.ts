@@ -79,6 +79,8 @@ const CONNECTORS: readonly { written: string; detail: DiagramMessage }[] = [
   { written: '->', detail: 'diagram.complete.arrow' },
   { written: '--', detail: 'diagram.complete.plain' },
   { written: '-.->', detail: 'diagram.complete.dashed' },
+  { written: '<-->', detail: 'diagram.complete.both' },
+  { written: '<-.->', detail: 'diagram.complete.bothDashed' },
 ];
 
 /** The properties a style rule or a part reads (spec/dgm.md §7.3, and a line's own three). */
@@ -212,7 +214,7 @@ function count(text: string, char: string): number {
 
 const GROUP_LINE = new RegExp(`^group\\s+(${ID}+)`);
 const LINE_NODE = new RegExp(`^(${ID}+?)\\s*-{2,}$`);
-const EDGE_LINE = new RegExp(`^(${ID}+?)\\s*(?:-\\.->|-->|->|--)\\s*(${ID}+)`);
+const EDGE_LINE = new RegExp(`^(${ID}+?)\\s*(?:<-\\.->|<-->|<->|-\\.->|-->|->|--)\\s*(${ID}+)`);
 const NODE_LINE = new RegExp(`^(${ID}+)\\s*(.*)$`);
 const PIN_LINE = new RegExp(`^(${ID}+)\\s*@`);
 const BEND_LINE = new RegExp(`^(${ID}+?)\\s*-+>\\s*(${ID}+)\\s*@`);
@@ -268,6 +270,9 @@ function atTop({ before, column, known, say, context }: At): Completion[] {
       ...(context.libraries ?? []).map(path => ({ label: path, detail: say('diagram.complete.libraryFile') })),
     ].map((one, i) => ({ ...one, kind: 'library', insert: one.label, from, sort: String(i).padStart(4, '0') }));
   }
+  // `flow |` — which way it runs, as Mermaid's `flowchart LR` says it.
+  const heading = /^\s*flow\s+([A-Z]*)$/.exec(before);
+  if (heading) return directions(column - heading[1]!.length, say);
   if (!/^\s*[a-z]*$/.test(before)) return [];
 
   const from = column - before.trimStart().length;
@@ -299,8 +304,12 @@ function atTop({ before, column, known, say, context }: At): Completion[] {
 function inSemantics(at: At): Completion[] {
   const { before, column, known, say } = at;
 
+  // `group g "…" |` — which way its own contents run, before its members.
+  const way = new RegExp(`^\\s*group\\s+${ID}+\\s*(?:"[^"]*")?\\s+([A-Z]*)$`).exec(before);
+  if (way) return directions(column - way[1]!.length, say);
+
   // `group g "…" { a; b; |`
-  const members = new RegExp(`^\\s*group\\s+(${ID}+)\\s*(?:"[^"]*")?\\s*\\{([^}]*?)(${ID}*)$`).exec(before);
+  const members = new RegExp(`^\\s*group\\s+(${ID}+)\\s*(?:"[^"]*")?\\s*(?:(?:TB|TD|BT|LR|RL)\\s*)?\\{([^}]*?)(${ID}*)$`).exec(before);
   if (members) {
     const listed = new Set(members[2]!.split(';').map(one => one.trim()));
     return ids(known, column - members[3]!.length, say,
@@ -317,7 +326,7 @@ function inSemantics(at: At): Completion[] {
   }
 
   // `a -|` — the connector is being written.
-  const connector = new RegExp(`^\\s*${ID}*?${ID_END}\\s*(-[-.>]*)$`).exec(before);
+  const connector = new RegExp(`^\\s*${ID}*?${ID_END}\\s*(<?-[-.>]*|<)$`).exec(before);
   if (connector) {
     const from = column - connector[1]!.length;
     return connectors(from, say).filter(one => one.label.startsWith(connector[1]!))
@@ -325,7 +334,7 @@ function inSemantics(at: At): Completion[] {
   }
 
   // `a --> |` — what it connects to: anything not already joined from `a`.
-  const edge = new RegExp(`^\\s*(${ID}+?)\\s*(?:-\\.->|-->|->|--)\\s+(${ID}*)$`).exec(before);
+  const edge = new RegExp(`^\\s*(${ID}+?)\\s*(?:<-\\.->|<-->|<->|-\\.->|-->|->|--)\\s+(${ID}*)$`).exec(before);
   if (edge) {
     const start = edge[1]!;
     const joined = new Set(known.edges.filter(one => one.from === start).map(one => one.to));
@@ -360,6 +369,14 @@ function inSemantics(at: At): Completion[] {
     ];
   }
   return [];
+}
+
+/** Mermaid's four words for the way a flow runs, and its second spelling of one. */
+function directions(from: number, say: Say): Completion[] {
+  return (['TB', 'LR', 'BT', 'RL', 'TD'] as const).map((name, i) => ({
+    label: name, kind: 'value', insert: `${name} `, detail: say(`diagram.complete.direction${name}`),
+    from, sort: String(i),
+  }));
 }
 
 function connectors(from: number, say: Say): Completion[] {

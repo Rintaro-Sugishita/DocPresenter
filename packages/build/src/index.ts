@@ -9,3 +9,4 @@ export * from './deck.js';
 export * from './writeback.js';
 export * from './diff.js';
 export * from './build.js';
+export * from './check.js';
