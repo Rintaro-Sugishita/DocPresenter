@@ -3,7 +3,7 @@
 // document references is inlined, because a browser has no file system.
 import { readFileSync, writeFileSync, mkdirSync, readdirSync } from 'node:fs';
 import { createRequire } from 'node:module';
-import { dirname, resolve, relative } from 'node:path';
+import { dirname, resolve, relative, sep } from 'node:path';
 import { rolldown } from 'rolldown';
 import { createSubsetter } from '../packages/pdf/dist/index.js';
 
@@ -13,19 +13,21 @@ const base = dirname(DOC);
 // サンプルが参照しうるファイルを丸ごと集める（相対パスで引ける形にする）。
 const files = {};
 const images = {};
+// 文書が書く参照は `/` 区切り。Windows で組んでも、鍵はそれに合わせる。
+const keyOf = path => relative('sample', path).split(sep).join('/');
 const collect = dir => {
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
     const path = resolve(dir, entry.name);
     if (entry.isDirectory()) { collect(path); continue; }
     if (/\.(dgm|table|ermlx|mmd|md)$/i.test(entry.name)) {
-      files[relative('sample', path)] = readFileSync(path, 'utf8');
+      files[keyOf(path)] = readFileSync(path, 'utf8');
     }
     // 画像も抱えて持つ。ブラウザにファイルシステムは無いので、
     // 相対パスのままでは画面にも PDF にも出ない。
     const image = /\.(png|jpe?g|gif)$/i.exec(entry.name);
     if (image) {
       const type = image[1].toLowerCase() === 'jpg' ? 'jpeg' : image[1].toLowerCase();
-      images[relative('sample', path)] =
+      images[keyOf(path)] =
         `data:image/${type};base64,${readFileSync(path).toString('base64')}`;
     }
   }
@@ -48,7 +50,14 @@ const FACES = {
   headingBold: { file: `${NOTO}/NotoSansCJK-Bold.ttc`,     index: 0, name: 'NotoSansCJKjp-Bold' },
   mono:        { file: `${NOTO}/NotoSansCJK-Regular.ttc`,  index: 5, name: 'NotoSansMonoCJKjp-Regular' },
 };
-const FALLBACK = '/usr/share/fonts/truetype/fonts-japanese-gothic.ttf';
+// Noto CJK が無い機械（Windows など）では、その機械のゴシックで代える。名前は
+// 上のまま——ページの中で面を指す名前であって、入れた字形の出どころではない。
+const FALLBACK = [
+  '/usr/share/fonts/truetype/fonts-japanese-gothic.ttf',
+  'C:/Windows/Fonts/YuGothR.ttc',
+  'C:/Windows/Fonts/meiryo.ttc',
+];
+const FALLBACK_BOLD = ['C:/Windows/Fonts/YuGothB.ttc', ...FALLBACK];
 
 /** 標本に出る字と、レンダラが足す字。後者は文書のどこにも書かれていない。 */
 const characters = new Set();
@@ -75,7 +84,8 @@ let fontBytes = 0;
 for (const [style, face] of Object.entries(FACES)) {
   fonts.styles[style] = face.name;
   if (fonts.faces[face.name] !== undefined) continue;
-  const source = read(face.file) ?? read(FALLBACK);
+  const fallback = (/Bold/.test(face.name) ? FALLBACK_BOLD : FALLBACK).map(read).find(Boolean);
+  const source = read(face.file) ?? fallback;
   if (!source) throw new Error('埋め込むフォントが見つからない');
   const cut = subsetter(source, characters, read(face.file) ? face.index : 0);
   fontBytes += cut.length;
@@ -433,7 +443,9 @@ mkdirSync('out', { recursive: true });
 writeFileSync('out/editor-entry.js', entry);
 
 const bundle = await rolldown({ input: 'out/editor-entry.js', platform: 'browser' });
-await bundle.write({ file: 'out/editor.js', format: 'iife' });
+// Minified, as the VS Code screen is: the page carries Mermaid, which is several
+// megabytes as written, and is loaded over the network when published.
+await bundle.write({ file: 'out/editor.js', format: 'iife', minify: true });
 
 writeFileSync('out/editor.html', `<!doctype html>
 <html lang="ja"><head><meta charset="utf-8">

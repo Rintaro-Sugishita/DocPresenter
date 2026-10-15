@@ -139,8 +139,10 @@ console.log('out/canvas-app.html を生成');
 const theme = readFileSync('themes/default/theme.css', 'utf8');
 const script = readFileSync('out/canvas-app.js', 'utf8');
 const page = readFileSync('out/canvas-app.html', 'utf8')
-  .replace('<link rel="stylesheet" href="../themes/default/theme.css">', '<style>' + theme + '</style>')
-  .replace('<script src="canvas-app.js"></script>', '<script>' + script + '</script>');
+  // A function, not a string: in a replacement string `$'` and `$\`` stand for
+  // the text around the match, and the bundle's own regular expressions hold both.
+  .replace('<link rel="stylesheet" href="../themes/default/theme.css">', () => '<style>' + theme + '</style>')
+  .replace('<script src="canvas-app.js"></script>', () => '<script>' + script + '</script>');
 mkdirSync('out/canvas', { recursive: true });
 writeFileSync('out/canvas/index.html', page);
 console.log('out/canvas/index.html を生成（' + (page.length / 1048576).toFixed(2) + ' MB）');
