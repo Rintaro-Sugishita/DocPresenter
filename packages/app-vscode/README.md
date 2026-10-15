@@ -2,7 +2,41 @@
 
 [日本語](https://github.com/Rintaro-Sugishita/DocPresenter/blob/HEAD/packages/app-vscode/README.ja.md)
 
-Edit design documents (`.md` + `.dgm` + `.table`) inside VS Code, **on the page as it will be printed**.
+Write software design documents in Markdown, draw their diagrams and tables as plain-text files, and edit all of it
+**on the page as it will be printed**, right inside VS Code. Export to **HTML, PDF and editable PowerPoint (PPTX)**,
+and keep every change reviewable as an ordinary Git diff.
+
+## What it does
+
+Design documents kept in Excel, Word or draw.io cannot be reviewed in a pull request: the diff means nothing to a
+person or to an AI. DocPresenter keeps the document as **text files in your repository** and does the rest:
+
+| | |
+|---|---|
+| **Edit on the page** | Open a `.md` and it shows as printed pages. Type into paragraphs, move shapes, edit table cells. Each action is written back as **one small text change**, so the Git diff shows exactly what you changed and nothing else |
+| **Draw** | Diagrams (flowcharts, state diagrams, system diagrams, screen sketches) are `.dgm` text files. Write the boxes and arrows; the layout is computed, and only what you move by hand is recorded |
+| **Number and cross-reference** | Figures, tables and headings are numbered for you, references like `@fig-login` become "Figure 3", and a table of contents and cover are made |
+| **Export** | One click gives HTML, PDF (fonts embedded) or PPTX (diagrams and tables stay editable in PowerPoint) |
+| **Check** | Broken references and mistakes in diagrams and tables show up in the Problems panel |
+| **Bring changes back** | Shapes moved or text fixed in the exported PowerPoint can be read back into the `.dgm` |
+| **Take reviews from people without Git** | Customers annotate the PDF as usual; their comments are imported into a review file, tied to the exact words they marked, and your answers travel back in the next PDF |
+
+## The files
+
+Everything is plain text you can read in a diff. The extension adds no hidden state.
+
+| File | What it is |
+|---|---|
+| `.md` | The document: Markdown with a short frontmatter (`document:` number, `title:`, `output:` formats …). `@import "path"` takes in a diagram or table; `---` starts a new page (a slide in PPTX) |
+| `.dgm` | A diagram. Shapes and connections, one per line (`login [Log in]`, `login --> home`). Opens as text with colouring and suggestions, or as a canvas with "Open in DocPresenter". [Format](https://github.com/Rintaro-Sugishita/DocPresenter/blob/HEAD/spec/dgm.md) |
+| `.table` | A table with merged cells, column widths and named ranges, for tables too complex for Markdown. Edited as a grid inside the document. [Format](https://github.com/Rintaro-Sugishita/DocPresenter/blob/HEAD/spec/table.md) |
+| `.mmd` | A Mermaid diagram (sequence diagrams and the like). ` ```mermaid ` blocks in a `.md` work too |
+| `.png` `.jpg` `.svg` … | Images, taken in with `@import` like any figure |
+| `reviews/*.review.yml` | Review comments and answers, one file per round |
+| `.docpresenter/` | Your team's templates, theme and writing guide (made by "Set Up This Folder") |
+
+A typical layout: `docs/<name>.md` for each document, `docs/<name>/` for the diagrams and tables only it uses, and
+`shared/` for those several documents use.
 
 ## Getting started
 

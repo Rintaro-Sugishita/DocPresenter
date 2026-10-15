@@ -8,7 +8,13 @@
   "license": "SEE LICENSE IN legal/LICENSE.draft.md",
   "repository": { "type": "git", "url": "https://github.com/Rintaro-Sugishita/DocPresenter.git", "directory": "packages/app-vscode" },
   "engines": { "vscode": "^1.95.0" },
-  "categories": ["Other"],
+  "categories": ["Visualization", "Programming Languages", "Other"],
+  "keywords": [
+    "design", "design document", "specification", "documentation", "markdown",
+    "diagram", "drawing", "flowchart", "state diagram", "architecture diagram", "wireframe",
+    "table", "mermaid", "pdf", "pptx", "powerpoint", "export", "review", "git diff",
+    "設計書", "仕様書", "作図", "図", "表", "フローチャート", "画面設計", "レビュー"
+  ],
   "main": "./media/extension.cjs",
   "contributes": {
     "languages": [

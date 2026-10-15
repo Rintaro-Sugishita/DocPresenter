@@ -60,6 +60,7 @@ reviews/*.review.yml      顧客レビューの指摘と回答
 | `packages/build` | ビルド：ルート探索・参照閉包・診断・成果物の書き出し | 製品の一部 |
 | `packages/editor` | 設計書の編集 UI：シート・本文ブロック・表のグリッド | 製品の一部 |
 | `packages/app-vscode` | VS Code 拡張：カスタムエディタ・ビルドのコマンド | 製品の一部 |
+| `packages/app-web` | Web の閲覧ページ：リポジトリの URL やこの PC のフォルダを開いて組版のまま読む・PDF を出す（サーバ無し） | 製品の一部 |
 
 ## 動かす
 
@@ -88,6 +89,7 @@ node tools/check.mjs --in sample   # 書き出さずに全部確かめる（エ�
 node tools/pptx-back.mjs out/build/auth-overview.pptx --in sample   # 直された図を読み戻す
 
 node tools/build-vscode.mjs        # VS Code 拡張             → packages/app-vscode/media/
+node tools/build-web-viewer.mjs    # Web の閲覧ページ         → out/web/（GitHub Pages に置ける）
 
 node tools/check-spec.mjs          # 仕様と実装が一致しているか
 for f in tools/check-*.mjs; do node "$f"; done   # 全検証（上の 3 つを先に走らせておく）

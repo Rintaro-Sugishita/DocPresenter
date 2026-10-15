@@ -1,5 +1,5 @@
 {
-  "extension.description": "Write design documents in VS Code, where the Git diff is the review",
+  "extension.description": "Write design documents in Markdown with diagrams and tables, edit them on the printed page, and export to HTML, PDF and PowerPoint. Every change is a readable Git diff.",
   "customEditor.diagram.displayName": "DocPresenter (Diagram)",
   "command.init.title": "DocPresenter: Set Up This Folder (folders, a first document, a writing guide for agents)",
   "command.newDocument.title": "DocPresenter: New Document (numbered)…",
