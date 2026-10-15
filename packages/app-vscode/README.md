@@ -6,6 +6,8 @@ Write software design documents in Markdown, draw their diagrams and tables as p
 **on the page as it will be printed**, right inside VS Code. Export to **HTML, PDF and editable PowerPoint (PPTX)**,
 and keep every change reviewable as an ordinary Git diff.
 
+![A design document open in DocPresenter, shown as printed pages](https://raw.githubusercontent.com/Rintaro-Sugishita/DocPresenter/HEAD/packages/app-vscode/images/en/1-pages.png)
+
 ## What it does
 
 Design documents kept in Excel, Word or draw.io cannot be reviewed in a pull request: the diff means nothing to a
@@ -20,6 +22,14 @@ person or to an AI. DocPresenter keeps the document as **text files in your repo
 | **Check** | Broken references and mistakes in diagrams and tables show up in the Problems panel |
 | **Bring changes back** | Shapes moved or text fixed in the exported PowerPoint can be read back into the `.dgm` |
 | **Take reviews from people without Git** | Customers annotate the PDF as usual; their comments are imported into a review file, tied to the exact words they marked, and your answers travel back in the next PDF |
+
+## Screens
+
+The sample document is in Japanese; the screens follow VS Code's display language.
+
+| Moving a shape on the canvas | Editing a table with merged cells |
+|---|---|
+| ![A screen design drawn as a .dgm, a button being dragged with guides](https://raw.githubusercontent.com/Rintaro-Sugishita/DocPresenter/HEAD/packages/app-vscode/images/en/2-canvas.png) | ![A .table open as a grid, with cell fill and text colour](https://raw.githubusercontent.com/Rintaro-Sugishita/DocPresenter/HEAD/packages/app-vscode/images/en/3-table.png) |
 
 ## The files
 

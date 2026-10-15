@@ -5,6 +5,8 @@
 設計書の本文を Markdown で、図と表をテキストのファイルで書き、**印刷される紙面のまま** VS Code の中で編集する。
 **HTML・PDF・PowerPoint（PPTX、図と表は編集できる形）**に書き出せて、どの変更もふつうの Git の差分としてレビューできる。
 
+![DocPresenter で開いた設計書。印刷されるページの姿で出る](https://raw.githubusercontent.com/Rintaro-Sugishita/DocPresenter/HEAD/packages/app-vscode/images/ja/1-pages.png)
+
 ## 何をしてくれるのか
 
 Excel・Word・draw.io の設計書は、プルリクエストでレビューできない。差分が人にも AI にも読めないからである。
@@ -19,6 +21,12 @@ DocPresenter は設計書を**リポジトリの中のテキストファイル**
 | **確かめる** | 参照切れや図・表の書き間違いを「問題」パネルに出す |
 | **読み戻す** | 書き出した PowerPoint で動かした図形や直した文字を、`.dgm` に戻せる |
 | **Git を使わない人のレビューを受ける** | 顧客はいつもどおり PDF に注釈を書くだけ。注釈はレビューファイルに取り込まれ、印の付いた文言そのものに結び付く。回答は次の PDF に載って届く |
+
+## 画面
+
+| キャンバスで図形を動かす | 結合セルのある表を編集する |
+|---|---|
+| ![.dgm で描いた画面設計。ボタンをガイドに沿ってドラッグしている](https://raw.githubusercontent.com/Rintaro-Sugishita/DocPresenter/HEAD/packages/app-vscode/images/ja/2-canvas.png) | ![.table をグリッドで開き、セルの塗りと文字色を選べる](https://raw.githubusercontent.com/Rintaro-Sugishita/DocPresenter/HEAD/packages/app-vscode/images/ja/3-table.png) |
 
 ## 扱うファイル
 
