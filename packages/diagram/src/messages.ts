@@ -93,6 +93,11 @@ export const DIAGRAM_MESSAGES = defineMessages({
   'diagram.did.group': 'グループにする',
   'diagram.did.reorder': '並びを変える',
   'diagram.did.putInto': '入れ物に入れる',
+  // --- formatting -------------------------------------------------------------
+  'diagram.format.keptOrder': '読み順に並べ替えると図の見た目が変わるため、図形と線は書かれた順のまま整えた',
+  'diagram.format.duplicate': '{line} 行目と同じ名前の行がほかにもあるため、整形しなかった（どちらが効くかが変わってしまう）',
+  'diagram.format.twoBodies': '図の本体（free / flow / overlay）が 2 つあるため、整形しなかった',
+  'diagram.format.unsafe': '整形すると図の中身が変わってしまうため、整形しなかった',
   'diagram.did.text': '文字を変更',
   'diagram.did.look': '見た目を変更',
   'diagram.did.items': '一覧を変える',
@@ -361,6 +366,11 @@ export const DIAGRAM_MESSAGES = defineMessages({
   'diagram.did.group': 'Group',
   'diagram.did.reorder': 'Reorder',
   'diagram.did.putInto': 'Put into a container',
+  // --- formatting -------------------------------------------------------------
+  'diagram.format.keptOrder': 'Shapes and connections were left in their written order: putting them in reading order would change how the drawing looks',
+  'diagram.format.duplicate': 'Not formatted: another line uses the same name as line {line}, and moving them would change which one counts',
+  'diagram.format.twoBodies': 'Not formatted: the drawing has two main sections (free / flow / overlay)',
+  'diagram.format.unsafe': 'Not formatted: the result would not mean the same as the drawing',
   'diagram.did.text': 'Change the text',
   'diagram.did.look': 'Change the look',
   'diagram.did.items': 'Change the list',

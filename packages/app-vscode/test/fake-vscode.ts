@@ -77,12 +77,27 @@ type CompletionProvider = {
 /** What the extension registered for completions, with the characters that start one. */
 export const completions: { selector: unknown; provider: CompletionProvider; triggers: string[] }[] = [];
 
+type FormattingProvider = {
+  provideDocumentFormattingEdits(document: TextDocument): Promise<TextEdit[]>;
+};
+/** What the extension registered for "Format Document". */
+export const formatters: { selector: unknown; provider: FormattingProvider }[] = [];
+
 export const languages = {
   registerCompletionItemProvider: (selector: unknown, provider: CompletionProvider, ...triggers: string[]) => {
     completions.push({ selector, provider, triggers });
     return { dispose: () => undefined };
   },
+  registerDocumentFormattingEditProvider: (selector: unknown, provider: FormattingProvider) => {
+    formatters.push({ selector, provider });
+    return { dispose: () => undefined };
+  },
 };
+
+export class TextEdit {
+  constructor(readonly range: Range, readonly newText: string) {}
+  static replace(range: Range, newText: string): TextEdit { return new TextEdit(range, newText); }
+}
 
 export class WorkspaceEdit {
   readonly changes: { uri: Uri; range: Range; text: string }[] = [];

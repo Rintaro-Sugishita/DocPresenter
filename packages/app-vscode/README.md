@@ -239,6 +239,24 @@ Opened as text (the usual way, without "Open in DocPresenter"), a `.dgm` is colo
 
 `#` comments the line (Ctrl+/), and errors at the top level are shown in red, as the format refuses them.
 
+### Formatting a `.dgm`
+
+A drawing typed by hand can be put into its canonical form with **"DocPresenter: Format This Diagram"** (in the
+Command Palette, or right-click a `.dgm` in the Explorer) or VS Code's own **"Format Document"** (Shift+Alt+F).
+
+- **One drawing, one text.** The lines are put in an order taken from the drawing, not from the order they were
+  typed: what a container holds after the container, everything else along the arrows, and the rest in reading
+  order. Pins and style rules follow their shapes. So two people who draw the same thing get the same file.
+- Spacing and spelling are made uniform: ids and numbers lined up in columns, `->` written `-->`, container settings
+  written only where they differ from the default. A comment moves with the line below it.
+- **The drawing never changes.** The result is read back and compared with the original — every box, every line's
+  route, which of two overlapping shapes is in front. Where reading order would move a shape, the shapes keep the
+  order they were written in, and a notification says so.
+- The command saves the drawing (unless it had unsaved changes); "Format Document" leaves saving to you.
+- From the command line: `node tools/format-dgm.mjs --in <workspace>` lists what would change, `--write` writes it,
+  and `--check` fails (exit code 1) when a drawing is not formatted — for a CI job. The rules are in
+  [spec/dgm.md §6.3](https://github.com/Rintaro-Sugishita/DocPresenter/blob/HEAD/spec/dgm.md).
+
 ## Renaming figures and tables
 
 Hover over a figure or table and **"Name, caption, label"** appears at its top right (right-clicking a figure does the same).

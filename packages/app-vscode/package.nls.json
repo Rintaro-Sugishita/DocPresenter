@@ -13,6 +13,7 @@
   "command.exportPdf.title": "DocPresenter: Export This Document as PDF",
   "command.exportPptx.title": "DocPresenter: Export This Document as PPTX",
   "command.readBackPptx.title": "DocPresenter: Read PPTX Changes Back into the Diagrams…",
+  "command.formatDiagram.title": "DocPresenter: Format This Diagram (canonical order and spacing)",
   "command.importPdfReview.title": "DocPresenter: Import PDF Annotations as Review Comments (one or more PDFs)…",
   "config.commitKey.description": "The key that commits the open block. Every other Enter breaks the line.",
   "config.commitKey.ctrl-enter": "Ctrl+Enter commits / Enter breaks the line",

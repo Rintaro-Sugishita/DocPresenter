@@ -321,7 +321,8 @@ hand would make pinning pointless.
 The layout layer is a **map keyed by identifier**, not a list. A writer MUST
 write at most one pin per identifier, MUST write each pin on its own line, and
 SHOULD keep a stable order (DocPresenter keeps the order the lines already have,
-and appends). Adding a shape MUST NOT move another shape's line.
+and appends). Adding a shape MUST NOT move another shape's line. Putting the lines
+in one order for the whole drawing is a formatter's job, done when asked (§6.3).
 
 ### 4.3 A bend
 
@@ -438,6 +439,85 @@ A writer MUST:
 6. **Change only what changed.** Each edit replaces one byte range. A writer that
    rewrites the whole file on every change satisfies this format's grammar and
    defeats its purpose.
+
+### 6.3 Canonical form
+
+A drawing typed by hand comes out in its author's order and spacing. A
+**formatter** rewrites a file into its canonical form: **one text for one
+drawing**, so that two people who draw the same thing get the same file,
+whatever order they typed it in. It rewrites the whole file, which §6.2 forbids
+an editor to do on its own; it is run when a person asks for it, and the diff it
+makes is one reviewed as such. DocPresenter's is the VS Code command "Format This
+Diagram" (also VS Code's "Format Document") and `tools/format-dgm.mjs`.
+
+**The file.** The comments that open the file stay at the top. Then the `use`
+lines, in their order; then the sections, in the order of §1 — the semantics
+section, `layout`, `style` — and `parts` last. Several `layout`, `style` or
+`parts` sections become one. An empty `layout` or `style` section is left out.
+Sections are separated by one blank line and indented by two spaces. A comment
+belongs to the line below it and moves with it; a blank line is written before a
+line that has comments.
+
+**The semantics section.** Shapes, then groups, then connections, each block
+separated by a blank line.
+
+| Line | Canonical form |
+|---|---|
+| header | `flow Title LR {` — the title, then the direction (§3.5) |
+| shape | `id [label]:::class`, the ids padded to one column. The brackets as tight as reading them back allows: `[ /a/ ]` keeps its spaces, or it would read as a parallelogram |
+| part | `id part:"label"`; a part holding rows writes them two spaces deeper per level, `-` or `+`, then `*` for the picked one |
+| group | `group id "label" LR { a; b }`, the columns lined up. The label is left out when it is the id, which is what a group without one shows |
+| connection | `from --> to "label"`. One spelling per meaning: `-->` (also for `->`), `--`, `-.->`, `<-->` (also for `<->`), `<-.->` |
+
+**The order.** Taken from the drawing, never from the order the lines were typed:
+
+1. What a container (`stack` / `grid` / `tabs`) holds comes straight after the
+   container, in the order the container arranges it. What a group holds comes
+   together, in the group's place.
+2. Everything else follows the arrows: a shape comes after the shapes whose
+   arrows (`-->`, `-.->`) point at it. A line with no head or with two says
+   nothing about which comes first.
+3. Where the arrows leave a choice, the page decides: along the flow (§3.5), or
+   in a `free` drawing top to bottom, then left to right, by where the shapes
+   are drawn. Ties go by id.
+4. Of two shapes that overlap at the same `z` and depth, the one behind is
+   written first, since §4.1 paints them in the order they are declared.
+5. Connections go by the place of the shape they leave, then of the one they
+   reach.
+6. Pins, containers and style rules go in the order of the shapes they name;
+   bends, in the order of their connections. A line naming no shape comes last,
+   by name.
+7. Parts and callouts keep their order: under a library's headings it is the
+   order its menu shows, and a callout's is the order its markers count.
+
+**The layout section.** Containers, then pins, then bends. A pin is
+`id @ (x, y) WxH  z:N`, the numbers right-aligned in their columns. A container's
+settings are written only where they differ from the default, in the order
+`right`, `cols`, `gap`, `pad`, `scroll`, `show`; a grid is written a row to a
+line with its cells lined up and separated by ` ; `, a stack or a set of tabs on
+one line.
+
+**The style section.** `theme`, then the rules, `id { fill: …, line: …, color: …,
+align: …, icon: … }` — other properties after these, by name — then the lines
+this grammar does not read, as they were.
+
+Columns are measured in the columns a monospaced editor gives a character: two
+for a wide (CJK) character, one otherwise.
+
+**What a formatter guarantees.** It MUST NOT change what the file means or what
+it draws. DocPresenter's reads its own result back and compares it with the
+original — the model, every comment, and for `free` and `flow` every box, every
+route, and which of two overlapping shapes is in front — and writes nothing it
+cannot prove the same. Two cases follow from that:
+
+- The order of the lines can matter to the picture: a `flow` places shapes of
+  the same rank in the order they are declared, and a `free` drawing parks its
+  unpinned shapes in that order (§4.4). Where the canonical order would move a
+  shape, the shapes and connections keep their written order and the formatter
+  says so; everything else is still formatted.
+- A name written twice where §4.2 allows one (two pins for one id, two bends
+  for one connection) is a file where the later line wins. Moving them would
+  change which one wins, so such a file is left as it is.
 
 ## 7. The style layer: `style`
 

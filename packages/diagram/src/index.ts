@@ -16,6 +16,7 @@ export * from './draw/overlay.js';
 export * from './draw/stencil.js';
 export * from './draw/listing.js';
 export * from './edits.js';
+export * from './format.js';
 export * from './view/style.js';
 export * from './view/shape-icon.js';
 export * from './view/canvas.js';

@@ -15,6 +15,7 @@ import { rowBoxes, rowTextAt } from '../packages/diagram/dist/draw/listing.js';
 import {
   addNode, putIntoContainer, setItems, setNodePart, setNodeShape,
 } from '../packages/diagram/dist/edits.js';
+import { formatDiagram } from '../packages/diagram/dist/format.js';
 import { applyEdit } from '../packages/base/dist/index.js';
 import { parseRuns } from '../packages/diagram/dist/inline.js';
 import { parseTable } from '../packages/markdown/dist/table/parse.js';
@@ -385,6 +386,21 @@ const wide = ['free {', '  会員 [データベース]', '}'].join(NL);
 const wideSpan = parseDiagram(wide).nodes[0].span;
 check('README §6', 'バイト範囲は UTF-8 のバイトで数える',
   Buffer.from(wide, 'utf8').slice(wideSpan.start, wideSpan.end).toString('utf8') === '会員 [データベース]');
+
+// §6.3 canonical form
+const formatted = text => formatDiagram(text).text;
+const typedOne = ['flow {', '  b [B]', '  a [A]', '  a -> b', '}', 'style {', '  b {line:dashed}', '}'].join(NL);
+const typedTwo = ['style {', '  b { line: dashed }', '}', 'flow {', '  a[A]', '  a --> b', '  b[B]', '}'].join(NL);
+check('dgm §6.3', '同じ図を別の順で書いても、整形すれば同じ文になる', formatted(typedOne) === formatted(typedTwo));
+check('dgm §6.3', '整形し直しても変わらない', formatted(formatted(typedOne)) === formatted(typedOne));
+check('dgm §6.3', '節は本体・layout・style の順、接続記号は --> に揃う',
+  formatted(typedOne) === ['flow {', '  a [A]', '  b [B]', '', '  a --> b', '}', '', 'style {', '  b { line: dashed }', '}', ''].join(NL),
+  JSON.stringify(formatted(typedOne)));
+const twice = ['free {', '  a [A]', '}', 'layout {', '  a @ (0, 0)', '  a @ (10, 0)', '}'].join(NL);
+check('dgm §6.3', '同じ名前が 2 度書かれたファイルは整形しない', formatted(twice) === twice);
+const behind = ['free {', '  big [Big]', '  small [Small]', '}', 'layout {', '  big @ (0, 40) 200x200', '  small @ (10, 10) 50x50', '}'].join(NL);
+const front = layOutDiagram(parseDiagram(formatted(behind))).order;
+check('dgm §6.3', '重なった図形は、整形しても手前のものが手前に残る', front.indexOf('big') < front.indexOf('small'));
 
 // ───────────────────────── spec/inline-text.md ─────────────────────────
 
