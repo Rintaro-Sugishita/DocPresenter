@@ -49,7 +49,7 @@ PowerPoint からの反映、レビューの取り込みを利用者が実行し
 
 - 既存の Excel・Word の設計書の取り込み。新たに Markdown で設計書を書き始めるチームを対象としている。
 - Word / Excel 形式での出力。配布用の形式は PDF と PPTX で十分と判断した。
-- ER 図の作図。ER 図は ErCreator などの専用ツールで作成し、そのファイルを取り込む。
+- ER 図の作図。ER 図は [ErCreator](https://github.com/Rintaro-Sugishita/ErCreator-releases) などの専用ツールで作成し、そのファイルを取り込む。
 
 ## パッケージ
 

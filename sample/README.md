@@ -216,5 +216,5 @@ frontmatter（`document` / `version` / `status` など）を**その場で作っ
 ## 注記
 
 - `login-screen.png` は自動生成したプレースホルダであり、実際の画面ではない
-- `customer-domain.ermlx` は ErCreator の実スキーマを確認せずに書いた例示である。実形式は ErCreator 側の仕様に従う
+- `customer-domain.ermlx` は [ErCreator](https://github.com/Rintaro-Sugishita/ErCreator-releases) の実スキーマを確認せずに書いた例示である。実形式は ErCreator 側の仕様に従う
 - 本サンプルは**レンダリングされない**。処理系が無いため、記法の書き心地の検証のみを目的としている
