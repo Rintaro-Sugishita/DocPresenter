@@ -8,6 +8,7 @@ const plural = (count: string, one: string, many: string): string =>
 export const DIAGRAM_MESSAGES = defineMessages({
   // --- reading a .dgm --------------------------------------------------------
   'diagram.parse.unreadableLine': '解釈できない行: {text}',
+  'diagram.parse.hyphenInId': 'id にハイフン（-）は使えない（接続の記号と紛れるため）。_ か大文字で区切る: {id}',
   'diagram.parse.unclosed': "'{kind}' が閉じられていない",
   'diagram.parse.overlayNeedsImage': 'overlay には画像のパスが要る',
   'diagram.parse.noSection': 'free / flow / overlay のいずれのセクションも無い',
@@ -284,6 +285,7 @@ export const DIAGRAM_MESSAGES = defineMessages({
   'diagram.complete.callout': '次の注釈',
 }, {
   'diagram.parse.unreadableLine': 'Cannot read this line: {text}',
+  'diagram.parse.hyphenInId': 'An id cannot contain a hyphen (-), which connectors are made of; use _ or capitals instead: {id}',
   'diagram.parse.unclosed': "'{kind}' is not closed",
   'diagram.parse.overlayNeedsImage': 'overlay needs the path of an image',
   'diagram.parse.noSection': 'There is no free, flow or overlay section',

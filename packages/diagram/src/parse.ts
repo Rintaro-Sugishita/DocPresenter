@@ -57,26 +57,50 @@ const SHAPES: readonly { open: string; close: string; shape: ShapeKind }[] = [
  * quietly read as a line.
  */
 const LINE_SHAPE = /^-{2,}$/;
-/**
- * The same thing on a line of the drawing: `rule1 --`.
- *
- * Read before the connections, not after. An id may end in a hyphen, so
- * `rule1 ---` is also a connection from `rule1` to a node called `-`; the
- * reading that needs no such node is the one meant.
- */
-const LINE_NODE = /^([A-Za-z0-9_぀-鿿-]+?)\s*(-{2,})$/;
+/** The same thing on a line of the drawing: `rule1 --`. Read before the connections. */
+const LINE_NODE = /^([A-Za-z0-9_぀-鿿]+)\s*(-{2,})$/;
 
-const NODE = /^([A-Za-z0-9_぀-鿿-]+)\s*(.+?)(?::::([\w-]+))?$/;
-const EDGE = /^([A-Za-z0-9_぀-鿿-]+)\s*(<-->|<->|<-\.->|-->|->|--|-\.->)\s*([A-Za-z0-9_぀-鿿-]+)\s*(?:"([^"]*)")?\s*$/;
-const GROUP = /^group\s+([A-Za-z0-9_぀-鿿-]+)\s*(?:"([^"]*)")?\s*(?:(TB|TD|BT|LR|RL)\s*)?\{([^}]*)\}\s*$/;
+/**
+ * The characters of an id (spec/dgm.md §2). No hyphen: connectors are made of
+ * hyphens, and an id that could end in one made `a-->b` a connection from `a-`.
+ */
+const ID_CHARS = 'A-Za-z0-9_぀-鿿';
+const NODE = /^([A-Za-z0-9_぀-鿿]+)\s*(.+?)(?::::([\w-]+))?$/;
+const EDGE = /^([A-Za-z0-9_぀-鿿]+)\s*(<-->|<->|<-\.->|-->|->|--|-\.->)\s*([A-Za-z0-9_぀-鿿]+)\s*(?:"([^"]*)")?\s*$/;
+const GROUP = /^group\s+([A-Za-z0-9_぀-鿿]+)\s*(?:"([^"]*)")?\s*(?:(TB|TD|BT|LR|RL)\s*)?\{([^}]*)\}\s*$/;
 /**
  * `flow LR {` — Mermaid's words for the way a flow runs. Written first, as
  * Mermaid writes `flowchart LR`, or last, after a title (`flow 構成 LR {`).
  */
 const DIRECTION = /^(TB|TD|BT|LR|RL)$/;
-const PLACEMENT = /^([A-Za-z0-9_぀-鿿-]+)\s*@\s*\(\s*(-?\d+)\s*,\s*(-?\d+)\s*\)\s*(?:(\d+)x(\d+))?\s*(?:z\s*:\s*(-?\d+))?\s*$/;
+const PLACEMENT = /^([A-Za-z0-9_぀-鿿]+)\s*@\s*\(\s*(-?\d+)\s*,\s*(-?\d+)\s*\)\s*(?:(\d+)x(\d+))?\s*(?:z\s*:\s*(-?\d+))?\s*$/;
 /** `a -> b @ (120, 200); (320, 200)` — the corners a connection turns through. */
-const BEND = /^([A-Za-z0-9_぀-鿿-]+)\s*-+>\s*([A-Za-z0-9_぀-鿿-]+)\s*@\s*(.+)$/;
+const BEND = /^([A-Za-z0-9_぀-鿿]+)\s*-+>\s*([A-Za-z0-9_぀-鿿]+)\s*@\s*(.+)$/;
+
+/**
+ * Where an id stands on a line — first (after `group`, `stack`, `grid` or
+ * `tabs`), and after a connector — read with hyphens allowed, so that one
+ * written with a hyphen is refused by name rather than as a line nobody can
+ * read. The first is cut where a connector or a bracket starts.
+ */
+const LEADING_NAME = new RegExp(
+  `^(?:group\\s+|(?:stack|grid|tabs)\\s+)?([${ID_CHARS}-]+?)(?=\\s|$|[\\[({>"@:<]|-[-.>])`);
+const TARGET_NAME = new RegExp(
+  `^[${ID_CHARS}]+\\s*(?:<-\\.->|<-->|<->|-\\.->|-->|->|--|-+>)\\s*([${ID_CHARS}-]+)`);
+
+/** Refuses an id written with a hyphen, naming it. */
+function refuseHyphen(name: string | undefined, line: number): void {
+  const id = name?.trim();
+  if (id !== undefined && id.includes('-') && new RegExp(`[${ID_CHARS}]`).test(id)) {
+    throw new DiagramParseError(dgm('diagram.parse.hyphenInId', { id }), line);
+  }
+}
+
+/** The ids a line names where an id stands, each refused if it has a hyphen. */
+function refuseHyphens(text: string, line: number): void {
+  refuseHyphen(LEADING_NAME.exec(text)?.[1], line);
+  refuseHyphen(TARGET_NAME.exec(text)?.[1], line);
+}
 const POINT = /\(\s*(-?\d+)\s*,\s*(-?\d+)\s*\)/g;
 
 const CALLOUT = /^(\S+)\s*@\s*\(\s*(-?\d+)\s*,\s*(-?\d+)\s*\)\s*->\s*\(\s*(-?\d+)\s*,\s*(-?\d+)\s*\)\s*(?:"([^"]*)")?\s*$/;
@@ -322,9 +346,11 @@ function parseBody(
     const text = source.text;
     if (text === '' || text.startsWith('#')) continue;
     const line = source.number;
+    refuseHyphens(text, line);
 
     const group = GROUP.exec(text);
     if (group) {
+      for (const member of group[4]!.split(';')) refuseHyphen(member, line);
       nodes.push({
         id: group[1]!,
         text: group[2] ?? group[1]!,
@@ -472,7 +498,7 @@ function parseCallouts(body: readonly SourceLine[], out: Callout[]): void {
  * The settings are optional: a container with none is an even share of the
  * room, which is what a form of labels and fields wants.
  */
-const CONTAINER = /^(stack|grid|tabs)\s+([A-Za-z0-9_぀-鿿-]+)\s*(?:\(([^)]*)\))?\s*\{\s*(.*)$/;
+const CONTAINER = /^(stack|grid|tabs)\s+([A-Za-z0-9_぀-鿿]+)\s*(?:\(([^)]*)\))?\s*\{\s*(.*)$/;
 const DEFAULT_GAP = 12;
 const DEFAULT_PAD = 16;
 
@@ -484,6 +510,7 @@ function parseLayout(
     const source = body[i]!;
     const text = source.text;
     if (text === '' || text.startsWith('#')) continue;
+    refuseHyphens(text, source.number);
 
     const container = CONTAINER.exec(text);
     if (container) {
@@ -503,6 +530,7 @@ function parseLayout(
           throw new DiagramParseError(dgm('diagram.parse.unclosed', { kind: container[1]! }), source.number);
         }
       }
+      for (const row of rows) for (const cell of row.split(';')) refuseHyphen(cell, source.number);
       const one = readContainer(container, rows, source.number);
       containers.set(one.id, { ...one, span: { start: source.span.start, end: last.span.end } });
       continue;
@@ -611,7 +639,10 @@ function parseStyle(
     if (text === '' || text.startsWith('#')) continue;
     const themeDecl = /^theme\s*:\s*(\S+)\s*$/.exec(text);
     if (themeDecl) { theme = themeDecl[1]!; continue; }
-    const rule = /^([A-Za-z0-9_぀-鿿-]+)\s*\{([^}]*)\}\s*$/.exec(text);
+    // A rule for an id written with a hyphen is refused rather than ignored: the
+    // look it asks for would silently never apply.
+    refuseHyphen(new RegExp(`^([${ID_CHARS}-]+)\\s*\\{`).exec(text)?.[1], source.number);
+    const rule = /^([A-Za-z0-9_぀-鿿]+)\s*\{([^}]*)\}\s*$/.exec(text);
     if (!rule) continue;
     const declarations = new Map<string, string>();
     for (const part of rule[2]!.split(/[,;]/)) {

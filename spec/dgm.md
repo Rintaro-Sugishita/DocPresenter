@@ -92,17 +92,30 @@ An identifier — a shape's id, a group's id, an endpoint of a connection, a sty
 selector — matches:
 
 ```
-[A-Za-z0-9_぀-鿿-]+
+[A-Za-z0-9_぀-鿿]+
 ```
 
-That is ASCII letters and digits, `_`, `-`, and the range U+3040–U+9FFF, which
+That is ASCII letters and digits, `_`, and the range U+3040–U+9FFF, which
 covers hiragana, katakana, and CJK ideographs. Full-width alphanumerics and
 half-width katakana are **not** identifier characters.
+
+**A hyphen is not an identifier character**, as it is not in a variable's name.
+Connectors are made of hyphens (§3.2), and an identifier that could hold one
+makes a line read two ways: `a-->b` would be a connection from `a-`. Without it,
+`a-->b` is a connection from `a` to `b`, spaces or not. A reader MUST report an
+error naming an identifier written with a hyphen — where a shape, a group, a
+connection's end, a group's member, a pin, a bend, a container or its cells, or
+a style rule names one — rather than read the line some other way. Write
+`db_primary` or `dbPrimary`.
+
+The name of a part (§7.4, `id textbox:"…"`) is not an identifier in this sense:
+it follows an identifier and a space, never a connector, and MAY contain `-`
+(`net-router`).
 
 Identifiers **MUST** be unique within a file across shapes and groups. A reader
 MAY report a duplicate; where it does not, the later definition wins.
 
-Identifiers **MUST** be stable and readable: `db-primary`, not a GUID. This is a
+Identifiers **MUST** be stable and readable: `db_primary`, not a GUID. This is a
 requirement on **writers**, including interactive editors: a generated
 identifier that changes between saves destroys the diff, which is the only
 reason this format exists. A writer that must invent a name SHOULD derive it

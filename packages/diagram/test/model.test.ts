@@ -26,6 +26,35 @@ describe('作図ファイルの解析', () => {
     expect(d.edges.map(e => e.span.start)).toEqual([...new Set(d.edges.map(e => e.span.start))]);
   });
 
+  it('id にハイフンは無いので、空白の無い接続もそのまま読める', () => {
+    const d = parseDiagram('flow {\n a [A]\n b [B]\n a-->b\n b-.->a "x-y"\n}');
+    expect(d.edges.map(e => [e.from, e.to, e.label])).toEqual([['a', 'b', undefined], ['b', 'a', 'x-y']]);
+  });
+
+  it('ハイフン入りの id は、名前を挙げて断る', () => {
+    const refused = (source: string): string | undefined => {
+      try {
+        parseDiagram(source);
+        return undefined;
+      } catch (error) {
+        return error instanceof DiagramParseError ? JSON.stringify(error.phrase) : String(error);
+      }
+    };
+    for (const [source, id] of [
+      ['free {\n db-primary [DB]\n}', 'db-primary'],
+      ['flow {\n a-b-->c\n}', 'a-b'],
+      ['flow {\n a --> b-c\n}', 'b-c'],
+      ['free {\n group g { a; b-c }\n}', 'b-c'],
+      ['free {\n a [A]\n}\nlayout {\n stack a { b-c ; d }\n}', 'b-c'],
+      ['free {\n a [A]\n}\nlayout {\n a -> b-c @ (0, 0)\n}', 'b-c'],
+      ['free {\n a [A]\n}\nstyle {\n a-b { fill: #fff }\n}', 'a-b'],
+    ]) {
+      expect(refused(source!)).toContain(`"id":"diagram.parse.hyphenInId","params":{"id":"${id}"}`);
+    }
+    // 部品の名前は id ではないので、ハイフンを使える。
+    expect(parseDiagram('use "icons"\nfree {\n r net-router:\n}').partOf.get('r')).toBe('net-router');
+  });
+
   it('意味と配置が別の層に入る', () => {
     const d = parseDiagram('free {\n a [A]\n}\nlayout {\n a @ (10, 20) 100x50 z:-1\n}');
     expect(d.nodes[0]?.text).toBe('A');

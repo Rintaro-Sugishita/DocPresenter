@@ -68,7 +68,7 @@
 
     "rows-inline": {
       "comment": "`nav tree: { }` — a part that holds rows, written empty on one line.",
-      "match": "^\\s*([A-Za-z0-9_぀-鿿-]+)\\s+([A-Za-z0-9_-]+)(:)\\s*(\\{)\\s*(\\})\\s*(?:(:::)([\\w-]+))?\\s*$",
+      "match": "^\\s*([A-Za-z0-9_぀-鿿]+)\\s+([A-Za-z0-9_-]+)(:)\\s*(\\{)\\s*(\\})\\s*(?:(:::)([\\w-]+))?\\s*$",
       "captures": {
         "1": { "name": "entity.name.tag.dgm" },
         "2": { "name": "support.class.part.dgm" },
@@ -82,7 +82,7 @@
 
     "rows-block": {
       "comment": "`nav tree: {` then a markdown list, one row per line, closed by `}`.",
-      "begin": "^\\s*([A-Za-z0-9_぀-鿿-]+)\\s+([A-Za-z0-9_-]+)(:)\\s*(\\{)\\s*$",
+      "begin": "^\\s*([A-Za-z0-9_぀-鿿]+)\\s+([A-Za-z0-9_-]+)(:)\\s*(\\{)\\s*$",
       "beginCaptures": {
         "1": { "name": "entity.name.tag.dgm" },
         "2": { "name": "support.class.part.dgm" },
@@ -105,7 +105,7 @@
     },
 
     "group": {
-      "match": "^\\s*(group)\\s+([A-Za-z0-9_぀-鿿-]+)\\s*(\"[^\"]*\")?\\s*(?:(TB|TD|BT|LR|RL)\\s*)?(\\{)([^}]*)(\\})\\s*$",
+      "match": "^\\s*(group)\\s+([A-Za-z0-9_぀-鿿]+)\\s*(\"[^\"]*\")?\\s*(?:(TB|TD|BT|LR|RL)\\s*)?(\\{)([^}]*)(\\})\\s*$",
       "captures": {
         "1": { "name": "keyword.other.group.dgm" },
         "2": { "name": "entity.name.tag.dgm" },
@@ -125,14 +125,14 @@
 
     "members": {
       "patterns": [
-        { "match": "[A-Za-z0-9_぀-鿿-]+", "name": "variable.other.dgm" },
+        { "match": "[A-Za-z0-9_぀-鿿]+", "name": "variable.other.dgm" },
         { "match": ";", "name": "punctuation.separator.dgm" }
       ]
     },
 
     "line-node": {
       "comment": "`rule1 --` — a line that joins nothing. Read before connections, as the parser does.",
-      "match": "^\\s*([A-Za-z0-9_぀-鿿-]+?)\\s*(-{2,})\\s*$",
+      "match": "^\\s*([A-Za-z0-9_぀-鿿]+?)\\s*(-{2,})\\s*$",
       "captures": {
         "1": { "name": "entity.name.tag.dgm" },
         "2": { "name": "keyword.operator.shape.dgm" }
@@ -140,7 +140,7 @@
     },
 
     "connection": {
-      "match": "^\\s*([A-Za-z0-9_぀-鿿-]+)\\s*(<-\\.->|<-->|<->|-\\.->|-->|->|--)\\s*([A-Za-z0-9_぀-鿿-]+)\\s*(\"[^\"]*\")?\\s*$",
+      "match": "^\\s*([A-Za-z0-9_぀-鿿]+)\\s*(<-\\.->|<-->|<->|-\\.->|-->|->|--)\\s*([A-Za-z0-9_぀-鿿]+)\\s*(\"[^\"]*\")?\\s*$",
       "captures": {
         "1": { "name": "variable.other.dgm" },
         "2": { "name": "keyword.operator.connector.dgm" },
@@ -151,7 +151,7 @@
 
     "part-use": {
       "comment": "`idBox textbox:\"…\"` — a shape written as a part of the library.",
-      "match": "^\\s*([A-Za-z0-9_぀-鿿-]+)\\s+([A-Za-z0-9_-]+)(:)\\s*(\"[^\"]*\")?\\s*(?:(:::)([\\w-]+))?\\s*$",
+      "match": "^\\s*([A-Za-z0-9_぀-鿿]+)\\s+([A-Za-z0-9_-]+)(:)\\s*(\"[^\"]*\")?\\s*(?:(:::)([\\w-]+))?\\s*$",
       "captures": {
         "1": { "name": "entity.name.tag.dgm" },
         "2": { "name": "support.class.part.dgm" },
@@ -164,7 +164,7 @@
 
     "shape": {
       "comment": "The bracket pair is the shape (§3.1). Longer pairs are tried first, as the reader does.",
-      "match": "^\\s*([A-Za-z0-9_぀-鿿-]+)\\s*(\\[/|\\[\\\\|\\{\\{|\\(\\[|\\[\\(|\\(\\(|>|\\[|\\{|\\(|\")(.*?)(\\\\\\]|/\\]|\\}\\}|\\]\\)|\\)\\]|\\)\\)|\\]|\\}|\\)|\")\\s*(?:(:::)([\\w-]+))?\\s*$",
+      "match": "^\\s*([A-Za-z0-9_぀-鿿]+)\\s*(\\[/|\\[\\\\|\\{\\{|\\(\\[|\\[\\(|\\(\\(|>|\\[|\\{|\\(|\")(.*?)(\\\\\\]|/\\]|\\}\\}|\\]\\)|\\)\\]|\\)\\)|\\]|\\}|\\)|\")\\s*(?:(:::)([\\w-]+))?\\s*$",
       "captures": {
         "1": { "name": "entity.name.tag.dgm" },
         "2": { "name": "keyword.operator.shape.dgm" },
@@ -278,7 +278,7 @@
     "container-settings": {
       "comment": "`(cols: 120, 1fr; gap: 8 12)` — how a container arranges what it holds.",
       "patterns": [
-        { "match": "\\b(show)\\s*(:)\\s*([A-Za-z0-9_぀-鿿-]+)", "captures": {
+        { "match": "\\b(show)\\s*(:)\\s*([A-Za-z0-9_぀-鿿]+)", "captures": {
           "1": { "name": "support.type.property-name.dgm" },
           "2": { "name": "punctuation.separator.key-value.dgm" },
           "3": { "name": "variable.other.dgm" }
@@ -295,7 +295,7 @@
     },
 
     "container-inline": {
-      "match": "^\\s*(stack|grid|tabs)\\s+([A-Za-z0-9_぀-鿿-]+)\\s*(?:(\\()([^)]*)(\\)))?\\s*(\\{)([^}]*)(\\})\\s*$",
+      "match": "^\\s*(stack|grid|tabs)\\s+([A-Za-z0-9_぀-鿿]+)\\s*(?:(\\()([^)]*)(\\)))?\\s*(\\{)([^}]*)(\\})\\s*$",
       "captures": {
         "1": { "name": "keyword.other.container.dgm" },
         "2": { "name": "entity.name.tag.dgm" },
@@ -309,7 +309,7 @@
     },
 
     "container-block": {
-      "begin": "^\\s*(stack|grid|tabs)\\s+([A-Za-z0-9_぀-鿿-]+)\\s*(?:(\\()([^)]*)(\\)))?\\s*(\\{)([^}]*)$",
+      "begin": "^\\s*(stack|grid|tabs)\\s+([A-Za-z0-9_぀-鿿]+)\\s*(?:(\\()([^)]*)(\\)))?\\s*(\\{)([^}]*)$",
       "beginCaptures": {
         "1": { "name": "keyword.other.container.dgm" },
         "2": { "name": "entity.name.tag.dgm" },
@@ -328,7 +328,7 @@
     },
 
     "bend": {
-      "match": "^\\s*([A-Za-z0-9_぀-鿿-]+?)\\s*(-+>)\\s*([A-Za-z0-9_぀-鿿-]+)\\s*(@)(.*)$",
+      "match": "^\\s*([A-Za-z0-9_぀-鿿]+?)\\s*(-+>)\\s*([A-Za-z0-9_぀-鿿]+)\\s*(@)(.*)$",
       "captures": {
         "1": { "name": "variable.other.dgm" },
         "2": { "name": "keyword.operator.connector.dgm" },
@@ -342,7 +342,7 @@
     },
 
     "pin": {
-      "match": "^\\s*([A-Za-z0-9_぀-鿿-]+)\\s*(@)\\s*(\\(\\s*-?\\d+\\s*,\\s*-?\\d+\\s*\\))\\s*(?:(\\d+)(x)(\\d+))?\\s*(?:(z)\\s*(:)\\s*(-?\\d+))?\\s*$",
+      "match": "^\\s*([A-Za-z0-9_぀-鿿]+)\\s*(@)\\s*(\\(\\s*-?\\d+\\s*,\\s*-?\\d+\\s*\\))\\s*(?:(\\d+)(x)(\\d+))?\\s*(?:(z)\\s*(:)\\s*(-?\\d+))?\\s*$",
       "captures": {
         "1": { "name": "variable.other.dgm" },
         "2": { "name": "keyword.operator.at.dgm" },
@@ -377,7 +377,7 @@
           }
         },
         {
-          "match": "^\\s*([A-Za-z0-9_぀-鿿-]+)\\s*(\\{)([^}]*)(\\})\\s*$",
+          "match": "^\\s*([A-Za-z0-9_぀-鿿]+)\\s*(\\{)([^}]*)(\\})\\s*$",
           "captures": {
             "1": { "name": "variable.other.dgm" },
             "2": { "name": "punctuation.section.braces.begin.dgm" },

@@ -75,7 +75,7 @@ const BODY = new Set(['free', 'flow', 'overlay']);
 const DIRECTION = /^(TB|TD|BT|LR|RL)$/;
 /** Declarations in the order the spec lists them; anything else follows by name. */
 const PROPERTY_ORDER = ['fill', 'line', 'color', 'align', 'icon'];
-const STYLE_RULE = /^([A-Za-z0-9_぀-鿿-]+)\s*\{([^}]*)\}\s*$/;
+const STYLE_RULE = /^([A-Za-z0-9_぀-鿿]+)\s*\{([^}]*)\}\s*$/;
 const STYLE_THEME = /^theme\s*:\s*(\S+)\s*$/;
 const ITEMS_HEAD = /^\S+\s+([A-Za-z0-9_-]+):\s*\{/;
 const PART_STYLE = /\{([^}]*)\}/;
@@ -815,7 +815,7 @@ function pinLine(
     + `${String(pin.y).padStart(columns.y)})${size}${z}`.replace(/\s+$/, '');
 }
 
-/** `a->b` back to `a -> b`. An id may end in `-`, so the first `->` is the one. */
+/** `a->b` back to `a -> b`. An id has no hyphen, so the `->` is the only one. */
 function bendName(key: string): string {
   const split = /^(.*?)->(.*)$/.exec(key);
   return split ? `${split[1]} -> ${split[2]}` : key;

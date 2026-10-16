@@ -387,6 +387,22 @@ const wideSpan = parseDiagram(wide).nodes[0].span;
 check('README §6', 'バイト範囲は UTF-8 のバイトで数える',
   Buffer.from(wide, 'utf8').slice(wideSpan.start, wideSpan.end).toString('utf8') === '会員 [データベース]');
 
+// §2 identifiers: no hyphen
+const unspaced = parseDiagram(['flow {', '  a [A]', '  b [B]', '  a-->b', '}'].join(NL));
+check('dgm §2', '空白なしの a-->b は a から b への接続', unspaced.edges[0]?.from === 'a' && unspaced.edges[0]?.to === 'b',
+  JSON.stringify(unspaced.edges.map(e => [e.from, e.to])));
+for (const [what, text] of [
+  ['図形', ['free {', '  db-primary [DB]', '}']],
+  ['接続の終点', ['flow {', '  a --> b-c', '}']],
+  ['グループのメンバー', ['free {', '  group g { a; b-c }', '}']],
+  ['ピン', ['free {', '  a [A]', '}', 'layout {', '  a-b @ (0, 0)', '}']],
+  ['スタイルの規則', ['free {', '  a [A]', '}', 'style {', '  a-b { fill: #fff }', '}']],
+]) {
+  check('dgm §2', `${what}の id にハイフンがあればエラー`, /hyphen|ハイフン/.test(refuses(parseDiagram, text.join(NL)) ?? ''));
+}
+check('dgm §2', '部品の名前にはハイフンを使える',
+  parseDiagram(['use "icons"', 'free {', '  r net-router:', '}'].join(NL)).partOf.get('r') === 'net-router');
+
 // §6.3 canonical form
 const formatted = text => formatDiagram(text).text;
 const typedOne = ['flow {', '  b [B]', '  a [A]', '  a -> b', '}', 'style {', '  b {line:dashed}', '}'].join(NL);
