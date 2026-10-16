@@ -23,13 +23,118 @@ person or to an AI. DocPresenter keeps the document as **text files in your repo
 | **Bring changes back** | Shapes moved or text fixed in the exported PowerPoint can be read back into the `.dgm` |
 | **Take reviews from people without Git** | Customers annotate the PDF as usual; their comments are imported into a review file, tied to the exact words they marked, and your answers travel back in the next PDF |
 
-## Screens
+## Diagrams and tables: write them as code, or draw them on screen
 
-The sample document is in Japanese; the screens follow VS Code's display language.
+Diagrams (`.dgm`) and tables (`.table`) can be **written as text or edited on screen with the mouse**. Either way they
+are the same single text file, and an edit on screen rewrites only the lines it changes, so people who prefer code and
+people who prefer a canvas can work on the same files.
 
-| Moving a shape on the canvas | Editing a table with merged cells |
-|---|---|
-| ![A screen design drawn as a .dgm, a button being dragged with guides](https://raw.githubusercontent.com/Rintaro-Sugishita/DocPresenter/HEAD/packages/app-vscode/images/en/2-canvas.png) | ![A .table open as a grid, with cell fill and text colour](https://raw.githubusercontent.com/Rintaro-Sugishita/DocPresenter/HEAD/packages/app-vscode/images/en/3-table.png) |
+### Diagrams: flowcharts, and free-form drawings like PowerPoint
+
+A `.dgm` comes in two kinds.
+
+**flow**: write the shapes and how they connect; the layout is worked out for you. For processes, procedures and state changes.
+
+```
+flow {
+  start   ([Order received])
+  check   {In stock?}
+  reserve [Reserve stock]
+  backord [Back-order]
+  ship    ([Ship])
+
+  start   --> check
+  check   --> reserve "yes"
+  check   --> backord "no"
+  reserve --> ship
+  backord --> ship
+}
+```
+
+<img src="https://raw.githubusercontent.com/Rintaro-Sugishita/DocPresenter/HEAD/packages/app-vscode/images/en/dgm-flow.png" alt="The flowchart laid out from the flow above" width="440">
+
+**free**: shapes stay where you put them. For system diagrams and screen sketches, drawn the way you would in PowerPoint.
+
+```
+free {
+  shop  [Order page]
+  api   [Order API]
+  stock [Stock service]
+  db    [(Order DB)]
+
+  group back "Internal" { api; stock; db }
+
+  shop  -> api   "HTTPS"
+  api   -> stock
+  api   -> db
+}
+
+layout {
+  shop  @ ( 40, 100) 140x60
+  api   @ (260, 100) 140x60
+  stock @ (480,  40) 140x60
+  db    @ (480, 160) 140x60
+  back  @ (240,  20) 400x220  z:-1
+}
+```
+
+<img src="https://raw.githubusercontent.com/Rintaro-Sugishita/DocPresenter/HEAD/packages/app-vscode/images/en/dgm-free.png" alt="The system diagram drawn where the free section puts it" width="520">
+
+**On screen** ("Open in DocPresenter")
+
+![A button being dragged on the canvas, snapping to a guide](https://raw.githubusercontent.com/Rintaro-Sugishita/DocPresenter/HEAD/packages/app-vscode/images/en/2-canvas.png)
+
+- Drag shapes to move them and the bottom-right handle to resize; they snap to guides lined up with other shapes.
+- Double-click to change text. "+ Shape" adds shapes; "+ Part" adds icons such as routers and servers, and screen parts such as buttons and inputs.
+- Right-click to draw a line, group, delete, or hand a shape back to the automatic layout.
+- Pick several shapes to line up their edges or centres, or spread them evenly.
+- Drag the middle of a line to bend it and its end to reconnect it; choose the arrowheads and the weight.
+- In a flow diagram, only the shapes you moved by hand are recorded; the rest stay laid out automatically.
+
+**As code** (opened as text)
+
+- Opened as text in VS Code, a `.dgm` is coloured and offers suggestions as you type: shapes, parts, what to connect to, properties.
+- Mistakes are shown in red and listed in the Problems panel.
+- One shape is one line, so the diff says exactly what changed.
+- The [format is published](https://github.com/Rintaro-Sugishita/DocPresenter/blob/HEAD/spec/dgm.md), so AI agents such as Claude Code can write it too.
+- Shapes moved in the exported PowerPoint can be read back into the `.dgm`.
+
+### Tables: a plain-text format, and a spreadsheet-like grid
+
+Tables that outgrow Markdown (merged cells, column widths, colour) are written as `.table`.
+
+```
+| Stage    | State     | Meaning              | Next step     |
+|:--------:|-----------|----------------------|---------------|
+| Open     | Received  | The order came in    | Reserve stock |
+| ^        | Confirmed | Stock is reserved    | Ship it       |
+| Closed   | Shipped   | It has left          | —             |
+| ^        | Cancelled | It was called off    | —             |
+
+style {
+  col:Stage { width: 16% }
+  col:State { width: 18% }
+}
+```
+
+<img src="https://raw.githubusercontent.com/Rintaro-Sugishita/DocPresenter/HEAD/packages/app-vscode/images/en/table.png" alt="The table drawn from the .table above, with the stages merged" width="560">
+
+**The text format**
+
+- It reads like a Markdown table; `^` merges a cell with the one above.
+- Column widths, fill and text colour go in a `style` section below the grid, so the grid stays readable.
+- Cells can hold bulleted lists, and ranges can be named.
+- One changed cell is one changed line in the diff. The [format is published](https://github.com/Rintaro-Sugishita/DocPresenter/blob/HEAD/spec/table.md).
+
+**On screen**
+
+![A .table open as a grid, with fill and text colour](https://raw.githubusercontent.com/Rintaro-Sugishita/DocPresenter/HEAD/packages/app-vscode/images/en/3-table.png)
+
+- It works like a spreadsheet: click to select, move with the arrow keys, type to overwrite, Enter or Tab to commit and move on.
+- Select a range with Shift+arrows or by dragging. Copy and paste to and from Excel and other spreadsheets.
+- Right-click to add or delete rows and columns, and to merge or unmerge cells.
+- Drag a column's edge to set its width. Set fill, text colour and alignment for a cell, a row, a column or the header.
+- "Tidy source" lines up the text's columns; "Source" edits the `.table` directly.
 
 ## The files
 

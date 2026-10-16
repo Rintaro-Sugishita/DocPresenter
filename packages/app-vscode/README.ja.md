@@ -24,11 +24,118 @@ DocPresenter は、設計書をリポジトリ内のテキストファイルと�
 | **PowerPoint からの反映** | 出力した PPTX 上で動かした図形や直した文字を、元の `.dgm` に反映できる |
 | **Git を使わない人からのレビュー** | 顧客には、いつもどおり PDF に注釈を書いてもらうだけでよい。注釈はレビューファイルに取り込まれ、注釈を付けた文言そのものに結び付けて記録される。回答は次に出力する PDF に載せて返せる |
 
-## 画面
+## 図と表は、コードでも画面でも編集できる
 
-| キャンバスで図形を動かす | 結合セルのある表を編集する |
-|---|---|
-| ![.dgm で描いた画面設計。ボタンをガイドに沿ってドラッグしている](https://raw.githubusercontent.com/Rintaro-Sugishita/DocPresenter/HEAD/packages/app-vscode/images/ja/2-canvas.png) | ![.table をグリッドで開いたところ。セルの塗りと文字色を選べる](https://raw.githubusercontent.com/Rintaro-Sugishita/DocPresenter/HEAD/packages/app-vscode/images/ja/3-table.png) |
+図（`.dgm`）と表（`.table`）は、**テキストで書くことも、画面上でマウスを使って編集することもできる**。
+どちらで編集しても保存先は同じ 1 つのテキストファイルで、画面での操作は変更した行だけを書き換える。
+テキストで書きたい人と画面で編集したい人が、同じファイルをそのまま共同で扱える。
+
+### 図：フローチャートも、PowerPoint のような自由配置の図も
+
+`.dgm` には 2 種類の描き方がある。
+
+**flow**：図形とつながりを書けば、配置は自動で決まる。処理の流れ・手順・状態遷移に向く。
+
+```
+flow {
+  start   ([注文受付])
+  check   {在庫あり？}
+  reserve [在庫を引き当て]
+  backord [取り寄せ手配]
+  ship    ([出荷])
+
+  start   --> check
+  check   --> reserve "あり"
+  check   --> backord "なし"
+  reserve --> ship
+  backord --> ship
+}
+```
+
+<img src="https://raw.githubusercontent.com/Rintaro-Sugishita/DocPresenter/HEAD/packages/app-vscode/images/ja/dgm-flow.png" alt="上の flow から自動で配置されたフローチャート" width="440">
+
+**free**：図形を置いた位置をそのまま保つ。PowerPoint で描くような構成図や画面の見取り図に向く。
+
+```
+free {
+  shop  [注文画面]
+  api   [注文 API]
+  stock [在庫サービス]
+  db    [(注文 DB)]
+
+  group back "社内" { api; stock; db }
+
+  shop  -> api   "HTTPS"
+  api   -> stock
+  api   -> db
+}
+
+layout {
+  shop  @ ( 40, 100) 140x60
+  api   @ (260, 100) 140x60
+  stock @ (480,  40) 140x60
+  db    @ (480, 160) 140x60
+  back  @ (240,  20) 400x220  z:-1
+}
+```
+
+<img src="https://raw.githubusercontent.com/Rintaro-Sugishita/DocPresenter/HEAD/packages/app-vscode/images/ja/dgm-free.png" alt="上の free の位置どおりに描かれた構成図" width="520">
+
+**画面で描く**（「DocPresenter で開く」）
+
+![キャンバス上でボタンをドラッグしているところ。ガイド線に吸着する](https://raw.githubusercontent.com/Rintaro-Sugishita/DocPresenter/HEAD/packages/app-vscode/images/ja/2-canvas.png)
+
+- 図形をドラッグで移動し、右下のハンドルで大きさを変える。ほかの図形の端や中心に合わせたガイド線に吸着する。
+- ダブルクリックで文字を直す。「＋ 図形」で図形を、「＋ 部品」でルータやサーバなどのアイコンや、ボタン・入力欄などの画面部品を追加する。
+- 右クリックのメニューから、線を引く・グループにする・削除する・自動配置に戻す、などの操作ができる。
+- 複数の図形を選んで、端や中心をそろえたり、等間隔に並べたりできる。
+- 線は途中をドラッグして曲げ、端をドラッグしてつなぎ先を変える。矢印の向きと線の太さも選べる。
+- flow の図では、手で動かした図形の位置だけが記録され、ほかの図形は自動配置のまま残る。
+
+**コードで書く**（テキストとして開く）
+
+- VS Code で `.dgm` をテキストとして開くと、記述の種類ごとに色分けされ、図形の形・部品・接続先・プロパティなどの入力候補が出る。
+- 書き間違いは赤く表示され、「問題」パネルにも並ぶ。
+- 1 つの図形が 1 行なので、差分を見れば何が変わったかがそのまま分かる。
+- 形式の[仕様](https://github.com/Rintaro-Sugishita/DocPresenter/blob/HEAD/spec/dgm.md)は公開しており、Claude Code などの AI エージェントにも書かせられる。
+- 出力した PowerPoint で図形を動かした場合も、その変更を `.dgm` に反映できる。
+
+### 表：独自形式のテキストと、Excel のようなグリッド編集
+
+Markdown の表では足りない表（結合セル・列幅・色分けが必要な表）は、`.table` で書く。
+
+```
+| 区分   | 状態     | 意味             | 次の操作         |
+|:------:|----------|------------------|------------------|
+| 進行中 | 受付     | 注文を受け付けた | 在庫を引き当てる |
+| ^      | 確定     | 在庫を引き当てた | 出荷する         |
+| 終了   | 出荷済み | 出荷した         | —                |
+| ^      | 取消     | 取り消された     | —                |
+
+style {
+  col:区分 { width: 16% }
+  col:状態 { width: 18% }
+}
+```
+
+<img src="https://raw.githubusercontent.com/Rintaro-Sugishita/DocPresenter/HEAD/packages/app-vscode/images/ja/table.png" alt="上の .table から描かれた、区分が結合された表" width="560">
+
+**テキストの形式**
+
+- 見た目は Markdown の表のままで、`^` と書けば上のセルと結合する。
+- 列幅・塗り・文字色は、表の下の `style` に分けて書く。表の本体には混ざらないので、表としての読みやすさを保てる。
+- セルの中に箇条書きを入れたり、範囲に名前を付けたりもできる。
+- 1 つのセルを直せば、差分も 1 行で済む。[仕様](https://github.com/Rintaro-Sugishita/DocPresenter/blob/HEAD/spec/table.md)は公開している。
+
+**画面で編集する**
+
+![.table をグリッドで開いたところ。セルの塗りと文字色を選べる](https://raw.githubusercontent.com/Rintaro-Sugishita/DocPresenter/HEAD/packages/app-vscode/images/ja/3-table.png)
+
+- 表計算ソフトと同じ感覚で操作できる。クリックで選択し、矢印キーで移動し、そのまま入力すれば上書きになる。Enter や Tab で確定して次のセルに進む。
+- Shift＋矢印キーやドラッグで範囲を選択できる。Excel やスプレッドシートとの間でコピー・貼り付けもできる。
+- 右クリックから、行や列の追加・削除、セルの結合・解除ができる。
+- 列の境目をドラッグして列幅を決める。セル・行・列・見出しを対象に、塗り・文字色・左右の寄せを設定できる。
+- 「ソース整形」でテキストの桁をそろえ、「ソース」で `.table` を直接編集できる。
 
 ## 扱うファイル
 
