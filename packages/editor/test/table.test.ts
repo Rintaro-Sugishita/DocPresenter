@@ -108,6 +108,19 @@ describe('貼り付け', () => {
     expect(table.rows.map(r => r.cells.map(c => c.text))).toEqual([['A', 'B'], ['C', 'D']]);
   });
 
+  it('引用符で囲まれたセルは、改行や引用符を含んでも 1 つのセルとして読む', () => {
+    // Excel も Google スプレッドシートも、セル内の改行（Alt+Enter）をこう書く。
+    expect(parseClipboardGrid('"1 行目\n2 行目"\tふつう\n"言う ""はい"""\tx\n'))
+      .toEqual([['1 行目\n2 行目', 'ふつう'], ['言う "はい"', 'x']]);
+    // 閉じていない引用符は、ただの文字。
+    expect(parseClipboardGrid('"途中\tb')).toEqual([['"途中', 'b']]);
+  });
+
+  it('値の | は列の区切りにせず、改行は空白にして 1 行に収める', () => {
+    const next = run(SOURCE, t => pasteGrid(t, 0, 0, [['x|y', '1 行目\n2 行目']]));
+    expect(parseTable(next).rows[0]!.cells.map(c => c.text)).toEqual(['x|y', '1 行目 2 行目']);
+  });
+
   it('はみ出したら表を広げる', () => {
     const next = run(SOURCE, t => pasteGrid(t, 1, 1, [['X', 'Y'], ['Z', 'W']]));
     const table = parseTable(next);
@@ -135,6 +148,13 @@ describe('コピーと切り取り', () => {
     const table = parseTable(SOURCE);
     expect(copyRange(table, { top: -1, left: 0, bottom: 0, right: 1 }))
       .toBe('用語\t説明\nトークン\t認可に用いる');
+  });
+
+  it('引用符で始まるセルは囲んで出す（表計算が引用符を区切りと読まないように）', () => {
+    const table = parseTable('| a | b |\n|---|---|\n| "q" です | x \\| y |\n');
+    const copied = copyRange(table, { top: 0, left: 0, bottom: 0, right: 1 });
+    expect(copied).toBe('"""q"" です"\tx | y');
+    expect(parseClipboardGrid(copied)).toEqual([['"q" です', 'x | y']]);
   });
 
   it('結合で覆われた位置は空にする（値の複製にしない）', () => {

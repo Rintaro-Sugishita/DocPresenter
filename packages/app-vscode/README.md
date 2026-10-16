@@ -136,6 +136,19 @@ style {
 - Drag a column's edge to set its width. Set fill, text colour and alignment for a cell, a row, a column or the header.
 - "Tidy source" lines up the text's columns; "Source" edits the `.table` directly.
 
+**Exchanging tables with Excel: through the clipboard**
+
+Excel files (.xlsx) are neither imported nor exported. Cells go back and forth through the clipboard instead.
+
+- **Excel → table**: copy a range in Excel or Google Sheets, pick a cell in the table and paste. The values land with
+  that cell at the top left, and the table grows rows and columns as needed. The whole paste is one edit, so one undo.
+- **Table → Excel**: copy (or cut) a range in the table; it goes to the clipboard as tab-separated text, which a
+  spreadsheet pastes as cells. The header row can be part of the range; a position covered by a merge is left empty
+  rather than repeating the value.
+- A cell with a line break (Alt+Enter) or quotes in it travels as one cell. A table cell is one line, so a pasted line
+  break becomes a space, and a `|` is written as the character `\|`.
+- Formatting (colours, borders) does not travel: values only.
+
 ## The files
 
 Everything is plain text you can read in a diff. The extension adds no hidden state.

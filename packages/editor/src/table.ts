@@ -6,7 +6,7 @@
 // all of them — that is the change, not a side effect of how it is stored.
 
 import {
-  cellAt, delimiterField, displayWidth, formatGrid, formatRule, insertField, joinFields,
+  cellAt, delimiterField, displayWidth, escapeCell, formatGrid, formatRule, insertField, joinFields,
   removeField, replaceField, sameSelector, splitFields,
   type Align, type Selector, type TableFile,
 } from '@docpresenter/markdown';
@@ -111,7 +111,9 @@ export function pasteGrid(
 
     const source = r >= row ? values[r - row] : undefined;
     if (source) {
-      source.forEach((value, i) => { fields[column + i] = ` ${value.trim()} `; });
+      // A pipe from a spreadsheet is a character, not a column: written `\|`,
+      // as typing it into a cell writes it.
+      source.forEach((value, i) => { fields[column + i] = ` ${escapeCell(value.trim())} `; });
     }
     written.push(joinFields(fields));
     if (r === -1) {
@@ -138,9 +140,46 @@ export function formatTable(table: TableFile): Edit {
   };
 }
 
-/** Parses what a spreadsheet puts on the clipboard. */
+/**
+ * Parses what a spreadsheet puts on the clipboard: rows of tab-separated cells.
+ *
+ * A cell holding a line break, a tab or a quote comes in double quotes, with a
+ * quote inside written twice — Excel and Google Sheets both write it so. Read
+ * line by line, such a cell would split into two rows. A quote that does not
+ * open a quoted cell this way is an ordinary character.
+ */
 export function parseClipboardGrid(text: string): string[][] {
-  return text.replace(/\r\n?/g, '\n').replace(/\n$/, '').split('\n').map(line => line.split('\t'));
+  const source = text.replace(/\r\n?/g, '\n').replace(/\n$/, '');
+  const rows: string[][] = [];
+  let row: string[] = [];
+  let at = 0;
+  for (;;) {
+    let cell: string | undefined;
+    if (source[at] === '"') {
+      const quoted = /^"((?:[^"]|"")*)"(?=\t|\n|$)/.exec(source.slice(at));
+      if (quoted) {
+        cell = quoted[1]!.replace(/""/g, '"');
+        at += quoted[0].length;
+      }
+    }
+    if (cell === undefined) {
+      const end = source.slice(at).search(/[\t\n]/);
+      cell = end < 0 ? source.slice(at) : source.slice(at, at + end);
+      at += cell.length;
+    }
+    row.push(cell);
+    const next = source[at];
+    at += 1;
+    if (next === '\t') continue;
+    rows.push(row);
+    if (next === undefined) return rows;
+    row = [];
+  }
+}
+
+/** A cell for the clipboard, quoted the way a spreadsheet reads it back. */
+function clipboardCell(text: string): string {
+  return /["\t\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
 }
 
 /**
@@ -155,9 +194,9 @@ export function copyRange(table: TableFile, range: CellRange): string {
   for (let r = top; r <= bottom; r++) {
     const fields: string[] = [];
     for (let c = left; c <= right; c++) {
-      if (r < 0) { fields.push(table.columns[c]?.header ?? ''); continue; }
+      if (r < 0) { fields.push(clipboardCell(table.columns[c]?.header ?? '')); continue; }
       const cell = cellAt(table, r, c);
-      fields.push(cell && cell.row === r && cell.column === c ? cell.text.trim() : '');
+      fields.push(cell && cell.row === r && cell.column === c ? clipboardCell(cell.text.trim()) : '');
     }
     lines.push(fields.join('\t'));
   }
