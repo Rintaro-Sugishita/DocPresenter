@@ -8,6 +8,8 @@
   "license": "SEE LICENSE IN legal/LICENSE.draft.md",
   "repository": { "type": "git", "url": "https://github.com/Rintaro-Sugishita/DocPresenter.git", "directory": "packages/app-vscode" },
   "engines": { "vscode": "^1.95.0" },
+  "icon": "icon.png",
+  "galleryBanner": { "color": "#1f4e8c", "theme": "dark" },
   "categories": ["Visualization", "Programming Languages", "Other"],
   "keywords": [
     "design", "design document", "specification", "documentation", "markdown",
