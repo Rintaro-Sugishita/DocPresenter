@@ -40,26 +40,26 @@ describe('図を整形する', () => {
     await formatDiagramFile(Uri.file('/w/docs/login.dgm'));
     expect(held.get('docs/login.dgm')).toContain('  title "ログイン"\n  ok    button:"送信"\n');
     expect(saved).toEqual(['docs/login.dgm']);
-    expect(shown).toEqual(['DocPresenter: docs/login.dgm を整形しました']);
+    expect(shown).toEqual(['DocPresenter Diagram: docs/login.dgm を整形しました']);
   });
 
   it('says so when there is nothing to change', async () => {
     give({ 'docs/a.dgm': 'free {\n  a [A]\n}\n\nlayout {\n  a @ (0, 0)\n}\n' });
     await formatDiagramFile(Uri.file('/w/docs/a.dgm'));
     expect(saved).toEqual([]);
-    expect(shown).toEqual(['DocPresenter: docs/a.dgm はすでに整形されています']);
+    expect(shown).toEqual(['DocPresenter Diagram: docs/a.dgm はすでに整形されています']);
   });
 
   it('says why a drawing that cannot be read is left alone', async () => {
     give({ 'docs/a.dgm': 'free {\n  a [A\n}\n' });
     const edits = await formatEdits(await documentAt('docs/a.dgm'));
     expect(edits).toBeUndefined();
-    expect(shown[0]).toMatch(/^DocPresenter: docs\/a\.dgm を読めないため、整形しませんでした: /);
+    expect(shown[0]).toMatch(/^DocPresenter Diagram: docs\/a\.dgm を読めないため、整形しませんでした: /);
   });
 
   it('refuses anything but a drawing', async () => {
     give({ 'docs/a.md': '# A\n' });
     await formatDiagramFile(Uri.file('/w/docs/a.md'));
-    expect(shown).toEqual(['DocPresenter: 整形できるのは図（.dgm）だけです']);
+    expect(shown).toEqual(['DocPresenter Diagram: 図（.dgm）を開いてから実行してください']);
   });
 });

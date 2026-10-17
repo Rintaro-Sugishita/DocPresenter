@@ -272,35 +272,6 @@ describe('レビューの指摘', () => {
   });
 });
 
-describe('図だけを開く', () => {
-  it('図を取り込む 1 行の文書として画面に渡り、図は最新の中身が渡る', async () => {
-    const view = await open(undefined, 'docs/auth/login.dgm');
-    await view.say({ kind: 'ready' });
-    const opened = view.sent.find(one => one.kind === 'open');
-    if (opened?.kind !== 'open') throw new Error('open が来ない');
-    expect(opened.diagram).toBe(true);
-    expect(opened.source).toBe('@import "login.dgm"\n');
-    expect(opened.files['docs/auth/login.dgm']).toBe(DGM);
-    // 書き出しのボタンは、文書ではないので出さない
-    expect(view.html()).not.toContain('data-format="pdf"');
-  });
-
-  it('図の編集は図のファイルに書かれ、画面にしかない文書への編集は捨てる', async () => {
-    const view = await open(undefined, 'docs/auth/login.dgm');
-    await view.say({ kind: 'ready' });
-    await view.say({
-      kind: 'change', span: { start: 0, end: 0 }, description: '本文を追加', text: '前置き\n',
-    });
-    expect(held.get('docs/auth/login.dgm')).toBe(DGM);
-    const at = DGM.indexOf('[あ]');
-    await view.say({
-      kind: 'change', path: 'docs/auth/login.dgm',
-      span: { start: at, end: at + 5 }, description: '文字を変更', text: '[い]',
-    });
-    expect(held.get('docs/auth/login.dgm')).toBe(DGM.replace('[あ]', '[い]'));
-  });
-});
-
 describe('ビルドのコマンド', () => {
   // ビルドはファイルを 1 つも開かない作りなので、CLI と同じものがそのまま動く。
   // 確かめたいのは「VS Code のファイルシステム越しでも同じ結果になる」ことである。

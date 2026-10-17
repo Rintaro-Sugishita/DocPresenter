@@ -1,0 +1,8 @@
+{
+  "extension.description": "図をテキストでも、キャンバス上でも描く。フローチャートや自由配置の図を .dgm ファイルに書き、色分け・入力候補・整形・SVG 書き出しができる。どの変更も読める Git の差分になる。",
+  "customEditor.canvas.displayName": "DocPresenter Diagram（キャンバス）",
+  "command.open.title": "DocPresenter Diagram で開く",
+  "command.openToSide.title": "DocPresenter Diagram を横に開く",
+  "command.format.title": "図を整形する（並び順と空白をそろえる）",
+  "command.exportSvg.title": "図を SVG に書き出す…"
+}

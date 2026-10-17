@@ -54,11 +54,6 @@ export type ToView =
     readonly commitKey: CommitKey;
     /** VS Code's display language, so the editor speaks the same one as the host. */
     readonly locale: Locale;
-    /**
-     * A `.dgm` opened on its own. `source` is then a one-line document that
-     * takes the drawing in, and exists only on screen: edits to it are not sent.
-     */
-    readonly diagram?: boolean;
   }
   /** Somebody else changed a file — the document itself, or one it refers to. */
   | { readonly kind: 'file'; readonly path: string; readonly text: string }

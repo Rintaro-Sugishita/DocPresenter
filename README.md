@@ -191,7 +191,8 @@ Excel ファイル（.xlsx）の読み込みや書き出しはしない。代わ
 | `packages/pptx` | PPTX：デッキ・DrawingML・書庫 | 製品の一部 |
 | `packages/build` | ビルド：ルート探索・参照閉包・診断・成果物の書き出し | 製品の一部 |
 | `packages/editor` | 設計書の編集 UI：シート・本文ブロック・表のグリッド | 製品の一部 |
-| `packages/app-vscode` | VS Code 拡張：カスタムエディタ・ビルドのコマンド | 製品の一部 |
+| `packages/app-vscode` | VS Code 拡張「DocPresenter」：設計書の編集画面・書き出し・レビューのコマンド。作図の拡張を拡張パックで一緒に入れる | 製品の一部 |
+| `packages/app-vscode-diagram` | VS Code 拡張「DocPresenter Diagram」：`.dgm` の色分け・入力候補・整形・キャンバス・SVG 書き出し（base ＋ diagram だけで作る） | **する** |
 | `packages/app-web` | Web の閲覧ページ：リポジトリの URL やこの PC のフォルダを開いて組版のまま読む・PDF を出す（サーバ無し） | 製品の一部 |
 
 ## 動かす
@@ -221,7 +222,7 @@ node tools/check.mjs --in sample   # 書き出さずに全部確かめる（エ�
 node tools/format-dgm.mjs --in sample   # 整形が要る図を挙げる（--write で書き換え、--check なら終了コード 1）
 node tools/pptx-back.mjs out/build/auth-overview.pptx --in sample   # 直された図を読み戻す
 
-node tools/build-vscode.mjs        # VS Code 拡張             → packages/app-vscode/media/
+node tools/build-vscode.mjs        # VS Code 拡張（2 つ）     → packages/app-vscode/media/ と packages/app-vscode-diagram/media/
 node tools/build-web-viewer.mjs    # Web の閲覧ページ         → out/web/（GitHub Pages に置ける）
 
 node tools/check-spec.mjs          # 仕様と実装が一致しているか
@@ -245,10 +246,15 @@ CI で成果物の言語を揃えたいときは `--lang` で固定する。
 
 ## VS Code で使う
 
+拡張機能は 2 つに分かれている。設計書の **DocPresenter** と、作図の **DocPresenter Diagram** である。
+DocPresenter を入れると、拡張パックとして DocPresenter Diagram も一緒に入る。
+
 ```
-npx tsc --build && node tools/build-vscode.mjs
-cd packages/app-vscode && npx @vscode/vsce package --no-dependencies
-code --install-extension docpresenter-0.1.0.vsix
+npx tsc --build && node tools/build-vscode.mjs     # 2 つとも media/ に束ねる
+cd packages/app-vscode-diagram && npx @vscode/vsce package --no-dependencies && cd ../..
+cd packages/app-vscode && npx @vscode/vsce package --no-dependencies && cd ../..
+code --install-extension packages/app-vscode-diagram/docpresenter-diagram-0.1.0.vsix   # 作図の拡張を先に
+code --install-extension packages/app-vscode/docpresenter-0.1.0.vsix
 ```
 
 新しいリポジトリでは「DocPresenter: 作業場を初期化する」で、推奨のフォルダ・最初の文書・エージェント向けの書き方の仕様書（`.docpresenter/guide.md`）が揃う。
@@ -257,7 +263,9 @@ code --install-extension docpresenter-0.1.0.vsix
 開発中はリポジトリを VS Code で開いて **F5**（起動の前に `npm run build:vscode` が走る）。
 開いた文書の上にある **「書き出し: HTML / PDF / PPTX」** のボタンで、その文書を `out/build` に書き出せる。
 `output:` を持つ文書をまとめて書き出すコマンド（各文書の指定どおり／形式を選んで）もある。
-エクスプローラーで `.md`・`.dgm` を右クリックすると「DocPresenter で開く」が出る。
+エクスプローラーで `.md` を右クリックすると「DocPresenter で開く」、`.dgm` を右クリックすると
+「DocPresenter Diagram で開く」が出る。`.dgm` はテキストで書けば色分けと入力候補が出て、整形と SVG への書き出しもできる
+（[`packages/app-vscode-diagram/README.ja.md`](packages/app-vscode-diagram/README.ja.md)）。
 コードブロックは言語名で色が付き、` ```mermaid ` は図になる（見本は
 [`sample/docs/code-and-mermaid.md`](sample/docs/code-and-mermaid.md)）。詳しくは
 [`packages/app-vscode/README.md`](packages/app-vscode/README.md)。

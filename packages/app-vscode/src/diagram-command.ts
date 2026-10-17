@@ -12,7 +12,7 @@ import {
   folderOf, nameMessage, numbersInUse, pickFolder, withoutExtension, workspaceFiles, type FolderChoice,
 } from './document-command.js';
 import { hostLocale, t } from './l10n.js';
-import { SheetEditorProvider } from './sheet-editor.js';
+import { openDrawing } from './drawing.js';
 
 const IGNORED = '**/{node_modules,out,dist,.git,.docpresenter}/**';
 
@@ -50,7 +50,7 @@ export async function newDiagram(target?: vscode.Uri): Promise<void> {
 
   await vscode.workspace.fs.writeFile(files.at(path), new TextEncoder().encode(starterDiagram(kind, hostLocale())));
   void vscode.window.showInformationMessage(`DocPresenter: ${t('vscode.newDiagram.made', { path })}`);
-  await vscode.commands.executeCommand('vscode.openWith', files.at(path), SheetEditorProvider.diagramViewType);
+  await openDrawing(files.at(path));
 }
 
 /**

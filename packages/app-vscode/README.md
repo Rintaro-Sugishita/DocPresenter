@@ -6,6 +6,9 @@ Write software design documents in Markdown, draw their diagrams and tables as p
 **on the page as it will be printed**, right inside VS Code. Export to **HTML, PDF and editable PowerPoint (PPTX)**,
 and keep every change reviewable as an ordinary Git diff.
 
+Installing DocPresenter installs **DocPresenter Diagram** with it: the drawing side (`.dgm` files on their own, as
+text or on a canvas, and as SVG). Inside a document, diagrams are drawn and edited by DocPresenter itself.
+
 ![A design document open in DocPresenter, shown as printed pages](https://raw.githubusercontent.com/Rintaro-Sugishita/DocPresenter/HEAD/packages/app-vscode/images/en/1-pages.png)
 
 ## What it does
@@ -80,7 +83,7 @@ layout {
 
 <img src="https://raw.githubusercontent.com/Rintaro-Sugishita/DocPresenter/HEAD/packages/app-vscode/images/en/dgm-free.png" alt="The system diagram drawn where the free section puts it" width="520">
 
-**On screen** ("Open in DocPresenter")
+**On screen** (in a document, or "Open in DocPresenter Diagram" for a `.dgm` on its own)
 
 ![A button being dragged on the canvas, snapping to a guide](https://raw.githubusercontent.com/Rintaro-Sugishita/DocPresenter/HEAD/packages/app-vscode/images/en/2-canvas.png)
 
@@ -156,7 +159,7 @@ Everything is plain text you can read in a diff. The extension adds no hidden st
 | File | What it is |
 |---|---|
 | `.md` | The document: Markdown with a short frontmatter (`document:` number, `title:`, `output:` formats …). `@import "path"` takes in a diagram or table; `---` starts a new page (a slide in PPTX) |
-| `.dgm` | A diagram. Shapes and connections, one per line (`login [Log in]`, `login --> home`). Opens as text with colouring and suggestions, or as a canvas with "Open in DocPresenter". [Format](https://github.com/Rintaro-Sugishita/DocPresenter/blob/HEAD/spec/dgm.md) |
+| `.dgm` | A diagram. Shapes and connections, one per line (`login [Log in]`, `login --> home`). Opens as text with colouring and suggestions, or as a canvas with "Open in DocPresenter Diagram" (DocPresenter Diagram, installed with this extension). [Format](https://github.com/Rintaro-Sugishita/DocPresenter/blob/HEAD/spec/dgm.md) |
 | `.table` | A table with merged cells, column widths and named ranges, for tables too complex for Markdown. Edited as a grid inside the document. [Format](https://github.com/Rintaro-Sugishita/DocPresenter/blob/HEAD/spec/table.md) |
 | `.mmd` | A Mermaid diagram (sequence diagrams and the like). ` ```mermaid ` blocks in a `.md` work too |
 | `.png` `.jpg` `.svg` … | Images, taken in with `@import` like any figure |
@@ -229,46 +232,20 @@ The templates and theme set up by the command are **files in your repository**: 
 
 ## Opening
 
-- Right-click a `.md` or `.dgm` in the Explorer → **"Open in DocPresenter"**, or use the button at the top right of the editor.
-  - A `.md` opens as a row of sheets; diagrams and tables are edited in place.
-  - A `.dgm` opens just that diagram. Click it to edit; only that `.dgm` changes.
+- Right-click a `.md` in the Explorer → **"Open in DocPresenter"**, or use the button at the top right of the editor.
+  A document opens as a row of sheets; diagrams and tables are edited in place.
+- A `.dgm` on its own opens on DocPresenter Diagram's canvas: right-click it → **"Open in DocPresenter Diagram"**.
 - Every edit is written back as **one byte range per action**. Undo, the unsaved dot and the Git diff all work as usual,
   because edits are handed to VS Code as a `WorkspaceEdit`.
 - On the screen, **Ctrl+Z undoes and Ctrl+Y (Ctrl+Shift+Z) redoes**. Diagrams and tables live in files of their own,
   which VS Code's undo does not reach; the screen's undo takes those back too, again as one edit.
   A file changed elsewhere since is never written over.
 
-### Writing a `.dgm` as text
+### Writing and formatting a `.dgm`
 
-Opened as text (the usual way, without "Open in DocPresenter"), a `.dgm` is coloured by layer and offers suggestions as you type:
-
-- **At the top**: the sections (`flow` / `free` / `overlay` / `layout` / `style` / `parts`) and `use "…"`. Inside the quotes
-  of `use`: `default`, `icons`, and the workspace's files of parts, written relative to this drawing.
-- **After a shape's id**: the twelve bracket pairs (`[ ]`, `([ ])`, `[( )]` …), the parts the drawing's libraries declare
-  (`textbox:` …), and the connectors. **After a connector**: the shapes not yet joined from that one.
-- **In `layout`**: the shapes with no pin yet, the connections with no corner yet, and the containers (`stack` / `grid` / `tabs`)
-  with their settings and contents.
-- **In `style`**: the shapes with no rule yet, the properties (`fill`, `line`, `icon` …) and their values (`dashed`, `net/router` …).
-
-`#` comments the line (Ctrl+/), and errors at the top level are shown in red, as the format refuses them.
-
-### Formatting a `.dgm`
-
-A drawing typed by hand can be put into its canonical form with **"DocPresenter: Format This Diagram"** (in the
-Command Palette, or right-click a `.dgm` in the Explorer) or VS Code's own **"Format Document"** (Shift+Alt+F).
-
-- **One drawing, one text.** The lines are put in an order taken from the drawing, not from the order they were
-  typed: what a container holds after the container, everything else along the arrows, and the rest in reading
-  order. Pins and style rules follow their shapes. So two people who draw the same thing get the same file.
-- Spacing and spelling are made uniform: ids and numbers lined up in columns, `->` written `-->`, container settings
-  written only where they differ from the default. A comment moves with the line below it.
-- **The drawing never changes.** The result is read back and compared with the original — every box, every line's
-  route, which of two overlapping shapes is in front. Where reading order would move a shape, the shapes keep the
-  order they were written in, and a notification says so.
-- The command saves the drawing (unless it had unsaved changes); "Format Document" leaves saving to you.
-- From the command line: `node tools/format-dgm.mjs --in <workspace>` lists what would change, `--write` writes it,
-  and `--check` fails (exit code 1) when a drawing is not formatted — for a CI job. The rules are in
-  [spec/dgm.md §6.3](https://github.com/Rintaro-Sugishita/DocPresenter/blob/HEAD/spec/dgm.md).
+Drawings are the business of **DocPresenter Diagram**, which is installed with this extension: colouring and
+suggestions as you type, formatting, the canvas for a `.dgm` on its own, and SVG export. See its
+[README](https://github.com/Rintaro-Sugishita/DocPresenter/blob/HEAD/packages/app-vscode-diagram/README.md).
 
 ## Renaming figures and tables
 
@@ -396,8 +373,9 @@ The language name on the opening line (aliases work too). Other names are not co
 ## Building
 
 ```
-npx tsc --build                  # type check (packages/app-vscode included)
-node tools/build-vscode.mjs      # into media/: extension.cjs + webview.js + exporter.js + theme.css + mermaid-page.js + harfbuzz-subset.wasm
+npx tsc --build                  # type check (both extensions included)
+node tools/build-vscode.mjs      # both: media/ here (extension.cjs + webview.js + exporter.js + theme.css + mermaid-page.js
+                                 # + harfbuzz-subset.wasm) and packages/app-vscode-diagram/media (extension.cjs + canvas.js + theme.css)
 ```
 
 ## Display language
@@ -416,14 +394,15 @@ VS Code's "Configure Display Language"; the extension has no setting of its own.
 ## Trying it
 
 Open the repository in VS Code and press **F5** (it builds with `npm run build:vscode`, then starts an extension host
-with the `sample/` folder open).
+with both extensions and the `sample/` folder open).
 
 ## Packaging
 
 ```
-tools\package-vscode.bat            # builds and writes out\vsix\docpresenter-<version>.vsix
-tools\package-vscode.bat install    # the same, then installs it into this PC's VS Code
-code --install-extension out\vsix\docpresenter-0.1.0.vsix   # to install on another PC
+tools\package-vscode.bat            # builds and writes both: out\vsix\docpresenter-<version>.vsix and docpresenter-diagram-<version>.vsix
+tools\package-vscode.bat install    # the same, then installs both into this PC's VS Code
+code --install-extension out\vsix\docpresenter-diagram-0.1.0.vsix   # on another PC: the diagram extension first,
+code --install-extension out\vsix\docpresenter-0.1.0.vsix           # then this one (its pack names the other)
 ```
 
 ## Not in this version

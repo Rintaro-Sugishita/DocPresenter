@@ -12,6 +12,7 @@ export * from './layout.js';
 export * from './arrange.js';
 export * from './draw/geometry.js';
 export * from './draw/render.js';
+export * from './draw/standalone.js';
 export * from './draw/overlay.js';
 export * from './draw/stencil.js';
 export * from './draw/listing.js';

@@ -1,0 +1,8 @@
+{
+  "extension.description": "Draw diagrams as text or on a canvas: flowcharts and free-form drawings in .dgm files, with highlighting, suggestions, formatting and SVG export. Every change is a readable Git diff.",
+  "customEditor.canvas.displayName": "DocPresenter Diagram (canvas)",
+  "command.open.title": "Open in DocPresenter Diagram",
+  "command.openToSide.title": "Open DocPresenter Diagram to the Side",
+  "command.format.title": "Format This Diagram (canonical order and spacing)",
+  "command.exportSvg.title": "Export This Diagram as SVG…"
+}

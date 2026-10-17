@@ -9,7 +9,7 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import { INITIAL, Registry, parseRawGrammar, type IGrammar, type StateStack } from 'vscode-textmate';
 import { OnigScanner, OnigString, loadWASM } from 'vscode-oniguruma';
 
-const GRAMMAR = 'packages/app-vscode/syntaxes/dgm.tmLanguage.json';
+const GRAMMAR = 'packages/app-vscode-diagram/syntaxes/dgm.tmLanguage.json';
 let grammar: IGrammar;
 
 beforeAll(async () => {
@@ -133,13 +133,13 @@ describe('.dgm の色付け', () => {
   });
 
   it('拡張機能の宣言が文法と言語設定を指している', () => {
-    const manifest = JSON.parse(readFileSync('packages/app-vscode/package.json', 'utf8'));
+    const manifest = JSON.parse(readFileSync('packages/app-vscode-diagram/package.json', 'utf8'));
     const [language] = manifest.contributes.languages;
     const [grammarEntry] = manifest.contributes.grammars;
     expect(language.extensions).toEqual(['.dgm']);
     expect(grammarEntry.language).toBe(language.id);
     for (const path of [language.configuration, grammarEntry.path]) {
-      expect(() => JSON.parse(readFileSync(join('packages/app-vscode', path), 'utf8'))).not.toThrow();
+      expect(() => JSON.parse(readFileSync(join('packages/app-vscode-diagram', path), 'utf8'))).not.toThrow();
     }
   });
 });

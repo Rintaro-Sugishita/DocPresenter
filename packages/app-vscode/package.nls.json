@@ -1,6 +1,5 @@
 {
   "extension.description": "Write design documents in Markdown with diagrams and tables, edit them on the printed page, and export to HTML, PDF and PowerPoint. Every change is a readable Git diff.",
-  "customEditor.diagram.displayName": "DocPresenter (Diagram)",
   "command.init.title": "DocPresenter: Set Up This Folder (folders, a first document, a writing guide for agents)",
   "command.newDocument.title": "DocPresenter: New Document (numbered)…",
   "command.newDiagram.title": "DocPresenter: New Diagram (flow or free)…",
@@ -13,7 +12,6 @@
   "command.exportPdf.title": "DocPresenter: Export This Document as PDF",
   "command.exportPptx.title": "DocPresenter: Export This Document as PPTX",
   "command.readBackPptx.title": "DocPresenter: Read PPTX Changes Back into the Diagrams…",
-  "command.formatDiagram.title": "DocPresenter: Format This Diagram (canonical order and spacing)",
   "command.importPdfReview.title": "DocPresenter: Import PDF Annotations as Review Comments (one or more PDFs)…",
   "config.commitKey.description": "The key that commits the open block. Every other Enter breaks the line.",
   "config.commitKey.ctrl-enter": "Ctrl+Enter commits / Enter breaks the line",

@@ -5,6 +5,9 @@
 設計書の本文を Markdown で、図と表をテキスト形式のファイルで書き、VS Code の中で**印刷時と同じページの形のまま**編集できる拡張機能。
 **HTML・PDF・PowerPoint（PPTX）**に出力でき、PPTX の図と表は PowerPoint 上でも編集できる。どの変更も通常の Git の差分としてレビューできる。
 
+DocPresenter を入れると、作図の拡張機能 **DocPresenter Diagram** も一緒に入る。`.dgm` ファイル単体をテキストやキャンバスで描き、
+SVG に書き出すのはそちらの役目である。文書の中の図は、DocPresenter 自身が描き、その場で編集できる。
+
 ![DocPresenter で設計書を開いたところ。印刷時と同じページの形で表示される](https://raw.githubusercontent.com/Rintaro-Sugishita/DocPresenter/HEAD/packages/app-vscode/images/ja/1-pages.png)
 
 ## 概要
@@ -81,7 +84,7 @@ layout {
 
 <img src="https://raw.githubusercontent.com/Rintaro-Sugishita/DocPresenter/HEAD/packages/app-vscode/images/ja/dgm-free.png" alt="上の free の位置どおりに描かれた構成図" width="520">
 
-**画面で描く**（「DocPresenter で開く」）
+**画面で描く**（文書の中で、または `.dgm` 単体なら「DocPresenter Diagram で開く」）
 
 ![キャンバス上でボタンをドラッグしているところ。ガイド線に吸着する](https://raw.githubusercontent.com/Rintaro-Sugishita/DocPresenter/HEAD/packages/app-vscode/images/ja/2-canvas.png)
 
@@ -156,7 +159,7 @@ Excel ファイル（.xlsx）の読み込みや書き出しはしない。代わ
 | ファイル | 内容 |
 |---|---|
 | `.md` | 文書本体。Markdown の先頭に短い frontmatter（文書番号 `document:`、`title:`、出力形式 `output:` など）を付ける。`@import "パス"` で図や表を取り込み、`---` で改ページする（PPTX では次のスライドになる） |
-| `.dgm` | 図。図形と接続を 1 行ずつ書く（`login [ログイン]`、`login --> home`）。テキストとして開くと色分けと入力候補が出て、「DocPresenter で開く」を使うとキャンバス上で描ける。[仕様](https://github.com/Rintaro-Sugishita/DocPresenter/blob/HEAD/spec/dgm.md) |
+| `.dgm` | 図。図形と接続を 1 行ずつ書く（`login [ログイン]`、`login --> home`）。テキストとして開くと色分けと入力候補が出て、一緒に入る DocPresenter Diagram の「DocPresenter Diagram で開く」を使うとキャンバス上で描ける。[仕様](https://github.com/Rintaro-Sugishita/DocPresenter/blob/HEAD/spec/dgm.md) |
 | `.table` | 結合セル・列幅・名前付き範囲を持つ表。Markdown の表では表現しきれないときに使い、文書の中でグリッドとして編集する。[仕様](https://github.com/Rintaro-Sugishita/DocPresenter/blob/HEAD/spec/table.md) |
 | `.mmd` | Mermaid で書いた図（シーケンス図など）。`.md` の中に ` ```mermaid ` で直接書いてもよい |
 | `.png` `.jpg` `.svg` など | 画像。図と同じく `@import` で取り込む |
@@ -231,44 +234,20 @@ CLAUDE.md / AGENTS.md          guide.md を読むよう指示する節を追記�
 
 ## 開く
 
-- エクスプローラーで `.md` または `.dgm` を右クリックし、**「DocPresenter で開く」** を選ぶ。エディタ右上のボタンからも開ける。
-  - `.md` は、ページ（シート）が並んだ画面で開く。図や表はその場で編集できる。
-  - `.dgm` は、その図だけを開く。図をクリックすると編集でき、書き換わるのはその `.dgm` だけである。
+- エクスプローラーで `.md` を右クリックし、**「DocPresenter で開く」** を選ぶ。エディタ右上のボタンからも開ける。
+  文書はページ（シート）が並んだ画面で開き、図や表はその場で編集できる。
+- `.dgm` 単体は、DocPresenter Diagram のキャンバスで開く。右クリックして **「DocPresenter Diagram で開く」** を選ぶ。
 - 編集内容は、**1 回の操作につきファイル上の 1 か所（1 つのバイト範囲）の置き換え**として書き戻される。
   編集を VS Code の `WorkspaceEdit` として渡しているため、VS Code の元に戻す操作・未保存の表示・Git の差分がそのまま使える。
 - 画面上では **Ctrl+Z で元に戻し、Ctrl+Y（または Ctrl+Shift+Z）でやり直す**。図や表は別のファイルに保存されているため、
   VS Code 標準の元に戻す操作では戻らない。画面上の元に戻す操作はそれらのファイルも含めて戻し、その変更も 1 回の編集として書き込む。
   ほかの場所で書き換えられたファイルに上書きすることはない。
 
-### `.dgm` をテキストで書く
+### `.dgm` を書く・整形する
 
-「DocPresenter で開く」を使わずに通常のテキストとして `.dgm` を開くと、記述の種類ごとに色分けされ、入力に合わせて候補が表示される。
-
-- **ファイルの最上位**：セクション（`flow` / `free` / `overlay` / `layout` / `style` / `parts`）と `use "…"`。`use` の引用符の中では、
-  `default`・`icons` と、作業場にある部品ファイル（この図からの相対パス）が候補に出る。
-- **図形の ID の後ろ**：12 種類の括弧（`[ ]`・`([ ])`・`[( )]` など）、読み込んでいる部品ライブラリの部品（`textbox:` など）、接続記号。
-  **接続記号の後ろ**：その図形からまだ接続していない図形。
-- **`layout` セクション**：まだ位置を指定していない図形、まだ折れ点のない線、コンテナ（`stack` / `grid` / `tabs`）とその設定・中身。
-- **`style` セクション**：まだ見た目を指定していない図形、プロパティ（`fill`・`line`・`icon` など）とその値（`dashed`・`net/router` など）。
-
-`#` で始まる行はコメントになる（Ctrl+/ で切り替えられる）。最上位に書かれた解釈できない行は、形式上のエラーとして赤く表示される。
-
-### `.dgm` を整形する
-
-手で書いた図は、コマンド **「DocPresenter: 図を整形する」**（コマンドパレット、またはエクスプローラーで `.dgm` を右クリック）か、
-VS Code の **「ドキュメントのフォーマット」**（Shift+Alt+F）で、決まった形に整えられる。
-
-- **同じ図なら、同じ文になる。** 行の並びは、書いた順ではなく図から決まる。入れ物の中身は入れ物の直後に並びの順で、
-  それ以外は矢印の流れに沿って、残りは読み順（上から下、左から右）で並ぶ。ピンやスタイルの行も、対応する図形の順に並ぶ。
-  そのため、誰が書いても整形すれば同じファイルになる。
-- 空白と書き方もそろう。id や数値は列をそろえ、`->` は `-->` に、入れ物の設定は既定と違うものだけを書く。
-  コメントは、すぐ下の行と一緒に移動する。
-- **図そのものは変わらない。** 整形した結果を読み直し、箱の位置・線の経路・重なった図形の前後を元と比べる。
-  読み順に並べると図形が動いてしまう場合は、図形を書かれた順のまま残し、その旨を通知する。
-- コマンドは整形後に保存する（未保存の変更があったファイルは保存しない）。「ドキュメントのフォーマット」は保存しない。
-- コマンドラインでは `node tools/format-dgm.mjs --in <作業場>` で整形が要る図を一覧にでき、`--write` で書き換え、
-  `--check` を付けると整形されていない図があったときに終了コード 1 で終わる（CI 向け）。規則は
-  [spec/dgm.md §6.3](https://github.com/Rintaro-Sugishita/DocPresenter/blob/HEAD/spec/dgm.md) にある。
+図は、この拡張機能と一緒に入る **DocPresenter Diagram** が受け持つ。入力中の色分けと候補、整形、`.dgm` 単体のキャンバス、
+SVG への書き出しはそちらの機能である。詳しくは
+[DocPresenter Diagram の README](https://github.com/Rintaro-Sugishita/DocPresenter/blob/HEAD/packages/app-vscode-diagram/README.ja.md) を参照。
 
 ## 図表の名前を変える
 
@@ -394,8 +373,9 @@ PPTX に出力した図は、PowerPoint で修正したあと**元の `.dgm` に
 ## ビルド
 
 ```
-npx tsc --build                  # 型検査（packages/app-vscode を含む）
-node tools/build-vscode.mjs      # media/ に extension.cjs ＋ webview.js ＋ exporter.js ＋ theme.css ＋ mermaid-page.js ＋ harfbuzz-subset.wasm を出力
+npx tsc --build                  # 型検査（2 つの拡張機能を含む）
+node tools/build-vscode.mjs      # 両方を出力：ここの media/（extension.cjs ＋ webview.js ＋ exporter.js ＋ theme.css ＋ mermaid-page.js
+                                 # ＋ harfbuzz-subset.wasm）と packages/app-vscode-diagram/media（extension.cjs ＋ canvas.js ＋ theme.css）
 ```
 
 ## 表示言語
@@ -411,15 +391,16 @@ node tools/build-vscode.mjs      # media/ に extension.cjs ＋ webview.js ＋ e
 
 ## 試す
 
-リポジトリを VS Code で開き、**F5** を押す。`npm run build:vscode` でビルドしたあと、サンプルの `sample/` フォルダを
-開いた状態で拡張機能の開発用ウィンドウが起動する。
+リポジトリを VS Code で開き、**F5** を押す。`npm run build:vscode` でビルドしたあと、2 つの拡張機能を読み込み、
+サンプルの `sample/` フォルダを開いた状態で開発用ウィンドウが起動する。
 
 ## パッケージを作る
 
 ```
-tools\package-vscode.bat            # ビルドして out\vsix\docpresenter-<バージョン>.vsix を作成する
-tools\package-vscode.bat install    # 作成したうえで、この PC の VS Code にインストールする
-code --install-extension out\vsix\docpresenter-0.1.0.vsix   # 別の PC にインストールする場合
+tools\package-vscode.bat            # ビルドして out\vsix\ に docpresenter-<バージョン>.vsix と docpresenter-diagram-<バージョン>.vsix を作成する
+tools\package-vscode.bat install    # 作成したうえで、この PC の VS Code に両方をインストールする
+code --install-extension out\vsix\docpresenter-diagram-0.1.0.vsix   # 別の PC では、作図の拡張を先に入れ、
+code --install-extension out\vsix\docpresenter-0.1.0.vsix           # 次にこちらを入れる（パックが作図の拡張を名指しするため）
 ```
 
 ## このバージョンで対応していないこと

@@ -7,10 +7,12 @@
       "request": "launch",
       "args": [
         "--extensionDevelopmentPath=${workspaceFolder}/packages/app-vscode",
+        "--extensionDevelopmentPath=${workspaceFolder}/packages/app-vscode-diagram",
         "${workspaceFolder}/sample"
       ],
       "outFiles": [
-        "${workspaceFolder}/packages/app-vscode/media/*.cjs"
+        "${workspaceFolder}/packages/app-vscode/media/*.cjs",
+        "${workspaceFolder}/packages/app-vscode-diagram/media/*.cjs"
       ],
       "preLaunchTask": "DocPresenter 拡張をビルド"
     }

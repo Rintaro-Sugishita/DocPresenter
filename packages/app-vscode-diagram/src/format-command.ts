@@ -9,6 +9,7 @@ import { describeError, say } from '@docpresenter/base';
 import { formatDiagram } from '@docpresenter/diagram';
 import * as vscode from 'vscode';
 import { DGM_LANGUAGE, librariesUsed } from './dgm-language.js';
+import { activeTabUri } from './export-svg.js';
 import { hostLocale, t } from './l10n.js';
 
 export function registerDgmFormatter(): vscode.Disposable {
@@ -30,13 +31,13 @@ export async function formatEdits(document: vscode.TextDocument): Promise<vscode
   try {
     formatted = formatDiagram(source, path => files.get(path));
   } catch (error) {
-    void vscode.window.showErrorMessage(`DocPresenter: ${t('vscode.format.unreadable', {
+    void vscode.window.showErrorMessage(`DocPresenter Diagram: ${t('diagramExt.format.unreadable', {
       path: vscode.workspace.asRelativePath(document.uri, false), message: describeError(error, hostLocale()),
     })}`);
     return undefined;
   }
   for (const note of formatted.notes) {
-    void vscode.window.showInformationMessage(`DocPresenter: ${say(hostLocale(), note)}`);
+    void vscode.window.showInformationMessage(`DocPresenter Diagram: ${say(hostLocale(), note)}`);
   }
   if (!formatted.changed) return [];
 
@@ -67,7 +68,7 @@ function changedLines(before: string, after: string): { start: number; end: numb
 export async function formatDiagramFile(uri?: vscode.Uri): Promise<void> {
   const target = uri ?? vscode.window.activeTextEditor?.document.uri ?? activeTabUri();
   if (!target || !/\.dgm$/i.test(target.path)) {
-    void vscode.window.showInformationMessage(`DocPresenter: ${t('vscode.format.notDiagram')}`);
+    void vscode.window.showInformationMessage(`DocPresenter Diagram: ${t('diagramExt.notDiagram')}`);
     return;
   }
   const document = await vscode.workspace.openTextDocument(target);
@@ -76,18 +77,12 @@ export async function formatDiagramFile(uri?: vscode.Uri): Promise<void> {
   const edits = await formatEdits(document);
   if (edits === undefined) return;
   if (edits.length === 0) {
-    void vscode.window.showInformationMessage(`DocPresenter: ${t('vscode.format.already', { path })}`);
+    void vscode.window.showInformationMessage(`DocPresenter Diagram: ${t('diagramExt.format.already', { path })}`);
     return;
   }
   const edit = new vscode.WorkspaceEdit();
   for (const one of edits) edit.replace(target, one.range, one.newText);
   if (!await vscode.workspace.applyEdit(edit)) return;
   if (!unsaved) await document.save();
-  void vscode.window.showInformationMessage(`DocPresenter: ${t('vscode.format.done', { path })}`);
-}
-
-/** The file of the tab in front, when it is not a text editor — the canvas, say. */
-function activeTabUri(): vscode.Uri | undefined {
-  const input = vscode.window.tabGroups?.activeTabGroup.activeTab?.input as { uri?: vscode.Uri } | undefined;
-  return input?.uri;
+  void vscode.window.showInformationMessage(`DocPresenter Diagram: ${t('diagramExt.format.done', { path })}`);
 }
