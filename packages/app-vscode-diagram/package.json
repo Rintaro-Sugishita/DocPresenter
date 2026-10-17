@@ -1,0 +1,78 @@
+{
+  "name": "docpresenter-diagram",
+  "displayName": "DocPresenter Diagram",
+  "description": "%extension.description%",
+  "version": "0.1.0",
+  "publisher": "docpresenter",
+  "private": true,
+  "license": "SEE LICENSE IN legal/LICENSE.draft.md",
+  "repository": { "type": "git", "url": "https://github.com/Rintaro-Sugishita/DocPresenter.git", "directory": "packages/app-vscode-diagram" },
+  "engines": { "vscode": "^1.95.0" },
+  "icon": "icon.png",
+  "galleryBanner": { "color": "#1f4e8c", "theme": "dark" },
+  "categories": ["Visualization", "Programming Languages", "Formatters"],
+  "keywords": [
+    "diagram", "drawing", "flowchart", "flow chart", "state diagram", "architecture diagram", "system diagram",
+    "wireframe", "screen design", "mockup", "diagram as code", "svg", "mermaid", "draw.io", "design",
+    "作図", "図", "フローチャート", "構成図", "画面設計", "状態遷移図"
+  ],
+  "main": "./media/extension.cjs",
+  "contributes": {
+    "languages": [
+      {
+        "id": "dgm",
+        "aliases": ["DocPresenter Diagram", "dgm"],
+        "extensions": [".dgm"],
+        "configuration": "./syntaxes/dgm.language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "dgm",
+        "scopeName": "source.dgm",
+        "path": "./syntaxes/dgm.tmLanguage.json"
+      }
+    ],
+    "customEditors": [
+      {
+        "viewType": "docpresenterDiagram.canvas",
+        "displayName": "%customEditor.canvas.displayName%",
+        "selector": [{ "filenamePattern": "*.dgm" }],
+        "priority": "option"
+      }
+    ],
+    "commands": [
+      { "command": "docpresenterDiagram.open", "title": "%command.open.title%", "category": "DocPresenter Diagram" },
+      { "command": "docpresenterDiagram.openToSide", "title": "%command.openToSide.title%", "category": "DocPresenter Diagram", "icon": "$(open-preview)" },
+      { "command": "docpresenterDiagram.format", "title": "%command.format.title%", "category": "DocPresenter Diagram" },
+      { "command": "docpresenterDiagram.exportSvg", "title": "%command.exportSvg.title%", "category": "DocPresenter Diagram" }
+    ],
+    "menus": {
+      "editor/title": [
+        { "command": "docpresenterDiagram.openToSide", "when": "resourceExtname == .dgm && !activeCustomEditorId", "group": "navigation" },
+        { "command": "docpresenterDiagram.exportSvg", "when": "resourceExtname == .dgm", "group": "docpresenterDiagram@1" }
+      ],
+      "editor/context": [
+        { "command": "docpresenterDiagram.openToSide", "when": "resourceExtname == .dgm && !activeCustomEditorId", "group": "navigation@9" }
+      ],
+      "explorer/context": [
+        { "command": "docpresenterDiagram.open", "when": "resourceExtname == .dgm", "group": "navigation@9" },
+        { "command": "docpresenterDiagram.format", "when": "resourceExtname == .dgm", "group": "navigation@9" },
+        { "command": "docpresenterDiagram.exportSvg", "when": "resourceExtname == .dgm", "group": "navigation@9" }
+      ],
+      "commandPalette": [
+        { "command": "docpresenterDiagram.open", "when": "resourceExtname == .dgm" },
+        { "command": "docpresenterDiagram.openToSide", "when": "resourceExtname == .dgm" },
+        { "command": "docpresenterDiagram.format", "when": "resourceExtname == .dgm" },
+        { "command": "docpresenterDiagram.exportSvg", "when": "resourceExtname == .dgm" }
+      ]
+    },
+    "keybindings": [
+      { "command": "docpresenterDiagram.openToSide", "key": "ctrl+k v", "mac": "cmd+k v", "when": "editorLangId == dgm" }
+    ]
+  },
+  "dependencies": {
+    "@docpresenter/base": "*",
+    "@docpresenter/diagram": "*"
+  }
+}

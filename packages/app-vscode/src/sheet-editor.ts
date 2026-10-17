@@ -30,8 +30,6 @@ const IGNORED = '**/{node_modules,out,dist,.git}/**';
 
 export class SheetEditorProvider implements vscode.CustomTextEditorProvider {
   static readonly viewType = 'docpresenter.sheets';
-  /** A `.dgm` on its own: the same editor, showing just that drawing. */
-  static readonly diagramViewType = 'docpresenter.diagram';
 
   /** Every open editor, so a command can act on the one in front. */
   private readonly views = new Map<vscode.WebviewPanel, OpenView>();
@@ -71,17 +69,12 @@ export class SheetEditorProvider implements vscode.CustomTextEditorProvider {
     const pathOf = (uri: vscode.Uri): string =>
       vscode.workspace.asRelativePath(uri, false).split('\\').join('/');
     const documentPath = pathOf(document.uri);
-    // A drawing opened on its own is shown as a one-line document that takes
-    // it in: the editor then works on it exactly as on a figure in a document,
-    // and the only file it ever writes is the drawing.
-    const diagram = /\.dgm$/i.test(documentPath);
-    const name = documentPath.slice(documentPath.lastIndexOf('/') + 1);
 
     panel.webview.options = {
       enableScripts: true,
       localResourceRoots: [vscode.Uri.joinPath(this.context.extensionUri, 'media'), root],
     };
-    panel.webview.html = page(panel.webview, this.context.extensionUri, !diagram);
+    panel.webview.html = page(panel.webview, this.context.extensionUri, true);
 
     const post = (message: ToView): void => { void panel.webview.postMessage(message); };
 
@@ -128,17 +121,15 @@ export class SheetEditorProvider implements vscode.CustomTextEditorProvider {
       for (const uri of await vscode.workspace.findFiles(IMAGE_FILES, IGNORED)) {
         images[pathOf(uri)] = panel.webview.asWebviewUri(uri).toString();
       }
-      if (diagram) files[documentPath] = document.getText();
       post({
         kind: 'open',
         path: documentPath,
-        source: diagram ? `@import "${name}"\n` : document.getText(),
+        source: document.getText(),
         files, images,
         commitKey: commitKey(),
         locale: hostLocale(),
-        ...(diagram ? { diagram: true } : {}),
       });
-      if (!diagram) await sendReviews();
+      await sendReviews();
       await sendTheme();
     };
 
@@ -147,7 +138,7 @@ export class SheetEditorProvider implements vscode.CustomTextEditorProvider {
      * edited looks as it will be printed. Nothing when it has none.
      */
     const sendTheme = async (): Promise<void> => {
-      const raw = diagram ? {} : parseFrontmatter(document.getText());
+      const raw = parseFrontmatter(document.getText());
       const name = typeof raw['theme'] === 'string' ? raw['theme'] : 'default';
       let css: string | undefined;
       for (const path of themePaths(name)) {
@@ -178,8 +169,6 @@ export class SheetEditorProvider implements vscode.CustomTextEditorProvider {
      * range is what VS Code is handed.
      */
     const apply = async (change: Extract<FromView, { kind: 'change' }>): Promise<void> => {
-      // The document a drawing is shown in exists only on screen.
-      if (diagram && change.path === undefined) return;
       const uri = change.path === undefined
         ? document.uri
         : vscode.Uri.joinPath(root, ...change.path.split('/'));
@@ -332,14 +321,14 @@ export class SheetEditorProvider implements vscode.CustomTextEditorProvider {
       }
     });
 
-    const reviews = diagram ? undefined : watchReviews(() => { void sendReviews(); });
+    const reviews = watchReviews(() => { void sendReviews(); });
     // A theme saved, made or removed is on the screen at once.
     const themeWatcher = vscode.workspace.createFileSystemWatcher('**/themes/**/theme.css');
     const themeChanged = [themeWatcher.onDidChange, themeWatcher.onDidCreate, themeWatcher.onDidDelete]
       .map(on => on(() => { void sendTheme(); }));
 
     panel.onDidDispose(() => {
-      reviews?.dispose();
+      reviews.dispose();
       for (const one of themeChanged) one.dispose();
       themeWatcher.dispose();
       watching.dispose();

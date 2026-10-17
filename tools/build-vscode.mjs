@@ -1,4 +1,5 @@
-// Builds the VS Code extension into packages/app-vscode/media.
+// Builds the two VS Code extensions: DocPresenter into packages/app-vscode/media,
+// and DocPresenter Diagram into packages/app-vscode-diagram/media.
 //
 // Two bundles, because the extension is two programs. The host half runs in
 // Node inside VS Code and must not carry the editor's screen; the WebView half
@@ -53,3 +54,23 @@ copyFileSync('packages/app-vscode/templates/guide.md', `${OUT}/init/guide.md`);
 for (const spec of ['dgm.md', 'table.md', 'inline-text.md']) copyFileSync(`spec/${spec}`, `${OUT}/init/spec/${spec}`);
 
 console.log(`${OUT}/extension.cjs ＋ webview.js ＋ theme.css ＋ exporter.js ＋ mermaid-page.js ＋ harfbuzz-subset.wasm ＋ init/ を生成`);
+
+// DocPresenter Diagram: the .dgm language, the canvas and SVG. Built from the
+// drawing package alone — nothing of the document side goes in, which is what
+// lets it stand as an extension of its own.
+const DIAGRAM_OUT = 'packages/app-vscode-diagram/media';
+mkdirSync(DIAGRAM_OUT, { recursive: true });
+const diagramHost = await rolldown({
+  input: 'packages/app-vscode-diagram/dist/extension.js',
+  platform: 'node',
+  external: ['vscode'],
+});
+await diagramHost.write({ file: `${DIAGRAM_OUT}/extension.cjs`, format: 'cjs' });
+const canvas = await rolldown({
+  input: 'packages/app-vscode-diagram/dist/webview/canvas.js',
+  platform: 'browser',
+});
+await canvas.write({ file: `${DIAGRAM_OUT}/canvas.js`, format: 'iife', minify: true, codeSplitting: false });
+// The theme's drawing rules go inside every SVG it exports.
+copyFileSync('themes/default/theme.css', `${DIAGRAM_OUT}/theme.css`);
+console.log(`${DIAGRAM_OUT}/extension.cjs ＋ canvas.js ＋ theme.css を生成`);

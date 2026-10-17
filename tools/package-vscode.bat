@@ -1,10 +1,14 @@
 @echo off
-rem Builds the DocPresenter VS Code extension and packs it into a .vsix file.
+rem Builds the two VS Code extensions and packs each into a .vsix file:
+rem DocPresenter (documents) and DocPresenter Diagram (drawings), which the first
+rem brings along as its extension pack.
 rem
 rem   tools\package-vscode.bat            -> out\vsix\docpresenter-<version>.vsix
-rem   tools\package-vscode.bat install    -> the same, then installs it into VS Code
+rem                                          out\vsix\docpresenter-diagram-<version>.vsix
+rem   tools\package-vscode.bat install    -> the same, then installs both into VS Code
 rem
-rem Install the .vsix elsewhere with:
+rem Install them elsewhere with, the diagram extension first:
+rem   code --install-extension docpresenter-diagram-<version>.vsix
 rem   code --install-extension docpresenter-<version>.vsix
 rem or VS Code: Extensions view, "..." menu, "Install from VSIX...".
 
@@ -28,9 +32,18 @@ call npm run build:vscode
 if errorlevel 1 goto :fail
 
 for /f "usebackq delims=" %%v in (`node -p "require('./packages/app-vscode/package.json').version"`) do set VERSION=%%v
+for /f "usebackq delims=" %%v in (`node -p "require('./packages/app-vscode-diagram/package.json').version"`) do set DIAGRAM_VERSION=%%v
 set OUTDIR=%CD%\out\vsix
 set VSIX=%OUTDIR%\docpresenter-%VERSION%.vsix
+set DIAGRAM_VSIX=%OUTDIR%\docpresenter-diagram-%DIAGRAM_VERSION%.vsix
 if not exist "%OUTDIR%" mkdir "%OUTDIR%"
+
+echo === Package: %DIAGRAM_VSIX% ===
+pushd packages\app-vscode-diagram
+call "%~dp0..\node_modules\.bin\vsce.cmd" package --no-dependencies --allow-missing-repository --skip-license -o "%DIAGRAM_VSIX%"
+set RESULT=%ERRORLEVEL%
+popd
+if not "%RESULT%"=="0" goto :fail
 
 echo === Package: %VSIX% ===
 pushd packages\app-vscode
@@ -40,14 +53,17 @@ popd
 if not "%RESULT%"=="0" goto :fail
 
 if /i "%~1"=="install" (
-  echo === Install into VS Code ===
+  echo === Install into VS Code: the diagram extension first, then the one whose pack names it ===
+  call code --install-extension "%DIAGRAM_VSIX%" --force
+  if errorlevel 1 goto :fail
   call code --install-extension "%VSIX%" --force
   if errorlevel 1 goto :fail
   echo Installed. Reload the VS Code window to use the new build.
 )
 
 echo.
-echo Done: %VSIX%
+echo Done: %DIAGRAM_VSIX%
+echo       %VSIX%
 endlocal
 exit /b 0
 

@@ -2,9 +2,197 @@
 
 [日本語](https://github.com/Rintaro-Sugishita/DocPresenter/blob/HEAD/packages/app-vscode/README.ja.md)
 
-Edit design documents (`.md` + `.dgm` + `.table`) inside VS Code, **on the page as it will be printed**.
+Write software design documents in Markdown, draw their diagrams and tables as plain-text files, and edit all of it
+**on the page as it will be printed**, right inside VS Code. Export to **HTML, PDF and editable PowerPoint (PPTX)**,
+and keep every change reviewable as an ordinary Git diff.
+
+Installing DocPresenter installs **DocPresenter Diagram** with it: the drawing side (`.dgm` files on their own, as
+text or on a canvas, and as SVG). Inside a document, diagrams are drawn and edited by DocPresenter itself.
+
+![A design document open in DocPresenter, shown as printed pages](https://raw.githubusercontent.com/Rintaro-Sugishita/DocPresenter/HEAD/packages/app-vscode/images/en/1-pages.png)
+
+## What it does
+
+Design documents kept in Excel, Word or draw.io cannot be reviewed in a pull request: the diff means nothing to a
+person or to an AI. DocPresenter keeps the document as **text files in your repository** and does the rest:
+
+| | |
+|---|---|
+| **Edit on the page** | Open a `.md` and it shows as printed pages. Type into paragraphs, move shapes, edit table cells. Each action is written back as **one small text change**, so the Git diff shows exactly what you changed and nothing else |
+| **Draw** | Diagrams (flowcharts, state diagrams, system diagrams, screen sketches) are `.dgm` text files. Write the boxes and arrows; the layout is computed, and only what you move by hand is recorded |
+| **Number and cross-reference** | Figures, tables and headings are numbered for you, references like `@fig-login` become "Figure 3", and a table of contents and cover are made |
+| **Export** | One click gives HTML, PDF (fonts embedded) or PPTX (diagrams and tables stay editable in PowerPoint) |
+| **Check** | Broken references and mistakes in diagrams and tables show up in the Problems panel |
+| **Bring changes back** | Shapes moved or text fixed in the exported PowerPoint can be read back into the `.dgm` |
+| **Take reviews from people without Git** | Customers annotate the PDF as usual; their comments are imported into a review file, tied to the exact words they marked, and your answers travel back in the next PDF |
+
+## Diagrams and tables: write them as code, or draw them on screen
+
+Diagrams (`.dgm`) and tables (`.table`) can be **written as text or edited on screen with the mouse**. Either way they
+are the same single text file, and an edit on screen rewrites only the lines it changes, so people who prefer code and
+people who prefer a canvas can work on the same files.
+
+### Diagrams: flowcharts, and free-form drawings like PowerPoint
+
+A `.dgm` comes in two kinds.
+
+**flow**: write the shapes and how they connect; the layout is worked out for you. For processes, procedures and state changes.
+
+```
+flow {
+  start   ([Order received])
+  check   {In stock?}
+  reserve [Reserve stock]
+  backord [Back-order]
+  ship    ([Ship])
+
+  start   --> check
+  check   --> reserve "yes"
+  check   --> backord "no"
+  reserve --> ship
+  backord --> ship
+}
+```
+
+<img src="https://raw.githubusercontent.com/Rintaro-Sugishita/DocPresenter/HEAD/packages/app-vscode/images/en/dgm-flow.png" alt="The flowchart laid out from the flow above" width="440">
+
+**free**: shapes stay where you put them. For system diagrams and screen sketches, drawn the way you would in PowerPoint.
+
+```
+free {
+  shop  [Order page]
+  api   [Order API]
+  stock [Stock service]
+  db    [(Order DB)]
+
+  group back "Internal" { api; stock; db }
+
+  shop  -> api   "HTTPS"
+  api   -> stock
+  api   -> db
+}
+
+layout {
+  shop  @ ( 40, 100) 140x60
+  api   @ (260, 100) 140x60
+  stock @ (480,  40) 140x60
+  db    @ (480, 160) 140x60
+  back  @ (240,  20) 400x220  z:-1
+}
+```
+
+<img src="https://raw.githubusercontent.com/Rintaro-Sugishita/DocPresenter/HEAD/packages/app-vscode/images/en/dgm-free.png" alt="The system diagram drawn where the free section puts it" width="520">
+
+**On screen** (in a document, or "Open in DocPresenter Diagram" for a `.dgm` on its own)
+
+![A button being dragged on the canvas, snapping to a guide](https://raw.githubusercontent.com/Rintaro-Sugishita/DocPresenter/HEAD/packages/app-vscode/images/en/2-canvas.png)
+
+- Drag shapes to move them and the bottom-right handle to resize; they snap to guides lined up with other shapes.
+- Double-click to change text. "+ Shape" adds shapes; "+ Part" adds icons such as routers and servers, and screen parts such as buttons and inputs.
+- Right-click to draw a line, group, delete, or hand a shape back to the automatic layout.
+- Pick several shapes to line up their edges or centres, or spread them evenly.
+- Drag the middle of a line to bend it and its end to reconnect it; choose the arrowheads and the weight.
+- In a flow diagram, only the shapes you moved by hand are recorded; the rest stay laid out automatically.
+
+**As code** (opened as text)
+
+- Opened as text in VS Code, a `.dgm` is coloured and offers suggestions as you type: shapes, parts, what to connect to, properties.
+- Mistakes are shown in red and listed in the Problems panel.
+- One shape is one line, so the diff says exactly what changed.
+- The [format is published](https://github.com/Rintaro-Sugishita/DocPresenter/blob/HEAD/spec/dgm.md), so AI agents such as Claude Code can write it too.
+- Shapes moved in the exported PowerPoint can be read back into the `.dgm`.
+
+### Tables: a plain-text format, and a spreadsheet-like grid
+
+Tables that outgrow Markdown (merged cells, column widths, colour) are written as `.table`.
+
+```
+| Stage    | State     | Meaning              | Next step     |
+|:--------:|-----------|----------------------|---------------|
+| Open     | Received  | The order came in    | Reserve stock |
+| ^        | Confirmed | Stock is reserved    | Ship it       |
+| Closed   | Shipped   | It has left          | —             |
+| ^        | Cancelled | It was called off    | —             |
+
+style {
+  col:Stage { width: 16% }
+  col:State { width: 18% }
+}
+```
+
+<img src="https://raw.githubusercontent.com/Rintaro-Sugishita/DocPresenter/HEAD/packages/app-vscode/images/en/table.png" alt="The table drawn from the .table above, with the stages merged" width="560">
+
+**The text format**
+
+- It reads like a Markdown table; `^` merges a cell with the one above.
+- Column widths, fill and text colour go in a `style` section below the grid, so the grid stays readable.
+- Cells can hold bulleted lists, and ranges can be named.
+- One changed cell is one changed line in the diff. The [format is published](https://github.com/Rintaro-Sugishita/DocPresenter/blob/HEAD/spec/table.md).
+
+**On screen**
+
+![A .table open as a grid, with fill and text colour](https://raw.githubusercontent.com/Rintaro-Sugishita/DocPresenter/HEAD/packages/app-vscode/images/en/3-table.png)
+
+- It works like a spreadsheet: click to select, move with the arrow keys, type to overwrite, Enter or Tab to commit and move on.
+- Select a range with Shift+arrows or by dragging. Copy and paste to and from Excel and other spreadsheets.
+- Right-click to add or delete rows and columns, and to merge or unmerge cells.
+- Drag a column's edge to set its width. Set fill, text colour and alignment for a cell, a row, a column or the header.
+- "Tidy source" lines up the text's columns; "Source" edits the `.table` directly.
+
+**Exchanging tables with Excel: through the clipboard**
+
+Excel files (.xlsx) are neither imported nor exported. Cells go back and forth through the clipboard instead.
+
+- **Excel → table**: copy a range in Excel or Google Sheets, pick a cell in the table and paste. The values land with
+  that cell at the top left, and the table grows rows and columns as needed. The whole paste is one edit, so one undo.
+- **Table → Excel**: copy (or cut) a range in the table; it goes to the clipboard as tab-separated text, which a
+  spreadsheet pastes as cells. The header row can be part of the range; a position covered by a merge is left empty
+  rather than repeating the value.
+- A cell with a line break (Alt+Enter) or quotes in it travels as one cell. A table cell is one line, so a pasted line
+  break becomes a space, and a `|` is written as the character `\|`.
+- Formatting (colours, borders) does not travel: values only.
+
+## The files
+
+Everything is plain text you can read in a diff. The extension adds no hidden state.
+
+| File | What it is |
+|---|---|
+| `.md` | The document: Markdown with a short frontmatter (`document:` number, `title:`, `output:` formats …). `@import "path"` takes in a diagram or table; `---` starts a new page (a slide in PPTX) |
+| `.dgm` | A diagram. Shapes and connections, one per line (`login [Log in]`, `login --> home`). Opens as text with colouring and suggestions, or as a canvas with "Open in DocPresenter Diagram" (DocPresenter Diagram, installed with this extension). [Format](https://github.com/Rintaro-Sugishita/DocPresenter/blob/HEAD/spec/dgm.md) |
+| `.table` | A table with merged cells, column widths and named ranges, for tables too complex for Markdown. Edited as a grid inside the document. [Format](https://github.com/Rintaro-Sugishita/DocPresenter/blob/HEAD/spec/table.md) |
+| `.mmd` | A Mermaid diagram (sequence diagrams and the like). ` ```mermaid ` blocks in a `.md` work too |
+| `.png` `.jpg` `.svg` … | Images, taken in with `@import` like any figure |
+| `reviews/*.review.yml` | Review comments and answers, one file per round |
+| `.docpresenter/` | Your team's templates, theme and writing guide (made by "Set Up This Folder") |
+
+A typical layout: `docs/<name>.md` for each document, `docs/<name>/` for the diagrams and tables only it uses, and
+`shared/` for those several documents use.
 
 ## Getting started
+
+### 1. Set up the repository
+
+Start here, once per repository: run **"DocPresenter: Set Up This Folder"**. After asking for a title, a file name and a
+document number, it puts the following in place and opens the first document.
+**Files that are already there are never overwritten** (they are reported as kept).
+
+```
+docs/<name>.md                 The first document (made from the template below): frontmatter, an overview, the revision history taken in
+docs/<name>/revision.md        Its revision history
+docs/assets/                   Where images go
+shared/glossary.table          A glossary several documents can take in
+.docpresenter/guide.md         The writing guide (for agents such as Claude Code)
+.docpresenter/spec/            The formats of .dgm, .table and text inside labels
+.docpresenter/templates/       Templates for new documents (document.md, revision.md). Change them to your team's format
+.docpresenter/themes/default/  The theme (theme.css), a copy of the shipped one. Change it to your team's look
+CLAUDE.md / AGENTS.md          A section telling agents to read guide.md is appended (the file is made if missing)
+.gitignore                     The output folder (out/) is appended
+```
+
+Appending happens once, so running the command again adds nothing.
+
+### 2. Add a document
 
 To add a document, run **"DocPresenter: New Document (numbered)…"** (or right-click a folder in the Explorer).
 It asks for a title, the folder, a file name, **assigns a document number**, and makes the document and its
@@ -12,6 +200,8 @@ revision history from the templates (`.docpresenter/templates/`, below). The num
 already uses (`SD-AUTH-` and so on); a new series or a number of your own also works, but a number in use is refused.
 Review comments are tied to the document number, so **every document has one, and no two share one**
 (the build warns otherwise).
+
+### 3. Add a diagram
 
 To add a diagram, run **"DocPresenter: New Diagram (flow or free)…"** (or right-click a folder). It asks for the kind
 first — **flow** (laid out from its arrows: processes, procedures, state changes) or **free** (shapes stay where you put
@@ -33,25 +223,6 @@ Documents can be split into folders as the application grows (`docs/order/design
   `design.md` in two folders never write over each other.
 - Document numbers are unique across the whole repository, whatever folder a document is in.
 
-In a new repository, run **"DocPresenter: Set Up This Folder"**. After asking for a title, a file name and a
-document number, it puts the following in place and opens the first document.
-**Files that are already there are never overwritten** (they are reported as kept).
-
-```
-docs/<name>.md                 The first document (made from the template below): frontmatter, an overview, the revision history taken in
-docs/<name>/revision.md        Its revision history
-docs/assets/                   Where images go
-shared/glossary.table          A glossary several documents can take in
-.docpresenter/guide.md         The writing guide (for agents such as Claude Code)
-.docpresenter/spec/            The formats of .dgm, .table and text inside labels
-.docpresenter/templates/       Templates for new documents (document.md, revision.md). Change them to your team's format
-.docpresenter/themes/default/  The theme (theme.css), a copy of the shipped one. Change it to your team's look
-CLAUDE.md / AGENTS.md          A section telling agents to read guide.md is appended (the file is made if missing)
-.gitignore                     The output folder (out/) is appended
-```
-
-Appending happens once, so running the command again adds nothing.
-
 ### Your team's templates and theme
 
 The templates and theme set up by the command are **files in your repository**: change them and commit them.
@@ -67,28 +238,20 @@ The templates and theme set up by the command are **files in your repository**: 
 
 ## Opening
 
-- Right-click a `.md` or `.dgm` in the Explorer → **"Open in DocPresenter"**, or use the button at the top right of the editor.
-  - A `.md` opens as a row of sheets; diagrams and tables are edited in place.
-  - A `.dgm` opens just that diagram. Click it to edit; only that `.dgm` changes.
+- Right-click a `.md` in the Explorer → **"Open in DocPresenter"**, or use the button at the top right of the editor.
+  A document opens as a row of sheets; diagrams and tables are edited in place.
+- A `.dgm` on its own opens on DocPresenter Diagram's canvas: right-click it → **"Open in DocPresenter Diagram"**.
 - Every edit is written back as **one byte range per action**. Undo, the unsaved dot and the Git diff all work as usual,
   because edits are handed to VS Code as a `WorkspaceEdit`.
 - On the screen, **Ctrl+Z undoes and Ctrl+Y (Ctrl+Shift+Z) redoes**. Diagrams and tables live in files of their own,
   which VS Code's undo does not reach; the screen's undo takes those back too, again as one edit.
   A file changed elsewhere since is never written over.
 
-### Writing a `.dgm` as text
+### Writing and formatting a `.dgm`
 
-Opened as text (the usual way, without "Open in DocPresenter"), a `.dgm` is coloured by layer and offers suggestions as you type:
-
-- **At the top**: the sections (`flow` / `free` / `overlay` / `layout` / `style` / `parts`) and `use "…"`. Inside the quotes
-  of `use`: `default`, `icons`, and the workspace's files of parts, written relative to this drawing.
-- **After a shape's id**: the twelve bracket pairs (`[ ]`, `([ ])`, `[( )]` …), the parts the drawing's libraries declare
-  (`textbox:` …), and the connectors. **After a connector**: the shapes not yet joined from that one.
-- **In `layout`**: the shapes with no pin yet, the connections with no corner yet, and the containers (`stack` / `grid` / `tabs`)
-  with their settings and contents.
-- **In `style`**: the shapes with no rule yet, the properties (`fill`, `line`, `icon` …) and their values (`dashed`, `net/router` …).
-
-`#` comments the line (Ctrl+/), and errors at the top level are shown in red, as the format refuses them.
+Drawings are the business of **DocPresenter Diagram**, which is installed with this extension: colouring and
+suggestions as you type, formatting, the canvas for a `.dgm` on its own, and SVG export. See its
+[README](https://github.com/Rintaro-Sugishita/DocPresenter/blob/HEAD/packages/app-vscode-diagram/README.md).
 
 ## Renaming figures and tables
 
@@ -216,8 +379,9 @@ The language name on the opening line (aliases work too). Other names are not co
 ## Building
 
 ```
-npx tsc --build                  # type check (packages/app-vscode included)
-node tools/build-vscode.mjs      # into media/: extension.cjs + webview.js + exporter.js + theme.css + mermaid-page.js + harfbuzz-subset.wasm
+npx tsc --build                  # type check (both extensions included)
+node tools/build-vscode.mjs      # both: media/ here (extension.cjs + webview.js + exporter.js + theme.css + mermaid-page.js
+                                 # + harfbuzz-subset.wasm) and packages/app-vscode-diagram/media (extension.cjs + canvas.js + theme.css)
 ```
 
 ## Display language
@@ -236,14 +400,15 @@ VS Code's "Configure Display Language"; the extension has no setting of its own.
 ## Trying it
 
 Open the repository in VS Code and press **F5** (it builds with `npm run build:vscode`, then starts an extension host
-with the `sample/` folder open).
+with both extensions and the `sample/` folder open).
 
 ## Packaging
 
 ```
-tools\package-vscode.bat            # builds and writes out\vsix\docpresenter-<version>.vsix
-tools\package-vscode.bat install    # the same, then installs it into this PC's VS Code
-code --install-extension out\vsix\docpresenter-0.1.0.vsix   # to install on another PC
+tools\package-vscode.bat            # builds and writes both: out\vsix\docpresenter-<version>.vsix and docpresenter-diagram-<version>.vsix
+tools\package-vscode.bat install    # the same, then installs both into this PC's VS Code
+code --install-extension out\vsix\docpresenter-diagram-0.1.0.vsix   # on another PC: the diagram extension first,
+code --install-extension out\vsix\docpresenter-0.1.0.vsix           # then this one (its pack names the other)
 ```
 
 ## Not in this version

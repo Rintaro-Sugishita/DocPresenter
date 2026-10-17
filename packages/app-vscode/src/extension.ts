@@ -6,7 +6,7 @@
 // suggestions in a drawing opened as text.
 
 import * as vscode from 'vscode';
-import { registerDgmLanguage } from './dgm-language.js';
+import { openDrawing } from './drawing.js';
 import { registerWorkspaceProblems } from './workspace-problems.js';
 import { exportAll, FORMAT_LABEL } from './export-command.js';
 import { initWorkspace } from './init-command.js';
@@ -27,7 +27,7 @@ export function activate(context: vscode.ExtensionContext): void {
     webviewOptions: { retainContextWhenHidden: true }, supportsMultipleEditorsPerDocument: false,
   };
 
-  /** Opens a document or a drawing in DocPresenter. */
+  /** Opens a document in DocPresenter; a drawing goes to the diagram extension's canvas. */
   // `beside` keeps the text editor where it is and opens the screen next to
   // it: both are views of one TextDocument, so what is typed in the text is
   // drawn as it is typed, and the typing keeps VS Code's own editing.
@@ -37,16 +37,17 @@ export function activate(context: vscode.ExtensionContext): void {
       void vscode.window.showInformationMessage(`DocPresenter: ${t('vscode.noDocument')}`);
       return;
     }
-    const viewType = /\.dgm$/i.test(target.path)
-      ? SheetEditorProvider.diagramViewType : SheetEditorProvider.viewType;
-    await vscode.commands.executeCommand('vscode.openWith', target, viewType,
+    if (/\.dgm$/i.test(target.path)) {
+      await openDrawing(target, beside);
+      return;
+    }
+    await vscode.commands.executeCommand('vscode.openWith', target, SheetEditorProvider.viewType,
       beside ? { viewColumn: vscode.ViewColumn.Beside, preserveFocus: true } : undefined);
   };
 
   context.subscriptions.push(
     output,
     vscode.window.registerCustomEditorProvider(SheetEditorProvider.viewType, provider, options),
-    vscode.window.registerCustomEditorProvider(SheetEditorProvider.diagramViewType, provider, options),
     // The editor title's button acts on the editor in front; the explorer's
     // menu hands over the file that was right-clicked.
     vscode.commands.registerCommand('docpresenter.openEditor', (uri?: vscode.Uri) => openInDocPresenter(uri)),
@@ -83,8 +84,6 @@ export function activate(context: vscode.ExtensionContext): void {
     // The explorer hands over the PDF right-clicked and every one selected with it.
     vscode.commands.registerCommand('docpresenter.importPdfReview',
       (uri?: vscode.Uri, selected?: vscode.Uri[]) => importReview(output, uri, selected)),
-    // A drawing written by hand: what fits where the cursor is.
-    registerDgmLanguage(),
     registerWorkspaceProblems(output),
   );
 }

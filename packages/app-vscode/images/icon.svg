@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
+  <!-- The extension icon: a printed page carrying a small flow diagram. icon.png is rendered from this at 256px. -->
+  <rect width="128" height="128" rx="24" fill="#1f4e8c"/>
+  <path d="M30 18h48l20 20v72a4 4 0 0 1-4 4H30a4 4 0 0 1-4-4V22a4 4 0 0 1 4-4z" fill="#fff"/>
+  <path d="M78 18v16a4 4 0 0 0 4 4h16z" fill="#c9d6ea"/>
+  <rect x="38" y="30" width="30" height="5" rx="2.5" fill="#1f4e8c"/>
+  <rect x="38" y="42" width="44" height="3" rx="1.5" fill="#9aabc4"/>
+  <rect x="40" y="56" width="22" height="14" rx="3" fill="none" stroke="#1f4e8c" stroke-width="3.5"/>
+  <rect x="66" y="84" width="22" height="14" rx="3" fill="#2f7fd8"/>
+  <path d="M51 70v21h11" fill="none" stroke="#1f4e8c" stroke-width="3.5" stroke-linejoin="round"/>
+  <path d="M60 86l7 5-7 5z" fill="#1f4e8c"/>
+</svg>

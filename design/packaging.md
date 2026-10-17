@@ -41,6 +41,8 @@ CI で HTML や PDF を吐く、他の製品に組み込む、AI に読ませる
 | **pptx** | PPTX（デッキ・DrawingML・書庫） | base, diagram | 設計書製品の一部 |
 | **build** | ビルド（ルート探索・参照閉包・診断・成果物の書き出し） | base, markdown, diagram, pdf, pptx | 設計書製品の一部 |
 | **editor** | 設計書の GUI（シートタブ・本文ブロック・表のグリッド） | base, markdown, diagram | 設計書製品の一部 |
+| **app-vscode-diagram** | VS Code 拡張「DocPresenter Diagram」：`.dgm` の言語・整形・キャンバス・SVG 書き出し | base, diagram | **する**（VS Code 拡張として） |
+| **app-vscode** | VS Code 拡張「DocPresenter」：設計書の編集画面・書き出し・レビュー。作図の拡張を拡張パックで連れてくる | base, build, diagram, editor, markdown, pdf | 設計書製品 |
 
 **build と editor は互いを知らない。** ビルドは画面を持たず、エディタは成果物を作らない。
 両方が markdown と diagram を使う、というだけの関係である。
@@ -115,5 +117,7 @@ CI で出力したい人、別のエディタに組み込みたい人、AI に�
 - **公開名。** 作図ツールの製品名。`.dgm` という拡張子の見え方も含めて決める。
 - **ライセンス条文の法務確認。** [ドラフトは書いた](../legal/LICENSE.draft.md)（[経緯は licensing.md §7](licensing.md)）。残るのは法務確認と、自衛の修正に付けた「返してもらう」条件の採否。
 - **CLA の同意の取り方。** [文面のドラフトは書いた](../legal/CLA.draft.md)。法人用（CCLA）と、同意を記録する仕組み（bot）が未整備。
-- **作図単独の器。** Web シェルと VS Code 拡張のどちらを先に出すか。
+- ~~**作図単独の器。**~~ **VS Code 拡張を先に出す**と決めた（2026-10）。`.dgm` の色分け・入力候補・整形・キャンバス・SVG 書き出しを
+  **DocPresenter Diagram**（`packages/app-vscode-diagram`、base ＋ diagram だけで作る）に切り出し、設計書の拡張 **DocPresenter** は
+  それを**拡張パック**で一緒に入れる。作図だけを使う人は少ないと見て、公開する拡張は 2 つに留めた（文書だけの拡張は作らない）。
 - **バージョンの進め方。** 設計書製品が作図の古い版に固定される事態をどう避けるか。

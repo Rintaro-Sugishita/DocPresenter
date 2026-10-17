@@ -1,6 +1,5 @@
 {
-  "extension.description": "Git の差分がレビューになる設計書を、VS Code の中で書く",
-  "customEditor.diagram.displayName": "DocPresenter（図）",
+  "extension.description": "設計書を Markdown と図・表のテキストファイルで書き、紙面のまま編集して HTML・PDF・PowerPoint に書き出す。どの変更も読める Git の差分になる。",
   "command.init.title": "DocPresenter: 作業場を初期化する（フォルダ・最初の文書・エージェント向けの書き方）",
   "command.newDocument.title": "DocPresenter: 新しい文書を作る（文書番号を自動で採番）…",
   "command.newDiagram.title": "DocPresenter: 新しい図を作る（flow か free）…",

@@ -7,17 +7,10 @@
 // reformatting on every keystroke would turn a one-cell change into a diff
 // across the whole table.
 
+import { displayWidth } from '@docpresenter/base';
 import type { Align, Selector, TableFile } from './model.js';
 
-/** Columns a character occupies in a monospaced grid. */
-export function displayWidth(text: string): number {
-  let width = 0;
-  for (const char of text) {
-    width += /[ᄀ-ᅟ⺀-〾ぁ-㏿㐀-䶿一-鿿ꀀ-꓏가-힣豈-﫿︰-﹏＀-｠￠-￦]/.test(char)
-      ? 2 : 1;
-  }
-  return width;
-}
+export { displayWidth };
 
 /** The fields of a grid line, padding included, `\|` kept as written. */
 export function splitFields(line: string): string[] {

@@ -15,7 +15,7 @@
 // CRLF case (`--in` names a copy, to try the other one). Either way the edit is made once more on the sample with the
 // other line ending, and must leave as the same range.
 import { existsSync, readFileSync, readdirSync, writeFileSync, mkdirSync } from 'node:fs';
-import { relative, resolve } from 'node:path';
+import { join, relative, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { chromium } from 'playwright-core';
 import { replaceBytes, spanInFile, toLf } from '../packages/base/dist/index.js';
@@ -40,8 +40,10 @@ const check = (name, ok, detail = '') => {
 // 名乗ったコマンドが登録されていなければ、押せないメニューが出るだけで、
 // どちらのファイルも単体では間違っていない。だから突き合わせる。
 const manifest = JSON.parse(readFileSync('packages/app-vscode/package.json', 'utf8'));
-const extensionSource = readFileSync('packages/app-vscode/src/extension.ts', 'utf8')
-  + readFileSync('packages/app-vscode/src/sheet-editor.ts', 'utf8');
+// Every file of the host: a command may be registered beside what it does.
+const sourceOf = folder => readdirSync(folder).filter(name => name.endsWith('.ts'))
+  .map(name => readFileSync(join(folder, name), 'utf8')).join('\n');
+const extensionSource = sourceOf('packages/app-vscode/src');
 const named = manifest.contributes.commands.map(one => one.command);
 check('名乗ったコマンドは、すべて登録されている',
   named.every(name => extensionSource.includes(`'${name}'`)), named.join(' / '));
@@ -57,6 +59,21 @@ check('拡張が読み込むのは束ねたものだけ',
   manifest.main === './media/extension.cjs'
   && existsSync('packages/app-vscode/media/extension.cjs')
   && existsSync('packages/app-vscode/media/webview.js'));
+
+// DocPresenter Diagram, the same way: it is installed with this one (the pack).
+const diagramManifest = JSON.parse(readFileSync('packages/app-vscode-diagram/package.json', 'utf8'));
+const diagramSource = sourceOf('packages/app-vscode-diagram/src');
+const diagramNamed = diagramManifest.contributes.commands.map(one => one.command);
+check('作図の拡張：名乗ったコマンドは、すべて登録されている',
+  diagramNamed.every(name => diagramSource.includes(`'${name}'`)), diagramNamed.join(' / '));
+check('作図の拡張：キャンバスの viewType は、コードと同じ',
+  diagramSource.includes(`'${diagramManifest.contributes.customEditors[0].viewType}'`),
+  diagramManifest.contributes.customEditors[0].viewType);
+check('文書の拡張は、作図の拡張をパックで連れてくる',
+  JSON.stringify(manifest.extensionPack) === JSON.stringify([`${diagramManifest.publisher}.${diagramManifest.name}`]));
+check('作図の拡張が読み込むのは束ねたものだけ',
+  diagramManifest.main === './media/extension.cjs'
+  && ['extension.cjs', 'canvas.js', 'theme.css'].every(name => existsSync(`packages/app-vscode-diagram/media/${name}`)));
 
 const files = {};
 const images = {};

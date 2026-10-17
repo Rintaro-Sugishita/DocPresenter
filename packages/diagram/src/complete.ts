@@ -52,10 +52,9 @@ export interface CompletionContext {
   readonly locale?: Locale;
 }
 
-/** An identifier's characters (spec/dgm.md §2). */
-const ID = '[A-Za-z0-9_぀-鿿-]';
-/** The same without `-`, for the last character before a connector. */
-const ID_END = '[A-Za-z0-9_぀-鿿]';
+/** An identifier's characters (spec/dgm.md §2): no hyphen, which connectors are made of. */
+const ID = '[A-Za-z0-9_぀-鿿]';
+const ID_END = ID;
 const TYPED_WORD = /[\w./-]*$/;
 
 /** The twelve pairs, in the order a reader of flowcharts reaches for them. */

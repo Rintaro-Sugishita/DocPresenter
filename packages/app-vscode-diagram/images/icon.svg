@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
+  <!-- The diagram extension icon: the document icon's flow diagram, off the page. icon.png is rendered from this at 256px. -->
+  <rect width="128" height="128" rx="24" fill="#1f4e8c"/>
+  <rect x="22" y="22" width="40" height="26" rx="5" fill="none" stroke="#fff" stroke-width="6"/>
+  <path d="M42 48v40h18" fill="none" stroke="#fff" stroke-width="6" stroke-linejoin="round"/>
+  <path d="M58 79l12 9-12 9z" fill="#fff"/>
+  <rect x="70" y="74" width="38" height="28" rx="5" fill="#4aa3ff"/>
+</svg>

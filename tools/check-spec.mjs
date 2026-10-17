@@ -15,6 +15,7 @@ import { rowBoxes, rowTextAt } from '../packages/diagram/dist/draw/listing.js';
 import {
   addNode, putIntoContainer, setItems, setNodePart, setNodeShape,
 } from '../packages/diagram/dist/edits.js';
+import { formatDiagram } from '../packages/diagram/dist/format.js';
 import { applyEdit } from '../packages/base/dist/index.js';
 import { parseRuns } from '../packages/diagram/dist/inline.js';
 import { parseTable } from '../packages/markdown/dist/table/parse.js';
@@ -385,6 +386,37 @@ const wide = ['free {', '  会員 [データベース]', '}'].join(NL);
 const wideSpan = parseDiagram(wide).nodes[0].span;
 check('README §6', 'バイト範囲は UTF-8 のバイトで数える',
   Buffer.from(wide, 'utf8').slice(wideSpan.start, wideSpan.end).toString('utf8') === '会員 [データベース]');
+
+// §2 identifiers: no hyphen
+const unspaced = parseDiagram(['flow {', '  a [A]', '  b [B]', '  a-->b', '}'].join(NL));
+check('dgm §2', '空白なしの a-->b は a から b への接続', unspaced.edges[0]?.from === 'a' && unspaced.edges[0]?.to === 'b',
+  JSON.stringify(unspaced.edges.map(e => [e.from, e.to])));
+for (const [what, text] of [
+  ['図形', ['free {', '  db-primary [DB]', '}']],
+  ['接続の終点', ['flow {', '  a --> b-c', '}']],
+  ['グループのメンバー', ['free {', '  group g { a; b-c }', '}']],
+  ['ピン', ['free {', '  a [A]', '}', 'layout {', '  a-b @ (0, 0)', '}']],
+  ['スタイルの規則', ['free {', '  a [A]', '}', 'style {', '  a-b { fill: #fff }', '}']],
+]) {
+  check('dgm §2', `${what}の id にハイフンがあればエラー`, /hyphen|ハイフン/.test(refuses(parseDiagram, text.join(NL)) ?? ''));
+}
+check('dgm §2', '部品の名前にはハイフンを使える',
+  parseDiagram(['use "icons"', 'free {', '  r net-router:', '}'].join(NL)).partOf.get('r') === 'net-router');
+
+// §6.3 canonical form
+const formatted = text => formatDiagram(text).text;
+const typedOne = ['flow {', '  b [B]', '  a [A]', '  a -> b', '}', 'style {', '  b {line:dashed}', '}'].join(NL);
+const typedTwo = ['style {', '  b { line: dashed }', '}', 'flow {', '  a[A]', '  a --> b', '  b[B]', '}'].join(NL);
+check('dgm §6.3', '同じ図を別の順で書いても、整形すれば同じ文になる', formatted(typedOne) === formatted(typedTwo));
+check('dgm §6.3', '整形し直しても変わらない', formatted(formatted(typedOne)) === formatted(typedOne));
+check('dgm §6.3', '節は本体・layout・style の順、接続記号は --> に揃う',
+  formatted(typedOne) === ['flow {', '  a [A]', '  b [B]', '', '  a --> b', '}', '', 'style {', '  b { line: dashed }', '}', ''].join(NL),
+  JSON.stringify(formatted(typedOne)));
+const twice = ['free {', '  a [A]', '}', 'layout {', '  a @ (0, 0)', '  a @ (10, 0)', '}'].join(NL);
+check('dgm §6.3', '同じ名前が 2 度書かれたファイルは整形しない', formatted(twice) === twice);
+const behind = ['free {', '  big [Big]', '  small [Small]', '}', 'layout {', '  big @ (0, 40) 200x200', '  small @ (10, 10) 50x50', '}'].join(NL);
+const front = layOutDiagram(parseDiagram(formatted(behind))).order;
+check('dgm §6.3', '重なった図形は、整形しても手前のものが手前に残る', front.indexOf('big') < front.indexOf('small'));
 
 // ───────────────────────── spec/inline-text.md ─────────────────────────
 

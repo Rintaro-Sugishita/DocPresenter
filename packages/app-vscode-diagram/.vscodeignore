@@ -1,0 +1,8 @@
+dist/**
+src/**
+test/**
+tsconfig.json
+tsconfig.tsbuildinfo
+.vscodeignore
+README.ja.md
+images/**

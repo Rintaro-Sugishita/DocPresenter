@@ -9,6 +9,7 @@
     { "path": "packages/build" },
     { "path": "packages/editor" },
     { "path": "packages/app-vscode" },
+    { "path": "packages/app-vscode-diagram" },
     { "path": "packages/app-web" }
   ]
 }

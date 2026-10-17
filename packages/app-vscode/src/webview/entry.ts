@@ -33,8 +33,6 @@ let source = '';
 let files: Record<string, string> = {};
 let images: Record<string, string> = {};
 let settings: EditorSettings = DEFAULT_SETTINGS;
-/** A `.dgm` opened on its own: `source` is only the line that shows it. */
-let drawingOnly = false;
 let view: SheetView | undefined;
 /**
  * What Ctrl+Z takes back. Kept out here because the view is mounted again
@@ -53,7 +51,7 @@ const here = (written: string): string => inWorkspace(documentPath, written);
 // The editing and review modes, and the review comments on the page.
 const reviews = createReviewUi({
   send,
-  read: path => (path === documentPath && !drawingOnly ? source : files[path]),
+  read: path => (path === documentPath ? source : files[path]),
   documentPath: () => documentPath,
   locale: () => settings.locale,
   view: () => view,
@@ -111,7 +109,7 @@ function mount(): void {
     },
     // The file is moved here first, so the redraw that follows the document's
     // edit finds it under its new name; the host then moves the real one.
-    moveResource: drawingOnly ? undefined : (fromWritten, toWritten) => {
+    moveResource: (fromWritten, toWritten) => {
       const t = VSCODE_MESSAGES.in(settings.locale);
       const from = here(fromWritten);
       const to = here(toWritten);
@@ -124,7 +122,6 @@ function mount(): void {
       send({ kind: 'move', from, to });
       return undefined;
     },
-    nameFigures: !drawingOnly,
     createImage: (picture: Picture) => {
       const name = picture.name.replace(/[^\w.-]+/g, '-').replace(/^-+|-+$/g, '');
       const extension = /\.(png|jpe?g|gif|webp)$/i.exec(name)?.[1]?.toLowerCase()
@@ -138,13 +135,6 @@ function mount(): void {
       return { path: inDocument(documentPath, path) };
     },
     onChange: (edit, text) => {
-      if (edit.path === undefined && drawingOnly) {
-        // The one-line document a drawing is shown in is not a file. Whatever
-        // was done to it is undone, once the editor has finished doing it.
-        setTimeout(mount, 0);
-        send({ kind: 'error', message: VSCODE_MESSAGES.in(settings.locale)('vscode.drawingOnly') });
-        return;
-      }
       if (edit.path === undefined) {
         source = text;
         send({ kind: 'change', span: edit.span, description: edit.description, text: edit.text });
@@ -159,11 +149,11 @@ function mount(): void {
     onError: message => send({ kind: 'error', message }),
     decorate: page => {
       void drawMermaid(page, settings.locale);
-      if (!drawingOnly) reviews.paint(page);
+      reviews.paint(page);
     },
   });
   if (at > 0) view.select(at);
-  if (!drawingOnly) reviews.apply();
+  reviews.apply();
 }
 
 window.addEventListener('message', (event: MessageEvent<ToView>) => {
@@ -174,7 +164,6 @@ window.addEventListener('message', (event: MessageEvent<ToView>) => {
     // The files come as they are on disk; the screen measures every range on
     // their LF text, so a range means the same on every machine (protocol.ts).
     source = toLf(message.source);
-    drawingOnly = message.diagram === true;
     files = Object.fromEntries(Object.entries(message.files).map(([path, text]) => [path, toLf(text)]));
     images = { ...message.images };
     settings = {
@@ -185,7 +174,7 @@ window.addEventListener('message', (event: MessageEvent<ToView>) => {
     return;
   }
   if (message.kind === 'file') {
-    if (message.path === documentPath && !drawingOnly) source = toLf(message.text);
+    if (message.path === documentPath) source = toLf(message.text);
     else if (files[message.path] === undefined && !/\.(dgm|table|mmd|ermlx)$/i.test(message.path)) return;
     else files[message.path] = toLf(message.text);
     mount();

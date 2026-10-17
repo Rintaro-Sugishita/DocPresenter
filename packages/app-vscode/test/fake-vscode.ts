@@ -30,9 +30,13 @@ export class Uri {
     }
     return new Uri(segments.join('/'));
   }
+  /** As VS Code's, for the part this extension changes: the path. */
+  with(change: { path?: string }): Uri { return new Uri(change.path ?? this.path); }
   get fsPath(): string { return this.path; }
   toString(): string { return `file://${this.path}`; }
 }
+
+export enum ViewColumn { Active = -1, Beside = -2, One = 1, Two = 2 }
 
 export class SnippetString {
   constructor(readonly value: string) {}
@@ -77,12 +81,27 @@ type CompletionProvider = {
 /** What the extension registered for completions, with the characters that start one. */
 export const completions: { selector: unknown; provider: CompletionProvider; triggers: string[] }[] = [];
 
+type FormattingProvider = {
+  provideDocumentFormattingEdits(document: TextDocument): Promise<TextEdit[]>;
+};
+/** What the extension registered for "Format Document". */
+export const formatters: { selector: unknown; provider: FormattingProvider }[] = [];
+
 export const languages = {
   registerCompletionItemProvider: (selector: unknown, provider: CompletionProvider, ...triggers: string[]) => {
     completions.push({ selector, provider, triggers });
     return { dispose: () => undefined };
   },
+  registerDocumentFormattingEditProvider: (selector: unknown, provider: FormattingProvider) => {
+    formatters.push({ selector, provider });
+    return { dispose: () => undefined };
+  },
 };
+
+export class TextEdit {
+  constructor(readonly range: Range, readonly newText: string) {}
+  static replace(range: Range, newText: string): TextEdit { return new TextEdit(range, newText); }
+}
 
 export class WorkspaceEdit {
   readonly changes: { uri: Uri; range: Range; text: string }[] = [];
@@ -108,6 +127,8 @@ const watchers: { matches(path: string): boolean; fire(): void }[] = [];
 /** How the dialogs answer, for a test that drives a command. */
 export const picks: {
   dialog?: Uri[] | undefined;
+  /** Where a save dialog saves; `null` is the dialog cancelled. */
+  save?: Uri | null | undefined;
   quick?: (<T>(items: readonly T[]) => T[] | undefined | Promise<T[] | undefined>) | undefined;
   /** What the next input boxes are typed into, in order. */
   inputs?: string[] | undefined;
@@ -246,6 +267,9 @@ export const window = {
   showTextDocument: async () => undefined,
   /** What the next file dialog answers. */
   showOpenDialog: async () => picks.dialog,
+  /** Where the next save dialog saves: what the test said, or the place it offered. */
+  showSaveDialog: async (options: { defaultUri?: Uri } = {}) =>
+    (picks.save === null ? undefined : picks.save ?? options.defaultUri),
   /**
    * Answers with the next of `picks.inputs`, as if typed, after asking the box's
    * own check — an answer the check refuses is recorded and the box is cancelled.
@@ -285,7 +309,7 @@ export const env = { language: 'ja', openExternal: async () => true };
 /** Sets up a workspace for one test. */
 export function give(files: Readonly<Record<string, string>>, config: Record<string, unknown> = {}): void {
   held.clear(); written.clear(); open.clear(); saved.length = 0; shown.length = 0;
-  picks.dialog = undefined; picks.quick = undefined; picks.inputs = undefined; picks.refused.length = 0;
+  picks.dialog = undefined; picks.save = undefined; picks.quick = undefined; picks.inputs = undefined; picks.refused.length = 0;
   changed.length = 0; configured.length = 0;
   configuration = config;
   for (const [path, text] of Object.entries(files)) held.set(path, text);
