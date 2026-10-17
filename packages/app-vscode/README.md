@@ -171,12 +171,37 @@ A typical layout: `docs/<name>.md` for each document, `docs/<name>/` for the dia
 
 ## Getting started
 
+### 1. Set up the repository
+
+Start here, once per repository: run **"DocPresenter: Set Up This Folder"**. After asking for a title, a file name and a
+document number, it puts the following in place and opens the first document.
+**Files that are already there are never overwritten** (they are reported as kept).
+
+```
+docs/<name>.md                 The first document (made from the template below): frontmatter, an overview, the revision history taken in
+docs/<name>/revision.md        Its revision history
+docs/assets/                   Where images go
+shared/glossary.table          A glossary several documents can take in
+.docpresenter/guide.md         The writing guide (for agents such as Claude Code)
+.docpresenter/spec/            The formats of .dgm, .table and text inside labels
+.docpresenter/templates/       Templates for new documents (document.md, revision.md). Change them to your team's format
+.docpresenter/themes/default/  The theme (theme.css), a copy of the shipped one. Change it to your team's look
+CLAUDE.md / AGENTS.md          A section telling agents to read guide.md is appended (the file is made if missing)
+.gitignore                     The output folder (out/) is appended
+```
+
+Appending happens once, so running the command again adds nothing.
+
+### 2. Add a document
+
 To add a document, run **"DocPresenter: New Document (numbered)…"** (or right-click a folder in the Explorer).
 It asks for a title, the folder, a file name, **assigns a document number**, and makes the document and its
 revision history from the templates (`.docpresenter/templates/`, below). The number is picked from the next free number of a series the repository
 already uses (`SD-AUTH-` and so on); a new series or a number of your own also works, but a number in use is refused.
 Review comments are tied to the document number, so **every document has one, and no two share one**
 (the build warns otherwise).
+
+### 3. Add a diagram
 
 To add a diagram, run **"DocPresenter: New Diagram (flow or free)…"** (or right-click a folder). It asks for the kind
 first — **flow** (laid out from its arrows: processes, procedures, state changes) or **free** (shapes stay where you put
@@ -197,25 +222,6 @@ Documents can be split into folders as the application grows (`docs/order/design
 - **Exports keep the folders**: `docs/order/design.md` goes to `out/build/order/design.html` (`docs/` is left off), so two
   `design.md` in two folders never write over each other.
 - Document numbers are unique across the whole repository, whatever folder a document is in.
-
-In a new repository, run **"DocPresenter: Set Up This Folder"**. After asking for a title, a file name and a
-document number, it puts the following in place and opens the first document.
-**Files that are already there are never overwritten** (they are reported as kept).
-
-```
-docs/<name>.md                 The first document (made from the template below): frontmatter, an overview, the revision history taken in
-docs/<name>/revision.md        Its revision history
-docs/assets/                   Where images go
-shared/glossary.table          A glossary several documents can take in
-.docpresenter/guide.md         The writing guide (for agents such as Claude Code)
-.docpresenter/spec/            The formats of .dgm, .table and text inside labels
-.docpresenter/templates/       Templates for new documents (document.md, revision.md). Change them to your team's format
-.docpresenter/themes/default/  The theme (theme.css), a copy of the shipped one. Change it to your team's look
-CLAUDE.md / AGENTS.md          A section telling agents to read guide.md is appended (the file is made if missing)
-.gitignore                     The output folder (out/) is appended
-```
-
-Appending happens once, so running the command again adds nothing.
 
 ### Your team's templates and theme
 
