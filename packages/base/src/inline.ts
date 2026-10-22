@@ -45,10 +45,11 @@ export function isColour(mark: InlineMark): mark is { readonly color: string } {
 /** What is already applied to the selection, for the toolbar's pressed state. */
 export function inlineStateAt(text: string, start: number, end: number): InlineState {
   const trimmed = trim(text, start, end);
+  const { level } = emphasisAround(text, trimmed);
   return {
-    bold: wrappedBy(text, trimmed, '**'),
-    italic: wrappedBy(text, trimmed, '*') && !wrappedBy(text, trimmed, '**'),
-    code: wrappedBy(text, trimmed, '`'),
+    bold: level >= 2,
+    italic: level === 1 || level === 3,
+    code: codeAround(text, trimmed) !== undefined,
     color: colourAround(text, trimmed),
   };
 }
@@ -57,31 +58,73 @@ export function toggleInline(
   text: string, start: number, end: number, mark: InlineMark,
 ): Replacement {
   const span = trim(text, start, end);
-  return isColour(mark)
-    ? toggleColour(text, span, mark.color)
-    : toggleWrapper(text, span, mark);
+  if (isColour(mark)) return toggleColour(text, span, mark.color);
+  return mark === 'code' ? toggleCode(text, span) : toggleEmphasis(text, span, mark);
 }
 
-function toggleWrapper(
-  text: string, span: Span, mark: 'bold' | 'italic' | 'code',
-): Replacement {
-  const marker = WRAPPER[mark];
-  const inner = text.slice(span.start, span.end);
-
-  // Italic has to ignore the inner `*` of a bold pair, or toggling italic on
-  // bold text would eat one of its asterisks and leave the markup broken.
-  const isBoldPair = mark === 'italic' && wrappedBy(text, span, '**');
-
-  if (!isBoldPair && wrappedBy(text, span, marker)) {
-    const start = span.start - marker.length;
-    return {
-      start, end: span.end + marker.length, text: inner,
-      select: { start, end: start + inner.length },
-    };
+/**
+ * The emphasis a selection has, read from the marks around its words: those
+ * just outside it and those it took in with the words, since selecting `*語*`
+ * and selecting `語` inside it mean the same thing. `*` is italic, `**` bold,
+ * `***` both; `_` counts the same way. `content` is the words without marks.
+ */
+function emphasisAround(text: string, span: Span): { level: number; content: Span; char: string } {
+  let { start, end } = span;
+  const char = text[start] === '_' || text[start - 1] === '_' ? '_' : '*';
+  // The marks the selection took in with the words.
+  while (start < end && text[start] === char) start++;
+  while (end > start && text[end - 1] === char) end--;
+  if (start === end) {
+    // Nothing but marks (or nothing): the cursor sits between them.
+    start = end = Math.min(span.end, Math.max(span.start, (span.start + span.end) >> 1));
   }
-  const wrapped = `${marker}${inner}${marker}`;
+  let before = 0;
+  while (before < 3 && text[start - before - 1] === char) before++;
+  let after = 0;
+  while (after < 3 && text[end + after] === char) after++;
+  return { level: Math.min(before, after), content: { start, end }, char };
+}
+
+/**
+ * Bold and italic are two switches on one run of marks: pressing one flips it
+ * and leaves the other as it was, so italic on bold words makes `***` and
+ * italic again takes it back to `**` — never a second pair of `*` that would
+ * read as bold.
+ */
+function toggleEmphasis(text: string, span: Span, mark: 'bold' | 'italic'): Replacement {
+  const { level, content, char } = emphasisAround(text, span);
+  const next = level ^ (mark === 'bold' ? 2 : 1);
+  const inner = text.slice(content.start, content.end);
+  const from = content.start - level;
+  const marks = char.repeat(next);
   return {
-    start: span.start, end: span.end, text: wrapped,
+    start: from, end: content.end + level, text: `${marks}${inner}${marks}`,
+    select: { start: from + next, end: from + next + inner.length },
+  };
+}
+
+/** The code span a selection is in or is: its words, without the backticks. */
+function codeAround(text: string, span: Span): Span | undefined {
+  const marker = WRAPPER.code;
+  if (wrappedBy(text, span, marker)) return span;
+  const inner = text.slice(span.start, span.end);
+  if (inner.length >= 2 && inner.startsWith(marker) && inner.endsWith(marker)) {
+    return { start: span.start + 1, end: span.end - 1 };
+  }
+  return undefined;
+}
+
+function toggleCode(text: string, span: Span): Replacement {
+  const marker = WRAPPER.code;
+  const inside = codeAround(text, span);
+  if (inside) {
+    const inner = text.slice(inside.start, inside.end);
+    const start = inside.start - marker.length;
+    return { start, end: inside.end + marker.length, text: inner, select: { start, end: start + inner.length } };
+  }
+  const inner = text.slice(span.start, span.end);
+  return {
+    start: span.start, end: span.end, text: `${marker}${inner}${marker}`,
     select: { start: span.start + marker.length, end: span.start + marker.length + inner.length },
   };
 }

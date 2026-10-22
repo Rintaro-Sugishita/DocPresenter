@@ -35,6 +35,29 @@ describe('太字・斜体・コード', () => {
     expect(apply('これは**«重要»**な点', 'italic')).toBe('これは***«重要»***な点');
   });
 
+  it('記号ごと選び直して押しても外れる。二重に付けて太字にしない', () => {
+    // 斜体にした語を、記号ごと選び直してもう一度 Ctrl+I。
+    expect(apply('これは«*重要*»な点', 'italic')).toBe('これは«重要»な点');
+    expect(apply('これは«**重要**»な点', 'bold')).toBe('これは«重要»な点');
+    expect(apply('これは«`code`»だ', 'code')).toBe('これは«code»だ');
+    // 片側だけ記号を含めても同じ。
+    expect(apply('これは«*重要»*な点', 'italic')).toBe('これは«重要»な点');
+  });
+
+  it('太字と斜体は別々に切り替わる', () => {
+    expect(apply('これは«*重要*»な点', 'bold')).toBe('これは***«重要»***な点');
+    expect(apply('これは***«重要»***な点', 'italic')).toBe('これは**«重要»**な点');
+    expect(apply('これは«***重要***»な点', 'bold')).toBe('これは*«重要»*な点');
+    expect(apply('これは__«重要»__な点', 'bold')).toBe('これは«重要»な点');
+    expect(apply('これは_«重要»_な点', 'italic')).toBe('これは«重要»な点');
+  });
+
+  it('何度押しても、行き来するだけ', () => {
+    let text = 'これは«重要»な点';
+    for (let i = 0; i < 4; i++) text = apply(text, 'italic');
+    expect(text).toBe('これは«重要»な点');
+  });
+
   it('選択の端の空白は無視する', () => {
     expect(apply('これは« 重要 »だ', 'bold')).toBe('これは **«重要»** だ');
   });
@@ -43,6 +66,8 @@ describe('太字・斜体・コード', () => {
     expect(stateOf('a**«b»**c')).toMatchObject({ bold: true, italic: false });
     expect(stateOf('a*«b»*c')).toMatchObject({ bold: false, italic: true });
     expect(stateOf('a«b»c')).toMatchObject({ bold: false, italic: false, code: false });
+    expect(stateOf('a«*b*»c')).toMatchObject({ bold: false, italic: true });
+    expect(stateOf('a***«b»***c')).toMatchObject({ bold: true, italic: true });
   });
 });
 

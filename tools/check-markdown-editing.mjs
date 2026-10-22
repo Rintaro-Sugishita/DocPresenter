@@ -46,6 +46,29 @@ await page.keyboard.up('Shift');
 await page.keyboard.press('Control+E');
 check('Ctrl+E でコードにする', (await box()).endsWith('`値`'), JSON.stringify(await box()));
 
+// 斜体にした語を記号ごと選び直して Ctrl+I すると外れる（太字にはならない）
+await page.keyboard.press('End');
+await page.keyboard.press('Enter');
+await page.keyboard.type('強調');
+await page.keyboard.down('Shift');
+await page.keyboard.press('ArrowLeft');
+await page.keyboard.press('ArrowLeft');
+await page.keyboard.up('Shift');
+await page.keyboard.press('Control+I');
+check('Ctrl+I で斜体にする', (await box()).endsWith('\n*強調*'), JSON.stringify((await box()).slice(-8)));
+await page.keyboard.press('End');
+await page.keyboard.down('Shift');
+for (let i = 0; i < 4; i++) await page.keyboard.press('ArrowLeft');
+await page.keyboard.up('Shift');
+await page.keyboard.press('Control+I');
+check('記号ごと選び直して Ctrl+I すると斜体が外れる', (await box()).endsWith('\n強調'), JSON.stringify((await box()).slice(-8)));
+await page.keyboard.press('Control+B');
+await page.keyboard.press('Control+I');
+check('太字と斜体は重ねられる', (await box()).endsWith('\n***強調***'), JSON.stringify((await box()).slice(-10)));
+await page.keyboard.press('Control+B');
+check('太字だけを外せる', (await box()).endsWith('\n*強調*'), JSON.stringify((await box()).slice(-8)));
+await page.keyboard.press('End');
+
 // @ の後ろにはラベル
 await page.keyboard.press('End');
 await page.keyboard.type(' 図は @fig');
