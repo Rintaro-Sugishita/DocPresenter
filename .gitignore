@@ -5,6 +5,8 @@ out/
 *.vsix
 packages/app-vscode/media/
 packages/app-vscode-diagram/media/
+packages/dgm/media/
+packages/cli/media/
 .vscode/*
 !.vscode/launch.json
 !.vscode/tasks.json

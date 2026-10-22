@@ -116,7 +116,9 @@ docs/auth-overview.md          ← ルート（output: [pptx]）
 
 ## 6. CLI
 
-**設計のみ・未実装**（2026-10-22 改訂）。いまあるのは開発用の `tools/*.mjs` で、下のコマンドはそれらを置き換える。
+**`export`・`check`・`format`・`import` は実装済み**（2026-10-22。`packages/dgm`・`packages/cli`、
+`npm run build:cli` で `media/` に束ねる）。`init`・`new` は未実装。開発用の `tools/*.mjs` は検査スクリプトが
+使っているので残してあり、置き換えは後で行う。
 コマンドは **文書側の `docpresenter` と作図側の `dgm` の 2 つ**で、どちらもサブコマンドで分ける（パッケージは下の「パッケージ」）。
 当初案の `build` は **`export`** に改めた（形式を引数で選ぶのだから「書き出す」が正しく、VS Code のコマンド名とも揃う）。
 以下の例は `docpresenter` で書くが、`.dgm` だけを扱う使い方は `dgm` でも同じ引数で書ける。
@@ -148,6 +150,11 @@ docpresenter export <ファイル|フォルダ>... [--to <形式>[,<形式>...]]
 
 - `--to`（`-t`）はカンマ区切りでも、繰り返しても書ける。フォルダに `--to pdf,svg` なら `.md` は PDF、`.dgm` は SVG。
   合わない組み合わせはフォルダからなら黙って飛ばし、**直に指したファイルなら誤り**（`a.dgm --to pdf`）。
+- **`docpresenter` がフォルダから拾う図は、`--to` に svg か png があるときだけ単独で書き出す**（実装して決めた）。
+  図はすでに文書の中に入っているので、`docpresenter export` だけで図の SVG が並ぶと煩い。直に指した図は常に書く。
+  `dgm export` は図しか扱わないので、フォルダの図を常に書く。
+- **画面キャプチャへの注釈（overlay）は PNG だけ**。絵が画素なので SVG にはならず、そう言って飛ばす。
+  PNG は注釈の一覧も含めて描く。部品の定義（`parts`）は絵を持たないので飛ばす。
 - **出力先の既定はルートの `out/build/`**（VS Code 拡張の `docpresenter.outDir` の既定と同じ）。元ファイルの隣には
   書かない（`docs/` に成果物が混ざり、差分が汚れるため）。`--out`（`-o`）で変える。
 - **フォルダ構造は保つのが既定**で、ルートからの相対パスをそのまま出力先の下に再現する
@@ -196,6 +203,12 @@ docpresenter check [<ファイル|フォルダ>...] [--strict] [--json]
   DrupalGap の小さな道具が使っており、同じ `dgm` コマンドを持つ。そのためパッケージはスコープ付きにする。
   両方を同じ機械に入れたときだけコマンドがぶつかるが、許容する。
 - 公開前に npm の Organization `docpresenter` を取ってスコープを押さえる。
+- **`npx dgm` と書いてはいけない。** npm は `dgm` という名前のパッケージ（上の DrupalGap の道具）を取ってきて動かす。
+  案内は `npx @docpresenter/dgm` か、入れてから `dgm`。リポジトリの中で試すときも `npx --no-install dgm`。
+- リポジトリの中では、VS Code 拡張が `docpresenter` という名前を使っている（拡張の ID になる）ので、文書側の
+  パッケージは `@docpresenter/cli` という名前で置き、公開するときに `docpresenter` として出す。どちらも、
+  私用の `@docpresenter/*` は束の中に入れ、依存として残るのは `playwright-core` だけにする（`tools/build-cli.mjs`）。
+  公開用の `package.json`（依存を `playwright-core` だけにしたもの）を作る手順は公開のときに決める。
 
 ## 6.5 実装したもの（2026-09-29）
 

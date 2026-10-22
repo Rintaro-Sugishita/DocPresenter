@@ -194,6 +194,8 @@ Excel ファイル（.xlsx）の読み込みや書き出しはしない。代わ
 | `packages/app-vscode` | VS Code 拡張「DocPresenter」：設計書の編集画面・書き出し・レビューのコマンド。作図の拡張を拡張パックで一緒に入れる | 製品の一部 |
 | `packages/app-vscode-diagram` | VS Code 拡張「DocPresenter Diagram」：`.dgm` の色分け・入力候補・整形・キャンバス・SVG 書き出し（base ＋ diagram だけで作る） | **する** |
 | `packages/app-web` | Web の閲覧ページ：リポジトリの URL やこの PC のフォルダを開いて組版のまま読む・PDF を出す（サーバ無し） | 製品の一部 |
+| `packages/dgm` | コマンド `dgm`：`.dgm` の export（svg / png）・check・format（base ＋ diagram だけで作る） | **する**（`@docpresenter/dgm`） |
+| `packages/cli` | コマンド `docpresenter`：文書と図の export・check・format・import | **する**（`docpresenter`） |
 
 ## 動かす
 
@@ -228,6 +230,22 @@ node tools/build-web-viewer.mjs    # Web の閲覧ページ         → out/web/
 
 node tools/check-spec.mjs          # 仕様と実装が一致しているか
 for f in tools/check-*.mjs; do node "$f"; done   # 全検証（上の 3 つを先に走らせておく）
+```
+
+### コマンドライン（`docpresenter` と `dgm`）
+
+文書側の `docpresenter` と、作図だけの `dgm` がある（[ビルドモデル §6](design/build-model.md)）。
+`npm run build:cli` で `packages/cli/media/` と `packages/dgm/media/` に束ね、そのあと `npm install` すると
+リポジトリの中で `npx --no-install` から呼べる（`--no-install` を外すと、npm が同じ名前の別のパッケージを取ってくる）。
+
+```
+npm run build:cli
+npx --no-install docpresenter export --root sample                  # output: のとおり → sample/out/build/docs/…
+npx --no-install docpresenter export sample/docs --root sample --to pdf,png --out out/x --flat
+npx --no-install docpresenter check --root sample --strict
+npx --no-install docpresenter import out/build/docs/order-slides.pptx --root sample   # --write で書き込む
+npx --no-install dgm export sample/shared --root sample --to svg,png --background transparent
+npx --no-install dgm format --root sample --check
 ```
 
 ## 表示言語

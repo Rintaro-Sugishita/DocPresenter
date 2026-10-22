@@ -6,8 +6,8 @@
 // or not anything includes them — the drawing nobody has put in a document yet
 // is the one whose typo nobody would see. Nothing is written.
 
-import { DEFAULT_LOCALE, phraseOf, say, describeError, type Locale, type Phrase } from '@docpresenter/base';
-import { layOutDiagram, parseDiagram, withParts } from '@docpresenter/diagram';
+import { DEFAULT_LOCALE, type Locale } from '@docpresenter/base';
+import { drawingProblems, unreadableProblem } from '@docpresenter/diagram';
 import { joinPath, parseTable } from '@docpresenter/markdown';
 import { prepare } from './build.js';
 import { readGraph } from './graph.js';
@@ -24,12 +24,6 @@ export interface CheckResult {
   readonly drawings: number;
   readonly tables: number;
 }
-
-/**
- * Quiet: a shape not yet placed in a free drawing is the normal state of one
- * just written — the screen parks it below, waiting to be dragged.
- */
-const QUIET = new Set(['diagram.layout.unplaced']);
 
 export function checkWorkspace(given: Workspace, options: CheckOptions = {}): CheckResult {
   const workspace = asLf(given);
@@ -69,39 +63,14 @@ export function checkWorkspace(given: Workspace, options: CheckOptions = {}): Ch
   return { diagnostics: found, documents: graph.roots.length, drawings: drawings.length, tables: tables.length };
 }
 
-/** A drawing's problems: the line that stops it being read, or what its layout could not do. */
+/** A drawing's problems (`drawingProblems`), as the build's diagnostics. */
 function checkDrawing(workspace: Workspace, path: string, locale: Locale): BuildDiagnostic[] {
   const source = workspace.read(path);
   if (source === undefined) return [];
-  let file;
-  try {
-    file = withParts(parseDiagram(source), used => workspace.read(joinPath(path, used)));
-  } catch (error) {
-    return [unreadable(path, error, locale)];
-  }
-  // A library holds no drawing, and an overlay's markers are pinned to an
-  // image rather than laid out: neither has a layout to report on.
-  if (file.mode === 'parts' || file.mode === 'overlay') return [];
-  return layOutDiagram(file, locale).notes.map(note => ({
-    severity: QUIET.has(note.id) ? 'info' : 'warning',
-    message: note.message, id: note.id, path,
-    ...(note.span === undefined ? {} : { span: note.span }),
-  }));
+  return drawingProblems(source, used => workspace.read(joinPath(path, used)), locale)
+    .map(problem => ({ ...problem, path }));
 }
 
-/**
- * A file that could not be read, on the line that stopped it. The message
- * loses its "line N:" — whatever shows the diagnostic shows the line already.
- */
 function unreadable(path: string, error: unknown, locale: Locale): BuildDiagnostic {
-  const phrase = phraseOf(error);
-  const inner = phrase?.id === 'base.atLine' ? phrase.params?.['message'] : undefined;
-  const line = (error as { line?: unknown }).line;
-  return {
-    severity: 'error', path,
-    message: typeof inner === 'object' && inner !== null && 'id' in inner
-      ? say(locale, inner as Phrase) : describeError(error, locale),
-    ...(phrase === undefined ? {} : { id: phrase.id }),
-    ...(typeof line === 'number' ? { line } : {}),
-  };
+  return { ...unreadableProblem(error, locale), path };
 }

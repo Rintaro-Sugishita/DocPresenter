@@ -9,7 +9,8 @@
     "test": "vitest run",
     "typecheck": "tsc --build",
     "check": "tsc --build && node tools/check.mjs",
-    "build:vscode": "tsc --build && node tools/build-vscode.mjs"
+    "build:vscode": "tsc --build && node tools/build-vscode.mjs",
+    "build:cli": "tsc --build && node tools/build-cli.mjs"
   },
   "devDependencies": {
     "@types/markdown-it": "^14.2.0",

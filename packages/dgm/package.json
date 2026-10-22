@@ -1,0 +1,21 @@
+{
+  "name": "@docpresenter/dgm",
+  "version": "0.1.0",
+  "private": true,
+  "description": "dgm: export, check and format .dgm drawings from the command line",
+  "license": "SEE LICENSE IN legal/LICENSE.draft.md",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "bin": {
+    "dgm": "./media/dgm.mjs"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "@docpresenter/base": "*",
+    "@docpresenter/diagram": "*",
+    "playwright-core": "^1.63.0"
+  }
+}

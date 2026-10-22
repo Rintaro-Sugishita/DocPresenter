@@ -10,6 +10,8 @@
     { "path": "packages/editor" },
     { "path": "packages/app-vscode" },
     { "path": "packages/app-vscode-diagram" },
-    { "path": "packages/app-web" }
+    { "path": "packages/app-web" },
+    { "path": "packages/dgm" },
+    { "path": "packages/cli" }
   ]
 }
