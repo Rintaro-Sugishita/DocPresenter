@@ -72,7 +72,12 @@ export function useTheme(css: string): () => void {
   const style = document.createElement('style');
   style.setAttribute('data-dp-theme', '');
   style.textContent = css;
-  document.head.append(style);
+  // Where the theme it replaces stood, not at the end: the page's own styles
+  // come after the theme so that its layout wins, and a theme appended last
+  // would put its `body { max-width; margin }` over the editor's frame.
+  const first = others[0];
+  if (first) first.before(style);
+  else document.head.prepend(style);
   return () => {
     style.remove();
     for (const node of others) node.disabled = false;
