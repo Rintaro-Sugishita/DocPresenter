@@ -41,7 +41,7 @@ check('座標を持つのは枠だけ',
 
 // --- 紙の側 -----------------------------------------------------------------
 execFileSync('node', ['tools/build.mjs', '--in', 'sample'], { encoding: 'utf8' });
-const page = readFileSync('out/build/auth-design.html', 'utf8');
+const page = readFileSync('out/build/docs/auth-design.html', 'utf8');
 const figure = path => {
   const at = page.indexOf(`data-path="${path}"`);
   return at < 0 ? '' : page.slice(at, page.indexOf('</figure>', at));

@@ -284,8 +284,8 @@ describe('ビルドのコマンド', () => {
       appendLine(line: string) { this.lines.push(line); }, dispose() {} };
     await runBuild(output as never, ':root { --dp-text: #000 }');
     const made = [...written.keys()];
-    expect(made).toContain('out/build/design.html');
-    expect(new TextDecoder().decode(written.get('out/build/design.html'))).toContain('試し');
+    expect(made).toContain('out/build/docs/design.html');
+    expect(new TextDecoder().decode(written.get('out/build/docs/design.html'))).toContain('試し');
     expect(output.lines.join('\n')).toContain('成果物 1 件');
   });
 
@@ -300,6 +300,6 @@ describe('ビルドのコマンド', () => {
     // まとめてのビルドでは書けない。開いた文書の PDF ボタンで書けると言う。
     expect(output.lines.join('\n')).toContain('PDF は、文書を DocPresenter で開いて上の「PDF」ボタンで書き出せます');
     // 書けないものを黙って落とさない。HTML は出る。
-    expect([...written.keys()]).toContain('out/build/design.html');
+    expect([...written.keys()]).toContain('out/build/docs/design.html');
   });
 });

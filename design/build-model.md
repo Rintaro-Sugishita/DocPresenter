@@ -147,10 +147,11 @@ docpresenter export <ファイル|フォルダ>... [--to <形式>[,<形式>...]]
 
 - `--to`（`-t`）はカンマ区切りでも、繰り返しても書ける。フォルダに `--to pdf,svg` なら `.md` は PDF、`.dgm` は SVG。
   合わない組み合わせはフォルダからなら黙って飛ばし、**直に指したファイルなら誤り**（`a.dgm --to pdf`）。
-- **出力先の既定はルートの `out/`**。元ファイルの隣には書かない（`docs/` に成果物が混ざり、差分が汚れるため）。
-  `--out`（`-o`）で変える。
+- **出力先の既定はルートの `out/build/`**（VS Code 拡張の `docpresenter.outDir` の既定と同じ）。元ファイルの隣には
+  書かない（`docs/` に成果物が混ざり、差分が汚れるため）。`--out`（`-o`）で変える。
 - **フォルダ構造は保つのが既定**で、ルートからの相対パスをそのまま出力先の下に再現する
-  （`docs/order/design.md` → `out/docs/order/design.pdf`）。`--flat` で出力先の直下に並べる。
+  （`docs/order/design.md` → `out/build/docs/order/design.pdf`）。`docs/` も省かない。VS Code 拡張と Web の閲覧ページも
+  同じ規則で書く（`outputStem`、2026-10-22 に揃えた）。`--flat` で出力先の直下に並べる。
 - `--flat` で名前がぶつかったら**何も書かずに誤り**とする。片方が黙って消えるのを防ぐ。
 - **PDF と PNG はこの機械の Chromium 系ブラウザで描く**（[PDF エンジン](pdf-engine.md)と同じ。PNG のために
   変換ライブラリは足さない）。`--chromium <path>`・`--font <path>`、PNG には `--scale <n>`・`--background <色|transparent>`。

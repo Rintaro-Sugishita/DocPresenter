@@ -17,7 +17,7 @@ const check = (name, ok, detail = '') => {
   if (!ok) process.exitCode = 1;
 };
 
-const SOURCE = 'out/build/auth-design.pdf';
+const SOURCE = 'out/build/docs/auth-design.pdf';
 const bytes = new Uint8Array(readFileSync(SOURCE));
 
 /** Where pdf.js says a phrase is printed: page, and its box in PDF space. */

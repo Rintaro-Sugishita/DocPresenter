@@ -13,7 +13,7 @@ const check = (name, ok, detail = '') => {
   if (!ok) process.exitCode = 1;
 };
 
-const bytes = new Uint8Array(readFileSync('out/build/auth-design.pdf'));
+const bytes = new Uint8Array(readFileSync('out/build/docs/auth-design.pdf'));
 // pdf.js takes the buffer over, so the size is noted before it is handed across.
 const fileSize = bytes.byteLength;
 const pdf = await getDocument({ data: bytes, useSystemFonts: false }).promise;

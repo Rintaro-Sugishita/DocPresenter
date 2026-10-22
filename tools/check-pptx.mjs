@@ -14,7 +14,7 @@ const check = (name, ok, detail = '') => {
   if (!ok) process.exitCode = 1;
 };
 
-const bytes = new Uint8Array(readFileSync('out/build/auth-overview.pptx'));
+const bytes = new Uint8Array(readFileSync('out/build/docs/auth-overview.pptx'));
 const files = unzipSync(bytes);
 const names = Object.keys(files);
 const text = path => strFromU8(files[path]);

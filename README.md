@@ -215,12 +215,12 @@ npx tsc --build                 # 型検査とビルド
 
 node tools/build-editor-demo.mjs   # 設計書の編集画面   → out/editor.html（PDF のボタン付き）
 node tools/build-canvas-demo.mjs   # 作図だけのページ   → out/canvas-app.html
-node tools/build.mjs --in sample   # サンプルをビルド     → out/build/*.{html,pdf,pptx}
+node tools/build.mjs --in sample   # サンプルをビルド     → out/build/docs/*.{html,pdf,pptx}
                                   #   長い表はページをまたぎ、`{page="landscape"}` の表は横向きのページになる
 node tools/build.mjs --in sample --diff-from HEAD~3   # 前の版からの変更に印を付ける
 node tools/check.mjs --in sample   # 書き出さずに全部確かめる（エラーがあれば終了コード 1、--strict なら警告でも）
 node tools/format-dgm.mjs --in sample   # 整形が要る図を挙げる（--write で書き換え、--check なら終了コード 1）
-node tools/pptx-back.mjs out/build/auth-overview.pptx --in sample   # 直された図を読み戻す（--write で書き込む）
+node tools/pptx-back.mjs out/build/docs/auth-overview.pptx --in sample   # 直された図を読み戻す（--write で書き込む）
 node tools/pdf-review.mjs <pdf> --in sample   # PDF の注釈を指摘として取り込む（--write で書き込む）
 
 node tools/build-vscode.mjs        # VS Code 拡張（2 つ）     → packages/app-vscode/media/ と packages/app-vscode-diagram/media/

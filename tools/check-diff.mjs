@@ -45,7 +45,7 @@ execFileSync('node', ['tools/build.mjs', '--in', 'sample', '--diff-from', BEFORE
 const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' });
 const page = await browser.newPage({ viewport: { width: 1100, height: 900 } });
 page.on('pageerror', e => { console.log('✗ ページエラー:', e.message); process.exitCode = 1; });
-await page.goto('file://' + process.cwd() + '/out/build/auth-design.html');
+await page.goto('file://' + process.cwd() + '/out/build/docs/auth-design.html');
 await page.waitForTimeout(300);
 
 const marked = selector => page.$$eval(selector, nodes => nodes.map(n => n.textContent.trim()));
@@ -83,14 +83,14 @@ await page.screenshot({ path: 'out/diff-page.png' });
 // PDF は組版済みの DOM を読むので、HTML に付いた印はそのまま PDF に出る
 const { getDocument } = await import('pdfjs-dist/legacy/build/pdf.mjs');
 const pdf = await getDocument({
-  data: new Uint8Array(readFileSync('out/build/auth-design.pdf')), useSystemFonts: false,
+  data: new Uint8Array(readFileSync('out/build/docs/auth-design.pdf')), useSystemFonts: false,
 }).promise;
 const lastPage = await pdf.getPage(pdf.numPages);
 const tail = (await lastPage.getTextContent()).items.map(item => item.str).join('');
 check('PDF にも凡例が出る', tail.includes('からの変更'), tail.slice(-40));
 
 // PPTX はスライドに CSS が無いので、色を自分で持つ
-const deck = readFileSync('out/build/auth-overview.pptx');
+const deck = readFileSync('out/build/docs/auth-overview.pptx');
 const { unzipSync, strFromU8 } = await import('fflate');
 const slides = unzipSync(new Uint8Array(deck));
 const architecture = Object.keys(slides).find(name =>
@@ -105,7 +105,7 @@ check('PPTX では変わっていない図形はそのまま', fillOf('web') ===
 
 // 比べる相手が無いときは、印も凡例も出ない
 execFileSync('node', ['tools/build.mjs', '--in', 'sample'], { encoding: 'utf8' });
-await page.goto('file://' + process.cwd() + '/out/build/auth-design.html');
+await page.goto('file://' + process.cwd() + '/out/build/docs/auth-design.html');
 await page.waitForTimeout(200);
 check('比較しないビルドには印が出ない', (await page.$$('.dp-diff-changed')).length === 0);
 check('比較しないビルドには凡例も出ない', (await page.$$('.dp-diff-legend')).length === 0);

@@ -27,7 +27,7 @@ page.on('request', request => {
   if (!url.startsWith('file://') && !url.startsWith('data:')) outside.push(url);
 });
 
-await page.goto('file://' + process.cwd() + '/out/build/auth-design.html');
+await page.goto('file://' + process.cwd() + '/out/build/docs/auth-design.html');
 // 成果物は 1 枚の HTML なので、体裁が組み終わるのを待てばよい。固定の待ち時間だと
 // 遅い回に間に合わず、後ろの検査が「無い」と言ってしまう。
 await page.waitForSelector('.dp-sheet', { state: 'attached' });
@@ -68,7 +68,7 @@ check('取り込んだ節も採番される', /^\d+\s/.test(revisionInDesign), r
 // 番号は参照元に書けない（R11 の出発点）。改訂履歴は共有できない：
 // 文書ごとの履歴なので、その文書のフォルダに置く。
 const glossaryInDesign = (await page.textContent('#tbl-glossary .dp-number')).trim();
-await page.goto('file://' + process.cwd() + '/out/build/auth-overview.html');
+await page.goto('file://' + process.cwd() + '/out/build/docs/auth-overview.html');
 await page.waitForSelector('.dp-sheet', { state: 'attached' });
 await page.waitForTimeout(200);
 const glossaryInOverview = (await page.textContent('#tbl-glossary .dp-number')).trim();

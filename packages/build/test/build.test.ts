@@ -93,7 +93,7 @@ describe('収集', () => {
 describe('成果物', () => {
   it('HTML は 1 枚で完結する', async () => {
     const result = await build(workspace({ 'docs/a.md': root('# A\n\n本文'), ...THEME }));
-    expect(result.artifacts.map(a => a.path)).toEqual(['dist/a.html']);
+    expect(result.artifacts.map(a => a.path)).toEqual(['dist/docs/a.html']);
     const html = result.artifacts[0]!.text!;
     expect(html).toContain('body { color: #000 }');     // テーマは埋め込む
     expect(html).not.toContain('<link');                // 外を参照しない
@@ -384,13 +384,13 @@ describe('フォルダ分けした文書の書き出し先', () => {
       ...THEME,
     }), { formats: ['html'] });
     expect(result.artifacts.map(a => a.path).sort()).toEqual([
-      'dist/billing/design.html', 'dist/order/design.html', 'dist/specs/other.html', 'dist/top.html',
+      'dist/docs/billing/design.html', 'dist/docs/order/design.html', 'dist/docs/top.html', 'dist/specs/other.html',
     ]);
   });
 
-  it('docs/ は書き出し先に含めない', () => {
-    expect(outputStem('docs/auth-design.md')).toBe('auth-design');
-    expect(outputStem('docs/order/v1.2/design.md')).toBe('order/v1.2/design');
+  it('書き出し先は作業場の構成そのまま（docs/ も省かない）', () => {
+    expect(outputStem('docs/auth-design.md')).toBe('docs/auth-design');
+    expect(outputStem('docs/order/v1.2/design.md')).toBe('docs/order/v1.2/design');
     expect(outputStem('README.md')).toBe('README');
   });
 });

@@ -37,7 +37,7 @@ async function pagesOf(path) {
 
 // --- 横向きの指定があるとき -------------------------------------------------
 execFileSync('node', ['tools/build.mjs', '--in', 'sample'], { encoding: 'utf8' });
-const pages = await pagesOf('out/build/auth-design.pdf');
+const pages = await pagesOf('out/build/docs/auth-design.pdf');
 
 check('表の行が 30 行ある標本である', CODES.length === 30, `${CODES.length} 行`);
 

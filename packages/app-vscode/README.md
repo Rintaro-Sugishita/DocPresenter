@@ -219,7 +219,7 @@ Documents can be split into folders as the application grows (`docs/order/design
   `\ : * ? " < > |`, a leading space, a trailing space or period, and names Windows keeps (`CON`, `NUL`, …).
 - `@import` paths are relative to the document, so a document finds its figures however deep it sits. The templates'
   `{{root}}` is the way up to the workspace root (`../../` from `docs/order/design.md`), so `{{root}}shared/` always reaches `shared/`.
-- **Exports keep the folders**: `docs/order/design.md` goes to `out/build/order/design.html` (`docs/` is left off), so two
+- **Exports keep the folders**: `docs/order/design.md` goes to `out/build/docs/order/design.html`, the same folders as the workspace, so two
   `design.md` in two folders never write over each other.
 - Document numbers are unique across the whole repository, whatever folder a document is in.
 
@@ -292,7 +292,7 @@ Switch with **"Edit / Read (review)"** at the top of the screen (remembered per 
 | Every document with `output:`, as each one says | **"DocPresenter: Export Every Output (as each document's output: says)"** |
 | Every document with `output:`, in formats you choose | **"DocPresenter: Export Every Output in Formats of My Choice…"** (choose from HTML / PDF / PPTX; this overrides `output:`) |
 
-- Exports go to `out/build` (set `docpresenter.outDir` to change it), keeping the documents' folders (`docs/` left off).
+- Exports go to `out/build` (set `docpresenter.outDir` to change it), keeping the workspace's folders (`docs/order/design.md` → `out/build/docs/order/design.pdf`).
 - PDF pages are laid out by DocPresenter's own screen. When exporting several documents, a "DocPresenter export" panel
   opens beside the editor and closes when done. Fonts installed on this PC are embedded
   (on Windows, Yu Gothic, and MS Gothic for code).

@@ -111,7 +111,7 @@ DocPresenter の組版でそのままプレビューが出るページを作る�
 - ブランチ：`claude/docpresenter-service-6rm7u3`（既定ブランチ）。テスト 687 件・`tools/check-*.mjs` は全件通過。
 - VS Code 拡張の配布用パッケージは `tools\package-vscode.bat`（`out/vsix/` に出る）。
 - 直近で入ったもの（Web 版にも関係する）：
-  - 書き出しはフォルダの構成を保つ（`outputStem`、`docs/` は付けない）。
+  - 書き出しはフォルダの構成を保つ（`outputStem`。`docs/` も含め作業場の構成のまま）。
   - テーマは `.docpresenter/themes/` を優先（`themeOf`）。
   - テンプレートの差し込み口 `{{root}}`（リポジトリ直下への相対パス）。
   - PDF にはレビュー指摘と回答が注釈として入る（`docpresenter.pdfReviewNotes`）。閲覧ページの PDF も同じ経路を通る。

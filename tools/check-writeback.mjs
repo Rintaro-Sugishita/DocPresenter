@@ -35,7 +35,7 @@ const workspace = {
   },
 };
 
-const original = new Uint8Array(readFileSync('out/build/auth-overview.pptx'));
+const original = new Uint8Array(readFileSync('out/build/docs/auth-overview.pptx'));
 const untouched = writeBack(original, workspace);
 check('触っていないデッキは何も変えない',
   untouched.files.length > 0 && untouched.files.every(file => file.text === file.source),

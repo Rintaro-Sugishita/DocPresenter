@@ -16,7 +16,7 @@ const check = (name, ok, detail = '') => {
 
 execFileSync('node', ['tools/build.mjs', '--in', 'sample'], { encoding: 'utf8' });
 const pdf = await getDocument({
-  data: new Uint8Array(readFileSync('out/build/auth-design.pdf')), useSystemFonts: false,
+  data: new Uint8Array(readFileSync('out/build/docs/auth-design.pdf')), useSystemFonts: false,
 }).promise;
 
 const texts = [];
@@ -136,6 +136,6 @@ check('行き先の無いリンクが無い', broken === 0, `${broken} 個`);
 // 節が数えるほど無い文書に目次を付けても、目次のほうが長い。
 // テーマの CSS は毎回埋め込まれるので、探すのは組み立てられた印であって
 // スタイルの名前ではない。
-const overview = readFileSync('out/build/auth-overview.html', 'utf8');
+const overview = readFileSync('out/build/docs/auth-overview.html', 'utf8');
 check('節の少ない文書には目次を出さない', !overview.includes('class="dp-index dp-index-contents"'),
   `${(overview.match(/class="dp-index-line"/g) ?? []).length} 行`);

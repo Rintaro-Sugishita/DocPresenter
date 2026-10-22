@@ -517,10 +517,10 @@ function html(input: WriteInput): Artifact {
 /**
  * Where a document's exports go under the output folder: its own path, so
  * documents in folders keep their folders and two `design.md` in two folders
- * never write over each other. `docs/`, where documents live, is left off:
- * `docs/order/design.md` becomes `order/design`, `docs/auth-design.md`
- * `auth-design`.
+ * never write over each other. Nothing is left off, so the output folder
+ * mirrors the workspace whatever writes it (VS Code, the CLI, the web page):
+ * `docs/order/design.md` becomes `docs/order/design`.
  */
 export function outputStem(path: string): string {
-  return path.replace(/^\.?\/+/, '').replace(/^docs\//, '').replace(/\.[^./]+$/, '');
+  return path.replace(/^\.?\/+/, '').replace(/\.[^./]+$/, '');
 }

@@ -221,7 +221,7 @@ CLAUDE.md / AGENTS.md          guide.md を読むよう指示する節を追記�
   Windows の予約名（`CON`、`NUL` など）が該当する。
 - `@import` のパスは文書からの相対パスなので、文書をどの階層に置いても図表を参照できる。テンプレートの `{{root}}` は
   リポジトリ直下への相対パス（`docs/order/design.md` なら `../../`）に置き換わるため、`{{root}}shared/` は常に `shared/` を指す。
-- **出力時もフォルダ構成は保たれる。** `docs/order/design.md` は `out/build/order/design.html` に出力される（`docs/` の階層は省かれる）。
+- **出力時もフォルダ構成は保たれる。** `docs/order/design.md` は `out/build/docs/order/design.html` に出力され、作業場と同じ構成になる。
   別のフォルダに同じ名前の文書があっても、互いに上書きされることはない。
 - 文書番号の重複は、フォルダに関係なくリポジトリ全体で確認する。
 
@@ -292,7 +292,7 @@ SVG への書き出しはそちらの機能である。詳しくは
 | `output:` を指定したすべての文書を、各文書の指定どおりに出力する | コマンド **「DocPresenter: 出力対象をすべて書き出す（各文書の output: どおり）」** |
 | `output:` を指定したすべての文書を、形式を選んで出力する | コマンド **「DocPresenter: 出力対象をすべて、形式を指定して書き出す…」**（HTML / PDF / PPTX から選ぶ。`output:` の指定より優先される） |
 
-- 出力先は `out/build`（設定 `docpresenter.outDir` で変更できる）。文書のフォルダ構成は保たれる（`docs/` の階層は省かれる）。
+- 出力先は `out/build`（設定 `docpresenter.outDir` で変更できる）。作業場のフォルダ構成がそのまま保たれる（`docs/order/design.md` → `out/build/docs/order/design.pdf`）。
 - PDF のレイアウトは DocPresenter の画面で組まれる。複数の文書をまとめて出力するときは、「DocPresenter 書き出し」という画面が
   エディタの横に開き、出力が終わると閉じる。フォントはこの PC にインストールされているものを埋め込む
   （Windows では本文に游ゴシック、コードに MS ゴシックを使う）。
