@@ -89,31 +89,31 @@ export function renderDiagram(
  * is not in the file, so there is nothing to pick.
  */
 function renderMark(mark: ItemMark): string {
+  // Coloured here rather than by the theme: a workspace keeps its own copy of
+  // the theme, made before these marks existed, and a mark it does not know
+  // would be drawn as a black disc. The colours are the overlay callout's.
   const item = ` data-item="${escapeAttr(mark.id)}"`;
   const cx = mark.x + mark.width / 2;
   const cy = mark.y + mark.height / 2;
+  const words = (fill: string, size: number, weight = ''): string =>
+    `<text x="${n(cx)}" y="${n(cy)}" text-anchor="middle" dominant-baseline="central"`
+    + ` fill="${escapeAttr(fill)}" font-size="${size}"${weight}>${escapeHtml(mark.text)}</text>`;
   if (mark.kind === 'number') {
     return `<g class="dp-item-number"${item}>`
-      + `<circle cx="${n(cx)}" cy="${n(cy)}" r="${n(mark.width / 2)}"/>`
-      + `<text x="${n(cx)}" y="${n(cy)}" text-anchor="middle" dominant-baseline="central">${escapeHtml(mark.text)}</text></g>`;
+      + `<circle cx="${n(cx)}" cy="${n(cy)}" r="${n(mark.width / 2)}" fill="#ffffff" stroke="#b3261e" stroke-width="1.5"/>`
+      + `${words('#b3261e', 11)}</g>`;
   }
-  const colours = markColours(mark.style);
-  const style = colours === '' ? '' : ` style="${escapeAttr(colours)}"`;
-  const plate = mark.style.has('fill') || mark.style.has('line')
-    ? `<rect x="${n(mark.x)}" y="${n(mark.y)}" width="${n(mark.width)}" height="${n(mark.height)}" rx="2"/>` : '';
-  return `<g class="dp-item-required"${item}${style}>${plate}`
-    + `<text x="${n(cx)}" y="${n(cy)}" text-anchor="middle" dominant-baseline="central">${escapeHtml(mark.text)}</text></g>`;
-}
-
-function markColours(style: ReadonlyMap<string, string>): string {
-  const parts: string[] = [];
-  for (const [property, value] of style) {
-    if (!COLOUR.test(value)) continue;
-    if (property === 'fill') parts.push(`--dp-fill:${value}`);
-    if (property === 'line') parts.push(`--dp-line:${value}`);
-    if (property === 'color') parts.push(`--dp-text:${value}`);
-  }
-  return parts.join(';');
+  // "Required" looks the way the library's `required` part says.
+  const colour = (property: string): string | undefined => {
+    const value = mark.style.get(property);
+    return value !== undefined && COLOUR.test(value) ? value : undefined;
+  };
+  const fill = colour('fill');
+  const line = colour('line');
+  const plate = fill !== undefined || line !== undefined
+    ? `<rect x="${n(mark.x)}" y="${n(mark.y)}" width="${n(mark.width)}" height="${n(mark.height)}" rx="2"`
+      + ` fill="${fill ?? 'none'}" stroke="${line ?? 'none'}"/>` : '';
+  return `<g class="dp-item-required"${item}>${plate}${words(colour('color') ?? '#b3261e', 14, ' font-weight="600"')}</g>`;
 }
 
 /** The diagnostics the layout pass produced, for callers that surface them. */

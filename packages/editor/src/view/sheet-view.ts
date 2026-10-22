@@ -708,6 +708,33 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
     body.replaceChildren(mounted.element);
   }
 
+  /** A screen's item table just made, to be imported once the screen names it. */
+  let importAfterLink: string | undefined;
+
+  /**
+   * Imports a file on the line after the one that imports `under` — a
+   * screen's item table under the screen — unless the document imports it
+   * already. One line, so one byte range.
+   */
+  function importUnder(under: string, path: string): void {
+    // Measured on the text read as LF, as every range of the document is.
+    const lines = source.replace(/\r\n/g, '\n').split('\n');
+    if (lines.some(line => line.trim().startsWith(`@import "${path}"`))) return;
+    let at = 0;
+    for (const line of lines) {
+      at += byteLength(line);
+      if (line.trim().startsWith(`@import "${under}"`)) {
+        commit(() => ({
+          span: { start: at, end: at },
+          text: `\n\n@import "${path}"`,
+          ...described(ed('editor.did.addTable')),
+        }), active);
+        return;
+      }
+      at += 1;
+    }
+  }
+
   /** Builds the canvas from the file as it stands; it keeps no copy either. */
   function mountCanvas(body: HTMLElement): void {
     const current = canvas;
@@ -733,7 +760,14 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
         ? undefined : options.readResource?.(joinPath(current.path, file.itemTable.path)),
       newItemTable: options.createFile === undefined ? undefined : {
         path: itemTableName(current.path),
-        create: (text: string) => options.createFile?.(joinPath(current.path, itemTableName(current.path)), text),
+        create: (text: string) => {
+          const table = joinPath(current.path, itemTableName(current.path));
+          const refused = options.createFile?.(table, text);
+          // The table goes on the page under the screen, once the screen
+          // names it: a list nobody can see is a list nobody edits.
+          if (refused === undefined) importAfterLink = table;
+          return refused;
+        },
       },
       selected: current.selected,
       selectedEdge: current.edge,
@@ -750,6 +784,9 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
             throw error;
           }
         }, active);
+        const table = importAfterLink;
+        importAfterLink = undefined;
+        if (table !== undefined) importUnder(current.path, table);
       },
       select: (selected: readonly string[], edge?: string | undefined) => {
         if (canvas) canvas = { ...canvas, selected, edge };
