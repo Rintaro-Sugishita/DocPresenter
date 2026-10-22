@@ -182,7 +182,7 @@ docpresenter check [<ファイル|フォルダ>...] [--strict] [--json]
 | `init --title <題名> [--name <名前>] [--number <番号> | --series <接頭辞>]` | 作業場を用意する（VS Code の「作業場を初期化する」と同じ中身。`planScaffold`）。既にあるファイルは上書きせず「そのまま」と言う。**文書がもうある作業場では、`--name` を指定したときだけ最初の文書を作る**（もう一度走らせて guide や spec を戻すとき、`docs/design.md` を勝手に増やさない） | `packages/build/src/scaffold.ts`（VS Code と共有） |
 | `new doc <file> --title <題名> [--number | --series]` | 文書と改訂履歴をテンプレートから作る。番号は指定どおり（使われていれば断る）、`--series` ならその系列の次、どちらも無ければ一番多い系列の次 | 同上 |
 | `new diagram <file> [--kind flow|free]`（`dgm new` も同じ） | 雛形の図を作る（`starterDiagram`、作図のパッケージ） | `packages/diagram/src/starter.ts` |
-| `dgm items <…> [--write] [--check]` | 画面の項目一覧（`items "….table"`）を画面に合わせる。キャンバスの「項目一覧を画面に合わせる」と同じ編集（[画面設計 §6.3](screen-design.md)）。`--check` は CI 向け | `packages/diagram/src/items.ts`（`syncItemTable`） |
+| `dgm items <…> [--write] [--check] [--create]` | `--create` は項目一覧の無い画面に表を作って結ぶ（[画面設計 §6.3](screen-design.md)）。画面の項目一覧（`items "….table"`）を画面に合わせる。キャンバスの「項目一覧を画面に合わせる」と同じ編集（[画面設計 §6.3](screen-design.md)）。`--check` は CI 向け | `packages/diagram/src/items.ts`（`syncItemTable`） |
 
 `init` と `new` は質問をしない。足りない引数は使い方の誤り（終了コード 2）、既にあるファイル・使われている番号は内容の誤り（1）。
 `index`（横断一覧）は本体が未実装なので見送る。`export --watch` も後回し。

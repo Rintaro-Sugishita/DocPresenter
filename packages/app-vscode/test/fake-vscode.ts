@@ -106,6 +106,13 @@ export class TextEdit {
 export class WorkspaceEdit {
   readonly changes: { uri: Uri; range: Range; text: string }[] = [];
   readonly renames: { from: Uri; to: Uri; overwrite: boolean }[] = [];
+  readonly creates: { uri: Uri; text: string; ignoreIfExists: boolean }[] = [];
+  createFile(uri: Uri, options: { ignoreIfExists?: boolean; contents?: Uint8Array } = {}): void {
+    this.creates.push({
+      uri, text: new TextDecoder().decode(options.contents ?? new Uint8Array()),
+      ignoreIfExists: options.ignoreIfExists ?? false,
+    });
+  }
   replace(uri: Uri, range: Range, text: string): void {
     this.changes.push({ uri, range, text });
   }
@@ -237,6 +244,10 @@ export const workspace = {
     // whole edit with it.
     for (const one of edit.renames) {
       if (!one.overwrite && held.has(relative(one.to))) return false;
+    }
+    for (const one of edit.creates) {
+      if (held.has(relative(one.uri))) { if (one.ignoreIfExists) continue; return false; }
+      held.set(relative(one.uri), one.text);
     }
     for (const one of edit.renames) {
       held.set(relative(one.to), held.get(relative(one.from)) ?? '');

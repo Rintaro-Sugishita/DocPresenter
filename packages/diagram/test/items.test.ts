@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { applyEdit } from '@docpresenter/base';
 import {
-  DiagramEditError, formatDiagram, itemName, itemShapes, layOutDiagram, parseDiagram, readingOrder,
-  renderDiagram, setItemCell, syncItemTable, withParts,
+  DiagramEditError, formatDiagram, itemName, itemShapes, itemTableName, layOutDiagram, linkItemTable,
+  newItemTable, parseDiagram, readingOrder, renderDiagram, setItemCell, starterScreen, syncItemTable, withParts,
 } from '../src/index.js';
 
 // The login screen of the sample, cut down to what the item list is about.
@@ -219,6 +219,52 @@ describe('matching the item table to the screen', () => {
   it('refuses a screen with no table, and a table with no ID column', () => {
     expect(() => syncItemTable(parseDiagram('free {\n  a [A]\n}\n'), TABLE)).toThrow(DiagramEditError);
     expect(() => syncItemTable(screen(), '| a |\n|---|\n')).toThrow(DiagramEditError);
+  });
+});
+
+describe('making a screen\'s item table', () => {
+  const bare = SCREEN.replace('items "items.table"\n', '');
+
+  it('names it after the screen, beside it', () => {
+    expect(itemTableName('docs/order/order-screen.dgm')).toBe('order-screen-items.table');
+  });
+
+  it('lists the screen\'s items in the screen\'s order, already in step', () => {
+    const file = withParts(parseDiagram(bare), () => undefined);
+    const table = newItemTable(file);
+    const rows = table.split('\n').filter(line => line.startsWith('|')).slice(2);
+    expect(rows.map(row => row.split('|')[3]!.trim())).toEqual(['idBox', 'pwBox', 'keepBox', 'submit']);
+    // The same kind as the row above merges with it.
+    expect(rows.map(row => row.split('|')[1]!.trim())).toEqual(['入力', '^', '^', '操作']);
+    const linked = withParts(parseDiagram(SCREEN), path => (path === 'items.table' ? table : undefined));
+    expect(syncItemTable(linked, table)).toBeUndefined();
+    expect(layOutDiagram(linked).notes).toEqual([]);
+    expect(newItemTable(file, 'en')).toContain('| Category | No');
+  });
+
+  it('names the table in the screen with one line, under its `use` lines', () => {
+    const edit = linkItemTable(parseDiagram(bare), bare, 'items.table');
+    expect(edit.span.start).toBe(edit.span.end);
+    expect(applyEdit(bare, edit)).toBe(SCREEN);
+    // With no `use` line, above the first section.
+    const plain = 'free {\n  a [A]\n}\n';
+    expect(applyEdit(plain, linkItemTable(parseDiagram(plain), plain, 'a.table')))
+      .toBe('items "a.table"\n\nfree {\n  a [A]\n}\n');
+  });
+
+  it('refuses a screen that has one, and a drawing that is no screen', () => {
+    expect(() => linkItemTable(parseDiagram(SCREEN), SCREEN, 'x.table')).toThrow(DiagramEditError);
+    const flow = 'flow {\n  a --> b\n}\n';
+    expect(() => linkItemTable(parseDiagram(flow), flow, 'x.table')).toThrow(DiagramEditError);
+  });
+
+  it('starts a new screen with its table named, and items to list', () => {
+    const source = starterScreen('order-items.table');
+    const file = withParts(parseDiagram(source), () => undefined);
+    expect(file.itemTable?.path).toBe('order-items.table');
+    expect([...itemShapes(file).keys()]).toEqual(['input', 'submit']);
+    expect(itemName(file, 'input')).toBe('項目');
+    expect(layOutDiagram(file).notes.map(note => note.id)).toEqual(['diagram.items.unreadable']);
   });
 });
 

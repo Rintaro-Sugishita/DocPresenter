@@ -7,7 +7,8 @@
 
 import { replaceBytes, unitsBefore } from '@docpresenter/base';
 import * as vscode from 'vscode';
-import { itemTableOf, librariesUsed } from './dgm-language.js';
+import { itemTableName } from '@docpresenter/diagram';
+import { itemTableOf, librariesUsed, readText } from './dgm-language.js';
 import { hostLocale } from './l10n.js';
 import type { FromCanvas, ToCanvas } from './protocol.js';
 
@@ -25,7 +26,14 @@ export class CanvasEditorProvider implements vscode.CustomTextEditorProvider {
     const send = async (kind: ToCanvas['kind']): Promise<void> => {
       const source = document.getText();
       const libraries = Object.fromEntries(await librariesUsed(document.uri, source));
-      post({ kind, source, libraries, locale: hostLocale() });
+      // A table already there under the name a new one would take is used,
+      // not written over — so the canvas has to know it is there.
+      const itemTable = itemTableName(document.uri.path);
+      if (itemTableOf(source) === undefined) {
+        const there = await readText(vscode.Uri.joinPath(document.uri, '..', itemTable));
+        if (there !== undefined) libraries[itemTable] = there;
+      }
+      post({ kind, source, libraries, itemTable, locale: hostLocale() });
     };
 
     /**
@@ -52,6 +60,14 @@ export class CanvasEditorProvider implements vscode.CustomTextEditorProvider {
           const edit = new vscode.WorkspaceEdit();
           edit.replace(document.uri, range, message.text);
           if (!await vscode.workspace.applyEdit(edit)) { mine = undefined; await send('update'); }
+          return;
+        }
+        case 'create': {
+          // One `WorkspaceEdit`, so making the table is undone like any edit.
+          const uri = vscode.Uri.joinPath(document.uri, '..', ...message.path.split('/'));
+          const edit = new vscode.WorkspaceEdit();
+          edit.createFile(uri, { ignoreIfExists: true, contents: new TextEncoder().encode(message.text) });
+          await vscode.workspace.applyEdit(edit);
           return;
         }
         case 'source':

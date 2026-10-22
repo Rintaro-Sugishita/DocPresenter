@@ -136,6 +136,31 @@ describe('dgm コマンド', () => {
     expect((await run('new')).code).toBe(2);
   });
 
+  it('new --kind screen は、画面と項目一覧を結んだまま一緒に作る', async () => {
+    expect((await run('new', join(dir, 'figs/order'), '--kind', 'screen')).code).toBe(0);
+    expect(readFileSync(join(dir, 'figs/order.dgm'), 'utf8')).toContain('items "order-items.table"');
+    expect(readFileSync(join(dir, 'figs/order-items.table'), 'utf8')).toMatch(/\| input +\|/);
+    // 作った直後から揃っていて、注記も出ない
+    expect((await run('items', join(dir, 'figs'), '--check')).code).toBe(0);
+    expect((await run('check', join(dir, 'figs'), '--strict')).code).toBe(0);
+  });
+
+  it('items --create は、項目一覧の無い画面にだけ表を作って結ぶ', async () => {
+    give({
+      'figs/form.dgm': 'use "default"\n\nfree {\n  box textbox:\n  ok primary:"OK"\n}\n',
+      'figs/net.dgm': FLOW,
+    });
+    expect((await run('items', join(dir, 'figs'), '--create')).code).toBe(0);
+    expect(readFileSync(join(dir, 'figs/form.dgm'), 'utf8')).toMatch(/^use "default"\nitems "form-items.table"\n/);
+    expect(readFileSync(join(dir, 'figs/form-items.table'), 'utf8')).toMatch(/\| box +\|[\s\S]*\| ok +\|/);
+    expect(readFileSync(join(dir, 'figs/net.dgm'), 'utf8')).toBe(FLOW);
+    expect(existsSync(join(dir, 'figs/net-items.table'))).toBe(false);
+    // 2 度目は何も変えない
+    const before = readFileSync(join(dir, 'figs/form.dgm'), 'utf8');
+    await run('items', join(dir, 'figs'), '--create');
+    expect(readFileSync(join(dir, 'figs/form.dgm'), 'utf8')).toBe(before);
+  });
+
   it('知らないコマンドは終了コード 2', async () => {
     expect((await run('draw')).code).toBe(2);
   });

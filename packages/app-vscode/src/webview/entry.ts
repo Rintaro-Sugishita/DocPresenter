@@ -107,6 +107,15 @@ function mount(): void {
       send({ kind: 'create', path, text });
       return { path: inDocument(documentPath, path), text };
     },
+    // A screen's item table, made from the canvas. Held here as well as
+    // written, like a new resource; one already there is kept as it is.
+    createFile: (written, text) => {
+      const path = here(written);
+      if (path in files) return undefined;
+      files[path] = text;
+      send({ kind: 'create', path, text });
+      return undefined;
+    },
     // The file is moved here first, so the redraw that follows the document's
     // edit finds it under its new name; the host then moves the real one.
     moveResource: (fromWritten, toWritten) => {

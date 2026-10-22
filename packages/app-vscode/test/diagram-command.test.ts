@@ -30,7 +30,7 @@ describe('新しい図', () => {
     const offered = choosing('流れ図（flow）', 'docs/auth-design/');
     picks.inputs = ['ログインの流れ'];
     await newDiagram();
-    expect(offered[0]).toEqual(['流れ図（flow）', '自由配置（free）']);
+    expect(offered[0]).toEqual(['流れ図（flow）', '自由配置（free）', '画面（項目一覧つき）']);
     // The document's own folder first, then those that hold diagrams, then shared/.
     expect(offered[1]).toEqual(['docs/auth-design/', 'docs/old/', 'shared/', '別のフォルダ…']);
     const text = held.get('docs/auth-design/ログインの流れ.dgm')!;

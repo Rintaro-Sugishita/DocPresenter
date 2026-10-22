@@ -1,11 +1,12 @@
 // The drawing commands: export, check, format. docpresenter runs the same ones
 // for the .dgm files it is pointed at.
 
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, posix, relative, resolve } from 'node:path';
 import { applyEdit, describeError, say } from '@docpresenter/base';
 import {
-  drawingProblems, formatDiagram, parseDiagram, starterDiagram, syncItemTable, withParts,
+  drawingProblems, formatDiagram, itemShapes, itemTableName, linkItemTable, newItemTable, parseDiagram,
+  starterDiagram, starterScreen, syncItemTable, withParts,
   type DiagramFile, type DrawingProblem,
 } from '@docpresenter/diagram';
 import type { Context } from './context.js';
@@ -185,12 +186,30 @@ export function reportFindings(ctx: Context, findings: readonly Finding[]): { er
 
 /** Writes a new drawing of the kind asked, from the starter every shell makes. */
 export function newDrawing(ctx: Context, target: Target, kind: string | undefined): void {
-  if (kind !== undefined && kind !== 'flow' && kind !== 'free') {
+  if (kind !== undefined && kind !== 'flow' && kind !== 'free' && kind !== 'screen') {
     throw new CliError('usage', 'cli.new.badKind', { value: kind });
   }
   mkdirSync(dirname(target.file), { recursive: true });
+  if (kind === 'screen') {
+    // A screen comes with its item table, already listing the screen's items:
+    // the two are made together so that nobody writes the link by hand.
+    const table = itemTableName(target.path);
+    const file = resolve(dirname(target.file), table);
+    const source = starterScreen(table, ctx.locale);
+    if (existsSync(file)) throw new CliError('content', 'cli.new.exists', { path: shownBeside(target.path, table) });
+    writeFileSync(target.file, source);
+    writeFileSync(file, newItemTable(withParts(parseDiagram(source), () => undefined), ctx.locale));
+    ctx.say(ctx.t('cli.new.made', { path: target.path }));
+    ctx.say(ctx.t('cli.new.made', { path: shownBeside(target.path, table) }));
+    return;
+  }
   writeFileSync(target.file, starterDiagram(kind ?? 'flow', ctx.locale));
   ctx.say(ctx.t('cli.new.made', { path: target.path }));
+}
+
+/** A file a drawing names, named as the drawing is: from the workspace. */
+function shownBeside(drawing: string, written: string): string {
+  return posix.normalize(posix.join(posix.dirname(drawing), written));
 }
 
 export interface FormatResult {
@@ -244,7 +263,9 @@ export interface ItemsResult {
  * item table to the screen", so a table matched here and one matched there
  * read the same.
  */
-export function syncItemTables(ctx: Context, targets: readonly Target[], write: boolean): ItemsResult {
+export function syncItemTables(
+  ctx: Context, targets: readonly Target[], write: boolean, create = false,
+): ItemsResult {
   const changed: string[] = [];
   let count = 0;
   let failed = 0;
@@ -256,7 +277,20 @@ export function syncItemTables(ctx: Context, targets: readonly Target[], write: 
     let edit;
     let table: string | undefined;
     try {
-      const drawing = withParts(parseDiagram(source), read);
+      let drawing = withParts(parseDiagram(source), read);
+      // A screen with items and no table: with `create`, it gets one beside
+      // it — made from the screen, or an existing one of that name — and the
+      // line that names it.
+      if (create && drawing.itemTable === undefined && drawing.mode === 'free' && itemShapes(drawing).size > 0) {
+        const name = itemTableName(target.path);
+        const file = resolve(dirname(target.file), name);
+        const made = !existsSync(file);
+        if (made) writeFileSync(file, newItemTable(drawing, ctx.locale));
+        const linked = applyEdit(source, linkItemTable(drawing, source, name));
+        writeFileSync(target.file, linked);
+        ctx.say(ctx.t(made ? 'cli.items.created' : 'cli.items.linked', { table: shownBeside(target.path, name), path: target.path }));
+        drawing = withParts(parseDiagram(linked), read);
+      }
       if (drawing.itemTable === undefined) continue;
       count++;
       table = drawing.itemTable.path;
@@ -269,7 +303,7 @@ export function syncItemTables(ctx: Context, targets: readonly Target[], write: 
     if (!edit || table === undefined) continue;
     const file = resolve(dirname(target.file), table);
     // Named as the drawing is, from the workspace.
-    const shownTable = posix.normalize(posix.join(posix.dirname(target.path), table));
+    const shownTable = shownBeside(target.path, table);
     changed.push(`${target.path} → ${shownTable}`);
     if (write) writeFileSync(file, applyEdit(readFileSync(file, 'utf8'), edit));
     ctx.say(ctx.t(write ? 'cli.items.synced' : 'cli.items.needed', { table: shownTable, path: target.path }));

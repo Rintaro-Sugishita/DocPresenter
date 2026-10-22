@@ -156,7 +156,7 @@ function relativeTo(folder: readonly string[], to: readonly string[]): string {
   return [...folder.slice(same).map(() => '..'), ...to.slice(same)].join('/');
 }
 
-async function readText(uri: vscode.Uri): Promise<string | undefined> {
+export async function readText(uri: vscode.Uri): Promise<string | undefined> {
   try {
     return new TextDecoder('utf-8').decode(await vscode.workspace.fs.readFile(uri));
   } catch {

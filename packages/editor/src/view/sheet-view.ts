@@ -11,7 +11,7 @@ import {
   enterInList, indentListItems, labelCandidates, type TextChange,
 } from '@docpresenter/markdown';
 import { createSuggestions } from './suggest.js';
-import { parseDiagram, withParts } from '@docpresenter/diagram';
+import { itemTableName, parseDiagram, withParts } from '@docpresenter/diagram';
 import {
   applyEdit, byteLength, describeError, described, localizeEdit, sliceBytes, toggleInline,
   type Edit, type InlineMark, type Phrase,
@@ -56,6 +56,13 @@ export interface SheetViewOptions {
    * not the editor's, so the host decides the folder and the starter content.
    */
   readonly createResource?: (kind: ResourceKind) => { path: string; text: string } | undefined;
+  /**
+   * Makes a file a drawing names — a screen's item table — at a path written
+   * from the document, with the text given. A file already there is kept, not
+   * written over. Returns why it could not, or undefined. Without it a screen
+   * on the canvas does not offer to make its table.
+   */
+  readonly createFile?: ((path: string, text: string) => string | undefined) | undefined;
   /**
    * Takes a picture the author brought in — pasted from the clipboard, or
    * dropped onto the page — and returns the path to write into the `@import`.
@@ -724,6 +731,10 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
       source: text,
       itemSource: file.itemTable === undefined
         ? undefined : options.readResource?.(joinPath(current.path, file.itemTable.path)),
+      newItemTable: options.createFile === undefined ? undefined : {
+        path: itemTableName(current.path),
+        create: (text: string) => options.createFile?.(joinPath(current.path, itemTableName(current.path)), text),
+      },
       selected: current.selected,
       selectedEdge: current.edge,
       apply: (make: () => Edit, selected: readonly string[], edge?: string | undefined) => {

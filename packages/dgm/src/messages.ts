@@ -35,6 +35,8 @@ export const CLI_MESSAGES = defineMessages({
   'cli.format.summaryWrite': '図 {count} 件のうち、整形したもの {changed} 件、読めないもの {failed} 件',
   'cli.format.summary': '図 {count} 件のうち、整形が要るもの {changed} 件、読めないもの {failed} 件',
   'cli.items.synced': '{table} を {path} に合わせました',
+  'cli.items.created': '{table} を {path} から作り、結びました',
+  'cli.items.linked': '{path} に、もうある {table} を結びました',
   'cli.items.needed': '{table} は {path} と揃っていません',
   'cli.items.summaryWrite': '項目一覧のある画面 {count} 件のうち、表を合わせたもの {changed} 件、読めないもの {failed} 件',
   'cli.items.summary': '項目一覧のある画面 {count} 件のうち、表を合わせる必要があるもの {changed} 件、読めないもの {failed} 件',
@@ -42,7 +44,7 @@ export const CLI_MESSAGES = defineMessages({
   'cli.new.needsPath': '作るファイルのパスを指定してください',
   'cli.new.onePath': '一度に作れるのは 1 つです',
   'cli.new.exists': '{path} はもうあります。上書きはしません',
-  'cli.new.badKind': '--kind は flow か free で指定してください: {value}',
+  'cli.new.badKind': '--kind は flow・free・screen のどれかで指定してください: {value}',
   'cli.new.made': '{path} を作りました',
   'cli.name.empty': '名前が空です',
   'cli.name.characters': '「{name}」にはファイル名に使えない文字があります（\\ : * ? " < > |）',
@@ -54,8 +56,8 @@ export const CLI_MESSAGES = defineMessages({
   dgm export [<ファイル|フォルダ>...] [--to svg,png] [--out <dir>] [--flat]
   dgm check  [<ファイル|フォルダ>...] [--strict]
   dgm format [<ファイル|フォルダ>...] [--write] [--check]
-  dgm items  [<ファイル|フォルダ>...] [--write] [--check]
-  dgm new    <ファイル> [--kind flow|free]
+  dgm items  [<ファイル|フォルダ>...] [--write] [--check] [--create]
+  dgm new    <ファイル> [--kind flow|free|screen]
 
   ファイルとフォルダはいくつでも指定でき、フォルダは中の .dgm を全部扱います。
   何も指定しなければ作業場全体です。
@@ -75,8 +77,10 @@ format:
 items:                   画面の項目一覧（items "….table"）に、画面の項目を画面の順で並べる
       --write            表を書き換える（無ければ揃っていない表を挙げるだけ）
       --check            揃っていない表があれば終了コード 1 にする（CI 向け）
+      --create           項目一覧の無い画面に、横に <画面>-items.table を作って結ぶ（書き込む）
 new:                     新しい図を作る（既にあるファイルは上書きしない）
-      --kind flow|free   矢印から並べる図か、置いた所に描く図か（既定 flow）
+      --kind flow|free|screen
+                         矢印から並べる図か、置いた所に描く図か、項目一覧つきの画面か（既定 flow）
 
 共通:
       --root <dir>       作業場のルート（既定は .docpresenter/ か .git のある所）
@@ -119,6 +123,8 @@ new:                     新しい図を作る（既にあるファイルは上�
   'cli.format.summaryWrite': '{count} drawings: {changed} formatted, {failed} unreadable',
   'cli.format.summary': '{count} drawings: {changed} to format, {failed} unreadable',
   'cli.items.synced': 'Matched {table} to {path}',
+  'cli.items.created': 'Made {table} from {path} and gave it to the screen',
+  'cli.items.linked': 'Gave {path} the {table} that was already there',
   'cli.items.needed': '{table} does not match {path}',
   'cli.items.summaryWrite': '{count} screens with an item table: {changed} tables matched, {failed} unreadable',
   'cli.items.summary': '{count} screens with an item table: {changed} tables to match, {failed} unreadable',
@@ -126,7 +132,7 @@ new:                     新しい図を作る（既にあるファイルは上�
   'cli.new.needsPath': 'Name the file to make',
   'cli.new.onePath': 'Only one can be made at a time',
   'cli.new.exists': '{path} is already there; nothing is written over',
-  'cli.new.badKind': '--kind is flow or free: {value}',
+  'cli.new.badKind': '--kind is flow, free or screen: {value}',
   'cli.new.made': 'Made {path}',
   'cli.name.empty': 'The name is empty',
   'cli.name.characters': '“{name}” has characters no file name can (\\ : * ? " < > |)',
@@ -138,8 +144,8 @@ Usage:
   dgm export [<file|folder>...] [--to svg,png] [--out <dir>] [--flat]
   dgm check  [<file|folder>...] [--strict]
   dgm format [<file|folder>...] [--write] [--check]
-  dgm items  [<file|folder>...] [--write] [--check]
-  dgm new    <file> [--kind flow|free]
+  dgm items  [<file|folder>...] [--write] [--check] [--create]
+  dgm new    <file> [--kind flow|free|screen]
 
   Name any number of files and folders; a folder means every .dgm in it.
   Nothing named means the whole workspace.
@@ -159,8 +165,10 @@ format:
 items:                   List a screen's items in its item table (items "….table"), in the screen's order
       --write            Rewrite the tables (without it, only list the tables that do not match)
       --check            Exit with 1 when a table does not match (for CI)
+      --create           Give a screen with no item table one beside it, <screen>-items.table (writes)
 new:                     Make a new drawing (never over a file that is there)
-      --kind flow|free   Laid out from its arrows, or drawn where shapes are put (flow when absent)
+      --kind flow|free|screen
+                         Laid out from its arrows, drawn where shapes are put, or a screen with its item table (flow when absent)
 
 Common:
       --root <dir>       The workspace root (the folder with .docpresenter/ or .git when absent)

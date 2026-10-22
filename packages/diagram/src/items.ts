@@ -14,10 +14,10 @@
 
 import {
   byteLength, displayWidth, escapeCell, replaceField, splitFields, splitGridRow,
-  type ByteSpan, type Edit, type Phrase, described,
+  DEFAULT_LOCALE, described, type ByteSpan, type Edit, type Locale, type Phrase,
 } from '@docpresenter/base';
 import { containerOf, members } from './arrange.js';
-import { dgm } from './messages.js';
+import { DIAGRAM_MESSAGES, dgm } from './messages.js';
 import type { DiagramFile, ItemLink, ItemLinks } from './model.js';
 import { DiagramEditError } from './edits.js';
 
@@ -346,12 +346,7 @@ export function syncItemTable(diagram: DiagramFile, source: string): Edit | unde
   for (const id of wanted) {
     const group = groups.get(id);
     if (group) { for (const row of group) out.push({ row, fresh: undefined }); continue; }
-    const cells = table.headers.map(() => '');
-    cells[columns.id] = id;
-    if (columns.number !== undefined) cells[columns.number] = AUTO_NUMBER;
-    if (columns.name !== undefined) cells[columns.name] = itemName(diagram, id, kinds);
-    if (columns.category !== undefined) cells[columns.category] = kinds.get(id) ?? '';
-    out.push({ row: undefined, fresh: cells });
+    out.push({ row: undefined, fresh: freshRow(diagram, table.headers, columns, id, kinds) });
   }
 
   // A `^` means "the same as above", which is true only while the row above
@@ -386,6 +381,132 @@ export function syncItemTable(diagram: DiagramFile, source: string): Edit | unde
   if (lines.length === now.length && lines.every((line, index) => line === now[index])) return undefined;
   const text = table.rows.length === 0 ? lines.map(line => `\n${line}`).join('') : lines.join('\n');
   return { span: table.body, text, ...described(dgm('diagram.items.synced')), path: written.path };
+}
+
+/** What a new row says: the id, a number, its kind and its name. The rest is the author's. */
+function freshRow(
+  diagram: DiagramFile, headers: readonly string[], columns: Partial<Record<ItemColumn, number>>,
+  id: string, kinds: ReadonlyMap<string, string>,
+): string[] {
+  const cells = headers.map(() => '');
+  if (columns.id !== undefined) cells[columns.id] = id;
+  if (columns.number !== undefined) cells[columns.number] = AUTO_NUMBER;
+  if (columns.name !== undefined) cells[columns.name] = itemName(diagram, id, kinds);
+  if (columns.category !== undefined) cells[columns.category] = kinds.get(id) ?? '';
+  return cells;
+}
+
+/** The columns a new item table has, in the language it is written in. */
+const NEW_TABLE: Readonly<Record<Locale, readonly { readonly header: string; readonly align?: 'right' | 'center' }[]>> = {
+  ja: [
+    { header: '分類' }, { header: 'No', align: 'right' }, { header: 'ID' }, { header: '項目名' }, { header: '型' },
+    { header: '必須', align: 'center' }, { header: '寄せ', align: 'center' }, { header: '初期値', align: 'center' },
+    { header: '説明' },
+  ],
+  en: [
+    { header: 'Category' }, { header: 'No', align: 'right' }, { header: 'ID' }, { header: 'Name' }, { header: 'Type' },
+    { header: 'Required', align: 'center' }, { header: 'Align', align: 'center' }, { header: 'Default', align: 'center' },
+    { header: 'Description' },
+  ],
+};
+
+/** Where a screen's item table goes when nobody says: beside it, named after it. */
+export function itemTableName(screen: string): string {
+  const name = screen.split('/').pop()!.replace(/\.dgm$/i, '');
+  return `${name}-items.table`;
+}
+
+/**
+ * A new item table for a screen: the columns an item list has, and a row for
+ * each item the screen holds, in the screen's order — the same rows "match
+ * the item table to the screen" would add, so a table made here is already
+ * in step.
+ */
+export function newItemTable(diagram: DiagramFile, locale: Locale = DEFAULT_LOCALE): string {
+  const t = DIAGRAM_MESSAGES.in(locale);
+  const shape = NEW_TABLE[locale];
+  const headers = shape.map(one => one.header);
+  const columns = itemColumns(headers);
+  const kinds = itemShapes(diagram);
+  const rows = readingOrder(diagram).filter(id => kinds.has(id))
+    .map(id => freshRow(diagram, headers, columns, id, kinds));
+  // The same kind as the row above is written `^`, the way the sample is.
+  const shown = rows.map((cells, index) => cells.map((cell, c) =>
+    c === columns.category && index > 0 && cell !== '' && rows[index - 1]![c] === cell ? MERGE_UP : cell));
+  const widths = headers.map((header, c) =>
+    Math.max(3, displayWidth(header), ...shown.map(cells => displayWidth(escapeCell(cells[c]!)))));
+  const delimiter = `|${shape.map((one, c) => {
+    const dashes = '-'.repeat(widths[c]!);
+    return ` ${one.align === 'right' ? `${dashes.slice(1)}:` : one.align === 'center' ? `:${dashes.slice(2)}:` : dashes} `;
+  }).join('|')}|`;
+  return [
+    `# ${t('diagram.items.tableComment1')}`,
+    `# ${t('diagram.items.tableComment2')}`,
+    '',
+    formatRow(headers, widths),
+    delimiter,
+    ...shown.map(cells => formatRow(cells, widths)),
+    '',
+  ].join('\n');
+}
+
+/**
+ * The `items` line, written into a screen that has none: under its `use`
+ * lines, or above its first section. One line, so one byte range.
+ */
+export function linkItemTable(diagram: DiagramFile, source: string, path: string): Edit {
+  if (diagram.mode !== 'free') throw new DiagramEditError(dgm('diagram.items.notScreen'));
+  if (diagram.itemTable !== undefined) {
+    throw new DiagramEditError(dgm('diagram.items.already', { path: diagram.itemTable.path }));
+  }
+  // Measured on the text read as LF, as every range of the drawing is.
+  const lines = source.replace(/\r\n/g, '\n').split('\n');
+  let at = 0;
+  let after: number | undefined;
+  let before: number | undefined;
+  for (const line of lines) {
+    const text = line.trim();
+    if (/^use\s+"[^"]+"$/.test(text)) after = at + byteLength(line);
+    else if (before === undefined && text !== '' && !text.startsWith('#')) before = at;
+    at += byteLength(line) + 1;
+  }
+  const line = `items "${path}"`;
+  const where = after ?? before ?? 0;
+  return {
+    span: { start: where, end: where },
+    text: after !== undefined ? `\n${line}` : `${line}\n\n`,
+    ...described(dgm('diagram.items.linked', { path })),
+  };
+}
+
+/**
+ * A new screen: the shipped parts, its item table named, and a frame holding
+ * a title, one field and a button — enough to show how a screen is built, and
+ * to give its table a first few rows.
+ */
+export function starterScreen(table: string, locale: Locale = DEFAULT_LOCALE): string {
+  const t = DIAGRAM_MESSAGES.in(locale);
+  return [
+    'use "default"',
+    `items "${table}"`,
+    '',
+    'free {',
+    '  frame  frame:',
+    `  title  title:"${t('diagram.starter.screenTitle')}"`,
+    '  field  ""',
+    `  label  label:"${t('diagram.starter.screenLabel')}"`,
+    '  input  textbox:',
+    `  submit primary:"${t('diagram.starter.screenButton')}"`,
+    '}',
+    '',
+    'layout {',
+    '  frame @ (20, 20) 380x220',
+    '',
+    '  stack frame (down; gap: 18; pad: 30) { title ; field ; submit }',
+    '  stack field (down; gap: 2; pad: 0) { label ; input }',
+    '}',
+    '',
+  ].join('\n');
 }
 
 /** A new row, each cell padded to its column's width. */

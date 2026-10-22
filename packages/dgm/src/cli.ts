@@ -3,8 +3,8 @@
 //   dgm export [<file|folder>...] [--to svg,png] [--out <dir>] [--flat]
 //   dgm check  [<file|folder>...] [--strict]
 //   dgm format [<file|folder>...] [--write] [--check]
-//   dgm items  [<file|folder>...] [--write] [--check]
-//   dgm new    <file> [--kind flow|free]
+//   dgm items  [<file|folder>...] [--write] [--check] [--create]
+//   dgm new    <file> [--kind flow|free|screen]
 //
 // See design/build-model.md §6. Installed without the document side, it knows
 // only drawings; docpresenter runs the same commands for the .dgm files it is
@@ -25,7 +25,7 @@ import { collectTargets, findRoot, newFile, type Target } from './workspace.js';
 
 /** Every option of every command, so one reading of the line serves them all. */
 export const DGM_SPEC: ArgSpec = {
-  flags: [...COMMON_FLAGS, 'flat', 'strict', 'write', 'check'],
+  flags: [...COMMON_FLAGS, 'flat', 'strict', 'write', 'check', 'create'],
   options: [...COMMON_OPTIONS, 'to', 'out', 'scale', 'background', 'chromium', 'kind'],
   short: { ...COMMON_SHORT, t: 'to', o: 'out' },
 };
@@ -101,8 +101,10 @@ function checkCommand(ctx: Context, args: ParsedArgs, targets: readonly Target[]
 }
 
 function itemsCommand(ctx: Context, args: ParsedArgs, targets: readonly Target[]): number {
-  const write = args.flags.has('write');
-  const result = syncItemTables(ctx, targets, write);
+  // Making a table is writing one, so `--create` writes.
+  const create = args.flags.has('create');
+  const write = args.flags.has('write') || create;
+  const result = syncItemTables(ctx, targets, write, create);
   if (ctx.json) console.log(JSON.stringify(result, null, 2));
   return result.failed > 0 || (args.flags.has('check') && !write && result.changed.length > 0)
     ? EXIT.content : EXIT.ok;

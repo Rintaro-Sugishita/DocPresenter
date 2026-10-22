@@ -26,6 +26,7 @@ document.head.append(style);
 
 let source = '';
 let libraries: Readonly<Record<string, string>> = {};
+let itemTable = '';
 let locale: Locale = 'ja';
 let picked: readonly string[] = [];
 let edge: string | undefined;
@@ -49,6 +50,17 @@ function draw(first = false): void {
     selectedEdge: edge,
     locale,
     itemSource: file.itemTable === undefined ? undefined : libraries[file.itemTable.path],
+    newItemTable: {
+      path: itemTable,
+      // Kept in hand as well as sent, so the screen is drawn with its table
+      // the moment the line naming it lands; one already there is used as is.
+      create: text => {
+        if (libraries[itemTable] !== undefined) return undefined;
+        libraries = { ...libraries, [itemTable]: text };
+        host.postMessage({ kind: 'create', path: itemTable, text });
+        return undefined;
+      },
+    },
     apply: (make, selected, line) => {
       picked = selected;
       edge = line;
@@ -84,6 +96,7 @@ window.addEventListener('message', (event: MessageEvent<ToCanvas>) => {
   const message = event.data;
   source = message.source;
   libraries = message.libraries;
+  itemTable = message.itemTable;
   locale = message.locale;
   draw(message.kind === 'open');
 });

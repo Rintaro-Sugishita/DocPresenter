@@ -8,6 +8,7 @@
 
 import * as vscode from 'vscode';
 import { starterDiagram, type DiagramKind } from '@docpresenter/editor/starter';
+import { itemTableName, newItemTable, parseDiagram, starterScreen, withParts } from '@docpresenter/diagram';
 import {
   folderOf, nameMessage, numbersInUse, pickFolder, withoutExtension, workspaceFiles, type FolderChoice,
 } from './document-command.js';
@@ -25,10 +26,11 @@ export async function newDiagram(target?: vscode.Uri): Promise<void> {
   const files = workspaceFiles(folder.uri);
   const step = (n: number): string => t('vscode.newDiagram.step', { step: n });
 
-  type KindItem = vscode.QuickPickItem & { layout: DiagramKind };
+  type KindItem = vscode.QuickPickItem & { layout: DiagramKind | 'screen' };
   const kinds: KindItem[] = [
     { label: t('vscode.newDiagram.flow'), detail: t('vscode.newDiagram.flowDetail'), layout: 'flow' },
     { label: t('vscode.newDiagram.free'), detail: t('vscode.newDiagram.freeDetail'), layout: 'free' },
+    { label: t('vscode.newDiagram.screen'), detail: t('vscode.newDiagram.screenDetail'), layout: 'screen' },
   ];
   const kind = (await vscode.window.showQuickPick(kinds, { title: step(1), placeHolder: t('vscode.newDiagram.kind') }))?.layout;
   if (kind === undefined) return;
@@ -48,7 +50,20 @@ export async function newDiagram(target?: vscode.Uri): Promise<void> {
   if (typed === undefined) return;
   const path = pathOf(withoutExtension(typed, 'dgm'));
 
-  await vscode.workspace.fs.writeFile(files.at(path), new TextEncoder().encode(starterDiagram(kind, hostLocale())));
+  if (kind === 'screen') {
+    // The screen and its item table together, so nobody writes the link by
+    // hand. A table already there under that name is used, not written over.
+    const table = itemTableName(path);
+    const tablePath = [place, table].filter(Boolean).join('/');
+    const source = starterScreen(table, hostLocale());
+    await vscode.workspace.fs.writeFile(files.at(path), new TextEncoder().encode(source));
+    if (!await files.exists(tablePath)) {
+      const made = newItemTable(withParts(parseDiagram(source), () => undefined), hostLocale());
+      await vscode.workspace.fs.writeFile(files.at(tablePath), new TextEncoder().encode(made));
+    }
+  } else {
+    await vscode.workspace.fs.writeFile(files.at(path), new TextEncoder().encode(starterDiagram(kind, hostLocale())));
+  }
   void vscode.window.showInformationMessage(`DocPresenter: ${t('vscode.newDiagram.made', { path })}`);
   await openDrawing(files.at(path));
 }

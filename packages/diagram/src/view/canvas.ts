@@ -23,7 +23,7 @@ import {
   putIntoContainer, setNodePart, setNodeShape, setNodeStyle, setNodeText, unpinNode,
   DiagramEditError,
 } from '../edits.js';
-import { setItemCell, syncItemTable } from '../items.js';
+import { itemShapes, linkItemTable, newItemTable, setItemCell, syncItemTable } from '../items.js';
 import { toggleInline, type InlineMark } from '@docpresenter/base';
 import { createMenu, createToolbar, type MenuItem } from '@docpresenter/base';
 import { alignIcon, lineIcon, partIcon, rowIcon, shapeIcon } from './shape-icon.js';
@@ -105,6 +105,17 @@ export interface CanvasOptions {
    * drawing; without it the canvas offers nothing that writes the table.
    */
   readonly itemSource?: string | undefined;
+  /**
+   * How a screen with no item table gets one: the name it would have (beside
+   * the drawing, as its `items` line writes it) and how the host makes the
+   * file. `create` returns why it could not, or undefined; a table already
+   * there under that name is kept, not written over. Without it the canvas
+   * does not offer to make one.
+   */
+  readonly newItemTable?: {
+    readonly path: string;
+    readonly create: (text: string) => string | undefined;
+  } | undefined;
 }
 
 export interface Canvas {
@@ -1207,9 +1218,27 @@ export function createCanvas(options: CanvasOptions): Canvas {
         separated: shape === 'parallelogram',
         run: () => addShape(shape, event),
       })),
-      ...(file.itemTable !== undefined && options.itemSource !== undefined
-        ? [{ ...syncItem(), separated: true }] : []),
+      ...tableItems().map((item, index) => ({ ...item, separated: index === 0 })),
     ];
+  }
+
+  /** What can be done about the screen's item table as a whole, if anything. */
+  function tableItems(): MenuItem[] {
+    if (file.itemTable !== undefined) return options.itemSource !== undefined ? [syncItem()] : [];
+    if (options.newItemTable === undefined || file.mode !== 'free' || itemShapes(file).size === 0) return [];
+    return [{ label: t('diagram.canvas.makeItemTable'), run: makeItemTable }];
+  }
+
+  /**
+   * Makes the screen's item table and names it in the screen: the file first,
+   * already listing the items, so the screen is drawn with it the moment the
+   * line that names it is written.
+   */
+  function makeItemTable(): void {
+    const made = options.newItemTable!;
+    const refused = made.create(newItemTable(file, locale));
+    if (refused !== undefined) { options.onError?.(refused); return; }
+    options.apply(() => linkItemTable(file, source, made.path), [...picked]);
   }
 
   /**
@@ -2044,6 +2073,14 @@ export function createCanvas(options: CanvasOptions): Canvas {
       if (id === undefined || picked.length !== 1) return;
       options.apply(() => unpinNode(file, source, id), [id]);
     });
+    // The item table: made from here when the screen has none, matched to
+    // the screen when it has one. Not there for a drawing that is no screen.
+    if (tableItems().length > 0) {
+      add(t('diagram.canvas.itemList'), t('diagram.canvas.itemListTitle'), () => {
+        const at = bar.getBoundingClientRect();
+        menu.open(at.left + 8, at.bottom + 4, tableItems());
+      });
+    }
     add(t('diagram.canvas.source'), t('diagram.canvas.sourceTitle'), () => options.showSource());
 
     hint = element('span', 'dp-canvas-hint');

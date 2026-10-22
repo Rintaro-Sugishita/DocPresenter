@@ -40,8 +40,21 @@ describe('キャンバス', () => {
     expect(view.html()).toContain('canvas.js');
     await view.say({ kind: 'ready' });
     expect(view.sent).toEqual([{
-      kind: 'open', source: DGM, libraries: { '../shared/parts.dgm': PARTS }, locale: 'ja',
+      kind: 'open', source: DGM, libraries: { '../shared/parts.dgm': PARTS }, itemTable: 'login-items.table', locale: 'ja',
     }]);
+  });
+
+  it('項目一覧を作ると、画面の横に表ができ、在るものは書き換えない', async () => {
+    const view = await open();
+    await view.say({ kind: 'ready' });
+    const table = '| ID |\n|----|\n';
+    await view.say({ kind: 'create', path: 'login-items.table', text: table });
+    expect(held.get('docs/login-items.table')).toBe(table);
+    await view.say({ kind: 'create', path: 'login-items.table', text: 'もう一度' });
+    expect(held.get('docs/login-items.table')).toBe(table);
+    // 在れば、次に描くときに画面へ渡る
+    await view.say({ kind: 'ready' });
+    expect((view.sent.at(-1) as { libraries: Record<string, string> }).libraries['login-items.table']).toBe(table);
   });
 
   it('編集はバイト範囲のまま、その範囲だけが書き換わる', async () => {

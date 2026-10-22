@@ -172,6 +172,11 @@ const view = mountSheetView({
   readResource: p => FILES[inWorkspace(p)],
   createImage,
   createResource,
+  // 画面の項目一覧（表）を画面から作る。同じ名前のファイルが在れば、それを使う。
+  createFile: (p, text) => {
+    if (!(inWorkspace(p) in FILES)) FILES[inWorkspace(p)] = text;
+    return undefined;
+  },
   // すでにあるものの一覧。どのファイルが在るかは器が知っている。
   // 差し込まれるのは文書に書かれる形、つまり文書からの相対パスである。
   listResources: () => Object.keys(FILES)

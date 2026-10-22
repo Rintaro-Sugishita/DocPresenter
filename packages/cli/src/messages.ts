@@ -50,7 +50,7 @@ export const DOC_MESSAGES = defineMessages({
   docpresenter import <file.pptx|file.pdf>... [--write] [--into <reviews/x.review.yml>]
   docpresenter init   --title <題名> [--name <名前>] [--number <番号> | --series <接頭辞>]
   docpresenter new doc <ファイル> --title <題名> [--number <番号> | --series <接頭辞>]
-  docpresenter new diagram <ファイル> [--kind flow|free]
+  docpresenter new diagram <ファイル> [--kind flow|free|screen]
 
   ファイルとフォルダはいくつでも指定できます。何も指定しなければ作業場全体です。
   フォルダから拾う .md は output: を持つ文書だけです（部品の .md は書き出しません）。
@@ -84,7 +84,8 @@ new doc:                 文書と改訂履歴をテンプレートから作る�
       --number <番号>    文書番号。使われていれば断る
       --series <接頭辞>  その系列の次の番号を採る（新しい系列なら 001）。どちらも無ければ一番多い系列の次
 new diagram:
-      --kind flow|free   矢印から並べる図か、置いた所に描く図か（既定 flow）
+      --kind flow|free|screen
+                         矢印から並べる図か、置いた所に描く図か、項目一覧つきの画面か（既定 flow）
 
 共通:
       --root <dir>       作業場のルート（既定は .docpresenter/ か .git のある所）
@@ -142,7 +143,7 @@ Usage:
   docpresenter import <file.pptx|file.pdf>... [--write] [--into <reviews/x.review.yml>]
   docpresenter init   --title <title> [--name <name>] [--number <n> | --series <prefix>]
   docpresenter new doc <file> --title <title> [--number <n> | --series <prefix>]
-  docpresenter new diagram <file> [--kind flow|free]
+  docpresenter new diagram <file> [--kind flow|free|screen]
 
   Name any number of files and folders. Nothing named means the whole workspace.
   From a folder, only the .md files with an output: are exported (not the parts).
@@ -176,7 +177,8 @@ new doc:                 A document and its revision history from the templates 
       --number <n>       Its number; refused when taken
       --series <prefix>  The next number of that series (001 for a new one). Without either, the next of the largest series
 new diagram:
-      --kind flow|free   Laid out from its arrows, or drawn where shapes are put (flow when absent)
+      --kind flow|free|screen
+                         Laid out from its arrows, drawn where shapes are put, or a screen with its item table (flow when absent)
 
 Common:
       --root <dir>       The workspace root (the folder with .docpresenter/ or .git when absent)
