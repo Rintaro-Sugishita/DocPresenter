@@ -70,6 +70,26 @@ export interface DrawingBlock {
   readonly height: number;
   readonly shapes: readonly DrawnShape[];
   readonly connectors: readonly DrawnConnector[];
+  /**
+   * A screen's item numbers and "required" marks. Not shapes of the drawing:
+   * they are written as our own text boxes, so reading the deck back passes
+   * over them as it does over a caption.
+   */
+  readonly marks?: readonly DrawnMark[];
+}
+
+export interface DrawnMark {
+  readonly text: string;
+  readonly x: number;
+  readonly y: number;
+  readonly width: number;
+  readonly height: number;
+  /** A circle for a number; the `required` part's plate, if it has one, for a mark. */
+  readonly round: boolean;
+  readonly fill?: string;
+  readonly line?: string;
+  readonly colour: string;
+  readonly fontSize: number;                    // pt
 }
 
 export interface DrawnShape {

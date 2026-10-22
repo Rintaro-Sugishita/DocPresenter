@@ -48,14 +48,22 @@ function draw(first = false): void {
     selected: picked,
     selectedEdge: edge,
     locale,
+    itemSource: file.itemTable === undefined ? undefined : libraries[file.itemTable.path],
     apply: (make, selected, line) => {
       picked = selected;
       edge = line;
       try {
         const change = localizeEdit(make(), locale);
-        const base = source;
-        source = applyEdit(source, change);
-        host.postMessage({ kind: 'edit', start: change.span.start, end: change.span.end, text: change.text, base });
+        const path = change.path;
+        // An edit to the item table is written to the table; the drawing is
+        // drawn again from the table as it will be.
+        const base = path === undefined ? source : libraries[path] ?? '';
+        if (path === undefined) source = applyEdit(source, change);
+        else libraries = { ...libraries, [path]: applyEdit(base, change) };
+        host.postMessage({
+          kind: 'edit', start: change.span.start, end: change.span.end, text: change.text, base,
+          ...(path === undefined ? {} : { path }),
+        });
       } catch (error) {
         host.postMessage({ kind: 'error', message: describeError(error, locale) });
       }

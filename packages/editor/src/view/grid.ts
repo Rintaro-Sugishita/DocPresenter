@@ -10,7 +10,7 @@
 // each change the file is re-read and the grid is rebuilt from it.
 
 import {
-  cellAt, type Align, type Cell, type Selector, type StyleRule, type TableFile,
+  cellAt, shownText, type Align, type Cell, type Selector, type StyleRule, type TableFile,
 } from '@docpresenter/markdown';
 import {
   alignOf, cellClasses, cellRules, headerClasses, headerRules, inlineMarkdown,
@@ -183,7 +183,7 @@ export function createGrid(options: GridOptions): Grid {
       const line = owner.createElement('tr');
       line.className = rowClasses(table, r).join(' ');
       for (const cell of row.cells) {
-        line.append(cellNode('td', cell.text, r, cell.column, cell.rowspan, cell.colspan, cell));
+        line.append(cellNode('td', shownText(cell), r, cell.column, cell.rowspan, cell.colspan, cell));
       }
       tbody.append(line);
     });

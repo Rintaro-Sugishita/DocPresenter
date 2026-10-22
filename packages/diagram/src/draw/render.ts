@@ -4,7 +4,9 @@
 // drawn as plain polygons rather than markers: a marker needs an id, and an id
 // cannot be repeated across the many diagrams of one page.
 
-import { EDGE_LABEL, edgeLabelBox, layOutDiagram, type Box, type EdgeRoute } from '../layout.js';
+import {
+  EDGE_LABEL, edgeLabelBox, layOutDiagram, type Box, type EdgeRoute, type ItemMark,
+} from '../layout.js';
 import { lineText, type TextLine } from '../inline.js';
 import { textWidth } from '../text.js';
 import type { DiagramFile, Item, Node, Point, ShapeKind } from '../model.js';
@@ -76,8 +78,42 @@ export function renderDiagram(
     ...behind,
     ...edges,
     ...front,
+    ...laid.marks.map(renderMark),
     '</svg>',
   ].join('\n');
+}
+
+/**
+ * A number or a "required" from the screen's item table. Drawn last, over
+ * everything, and named by the item it belongs to rather than as a shape: it
+ * is not in the file, so there is nothing to pick.
+ */
+function renderMark(mark: ItemMark): string {
+  const item = ` data-item="${escapeAttr(mark.id)}"`;
+  const cx = mark.x + mark.width / 2;
+  const cy = mark.y + mark.height / 2;
+  if (mark.kind === 'number') {
+    return `<g class="dp-item-number"${item}>`
+      + `<circle cx="${n(cx)}" cy="${n(cy)}" r="${n(mark.width / 2)}"/>`
+      + `<text x="${n(cx)}" y="${n(cy)}" text-anchor="middle" dominant-baseline="central">${escapeHtml(mark.text)}</text></g>`;
+  }
+  const colours = markColours(mark.style);
+  const style = colours === '' ? '' : ` style="${escapeAttr(colours)}"`;
+  const plate = mark.style.has('fill') || mark.style.has('line')
+    ? `<rect x="${n(mark.x)}" y="${n(mark.y)}" width="${n(mark.width)}" height="${n(mark.height)}" rx="2"/>` : '';
+  return `<g class="dp-item-required"${item}${style}>${plate}`
+    + `<text x="${n(cx)}" y="${n(cy)}" text-anchor="middle" dominant-baseline="central">${escapeHtml(mark.text)}</text></g>`;
+}
+
+function markColours(style: ReadonlyMap<string, string>): string {
+  const parts: string[] = [];
+  for (const [property, value] of style) {
+    if (!COLOUR.test(value)) continue;
+    if (property === 'fill') parts.push(`--dp-fill:${value}`);
+    if (property === 'line') parts.push(`--dp-line:${value}`);
+    if (property === 'color') parts.push(`--dp-text:${value}`);
+  }
+  return parts.join(';');
 }
 
 /** The diagnostics the layout pass produced, for callers that surface them. */

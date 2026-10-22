@@ -25,3 +25,4 @@ export * from './view/shape-icon.js';
 export * from './view/canvas.js';
 export * from './view/overlay.js';
 export * from './complete.js';
+export * from './items.js';

@@ -30,6 +30,17 @@ export interface Cell {
   readonly column: number;
   rowspan: number;
   colspan: number;
+  /**
+   * A cell written `#`: its place among the `#` cells of its column, from 1.
+   * The number is computed, never written, so a row inserted above does not
+   * change every row below it in the diff.
+   */
+  number?: number;
+}
+
+/** The cell's text as a reader sees it: a `#` cell shows its number. */
+export function shownText(cell: Cell): string {
+  return cell.number === undefined ? cell.text : String(cell.number);
 }
 
 /** Holds only the cells that start in this row; merged-away positions are absent. */

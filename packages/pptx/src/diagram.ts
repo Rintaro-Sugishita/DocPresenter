@@ -10,7 +10,7 @@ import {
   border, edgeLabelBox, layOutDiagram,
   type Box, type DiagramFile, type Point, type Run, type ShapeKind,
 } from '@docpresenter/diagram';
-import type { Attachment, DrawingBlock, DrawnConnector, DrawnShape } from './model.js';
+import type { Attachment, DrawingBlock, DrawnConnector, DrawnMark, DrawnShape } from './model.js';
 import { DEFAULT_LOCALE, type Locale } from '@docpresenter/base';
 import { PPTX_MESSAGES } from './messages.js';
 
@@ -171,10 +171,29 @@ export function drawingOf(diagram: DiagramFile, options: DrawingOptions = {}): D
 
   for (const message of laid.diagnostics) options.diagnostics?.push(message);
 
+  // The same look the theme gives them on screen: a red ring for a number, the
+  // `required` part's colours for a mark.
+  const marks: DrawnMark[] = laid.marks.map(mark => {
+    if (mark.kind === 'number') {
+      return {
+        text: mark.text, x: mark.x, y: mark.y, width: mark.width, height: mark.height,
+        round: true, fill: '#ffffff', line: '#b3261e', colour: '#b3261e', fontSize: 8,
+      };
+    }
+    const fill = resolve(mark.style.get('fill'), options);
+    const line = resolve(mark.style.get('line'), options);
+    return {
+      text: mark.text, x: mark.x, y: mark.y, width: mark.width, height: mark.height, round: false,
+      ...(fill ? { fill } : {}), ...(line ? { line } : {}),
+      colour: resolve(mark.style.get('color'), options) ?? '#b3261e', fontSize: 10.5,
+    };
+  });
+
   return {
     kind: 'drawing',
     ...(options.source === undefined ? {} : { source: options.source }),
     width: laid.width, height: laid.height, shapes,
+    ...(marks.length > 0 ? { marks } : {}),
     // The lines someone drew on their own come first, so a connection between
     // two shapes is never hidden under a rule drawn across them.
     connectors: [...lines, ...connectors],

@@ -80,7 +80,30 @@ export interface LaidOutDiagram {
    * place that holds nothing.
    */
   readonly holes: readonly Hole[];
+  /**
+   * What a screen's item table adds to it: a number on each item and a mark
+   * after the caption of each required one. Not shapes — nothing in the file
+   * says where they are, so nothing on the canvas can move them.
+   */
+  readonly marks: readonly ItemMark[];
 }
+
+/** A number or a "required" drawn on a screen from its item table. */
+export interface ItemMark {
+  readonly kind: 'number' | 'required';
+  /** The item it belongs to. */
+  readonly id: string;
+  readonly text: string;
+  readonly x: number;
+  readonly y: number;
+  readonly width: number;
+  readonly height: number;
+  /** The `required` part's look; empty for a number, which the theme draws. */
+  readonly style: ReadonlyMap<string, string>;
+}
+
+/** How big an item's number is drawn: a circle that sits on its top-left corner. */
+export const ITEM_NUMBER = 18;
 
 const PAD = 16;          // margin around the drawing
 const RANK_GAP = 72;     // between rows of a graph
@@ -189,9 +212,60 @@ export function layOutDiagram(diagram: DiagramFile, locale: Locale = DEFAULT_LOC
     }
   }
 
+  for (const note of diagram.itemLinks?.notes ?? []) diagnostics.push(note);
+  const marks = itemMarks(diagram, boxes);
+
   const routes = route(diagram, boxes, auto.courses);
   const notes = diagnostics.map(one => ({ id: one.id, message: say(locale, one), span: placeOf(diagram, one) }));
-  return normalize(boxes, routes, diagram, notes, holes);
+  return normalize(boxes, routes, diagram, notes, holes, marks);
+}
+
+/**
+ * Where each item's number and "required" go. The number sits on the item's
+ * top-left corner, as a callout on a screenshot does; "required" goes after
+ * the last word of the caption the item is named by, because that is where a
+ * reader of a form looks for it.
+ */
+function itemMarks(diagram: DiagramFile, boxes: ReadonlyMap<string, Box>): ItemMark[] {
+  const links = diagram.itemLinks;
+  if (!links) return [];
+  const marks: ItemMark[] = [];
+  const marked = new Set<string>();
+  for (const link of links.links.values()) {
+    const box = boxes.get(link.id);
+    if (!box) continue;
+    if (link.number !== undefined) {
+      // On a check box the corner is most of the box, so a small item has its
+      // number beside it instead.
+      const small = box.width <= ITEM_NUMBER * 2 && box.height <= ITEM_NUMBER * 2;
+      marks.push({
+        kind: 'number', id: link.id, text: String(link.number),
+        x: small ? box.x - ITEM_NUMBER - 3 : box.x - ITEM_NUMBER / 2,
+        y: small ? box.y + box.height / 2 - ITEM_NUMBER / 2 : box.y - ITEM_NUMBER / 2,
+        width: ITEM_NUMBER, height: ITEM_NUMBER, style: new Map(),
+      });
+    }
+    const target = link.label ?? link.id;
+    const caption = boxes.get(target);
+    if (!link.required || !caption || marked.has(target)) continue;
+    marked.add(target);
+    const last = caption.lines[caption.lines.length - 1];
+    const words = last === undefined ? '' : lineText(last);
+    const wide = textWidth(words, FONT);
+    const align = diagram.style.get(target)?.get('align');
+    const end = words === '' ? caption.x + caption.width
+      : align === 'left' ? caption.x + 8 + wide
+        : align === 'right' ? caption.x + caption.width - 8
+          : caption.x + caption.width / 2 + wide / 2;
+    const middle = caption.y + caption.height / 2 + (Math.max(0, caption.lines.length - 1) * LINE_HEIGHT) / 2;
+    const width = links.mark.width ?? Math.max(10, textWidth(links.mark.text, 13) + 4);
+    const height = links.mark.height ?? 18;
+    marks.push({
+      kind: 'required', id: link.id, text: links.mark.text,
+      x: end + 2, y: middle - height / 2, width, height, style: links.mark.style,
+    });
+  }
+  return marks;
 }
 
 /**
@@ -1093,6 +1167,9 @@ function placeOf(diagram: DiagramFile, phrase: Phrase): ByteSpan | undefined {
       .find(one => one.id === id || one.cells.some(row => row.includes(cell)));
     if (holder) return holder.span;
   }
+  // A row of the item table that names no shape is written in the table; on
+  // the screen, the line that names the table is the one to mark.
+  if (phrase.id.startsWith('diagram.items.') && nodeAt(id) === undefined) return diagram.itemTable?.span;
   return nodeAt(id)
     ?? (key === undefined ? undefined : diagram.bends.get(key)?.span)
     ?? nodeAt(word('group'))
@@ -1105,11 +1182,12 @@ function placeOf(diagram: DiagramFile, phrase: Phrase): ByteSpan | undefined {
 function normalize(
   boxes: Map<string, Box>, routes: readonly EdgeRoute[],
   diagram: DiagramFile, notes: readonly DiagramNote[], holes: readonly Hole[],
+  marks: readonly ItemMark[] = [],
 ): LaidOutDiagram {
   // Detouring connections and their labels run outside the shapes, so they
   // move the origin and stretch the canvas too.
   const labels = routes.map(edgeLabelBox).filter((b): b is Box => b !== undefined);
-  const all = [...boxes.values(), ...labels];
+  const all = [...boxes.values(), ...labels, ...marks];
   const bends = routes.flatMap(r => r.points.slice(1, -1));
   const minX = all.length ? Math.min(...all.map(b => b.x), ...bends.map(p => p.x)) : 0;
   const minY = all.length ? Math.min(...all.map(b => b.y), ...bends.map(p => p.y)) : 0;
@@ -1169,5 +1247,6 @@ function normalize(
     holes: holes.map(hole => ({
       ...hole, box: { ...hole.box, ...move({ x: hole.box.x, y: hole.box.y }) },
     })),
+    marks: marks.map(mark => ({ ...mark, ...move(mark) })),
   };
 }

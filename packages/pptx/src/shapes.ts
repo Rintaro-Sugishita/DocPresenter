@@ -9,7 +9,7 @@
 import { EDGE_LABEL, type Run } from '@docpresenter/diagram';
 import { EMU_PER_PT, EMU_PER_PX } from './model.js';
 import type {
-  Attachment, DrawingBlock, DrawnConnector, DrawnShape, PictureBlock, TableBlock, TableCell, TextBlock,
+  Attachment, DrawingBlock, DrawnConnector, DrawnMark, DrawnShape, PictureBlock, TableBlock, TableCell, TextBlock,
 } from './model.js';
 import { escapeXml, hex } from './xml.js';
 
@@ -109,7 +109,29 @@ export function drawing(
     // On top, as on screen: a label's plate covers the line it names, and no
     // shape is laid over a label.
     ...block.connectors.map(connector => edgeLabelXml(connector, at, size, scale)),
+    ...(block.marks ?? []).map(mark => markXml(mark, at, size, scale)),
   ].join('');
+}
+
+/** An item's number or "required", as a text box of our own. */
+function markXml(
+  mark: DrawnMark,
+  at: (x: number, y: number) => { x: number; y: number },
+  size: (value: number) => number,
+  scale: number,
+): string {
+  const origin = at(mark.x, mark.y);
+  const frame: Frame = { x: origin.x, y: origin.y, width: size(mark.width), height: size(mark.height) };
+  const id = nextId();
+  const fill = mark.fill ? `<a:solidFill><a:srgbClr val="${hex(mark.fill, 'FFFFFF')}"/></a:solidFill>` : '<a:noFill/>';
+  const line = mark.line
+    ? `<a:ln w="${Math.round(1.5 * EMU_PER_PX * scale)}"><a:solidFill><a:srgbClr val="${hex(mark.line, 'B3261E')}"/></a:solidFill></a:ln>`
+    : '<a:ln><a:noFill/></a:ln>';
+  return `<p:sp><p:nvSpPr><p:cNvPr id="${id}" name="text ${id}"/><p:cNvSpPr txBox="1"/><p:nvPr/></p:nvSpPr>`
+    + `<p:spPr>${xfrm(frame)}<a:prstGeom prst="${mark.round ? 'ellipse' : 'rect'}"><a:avLst/></a:prstGeom>${fill}${line}</p:spPr>`
+    + `<p:txBody><a:bodyPr anchor="ctr" wrap="none" lIns="0" tIns="0" rIns="0" bIns="0"><a:noAutofit/></a:bodyPr>`
+    + `<a:lstStyle/>${paragraph([{ text: mark.text, bold: !mark.round, italic: false, code: false, colour: undefined }],
+      mark.fontSize * scale, mark.colour, 'ctr')}</p:txBody></p:sp>`;
 }
 
 /**

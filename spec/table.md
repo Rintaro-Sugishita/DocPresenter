@@ -147,6 +147,13 @@ A cell whose **entire** content is `@key` is replaced by the block of that name
 (§4). A `@key` in the middle of other text is left alone — a cell is either a
 value or a reference, never half of each.
 
+A cell whose **entire** content is `#` is a **number**: its place among the `#`
+cells of its column, counting from 1 down the table. A reader MUST show the
+number in its place and MUST NOT write it into the file. A row inserted above
+then changes one line, not every number below it; a row with something else in
+that column (`—`) is skipped. Selecting some of the rows (§5) keeps the numbers
+they had in the whole table.
+
 A cell MUST NOT contain a newline. Where a cell needs a list or a paragraph, that
 is what §4 is for.
 

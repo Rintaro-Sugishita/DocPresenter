@@ -21,7 +21,9 @@ import {
   addNode, bendEdge, canUnpin, connectNodes, disconnectNodes, groupMembers, groupNodes,
   nextShapeId, pinNode, pinNodes, reconnect, removeNodes, setContainerCells, setItems,
   putIntoContainer, setNodePart, setNodeShape, setNodeStyle, setNodeText, unpinNode,
+  DiagramEditError,
 } from '../edits.js';
+import { setItemCell, syncItemTable } from '../items.js';
 import { toggleInline, type InlineMark } from '@docpresenter/base';
 import { createMenu, createToolbar, type MenuItem } from '@docpresenter/base';
 import { alignIcon, lineIcon, partIcon, rowIcon, shapeIcon } from './shape-icon.js';
@@ -97,6 +99,12 @@ export interface CanvasOptions {
   readonly onError?: (message: string) => void;
   /** Which language the bar, the menus and the hints speak. */
   readonly locale?: Locale | undefined;
+  /**
+   * The text of the table the drawing's `items` line names, when the host can
+   * write to it. An edit to it carries that table's path, as written in the
+   * drawing; without it the canvas offers nothing that writes the table.
+   */
+  readonly itemSource?: string | undefined;
 }
 
 export interface Canvas {
@@ -1192,12 +1200,56 @@ export function createCanvas(options: CanvasOptions): Canvas {
   }
 
   function addItems(event: MouseEvent): MenuItem[] {
-    return PALETTE.map((shape): MenuItem => ({
-      label: t(`diagram.shape.${shape}`),
-      icon: shapeIcon(shape),
-      separated: shape === 'parallelogram',
-      run: () => addShape(shape, event),
-    }));
+    return [
+      ...PALETTE.map((shape): MenuItem => ({
+        label: t(`diagram.shape.${shape}`),
+        icon: shapeIcon(shape),
+        separated: shape === 'parallelogram',
+        run: () => addShape(shape, event),
+      })),
+      ...(file.itemTable !== undefined && options.itemSource !== undefined
+        ? [{ ...syncItem(), separated: true }] : []),
+    ];
+  }
+
+  /**
+   * What the item table says about one shape, changed from the screen. Each
+   * writes one line of the table and nothing of the drawing: the table is
+   * where required and alignment are written, so it is where they change.
+   */
+  function itemListItems(id: string): MenuItem[] {
+    const table = options.itemSource!;
+    const link = file.itemLinks?.links.get(id);
+    const out: MenuItem[] = [];
+    if (link) {
+      out.push({
+        label: link.required ? t('diagram.canvas.itemOptional') : t('diagram.canvas.itemRequired'),
+        run: () => options.apply(() => setItemCell(file, table, id, 'required', !link.required), [id]),
+      });
+      const sides = ['left', 'center', 'right', undefined] as const;
+      out.push({
+        label: t('diagram.canvas.itemAlign'),
+        items: sides.map((side): MenuItem => ({
+          label: t(side === undefined ? 'diagram.canvas.itemAlignPart' : `diagram.canvas.itemAlign.${side}`),
+          run: () => options.apply(() => setItemCell(file, table, id, 'align', side), [id]),
+        })),
+      });
+    }
+    out.push({ ...syncItem(), separated: link !== undefined });
+    return out;
+  }
+
+  /** Lists the screen's items in its table, in the screen's order. */
+  function syncItem(): MenuItem {
+    const table = options.itemSource!;
+    return {
+      label: t('diagram.items.synced'),
+      run: () => options.apply(() => {
+        const edit = syncItemTable(file, table);
+        if (!edit) throw new DiagramEditError(dgm('diagram.items.inStep'));
+        return edit;
+      }, [...picked]),
+    };
   }
 
   /**
@@ -1389,6 +1441,9 @@ export function createCanvas(options: CanvasOptions): Canvas {
           name => options.apply(() => setNodePart(file, source, id, name), [id]),
           file.partOf.get(id)),
       });
+    }
+    if (file.itemTable !== undefined && options.itemSource !== undefined) {
+      items.push({ label: t('diagram.canvas.itemList'), separated: true, items: itemListItems(id) });
     }
     items.push({
       label: t('diagram.canvas.unpin'),

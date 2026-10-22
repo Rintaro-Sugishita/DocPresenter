@@ -6,6 +6,8 @@
 # 間隔はいくつ」から計算される——項目を 1 つ足しても、下の全部は動かない。
 
 use "../../shared/ui-parts.dgm"
+# 項目一覧。番号と必須の印は、この表と画面の並びから付く。
+items "screen-items.table"
 
 free {
   frame    frame:

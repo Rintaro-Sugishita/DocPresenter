@@ -25,7 +25,7 @@ const DRAWING = [
 
 describe('作図ファイルの補完', () => {
   it('最上位ではセクションを出し、図が既にあれば図の種類は出さない', () => {
-    expect(labels('|')).toEqual(['flow', 'free', 'overlay', 'layout', 'style', 'use', 'parts']);
+    expect(labels('|')).toEqual(['flow', 'free', 'overlay', 'layout', 'style', 'use', 'items', 'parts']);
     expect(labels('flow {\n  a [A]\n}\n\nla|')).toEqual(['layout', 'style', 'use', 'parts']);
     // 置き換えるのは打ちかけの語だけ
     expect(at('flow {\n}\nla|')[0]!.from).toBe(0);

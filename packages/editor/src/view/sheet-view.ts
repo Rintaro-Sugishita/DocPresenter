@@ -720,13 +720,18 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
       owner,
       file,
       source: text,
+      itemSource: file.itemTable === undefined
+        ? undefined : options.readResource?.(joinPath(current.path, file.itemTable.path)),
       selected: current.selected,
       selectedEdge: current.edge,
       apply: (make: () => Edit, selected: readonly string[], edge?: string | undefined) => {
         if (canvas?.path === current.path) canvas = { ...canvas, selected, edge };
         commit(() => {
           try {
-            return { ...make(), path: current.path };
+            // An edit to the drawing's item table names the table as the
+            // drawing writes it; the document names it from where it stands.
+            const made = make();
+            return { ...made, path: made.path === undefined ? current.path : joinPath(current.path, made.path) };
           } catch (error) {
             if (error instanceof DiagramEditError) throw new SheetEditError(error.phrase);
             throw error;

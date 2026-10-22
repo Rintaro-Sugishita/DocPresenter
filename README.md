@@ -246,6 +246,7 @@ npx --no-install docpresenter check --root sample --strict
 npx --no-install docpresenter import out/build/docs/order-slides.pptx --root sample   # --write で書き込む
 npx --no-install dgm export sample/shared --root sample --to svg,png --background transparent
 npx --no-install dgm format --root sample --check
+npx --no-install dgm items --root sample --check                    # 画面の項目一覧が画面と揃っているか
 npx --no-install docpresenter init --root ../my-docs --title "注文管理 設計書"   # 作業場を用意する（上書きしない）
 npx --no-install docpresenter new doc ../my-docs/docs/order/design --title "注文" --series SD-ORD-
 npx --no-install dgm new ../my-docs/docs/order/design/flow --kind flow

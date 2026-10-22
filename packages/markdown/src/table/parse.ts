@@ -2,7 +2,9 @@
 // markers, so the only departures from standard markdown are `^` and `<` and
 // the block references.
 
-import { byteLength, lineEndingOf, LocalizedError, type Phrase } from '@docpresenter/base';
+import {
+  byteLength, lineEndingOf, LocalizedError, splitGridRow as splitRow, type Phrase,
+} from '@docpresenter/base';
 import { md } from '../messages.js';
 import type {
   Align, Cell, Column, GridLine, NamedRange, Row, Selector, StyleBlock, StyleRule, TableFile,
@@ -12,6 +14,8 @@ import type {
 const MERGE_UP = '^';
 /** Merge with the cell to the left. */
 const MERGE_LEFT = '<';
+/** A number computed from the row's place: 1, 2, 3 down the column. */
+const AUTO_NUMBER = '#';
 
 export class TableParseError extends LocalizedError {
   constructor(message: Phrase, readonly line: number) {
@@ -132,20 +136,6 @@ function count(text: string, char: string): number {
   return n;
 }
 
-/** Splits a grid line into cells, honouring `\|` as a literal pipe. */
-function splitRow(text: string): string[] {
-  const cells: string[] = [];
-  let current = '';
-  for (let i = 1; i < text.length; i++) {
-    const c = text[i]!;
-    if (c === '\\' && text[i + 1] === '|') { current += '|'; i++; continue; }
-    if (c === '|') { cells.push(current.trim()); current = ''; continue; }
-    current += c;
-  }
-  if (current.trim() !== '') cells.push(current.trim());
-  return cells;
-}
-
 function alignOf(spec: string): Align {
   const left = spec.startsWith(':');
   const right = spec.endsWith(':');
@@ -214,6 +204,18 @@ function parseGrid(
     }
     rows.push({ cells, line: grid.grid });
   });
+
+  // `#` numbers the rows that have one, column by column: the item list of a
+  // screen writes it in its No column, and the numbers follow the rows.
+  const counted = new Map<number, number>();
+  for (const row of rows) {
+    for (const cell of row.cells) {
+      if (cell.text !== AUTO_NUMBER) continue;
+      const next = (counted.get(cell.column) ?? 0) + 1;
+      counted.set(cell.column, next);
+      cell.number = next;
+    }
+  }
 
   // A cell stops spanning once its rowspan is exhausted.
   rows.forEach((row, r) => {

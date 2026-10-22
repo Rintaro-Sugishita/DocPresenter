@@ -37,7 +37,7 @@
     },
 
     "use": {
-      "match": "^\\s*(use)\\s+(\"[^\"]*\")\\s*$",
+      "match": "^\\s*(use|items)\\s+(\"[^\"]*\")\\s*$",
       "captures": {
         "1": { "name": "keyword.control.import.dgm" },
         "2": { "name": "string.quoted.double.path.dgm" }

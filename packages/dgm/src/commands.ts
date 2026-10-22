@@ -2,10 +2,11 @@
 // for the .dgm files it is pointed at.
 
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { dirname, join, relative, resolve } from 'node:path';
-import { describeError, say } from '@docpresenter/base';
+import { dirname, join, posix, relative, resolve } from 'node:path';
+import { applyEdit, describeError, say } from '@docpresenter/base';
 import {
-  drawingProblems, formatDiagram, starterDiagram, type DiagramFile, type DrawingProblem,
+  drawingProblems, formatDiagram, parseDiagram, starterDiagram, syncItemTable, withParts,
+  type DiagramFile, type DrawingProblem,
 } from '@docpresenter/diagram';
 import type { Context } from './context.js';
 import { assetFile } from './context.js';
@@ -227,4 +228,52 @@ export function formatDrawings(ctx: Context, targets: readonly Target[], write: 
     count: drawings.length, changed: changed.length, failed,
   }));
   return { count: drawings.length, changed, failed };
+}
+
+export interface ItemsResult {
+  /** The screens that name an item table. */
+  readonly count: number;
+  /** The tables that did not list their screen's items, as `screen → table`. */
+  readonly changed: readonly string[];
+  readonly failed: number;
+}
+
+/**
+ * Makes each screen's item table list the screen's items, in the screen's
+ * order; writes only with `write`. The same edit as the canvas's "match the
+ * item table to the screen", so a table matched here and one matched there
+ * read the same.
+ */
+export function syncItemTables(ctx: Context, targets: readonly Target[], write: boolean): ItemsResult {
+  const changed: string[] = [];
+  let count = 0;
+  let failed = 0;
+  for (const target of targets.filter(one => isDrawing(one.path))) {
+    const source = readFileSync(target.file, 'utf8');
+    const read = (used: string) => {
+      try { return readFileSync(resolve(dirname(target.file), used), 'utf8'); } catch { return undefined; }
+    };
+    let edit;
+    let table: string | undefined;
+    try {
+      const drawing = withParts(parseDiagram(source), read);
+      if (drawing.itemTable === undefined) continue;
+      count++;
+      table = drawing.itemTable.path;
+      edit = syncItemTable(drawing, read(table) ?? '');
+    } catch (error) {
+      failed++;
+      ctx.fail(`${target.path}: ${ctx.t('cli.label.error')}: ${describeError(error, ctx.locale)}`);
+      continue;
+    }
+    if (!edit || table === undefined) continue;
+    const file = resolve(dirname(target.file), table);
+    // Named as the drawing is, from the workspace.
+    const shownTable = posix.normalize(posix.join(posix.dirname(target.path), table));
+    changed.push(`${target.path} → ${shownTable}`);
+    if (write) writeFileSync(file, applyEdit(readFileSync(file, 'utf8'), edit));
+    ctx.say(ctx.t(write ? 'cli.items.synced' : 'cli.items.needed', { table: shownTable, path: target.path }));
+  }
+  ctx.say(ctx.t(write ? 'cli.items.summaryWrite' : 'cli.items.summary', { count, changed: changed.length, failed }));
+  return { count, changed, failed };
 }

@@ -98,7 +98,8 @@ async function reachableParts(uri: vscode.Uri, text: string): Promise<ReadonlyMa
 }
 
 /**
- * Every file of parts the drawing reaches through its `use` lines, read.
+ * Every file of parts the drawing reaches through its `use` lines, read — and
+ * the table its `items` line names, which is applied with them.
  *
  * Reading parts is synchronous (`partsOf`, `withParts`), so every file it could
  * ask for is read first. Paths are relative to this drawing, as the build
@@ -106,6 +107,11 @@ async function reachableParts(uri: vscode.Uri, text: string): Promise<ReadonlyMa
  */
 export async function librariesUsed(uri: vscode.Uri, text: string): Promise<Map<string, string>> {
   const files = new Map<string, string>();
+  const table = itemTableOf(text);
+  if (table !== undefined) {
+    const source = await readText(vscode.Uri.joinPath(uri, '..', ...table.split('/')));
+    if (source !== undefined) files.set(table, source);
+  }
   const waiting = usesOf(text);
   while (waiting.length > 0) {
     const path = waiting.shift()!;
@@ -116,6 +122,11 @@ export async function librariesUsed(uri: vscode.Uri, text: string): Promise<Map<
     waiting.push(...usesOf(source));
   }
   return files;
+}
+
+/** The table an `items` line names, as written. */
+export function itemTableOf(text: string): string | undefined {
+  return /^\s*items\s+"([^"]+)"\s*$/m.exec(text)?.[1];
 }
 
 function usesOf(text: string): string[] {

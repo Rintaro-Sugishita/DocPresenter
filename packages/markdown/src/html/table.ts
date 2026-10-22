@@ -3,7 +3,7 @@
 // a literal colour or width.
 
 import { markClass, type TableMarks } from './diff.js';
-import type { Align, Cell, StyleRule, TableFile } from '../table/model.js';
+import { shownText, type Align, type Cell, type StyleRule, type TableFile } from '../table/model.js';
 import { markdown } from './markdown.js';
 
 const ALIGN_CLASS: Readonly<Record<Align, string>> = {
@@ -93,7 +93,7 @@ function renderCell(table: TableFile, cell: Cell, row: number, marks?: TableMark
     cell.colspan > 1 ? ` colspan="${cell.colspan}"` : '',
     styleAttrs(alignOf(table, cell.column, rules), rules, changed),
   ].join('');
-  return `<td${attributes}>${renderCellText(table, cell.text)}</td>`;
+  return `<td${attributes}>${renderCellText(table, shownText(cell))}</td>`;
 }
 
 function columnRules(table: TableFile, header: string | undefined): readonly StyleRule[] {

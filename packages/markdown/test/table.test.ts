@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { cellAt, parseTable, TableParseError } from '../src/index.js';
+import { cellAt, parseTable, renderTable, selectRows, shownText, TableParseError } from '../src/index.js';
 
 const basic = `
 | 分類 | 項目     | 型            | 必須 |
@@ -103,10 +103,12 @@ describe('サンプルの実ファイル', () => {
   it('screen-items.table を読める', () => {
     const t = parseTable(readFileSync('sample/docs/auth-design/screen-items.table', 'utf8'));
     expect(t.comments[0]).toContain('ログイン画面 項目定義');
-    expect(t.columns.map(c => c.header)).toEqual(['分類', 'No', '項目名', '型', '必須', '初期値', '説明']);
+    expect(t.columns.map(c => c.header)).toEqual(['分類', 'No', 'ID', '項目名', '型', '必須', '寄せ', '初期値', '説明']);
     expect(t.columns[1]!.align).toBe('right');    // No は右寄せ
-    expect(t.columns[4]!.align).toBe('center');   // 必須は中央
+    expect(t.columns[5]!.align).toBe('center');   // 必須は中央
     expect(t.rows).toHaveLength(6);
+    // No は画面の項目の順に振られ、番号の無い行は飛ばす
+    expect(t.rows.map(row => shownText(row.cells.find(cell => cell.column === 1)!))).toEqual(['1', '2', '3', '4', '—', '—']);
 
     const 入力 = t.rows[0]!.cells[0]!;
     expect(入力.text).toBe('入力');
@@ -170,5 +172,29 @@ describe('2 方向の結合', () => {
   it('左に何も無い < は読めないと言う', () => {
     expect(() => parseTable(['| A | B |', '| - | - |', '| < | 2 |'].join('\n')))
       .toThrow(TableParseError);
+  });
+});
+
+describe('a cell written #', () => {
+  const numbered = [
+    '| 項目 | No |',
+    '|------|---:|',
+    '| ID   |  # |',
+    '| 補足 |  — |',
+    '| 名前 |  # |',
+  ].join('\n');
+
+  // The number is computed from the row's place, so it is in no line of the
+  // file: a row inserted above changes one line, not every number below it.
+  it('shows its place among the # cells of its column', () => {
+    const table = parseTable(numbered);
+    expect(table.rows.map(row => shownText(row.cells[1]!))).toEqual(['1', '—', '2']);
+    expect(table.rows[2]!.cells[1]!.text).toBe('#');
+    expect(renderTable(table)).toMatch(/<td[^>]*>名前<\/td><td[^>]*>2<\/td>/);
+  });
+
+  it('keeps its number in a partial reference', () => {
+    const table = parseTable(`${numbered}\n\nrange {\n  後半: 補足..名前\n}\n`);
+    expect(selectRows(table, '後半')!.rows.map(row => shownText(row.cells[1]!))).toEqual(['—', '2']);
   });
 });

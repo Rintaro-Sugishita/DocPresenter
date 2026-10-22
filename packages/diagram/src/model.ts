@@ -2,7 +2,7 @@
 // same model with its layout computed, so both share these types: the
 // difference is only how much of the layout layer is filled in.
 
-import type { ByteSpan } from '@docpresenter/base';
+import type { ByteSpan, Phrase } from '@docpresenter/base';
 
 export type ShapeKind =
   | 'rect' | 'round-rect' | 'stadium' | 'cylinder' | 'diamond'
@@ -161,6 +161,40 @@ export interface Part {
    * way the file is, instead of inventing a grouping of its own.
    */
   readonly group: string | undefined;
+  /**
+   * The words the part's shape holds, when it holds any (`required "必須"`).
+   * A part is drawn with the words of the shape written as it, so these are
+   * used only where a part is drawn on its own — a mark the tool adds.
+   */
+  readonly text?: string;
+}
+
+/** One shape of a screen joined to a row of its item table. */
+export interface ItemLink {
+  readonly id: string;
+  /** Which body row of the table, from 0. */
+  readonly row: number;
+  /** Its number, counted in the screen's reading order. Absent for a row with no `#`. */
+  readonly number: number | undefined;
+  readonly required: boolean;
+  /** The caption the item is named by on the screen, which "required" is drawn after. */
+  readonly label: string | undefined;
+}
+
+/** A screen's items, joined with its table. */
+export interface ItemLinks {
+  /** The table, as the `items` line writes it. */
+  readonly path: string;
+  readonly links: ReadonlyMap<string, ItemLink>;
+  /** What did not join, said where the screen is checked. */
+  readonly notes: readonly Phrase[];
+  /** How "required" is drawn: the `required` part, or a red asterisk. */
+  readonly mark: {
+    readonly text: string;
+    readonly style: ReadonlyMap<string, string>;
+    readonly width?: number;
+    readonly height?: number;
+  };
 }
 
 /**
@@ -260,6 +294,17 @@ export interface DiagramFile {
   readonly callouts: readonly Callout[];
   /** Files of parts this one uses, as written (relative to this file). */
   readonly uses: readonly string[];
+  /**
+   * The `items "…"` line: the table that lists this screen's items, as
+   * written (relative to this file), and the line itself.
+   */
+  readonly itemTable: { readonly path: string; readonly span: ByteSpan } | undefined;
+  /**
+   * The screen's items joined with that table: what is numbered, what is
+   * required, which table row is whose. Filled in when the parts are applied,
+   * absent before that and for a drawing with no `items` line.
+   */
+  readonly itemLinks: ItemLinks | undefined;
   /** Parts declared in this file, by name. */
   readonly parts: ReadonlyMap<string, Part>;
   /** Which part each shape was written as, for the ones that name one. */

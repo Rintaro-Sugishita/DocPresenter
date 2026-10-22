@@ -297,6 +297,10 @@ function atTop({ before, column, known, say, context }: At): Completion[] {
   }
   add({ label: 'style', kind: 'section', insert: 'style {\n\t$0\n}', detail: say('diagram.complete.style') });
   add({ label: 'use', kind: 'keyword', insert: 'use "$1"', detail: say('diagram.complete.use'), again: true });
+  // A screen's item table: a screen is drawn where its shapes are put.
+  if (!known.sections.has('overlay') && !known.sections.has('flow')) {
+    add({ label: 'items', kind: 'keyword', insert: 'items "${1:items.table}"', detail: say('diagram.complete.items') });
+  }
   add({ label: 'parts', kind: 'section', insert: 'parts {\n\t$0\n}', detail: say('diagram.complete.parts') });
   return found;
 }

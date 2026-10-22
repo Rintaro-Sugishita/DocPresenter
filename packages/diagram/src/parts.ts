@@ -15,10 +15,11 @@ import {
 } from './default-parts.js';
 import { DiagramParseError, notationOf, parseDiagram } from './parse.js';
 import { DIAGRAM_MESSAGES, dgm } from './messages.js';
+import { withItems } from './items.js';
 import { DEFAULT_LOCALE, type Locale } from '@docpresenter/base';
 import type { DiagramFile, Node, Part, Placement, ShapeKind } from './model.js';
 
-/** Reads a file named by a `use` line, as written in the drawing. */
+/** Reads a file named by a `use` or `items` line, as written in the drawing. */
 export type PartReader = (path: string) => string | undefined;
 
 /**
@@ -53,9 +54,15 @@ export function partsOf(diagram: DiagramFile, read: PartReader): ReadonlyMap<str
       // A library that overrides one part writes only what differs, heading
       // and all. Keeping the heading it had means the part stays where a
       // reader of the set expects it rather than falling out of its group.
+      // Whether the part is an item of a screen's item list is the same kind of
+      // thing: not part of its look, so a library that restyles a button has
+      // not said it stopped being one.
       const was = found.get(name);
-      found.set(name, part.group === undefined && was?.group !== undefined
-        ? { ...part, group: was.group } : part);
+      const item = was?.style.get('item');
+      const kept = item === undefined || part.style.has('item')
+        ? part : { ...part, style: new Map([...part.style, ['item', item]]) };
+      found.set(name, kept.group === undefined && was?.group !== undefined
+        ? { ...kept, group: was.group } : kept);
     }
   };
 
@@ -73,7 +80,8 @@ export function partsOf(diagram: DiagramFile, read: PartReader): ReadonlyMap<str
  * the one line it is.
  */
 export function withParts(diagram: DiagramFile, read: PartReader): DiagramFile {
-  if (diagram.uses.length === 0 && diagram.parts.size === 0) return diagram;
+  // The item table goes last: which shapes are items is a thing the parts say.
+  if (diagram.uses.length === 0 && diagram.parts.size === 0) return withItems(diagram, read);
   const parts = partsOf(diagram, read);
 
   const nodes = diagram.nodes.map(node => {
@@ -119,7 +127,7 @@ export function withParts(diagram: DiagramFile, read: PartReader): DiagramFile {
     partSizes.set(id, { width: part.width, height: part.height });
   }
 
-  return { ...diagram, nodes, style, layout, partSizes, library: parts };
+  return withItems({ ...diagram, nodes, style, layout, partSizes, library: parts }, read);
 }
 
 /**

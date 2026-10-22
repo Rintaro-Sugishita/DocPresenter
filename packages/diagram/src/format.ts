@@ -164,7 +164,8 @@ function linesOf(source: string): Line[] {
 interface Top {
   /** The comments the file opens with: they stay at the top. */
   readonly header: readonly string[];
-  readonly uses: readonly { readonly path: string; readonly leading: readonly string[] }[];
+  /** `use` and `items` lines, in the order written. */
+  readonly uses: readonly { readonly keyword: string; readonly path: string; readonly leading: readonly string[] }[];
   readonly sections: readonly TopSection[];
   /** Comments after the last section. */
   readonly trailing: readonly string[];
@@ -173,7 +174,7 @@ interface Top {
 /** The top level: comments, `use` lines and sections, as the parser finds them. */
 function scanTop(lines: readonly Line[]): Top {
   const header: string[] = [];
-  const uses: { path: string; leading: string[] }[] = [];
+  const uses: { keyword: string; path: string; leading: string[] }[] = [];
   const sections: TopSection[] = [];
   let pending: string[] = [];
   let opened = false;
@@ -186,9 +187,9 @@ function scanTop(lines: readonly Line[]): Top {
       continue;
     }
     opened = true;
-    const used = /^use\s+"([^"]+)"\s*$/.exec(text);
+    const used = /^(use|items)\s+"([^"]+)"\s*$/.exec(text);
     if (used) {
-      uses.push({ path: used[1]!, leading: pending });
+      uses.push({ keyword: used[1]!, path: used[2]!, leading: pending });
       pending = [];
       continue;
     }
@@ -536,7 +537,7 @@ function write(
     gap();
     top.uses.forEach((use, index) => {
       if (use.leading.length > 0 && index > 0) gap();
-      out.push(...use.leading, `use "${use.path}"`);
+      out.push(...use.leading, `${use.keyword} "${use.path}"`);
     });
   }
 
@@ -1004,6 +1005,7 @@ function modelOf(file: DiagramFile): string {
     items: sorted(file.nodes.map(node => [node.id, node.items.map(item =>
       [item.text, item.depth, item.closed, item.picked])])),
     uses: file.uses,
+    itemTable: file.itemTable?.path ?? null,
     parts: [...file.parts.values()].map(part => [part.name, part.shape, entries(part.style),
       part.width ?? null, part.height ?? null, part.group ?? null]),
     partOf: entries(file.partOf),

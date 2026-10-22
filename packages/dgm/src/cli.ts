@@ -3,6 +3,7 @@
 //   dgm export [<file|folder>...] [--to svg,png] [--out <dir>] [--flat]
 //   dgm check  [<file|folder>...] [--strict]
 //   dgm format [<file|folder>...] [--write] [--check]
+//   dgm items  [<file|folder>...] [--write] [--check]
 //   dgm new    <file> [--kind flow|free]
 //
 // See design/build-model.md §6. Installed without the document side, it knows
@@ -12,7 +13,7 @@
 import { lastOf, listOf, parseArgs, type ArgSpec, type ParsedArgs } from './args.js';
 import {
   checkDrawings, DRAWING_FORMATS, drawingJobs, drawingTheme, exportDrawings, formatDrawings, isDrawing, newDrawing,
-  refuseUnknownFormats, reportFindings,
+  refuseUnknownFormats, reportFindings, syncItemTables,
 } from './commands.js';
 import {
   COMMON_FLAGS, COMMON_OPTIONS, COMMON_SHORT, contextOf, describeCliError, localeOf, versionOf, type Context,
@@ -61,6 +62,7 @@ export async function runDgm(argv: readonly string[], from: string): Promise<num
       case 'export': return await exportCommand(ctx, args, root, targets(), from);
       case 'check': return checkCommand(ctx, args, targets());
       case 'format': return formatCommand(ctx, args, targets());
+      case 'items': return itemsCommand(ctx, args, targets());
       case 'new': {
         if (paths.length > 1) throw new CliError('usage', 'cli.new.onePath');
         newDrawing(ctx, newFile(paths[0], root, 'dgm'), lastOf(args, 'kind'));
@@ -96,6 +98,14 @@ function checkCommand(ctx: Context, args: ParsedArgs, targets: readonly Target[]
   if (ctx.json) console.log(JSON.stringify(findings, null, 2));
   else ctx.say(ctx.t('cli.checkDrawings', { drawings: targets.length, errors, warnings }));
   return errors > 0 || (args.flags.has('strict') && warnings > 0) ? EXIT.content : EXIT.ok;
+}
+
+function itemsCommand(ctx: Context, args: ParsedArgs, targets: readonly Target[]): number {
+  const write = args.flags.has('write');
+  const result = syncItemTables(ctx, targets, write);
+  if (ctx.json) console.log(JSON.stringify(result, null, 2));
+  return result.failed > 0 || (args.flags.has('check') && !write && result.changed.length > 0)
+    ? EXIT.content : EXIT.ok;
 }
 
 function formatCommand(ctx: Context, args: ParsedArgs, targets: readonly Target[]): number {

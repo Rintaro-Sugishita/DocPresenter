@@ -7,47 +7,10 @@
 // reformatting on every keystroke would turn a one-cell change into a diff
 // across the whole table.
 
-import { displayWidth } from '@docpresenter/base';
+import { displayWidth, escapeCell, joinFields, splitFields } from '@docpresenter/base';
 import type { Align, Selector, TableFile } from './model.js';
 
-export { displayWidth };
-
-/** The fields of a grid line, padding included, `\|` kept as written. */
-export function splitFields(line: string): string[] {
-  const fields: string[] = [];
-  let current = '';
-  for (let i = 1; i < line.length; i++) {
-    const char = line[i]!;
-    if (char === '\\' && line[i + 1] === '|') { current += '\\|'; i++; continue; }
-    if (char === '|') { fields.push(current); current = ''; continue; }
-    current += char;
-  }
-  if (current.trim() !== '') fields.push(current);
-  return fields;
-}
-
-export function joinFields(fields: readonly string[]): string {
-  return `|${fields.join('|')}|`;
-}
-
-/** A literal pipe has to be escaped, and a cell is one line. */
-export function escapeCell(text: string): string {
-  return text.replace(/\|/g, '\\|').replace(/\r?\n/g, ' ');
-}
-
-/**
- * Substitutes one field, keeping the line's width where the new value fits.
- * A field shorter than the old one is padded back out; a longer one grows.
- */
-export function replaceField(line: string, index: number, text: string): string {
-  const fields = splitFields(line);
-  while (fields.length <= index) fields.push(' ');
-  const was = fields[index]!;
-  const written = ` ${escapeCell(text.trim())} `;
-  const room = displayWidth(was) - displayWidth(written);
-  fields[index] = room > 0 ? written + ' '.repeat(room) : written;
-  return joinFields(fields);
-}
+export { displayWidth, escapeCell, joinFields, replaceField, splitFields } from '@docpresenter/base';
 
 export function insertField(line: string, index: number, text: string): string {
   const fields = splitFields(line);

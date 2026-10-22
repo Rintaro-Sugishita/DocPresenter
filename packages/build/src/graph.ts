@@ -186,13 +186,13 @@ function walk(
       }
       if (!found.includes(target)) found.push(target);
 
-      // Only a document has imports of its own to follow. A drawing has one
-      // kind of reference — the image an overlay annotates — and it is followed
-      // here so that the image is not reported as a file nobody uses.
+      // Only a document has imports of its own to follow. A drawing reads two
+      // kinds of file — the image an overlay annotates, the table a screen's
+      // items are listed in — and they are followed here so that neither is
+      // reported as a file nobody uses.
       const included = MARKDOWN.test(target) ? parsed.get(target) : undefined;
       if (included) { visit(target, included); continue; }
-      const image = overlayImage(target, workspace);
-      if (image !== undefined && !found.includes(image)) found.push(image);
+      for (const read of drawingReads(target, workspace)) if (!found.includes(read)) found.push(read);
     }
     open.pop();
   };
@@ -201,17 +201,19 @@ function walk(
   return found;
 }
 
-/** The image a `.dgm` overlay annotates, if that is what the file is. */
-function overlayImage(path: string, workspace: Workspace): string | undefined {
-  if (!/\.dgm$/i.test(path)) return undefined;
+/** The files a `.dgm` reads besides its parts: an overlay's image, a screen's item table. */
+function drawingReads(path: string, workspace: Workspace): string[] {
+  if (!/\.dgm$/i.test(path)) return [];
   const source = workspace.read(path);
-  if (source === undefined) return undefined;
+  if (source === undefined) return [];
   try {
     const diagram = parseDiagram(source);
-    return diagram.image === undefined ? undefined : joinPath(path, diagram.image);
+    return [diagram.image, diagram.itemTable?.path]
+      .filter((one): one is string => one !== undefined)
+      .map(one => joinPath(path, one));
   } catch {
     // A drawing that will not parse is reported where it is rendered, with the
     // source beside it; failing the whole scan here would say less, later.
-    return undefined;
+    return [];
   }
 }

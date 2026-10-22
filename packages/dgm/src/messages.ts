@@ -34,6 +34,10 @@ export const CLI_MESSAGES = defineMessages({
   'cli.format.needed': '{path} は整形されていません',
   'cli.format.summaryWrite': '図 {count} 件のうち、整形したもの {changed} 件、読めないもの {failed} 件',
   'cli.format.summary': '図 {count} 件のうち、整形が要るもの {changed} 件、読めないもの {failed} 件',
+  'cli.items.synced': '{table} を {path} に合わせました',
+  'cli.items.needed': '{table} は {path} と揃っていません',
+  'cli.items.summaryWrite': '項目一覧のある画面 {count} 件のうち、表を合わせたもの {changed} 件、読めないもの {failed} 件',
+  'cli.items.summary': '項目一覧のある画面 {count} 件のうち、表を合わせる必要があるもの {changed} 件、読めないもの {failed} 件',
   'cli.dryRun': '（--write を付けると書き込みます）',
   'cli.new.needsPath': '作るファイルのパスを指定してください',
   'cli.new.onePath': '一度に作れるのは 1 つです',
@@ -50,6 +54,7 @@ export const CLI_MESSAGES = defineMessages({
   dgm export [<ファイル|フォルダ>...] [--to svg,png] [--out <dir>] [--flat]
   dgm check  [<ファイル|フォルダ>...] [--strict]
   dgm format [<ファイル|フォルダ>...] [--write] [--check]
+  dgm items  [<ファイル|フォルダ>...] [--write] [--check]
   dgm new    <ファイル> [--kind flow|free]
 
   ファイルとフォルダはいくつでも指定でき、フォルダは中の .dgm を全部扱います。
@@ -67,6 +72,9 @@ check:
 format:
       --write            書き換える（無ければ整形が要る図を挙げるだけ）
       --check            整形が要る図があれば終了コード 1 にする（CI 向け）
+items:                   画面の項目一覧（items "….table"）に、画面の項目を画面の順で並べる
+      --write            表を書き換える（無ければ揃っていない表を挙げるだけ）
+      --check            揃っていない表があれば終了コード 1 にする（CI 向け）
 new:                     新しい図を作る（既にあるファイルは上書きしない）
       --kind flow|free   矢印から並べる図か、置いた所に描く図か（既定 flow）
 
@@ -110,6 +118,10 @@ new:                     新しい図を作る（既にあるファイルは上�
   'cli.format.needed': '{path} is not formatted',
   'cli.format.summaryWrite': '{count} drawings: {changed} formatted, {failed} unreadable',
   'cli.format.summary': '{count} drawings: {changed} to format, {failed} unreadable',
+  'cli.items.synced': 'Matched {table} to {path}',
+  'cli.items.needed': '{table} does not match {path}',
+  'cli.items.summaryWrite': '{count} screens with an item table: {changed} tables matched, {failed} unreadable',
+  'cli.items.summary': '{count} screens with an item table: {changed} tables to match, {failed} unreadable',
   'cli.dryRun': '(add --write to write it)',
   'cli.new.needsPath': 'Name the file to make',
   'cli.new.onePath': 'Only one can be made at a time',
@@ -126,6 +138,7 @@ Usage:
   dgm export [<file|folder>...] [--to svg,png] [--out <dir>] [--flat]
   dgm check  [<file|folder>...] [--strict]
   dgm format [<file|folder>...] [--write] [--check]
+  dgm items  [<file|folder>...] [--write] [--check]
   dgm new    <file> [--kind flow|free]
 
   Name any number of files and folders; a folder means every .dgm in it.
@@ -143,6 +156,9 @@ check:
 format:
       --write            Rewrite the files (without it, only list the drawings to format)
       --check            Exit with 1 when a drawing is not formatted (for CI)
+items:                   List a screen's items in its item table (items "….table"), in the screen's order
+      --write            Rewrite the tables (without it, only list the tables that do not match)
+      --check            Exit with 1 when a table does not match (for CI)
 new:                     Make a new drawing (never over a file that is there)
       --kind flow|free   Laid out from its arrows, or drawn where shapes are put (flow when absent)
 

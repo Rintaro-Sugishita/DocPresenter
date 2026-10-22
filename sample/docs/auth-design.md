@@ -56,7 +56,7 @@ output: [html, pdf]
 
 @import "auth-design/login-screen.dgm" {#fig-login-design caption="ログイン画面（画面設計）"}
 
-画面項目の定義を @tbl-screen-items に示す。No は @fig-login-screen の丸番号に対応する。
+画面項目の定義を @tbl-screen-items に示す。No と必須の印は @fig-login-design の画面から付き（読む順に 1, 2, 3…）、@fig-login-screen の丸番号もこれに揃えてある。
 
 @import "auth-design/screen-items.table" {#tbl-screen-items caption="ログイン画面 項目定義"}
 

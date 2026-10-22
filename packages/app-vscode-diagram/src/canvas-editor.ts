@@ -7,7 +7,7 @@
 
 import { replaceBytes, unitsBefore } from '@docpresenter/base';
 import * as vscode from 'vscode';
-import { librariesUsed } from './dgm-language.js';
+import { itemTableOf, librariesUsed } from './dgm-language.js';
 import { hostLocale } from './l10n.js';
 import type { FromCanvas, ToCanvas } from './protocol.js';
 
@@ -41,6 +41,7 @@ export class CanvasEditorProvider implements vscode.CustomTextEditorProvider {
           await send('open');
           return;
         case 'edit': {
+          if (message.path !== undefined) { await editNamed(message.path, message); return; }
           const text = document.getText();
           // An edit made against an older text would land in the wrong place.
           if (text !== message.base) { await send('update'); return; }
@@ -62,7 +63,37 @@ export class CanvasEditorProvider implements vscode.CustomTextEditorProvider {
       }
     });
 
+    /**
+     * Writes an edit to a file the drawing names — its item table. It is one
+     * `WorkspaceEdit` like any other, so it is undone in that file, and the
+     * table's own editor shows it.
+     */
+    const editNamed = async (path: string, message: { start: number; end: number; text: string; base: string }): Promise<void> => {
+      const uri = vscode.Uri.joinPath(document.uri, '..', ...path.split('/'));
+      let target: vscode.TextDocument;
+      try {
+        target = await vscode.workspace.openTextDocument(uri);
+      } catch {
+        await send('update');
+        return;
+      }
+      const text = target.getText();
+      if (text !== message.base) { await send('update'); return; }
+      const edit = new vscode.WorkspaceEdit();
+      edit.replace(uri, new vscode.Range(
+        target.positionAt(unitsBefore(text, message.start)),
+        target.positionAt(unitsBefore(text, message.end))), message.text);
+      if (!await vscode.workspace.applyEdit(edit)) await send('update');
+    };
+
     const changed = vscode.workspace.onDidChangeTextDocument(event => {
+      // The item table, changed here or anywhere: its numbers and marks are drawn.
+      const table = itemTableOf(document.getText());
+      if (table !== undefined
+        && event.document.uri.toString() === vscode.Uri.joinPath(document.uri, '..', ...table.split('/')).toString()) {
+        void send('update');
+        return;
+      }
       if (event.document.uri.toString() !== document.uri.toString()) return;
       if (document.getText() === mine) { mine = undefined; return; }
       void send('update');

@@ -513,6 +513,12 @@ const lineSpan = (() => {
 check('table §7.1', '行は自分のバイト範囲を持つ（セルではなく行）',
   lineSpan === '| 会員 | 登録済みの利用者 |', JSON.stringify(lineSpan));
 
+const counted = parseTable(['| 項目 | No |', '|------|---:|', '| ID | # |', '| 補足 | — |', '| 名前 | # |'].join(NL));
+check('table §2.4', '# だけのセルは、その列の # の中で何番目かを表す',
+  counted.rows.map(row => row.cells[1].number ?? row.cells[1].text).join(',') === '1,—,2');
+check('table §2.4', '# のセルの文字は # のまま（番号はファイルに書かれない）',
+  counted.rows[2].cells[1].text === '#');
+
 // ───────────────────────── the samples still read ─────────────────────────
 import { readFileSync } from 'node:fs';
 for (const path of [

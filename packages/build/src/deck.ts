@@ -9,7 +9,7 @@
 
 import { parseDiagram, parseRuns, withParts, type Run } from '@docpresenter/diagram';
 import {
-  cellAt, columnWidths, describe, fencesOf, joinPath, parseTable, selectRows, sheetsOf, viewOf,
+  cellAt, columnWidths, describe, shownText, fencesOf, joinPath, parseTable, selectRows, sheetsOf, viewOf,
   type Block as DocBlock, type Cell, type DiffMarks, type DocumentFile,
   type MermaidView, type NumberedElement, type ResolvedDocument, type TableFile,
 } from '@docpresenter/markdown';
@@ -321,7 +321,7 @@ function tableOf(table: TableFile, source: string): Block {
       if (owner.row !== r) return covered('vertical');
       if (owner.column !== c) return covered('horizontal');
       return {
-        runs: parseRuns(owner.text) as Run[],
+        runs: parseRuns(shownText(owner)) as Run[],
         rowSpan: owner.rowspan, colSpan: owner.colspan, covered: 'none' as const,
         align: column.align === 'default' ? 'left' as const : column.align,
       };

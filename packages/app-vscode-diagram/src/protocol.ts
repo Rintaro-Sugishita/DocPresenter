@@ -16,8 +16,14 @@ export type ToCanvas =
 /** Canvas → host. */
 export type FromCanvas =
   | { readonly kind: 'ready' }
-  /** One edit, as a byte range of the source the canvas was drawing. */
-  | { readonly kind: 'edit'; readonly start: number; readonly end: number; readonly text: string; readonly base: string }
+  /**
+   * One edit, as a byte range of the source the canvas was drawing — or, with
+   * `path`, of the file the drawing names (its item table), as written in it.
+   */
+  | {
+    readonly kind: 'edit'; readonly start: number; readonly end: number; readonly text: string;
+    readonly base: string; readonly path?: string;
+  }
   /** Show the text, beside the canvas. */
   | { readonly kind: 'source' }
   | { readonly kind: 'error'; readonly message: string };

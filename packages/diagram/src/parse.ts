@@ -128,6 +128,7 @@ export function parseDiagram(source: string): DiagramFile {
 
   const comments: string[] = [];
   const uses: string[] = [];
+  let itemTable: { path: string; span: ByteSpan } | undefined;
   const parts = new Map<string, Part>();
   const partOf = new Map<string, string>();
   let partsBlock: Section | undefined;
@@ -158,6 +159,11 @@ export function parseDiagram(source: string): DiagramFile {
     // package's.
     const used = /^use\s+"([^"]+)"\s*$/.exec(text);
     if (used) { uses.push(used[1]!); continue; }
+
+    // `items "…"` names the table that lists this screen's items. Like a
+    // library, it is read by the host and applied with the parts.
+    const listed = /^items\s+"([^"]+)"\s*$/.exec(text);
+    if (listed) { itemTable = { path: listed[1]!, span: line.span }; continue; }
 
     const section = /^(free|flow|overlay|layout|style|parts)\b([^{]*)\{$/.exec(text);
     if (!section) throw new DiagramParseError(dgm('diagram.parse.unreadableLine', { text }), line.number);
@@ -209,7 +215,8 @@ export function parseDiagram(source: string): DiagramFile {
   if (!mode) throw new DiagramParseError(dgm('diagram.parse.noSection'), 1);
   return {
     mode, direction, comments, nodes, edges, body, layout, bends, containers, layoutBlock, styleBlock,
-    theme, style, styleSpans, image, callouts, uses, parts, partOf, partSizes: new Map(),
+    theme, style, styleSpans, image, callouts, uses, itemTable, itemLinks: undefined,
+    parts, partOf, partSizes: new Map(),
     // What the file can reach is known only once the parts are applied, which
     // needs a reader of other files. Until then a drawing offers nothing.
     library: new Map(),
@@ -293,11 +300,13 @@ function parseParts(body: readonly SourceLine[], out: Map<string, Part>): void {
     const written = rest.trim();
     const shape = shapeOf(written);
     if (!shape) throw new DiagramParseError(dgm('diagram.parse.unknownPartShape', { text: written }), source.number);
+    const words = wordsOf(written);
     out.set(named[1]!, {
       name: named[1]!, shape, style,
       width: sized === null ? undefined : Number(sized[1]),
       height: sized === null ? undefined : Number(sized[2]),
       span: source.span, group,
+      ...(words === '' ? {} : { text: words }),
     });
   }
 }
@@ -316,6 +325,16 @@ export function notationOf(shape: ShapeKind): string {
 }
 
 /** The shape a bracket pair means, with nothing inside it. */
+/** The words inside a shape as written: `必須` of `"必須"`. */
+function wordsOf(written: string): string {
+  for (const { open, close } of SHAPES) {
+    if (written.startsWith(open) && written.endsWith(close) && written.length >= open.length + close.length) {
+      return written.slice(open.length, written.length - close.length).trim();
+    }
+  }
+  return '';
+}
+
 function shapeOf(written: string): ShapeKind | undefined {
   if (LINE_SHAPE.test(written)) return 'line';
   for (const { open, close, shape } of SHAPES) {
