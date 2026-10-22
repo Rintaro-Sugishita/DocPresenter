@@ -35,12 +35,22 @@ export const CLI_MESSAGES = defineMessages({
   'cli.format.summaryWrite': '図 {count} 件のうち、整形したもの {changed} 件、読めないもの {failed} 件',
   'cli.format.summary': '図 {count} 件のうち、整形が要るもの {changed} 件、読めないもの {failed} 件',
   'cli.dryRun': '（--write を付けると書き込みます）',
+  'cli.new.needsPath': '作るファイルのパスを指定してください',
+  'cli.new.onePath': '一度に作れるのは 1 つです',
+  'cli.new.exists': '{path} はもうあります。上書きはしません',
+  'cli.new.badKind': '--kind は flow か free で指定してください: {value}',
+  'cli.new.made': '{path} を作りました',
+  'cli.name.empty': '名前が空です',
+  'cli.name.characters': '「{name}」にはファイル名に使えない文字があります（\\ : * ? " < > |）',
+  'cli.name.reserved': '「{name}」は Windows が予約している名前なので使えません',
+  'cli.name.ending': '「{name}」は空白か . で始まる・終わるので使えません',
   'cli.help.dgm': `dgm — .dgm の図を書き出す・確かめる・整形する
 
 使い方:
   dgm export [<ファイル|フォルダ>...] [--to svg,png] [--out <dir>] [--flat]
   dgm check  [<ファイル|フォルダ>...] [--strict]
   dgm format [<ファイル|フォルダ>...] [--write] [--check]
+  dgm new    <ファイル> [--kind flow|free]
 
   ファイルとフォルダはいくつでも指定でき、フォルダは中の .dgm を全部扱います。
   何も指定しなければ作業場全体です。
@@ -57,6 +67,8 @@ check:
 format:
       --write            書き換える（無ければ整形が要る図を挙げるだけ）
       --check            整形が要る図があれば終了コード 1 にする（CI 向け）
+new:                     新しい図を作る（既にあるファイルは上書きしない）
+      --kind flow|free   矢印から並べる図か、置いた所に描く図か（既定 flow）
 
 共通:
       --root <dir>       作業場のルート（既定は .docpresenter/ か .git のある所）
@@ -99,12 +111,22 @@ format:
   'cli.format.summaryWrite': '{count} drawings: {changed} formatted, {failed} unreadable',
   'cli.format.summary': '{count} drawings: {changed} to format, {failed} unreadable',
   'cli.dryRun': '(add --write to write it)',
+  'cli.new.needsPath': 'Name the file to make',
+  'cli.new.onePath': 'Only one can be made at a time',
+  'cli.new.exists': '{path} is already there; nothing is written over',
+  'cli.new.badKind': '--kind is flow or free: {value}',
+  'cli.new.made': 'Made {path}',
+  'cli.name.empty': 'The name is empty',
+  'cli.name.characters': '“{name}” has characters no file name can (\\ : * ? " < > |)',
+  'cli.name.reserved': '“{name}” is a name Windows keeps for itself',
+  'cli.name.ending': '“{name}” starts or ends with a space or a period',
   'cli.help.dgm': `dgm — export, check and format .dgm drawings
 
 Usage:
   dgm export [<file|folder>...] [--to svg,png] [--out <dir>] [--flat]
   dgm check  [<file|folder>...] [--strict]
   dgm format [<file|folder>...] [--write] [--check]
+  dgm new    <file> [--kind flow|free]
 
   Name any number of files and folders; a folder means every .dgm in it.
   Nothing named means the whole workspace.
@@ -121,6 +143,8 @@ check:
 format:
       --write            Rewrite the files (without it, only list the drawings to format)
       --check            Exit with 1 when a drawing is not formatted (for CI)
+new:                     Make a new drawing (never over a file that is there)
+      --kind flow|free   Laid out from its arrows, or drawn where shapes are put (flow when absent)
 
 Common:
       --root <dir>       The workspace root (the folder with .docpresenter/ or .git when absent)

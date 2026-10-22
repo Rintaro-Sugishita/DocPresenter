@@ -3,6 +3,7 @@
 //   dgm export [<file|folder>...] [--to svg,png] [--out <dir>] [--flat]
 //   dgm check  [<file|folder>...] [--strict]
 //   dgm format [<file|folder>...] [--write] [--check]
+//   dgm new    <file> [--kind flow|free]
 //
 // See design/build-model.md §6. Installed without the document side, it knows
 // only drawings; docpresenter runs the same commands for the .dgm files it is
@@ -10,7 +11,7 @@
 
 import { lastOf, listOf, parseArgs, type ArgSpec, type ParsedArgs } from './args.js';
 import {
-  checkDrawings, DRAWING_FORMATS, drawingJobs, drawingTheme, exportDrawings, formatDrawings, isDrawing,
+  checkDrawings, DRAWING_FORMATS, drawingJobs, drawingTheme, exportDrawings, formatDrawings, isDrawing, newDrawing,
   refuseUnknownFormats, reportFindings,
 } from './commands.js';
 import {
@@ -19,12 +20,12 @@ import {
 import type { PngOptions } from './drawing.js';
 import { CliError, EXIT } from './errors.js';
 import { outputPlan, refuseCollisions } from './output.js';
-import { collectTargets, findRoot, type Target } from './workspace.js';
+import { collectTargets, findRoot, newFile, type Target } from './workspace.js';
 
 /** Every option of every command, so one reading of the line serves them all. */
 export const DGM_SPEC: ArgSpec = {
   flags: [...COMMON_FLAGS, 'flat', 'strict', 'write', 'check'],
-  options: [...COMMON_OPTIONS, 'to', 'out', 'scale', 'background', 'chromium'],
+  options: [...COMMON_OPTIONS, 'to', 'out', 'scale', 'background', 'chromium', 'kind'],
   short: { ...COMMON_SHORT, t: 'to', o: 'out' },
 };
 
@@ -60,6 +61,11 @@ export async function runDgm(argv: readonly string[], from: string): Promise<num
       case 'export': return await exportCommand(ctx, args, root, targets(), from);
       case 'check': return checkCommand(ctx, args, targets());
       case 'format': return formatCommand(ctx, args, targets());
+      case 'new': {
+        if (paths.length > 1) throw new CliError('usage', 'cli.new.onePath');
+        newDrawing(ctx, newFile(paths[0], root, 'dgm'), lastOf(args, 'kind'));
+        return EXIT.ok;
+      }
       default: throw new CliError('usage', 'cli.unknownCommand', { command, name: 'dgm' });
     }
   } catch (error) {

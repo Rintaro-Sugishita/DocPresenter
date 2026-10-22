@@ -127,6 +127,15 @@ describe('dgm コマンド', () => {
     expect(existsSync(join(dir, 'out'))).toBe(false);
   });
 
+  it('new は雛形の図を作り、既にあるファイルは上書きしない', async () => {
+    const made = await run('new', join(dir, 'figs/login'));
+    expect(made.code).toBe(0);
+    expect(readFileSync(join(dir, 'figs/login.dgm'), 'utf8')).toMatch(/^flow \{[\s\S]*開始/);
+    expect((await run('check', join(dir, 'figs/login.dgm'))).code).toBe(0);
+    expect((await run('new', join(dir, 'figs/login.dgm'))).code).toBe(1);
+    expect((await run('new')).code).toBe(2);
+  });
+
   it('知らないコマンドは終了コード 2', async () => {
     expect((await run('draw')).code).toBe(2);
   });

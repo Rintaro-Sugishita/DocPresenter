@@ -6,6 +6,7 @@
 
 import { existsSync, readdirSync, statSync } from 'node:fs';
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
+import { nameProblem } from '@docpresenter/base';
 import { CliError } from './errors.js';
 
 /** Folders never walked into: tools', Git's, and where exports go. */
@@ -73,6 +74,28 @@ export function collectTargets(
     }
   }
   return [...found.values()].sort((a, b) => a.path.localeCompare(b.path));
+}
+
+/**
+ * Where a new file goes: the path given (from the current folder, the
+ * extension added when it was left off), checked to be inside the root, a name
+ * every platform accepts, and not there yet — nothing is ever written over.
+ */
+export function newFile(given: string | undefined, root: string, extension: string, cwd = process.cwd()): Target {
+  if (given === undefined || given.trim() === '') throw new CliError('usage', 'cli.new.needsPath');
+  const withExtension = new RegExp(`\\.${extension}$`, 'i').test(given) ? given : `${given}.${extension}`;
+  const file = resolve(cwd, withExtension);
+  const path = relative(root, file).split('\\').join('/');
+  if (path.startsWith('..') || isAbsolute(path)) {
+    throw new CliError('usage', 'cli.outsideRoot', { path: given, root });
+  }
+  const problem = nameProblem(path);
+  if (problem !== undefined) {
+    const part = path.split('/').find(one => nameProblem(one) === problem) ?? path;
+    throw new CliError('usage', `cli.name.${problem}`, { name: part });
+  }
+  if (existsSync(file)) throw new CliError('content', 'cli.new.exists', { path });
+  return { file, path, named: true };
 }
 
 /** Every file under the root, from it, with `/` — what a build reads. */

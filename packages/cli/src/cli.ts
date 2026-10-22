@@ -4,6 +4,9 @@
 //   docpresenter check  [<file|folder>...] [--strict]
 //   docpresenter format [<file|folder>...] [--write] [--check]
 //   docpresenter import <file.pptx|file.pdf>... [--write] [--into <review file>]
+//   docpresenter init   --title <title> [--name <name>] [--number <n> | --series <prefix>]
+//   docpresenter new doc <file> --title <title> [--number <n> | --series <prefix>]
+//   docpresenter new diagram <file> [--kind flow|free]
 //
 // See design/build-model.md §6. The .dgm files it is pointed at go through the
 // drawing side's own commands (@docpresenter/dgm), so `docpresenter export a.dgm`
@@ -16,7 +19,7 @@ import {
 } from '@docpresenter/build';
 import {
   CliError, collectTargets, COMMON_FLAGS, COMMON_OPTIONS, COMMON_SHORT, contextOf, describeCliError,
-  DRAWING_FORMATS, drawingJobs, drawingTheme, EXIT, exportDrawings, findingOf, findRoot, formatDrawings, isDrawing,
+  DRAWING_FORMATS, drawingJobs, drawingTheme, EXIT, exportDrawings, findingOf, findRoot, formatDrawings, isDrawing, newDrawing, newFile,
   lastOf, listOf, localeOf, outputFile, outputPlan, parseArgs, pngOptionsOf, refuseCollisions, refuseUnknownFormats,
   reportFindings, shown, versionOf, type ArgSpec, type Context, type Finding, type Job, type OutputPlan, type ParsedArgs,
   type Target,
@@ -28,6 +31,7 @@ import { pdfFonts } from './fonts.js';
 import { DOC_MESSAGES } from './messages.js';
 import { gitState, nodeWorkspace, previousVersion } from './node-workspace.js';
 import { asset, openMermaidPainter, openPdfWriter, type PdfWriter } from './pdf.js';
+import { initCommand, newDocumentCommand } from './setup.js';
 
 export const DOCUMENT_FORMATS = ['html', 'pdf', 'pptx'] as const;
 const isDocument = (path: string): boolean => /\.md$/i.test(path);
@@ -36,7 +40,7 @@ export const DOC_SPEC: ArgSpec = {
   flags: [...COMMON_FLAGS, 'flat', 'strict', 'write', 'check', 'no-review-notes'],
   options: [
     ...COMMON_OPTIONS, 'to', 'out', 'scale', 'background', 'chromium', 'font',
-    'diff-from', 'show-removed', 'into',
+    'diff-from', 'show-removed', 'into', 'title', 'name', 'number', 'series', 'kind',
   ],
   short: { ...COMMON_SHORT, t: 'to', o: 'out' },
 };
@@ -53,6 +57,19 @@ export async function runDocpresenter(argv: readonly string[], from: string): Pr
     const [command, ...paths] = args.positionals;
     if (args.flags.has('help') || command === 'help') { console.log(d('doc.help')); return EXIT.ok; }
     if (command === undefined) throw new CliError('usage', 'cli.noCommand', { name: 'docpresenter' });
+    if (command === 'init') {
+      if (paths.length > 0) throw new CliError('usage', 'doc.init.noPaths');
+      return initCommand(ctx, args, findRoot(lastOf(args, 'root'), []), from);
+    }
+    if (command === 'new') {
+      // `new doc <file>` / `new diagram <file>`: the root is found from where the file goes.
+      const [what, file, ...more] = paths;
+      if (more.length > 0) throw new CliError('usage', 'cli.new.onePath');
+      const root = findRoot(lastOf(args, 'root'), file === undefined ? [] : [dirname(resolve(file))]);
+      if (what === 'doc') return newDocumentCommand(ctx, args, root, file);
+      if (what === 'diagram') { newDrawing(ctx, newFile(file, root, 'dgm'), lastOf(args, 'kind')); return EXIT.ok; }
+      throw new CliError('usage', 'doc.new.what');
+    }
     const root = findRoot(lastOf(args, 'root'), paths);
     switch (command) {
       case 'export': return await exportCommand(ctx, args, root, paths, from);

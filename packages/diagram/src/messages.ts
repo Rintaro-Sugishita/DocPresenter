@@ -285,6 +285,10 @@ export const DIAGRAM_MESSAGES = defineMessages({
   'diagram.complete.weight': '線の太さ（単独の線だけ）',
   'diagram.complete.token': 'テーマが決める',
   'diagram.complete.callout': '次の注釈',
+  'diagram.starter.shape': 'ここに図形',
+  'diagram.starter.begin': '開始',
+  'diagram.starter.step': '処理',
+  'diagram.starter.finish': '終了',
 }, {
   'diagram.parse.unreadableLine': 'Cannot read this line: {text}',
   'diagram.parse.hyphenInId': 'An id cannot contain a hyphen (-), which connectors are made of; use _ or capitals instead: {id}',
@@ -554,6 +558,10 @@ export const DIAGRAM_MESSAGES = defineMessages({
   'diagram.complete.weight': 'Line weight (lines on their own only)',
   'diagram.complete.token': 'The theme decides',
   'diagram.complete.callout': 'The next callout',
+  'diagram.starter.shape': 'Shape here',
+  'diagram.starter.begin': 'Start',
+  'diagram.starter.step': 'Step',
+  'diagram.starter.finish': 'End',
 });
 
 export const dgm = DIAGRAM_MESSAGES.phrase;

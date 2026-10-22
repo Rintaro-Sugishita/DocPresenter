@@ -28,6 +28,19 @@ export const DOC_MESSAGES = defineMessages({
   'doc.import.replies': '{round}: 返信 {added} 件を追加（除いたもの {skipped} 件）',
   'doc.import.added': '{into}: {added} 件を追加（前に取り込んだので除いたもの {skipped} 件）',
   'doc.import.round': '{stem} へのレビュー',
+  'doc.title.needed': '--title で文書の題名を指定してください',
+  'doc.number.both': '--number と --series は一緒に指定できません',
+  'doc.number.empty': '文書番号が空です',
+  'doc.number.taken': '文書番号 {number} は {path} が使っています',
+  'doc.init.noPaths': 'init はパスを取りません。場所は --root で指定してください',
+  'doc.init.noGuide': '同梱の書き方の仕様書（init/guide.md）が見つかりません。npm run build:cli を実行してください',
+  'doc.init.made': '作成 {path}',
+  'doc.init.appended': '追記 {path}',
+  'doc.init.kept': 'そのまま {path}',
+  'doc.init.done': '作業場を用意しました（作成 {made} 件、追記 {appended} 件、そのまま {kept} 件）。最初の文書は {document}（文書番号 {number}）',
+  'doc.init.doneNoDocument': '作業場を用意しました（作成 {made} 件、追記 {appended} 件、そのまま {kept} 件）。文書はもうあるので、最初の文書は作っていません（--name で作れます）',
+  'doc.new.what': 'new のあとに doc か diagram を指定してください',
+  'doc.new.made': '{path} を作りました（文書番号 {number}）',
   'doc.help': `docpresenter — 設計書を書き出す・確かめる・整形する・取り込む
 
 使い方:
@@ -35,6 +48,9 @@ export const DOC_MESSAGES = defineMessages({
   docpresenter check  [<ファイル|フォルダ>...] [--strict]
   docpresenter format [<ファイル|フォルダ>...] [--write] [--check]
   docpresenter import <file.pptx|file.pdf>... [--write] [--into <reviews/x.review.yml>]
+  docpresenter init   --title <題名> [--name <名前>] [--number <番号> | --series <接頭辞>]
+  docpresenter new doc <ファイル> --title <題名> [--number <番号> | --series <接頭辞>]
+  docpresenter new diagram <ファイル> [--kind flow|free]
 
   ファイルとフォルダはいくつでも指定できます。何も指定しなければ作業場全体です。
   フォルダから拾う .md は output: を持つ文書だけです（部品の .md は書き出しません）。
@@ -59,6 +75,16 @@ format:                  .dgm を決まった形に整える
 import:                  .pptx は図への読み戻し、.pdf は注釈を指摘として取り込む
       --write            書き込む（無ければ書き込む中身を見せるだけ）
       --into <file>      新しい指摘を入れるレビューファイル（.pdf のとき）
+init:                    作業場を用意する（VS Code の「作業場を初期化する」と同じ。既にあるファイルは上書きしない）
+      --title <題名>     最初の文書の題名（最初の文書を作るときは必須）
+      --name <名前>      最初の文書のファイル名。docs/ に置く（既定 design）。文書がもうある作業場では、
+                         これを指定したときだけ最初の文書を作る
+new doc:                 文書と改訂履歴をテンプレートから作る（.docpresenter/templates/ があればそれを使う）
+      --title <題名>     題名（必須）
+      --number <番号>    文書番号。使われていれば断る
+      --series <接頭辞>  その系列の次の番号を採る（新しい系列なら 001）。どちらも無ければ一番多い系列の次
+new diagram:
+      --kind flow|free   矢印から並べる図か、置いた所に描く図か（既定 flow）
 
 共通:
       --root <dir>       作業場のルート（既定は .docpresenter/ か .git のある所）
@@ -94,6 +120,19 @@ import:                  .pptx は図への読み戻し、.pdf は注釈を指�
   'doc.import.replies': '{round}: {added} replies added ({skipped} left out)',
   'doc.import.added': '{into}: {added} added ({skipped} taken in before, left out)',
   'doc.import.round': 'Review of {stem}',
+  'doc.title.needed': 'Give the document a title with --title',
+  'doc.number.both': '--number and --series cannot be given together',
+  'doc.number.empty': 'The document number is empty',
+  'doc.number.taken': 'Document number {number} is taken by {path}',
+  'doc.init.noPaths': 'init takes no paths; name the place with --root',
+  'doc.init.noGuide': 'The shipped writing guide (init/guide.md) is missing; run npm run build:cli',
+  'doc.init.made': 'Made {path}',
+  'doc.init.appended': 'Added to {path}',
+  'doc.init.kept': 'Kept {path}',
+  'doc.init.done': 'The workspace is set up ({made} made, {appended} added to, {kept} kept). The first document is {document} (number {number})',
+  'doc.init.doneNoDocument': 'The workspace is set up ({made} made, {appended} added to, {kept} kept). It has documents already, so no first document was made (--name makes one)',
+  'doc.new.what': 'After new, say doc or diagram',
+  'doc.new.made': 'Made {path} (number {number})',
   'doc.help': `docpresenter — export, check, format and import design documents
 
 Usage:
@@ -101,6 +140,9 @@ Usage:
   docpresenter check  [<file|folder>...] [--strict]
   docpresenter format [<file|folder>...] [--write] [--check]
   docpresenter import <file.pptx|file.pdf>... [--write] [--into <reviews/x.review.yml>]
+  docpresenter init   --title <title> [--name <name>] [--number <n> | --series <prefix>]
+  docpresenter new doc <file> --title <title> [--number <n> | --series <prefix>]
+  docpresenter new diagram <file> [--kind flow|free]
 
   Name any number of files and folders. Nothing named means the whole workspace.
   From a folder, only the .md files with an output: are exported (not the parts).
@@ -125,6 +167,16 @@ format:                  Put .dgm drawings into their canonical form
 import:                  .pptx: read edited drawings back; .pdf: take annotations in as review comments
       --write            Write (without it, only show what would be written)
       --into <file>      The review file new comments go in (for .pdf)
+init:                    Set the workspace up (as VS Code's "Set Up This Folder"; nothing there is written over)
+      --title <title>    The first document's title (required when one is made)
+      --name <name>      The first document's file name, in docs/ (design when absent). In a workspace
+                         that has documents already, a first document is made only when this is given
+new doc:                 A document and its revision history from the templates (.docpresenter/templates/ when there)
+      --title <title>    Its title (required)
+      --number <n>       Its number; refused when taken
+      --series <prefix>  The next number of that series (001 for a new one). Without either, the next of the largest series
+new diagram:
+      --kind flow|free   Laid out from its arrows, or drawn where shapes are put (flow when absent)
 
 Common:
       --root <dir>       The workspace root (the folder with .docpresenter/ or .git when absent)

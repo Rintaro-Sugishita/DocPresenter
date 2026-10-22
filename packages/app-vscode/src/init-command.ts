@@ -4,7 +4,7 @@
 import * as vscode from 'vscode';
 import {
   TEAM_THEME, TEMPLATE_DOCUMENT, TEMPLATE_REVISION, documentPaths, planScaffold, type Shipped,
-} from './scaffold.js';
+} from '@docpresenter/build';
 import { hostLocale, t } from './l10n.js';
 import { SheetEditorProvider } from './sheet-editor.js';
 import { nameMessage, pickNumber, withoutExtension } from './document-command.js';

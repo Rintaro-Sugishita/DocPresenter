@@ -10,7 +10,7 @@ import * as vscode from 'vscode';
 import { documentNumberOf, firstNumber, numberSeries, suggestNumber } from '@docpresenter/markdown';
 import {
   TEMPLATE_DOCUMENT, TEMPLATE_REVISION, documentFiles, documentPaths, nameProblem,
-} from './scaffold.js';
+} from '@docpresenter/build';
 import { hostLocale, t } from './l10n.js';
 import { SheetEditorProvider } from './sheet-editor.js';
 

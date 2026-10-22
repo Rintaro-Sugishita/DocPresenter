@@ -45,4 +45,9 @@ writeFileSync(`${DOC}/mermaid-page.js`, await mermaidScript());
 // The subsetter the PDF's fonts are cut with: WebAssembly, which no bundle can inline.
 copyFileSync(createRequire(import.meta.url).resolve('harfbuzzjs/dist/harfbuzz-subset.wasm'),
   `${DOC}/harfbuzz-subset.wasm`);
-console.log(`${DOC}/docpresenter.mjs ＋ theme.css ＋ measure.js ＋ mermaid-page.js ＋ harfbuzz-subset.wasm を生成`);
+// What `init` writes into a workspace: the guide an agent writes by, and the
+// format specs it points to — the same files as the VS Code extension ships.
+mkdirSync(`${DOC}/init/spec`, { recursive: true });
+copyFileSync('packages/app-vscode/templates/guide.md', `${DOC}/init/guide.md`);
+for (const spec of ['dgm.md', 'table.md', 'inline-text.md']) copyFileSync(`spec/${spec}`, `${DOC}/init/spec/${spec}`);
+console.log(`${DOC}/docpresenter.mjs ＋ theme.css ＋ measure.js ＋ mermaid-page.js ＋ harfbuzz-subset.wasm ＋ init/ を生成`);

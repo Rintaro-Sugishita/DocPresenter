@@ -157,10 +157,6 @@ export const EDITOR_MESSAGES = defineMessages({
   'editor.undo.stale': '「{what}」のあとでファイルが書き換えられたため、取り消せない。履歴は消した',
   'editor.redo.stale': '「{what}」のあとでファイルが書き換えられたため、やり直せない。履歴は消した',
   'editor.starter.heading': '見出し {n}',
-  'editor.starter.shape': 'ここに図形',
-  'editor.starter.begin': '開始',
-  'editor.starter.step': '処理',
-  'editor.starter.finish': '終了',
 }, {
   'editor.commitKey.ctrl-enter': 'Ctrl+Enter commits / Enter breaks the line',
   'editor.commitKey.enter': 'Enter commits / Shift+Enter breaks the line',
@@ -310,10 +306,6 @@ export const EDITOR_MESSAGES = defineMessages({
   'editor.undo.stale': 'The file was changed after “{what}”, so it cannot be undone. The history is cleared',
   'editor.redo.stale': 'The file was changed after “{what}”, so it cannot be redone. The history is cleared',
   'editor.starter.heading': 'Heading {n}',
-  'editor.starter.shape': 'Shape here',
-  'editor.starter.begin': 'Start',
-  'editor.starter.step': 'Step',
-  'editor.starter.finish': 'End',
 });
 
 export const ed = EDITOR_MESSAGES.phrase;

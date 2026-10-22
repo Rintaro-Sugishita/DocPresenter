@@ -12,3 +12,4 @@ export * from './view/style.js';
 export * from './view/menu.js';
 export * from './view/swatches.js';
 export * from './view/toolbar.js';
+export * from './file-name.js';

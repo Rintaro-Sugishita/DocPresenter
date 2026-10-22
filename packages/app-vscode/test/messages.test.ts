@@ -7,7 +7,7 @@ import { checkMessages } from '@docpresenter/base';
 import { env } from 'vscode';
 import { hostLocale } from '../src/l10n.js';
 import { VSCODE_MESSAGES } from '../src/messages.js';
-import { planScaffold } from '../src/scaffold.js';
+import { planScaffold } from '@docpresenter/build';
 
 const read = (name: string): Record<string, string> =>
   JSON.parse(readFileSync(new URL(`../${name}`, import.meta.url), 'utf8')) as Record<string, string>;

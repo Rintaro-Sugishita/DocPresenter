@@ -2,37 +2,16 @@
 //
 // Every shell makes these files — where they go is the shell's business — but
 // what is in them is the same everywhere, so it is here, in the language the
-// editor is speaking.
+// editor is speaking. A drawing's own starter is the drawing side's
+// (`@docpresenter/diagram`), which the command line uses without the editor.
 
 import { DEFAULT_LOCALE, type Locale } from '@docpresenter/base';
+import { starterDiagram } from '@docpresenter/diagram';
 import { displayWidth } from '@docpresenter/markdown';
 import { EDITOR_MESSAGES } from './messages.js';
 import type { ResourceKind } from './view/sheet-view.js';
 
-/** The two ways a drawing is laid out: by its connections, or by hand. */
-export type DiagramKind = 'flow' | 'free';
-
-/**
- * A new drawing. A `flow` starts as a start, a step and an end joined up, laid
- * out from its connections; a `free` as one shape pinned where it stands.
- */
-export function starterDiagram(kind: DiagramKind, locale: Locale = DEFAULT_LOCALE): string {
-  const t = EDITOR_MESSAGES.in(locale);
-  if (kind === 'free') {
-    return `free {\n  a [${t('editor.starter.shape')}]\n}\n\nlayout {\n  a @ (40, 40) 160x60\n}\n`;
-  }
-  return [
-    'flow {',
-    `  begin  ([${t('editor.starter.begin')}])`,
-    `  step1  [${t('editor.starter.step')}]`,
-    `  finish ([${t('editor.starter.finish')}])`,
-    '',
-    '  begin --> step1',
-    '  step1 --> finish',
-    '}',
-    '',
-  ].join('\n');
-}
+export { starterDiagram, type DiagramKind } from '@docpresenter/diagram';
 
 export function starterResource(kind: ResourceKind, locale: Locale = DEFAULT_LOCALE): string {
   const t = EDITOR_MESSAGES.in(locale);

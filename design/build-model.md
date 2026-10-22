@@ -116,8 +116,8 @@ docs/auth-overview.md          ← ルート（output: [pptx]）
 
 ## 6. CLI
 
-**`export`・`check`・`format`・`import` は実装済み**（2026-10-22。`packages/dgm`・`packages/cli`、
-`npm run build:cli` で `media/` に束ねる）。`init`・`new` は未実装。開発用の `tools/*.mjs` は検査スクリプトが
+**`export`・`check`・`format`・`import`・`init`・`new` は実装済み**（2026-10-22。`packages/dgm`・`packages/cli`、
+`npm run build:cli` で `media/` に束ねる）。開発用の `tools/*.mjs` は検査スクリプトが
 使っているので残してあり、置き換えは後で行う。
 コマンドは **文書側の `docpresenter` と作図側の `dgm` の 2 つ**で、どちらもサブコマンドで分ける（パッケージは下の「パッケージ」）。
 当初案の `build` は **`export`** に改めた（形式を引数で選ぶのだから「書き出す」が正しく、VS Code のコマンド名とも揃う）。
@@ -179,10 +179,11 @@ docpresenter check [<ファイル|フォルダ>...] [--strict] [--json]
 |---|---|---|
 | `format <…> [--write] [--check]` | `.dgm` を決まった形に整える（[spec/dgm.md §6.3](../spec/dgm.md)）。`--check` は CI 向け | `tools/format-dgm.mjs` |
 | `import <file.pptx\|file.pdf>... [--write] [--into <x.review.yml>]` | `export` の逆。拡張子で決まる：PPTX は図への読み戻し、PDF は注釈を指摘として取り込む | `tools/pptx-back.mjs` / `tools/pdf-review.mjs` |
-| `init` | 作業場を用意する（VS Code の「作業場を初期化する」と同じ中身） | `packages/app-vscode/src/scaffold.ts` |
-| `new doc` / `new diagram` | 文書番号を採って文書を作る／図を作る | 同上 |
+| `init --title <題名> [--name <名前>] [--number <番号> | --series <接頭辞>]` | 作業場を用意する（VS Code の「作業場を初期化する」と同じ中身。`planScaffold`）。既にあるファイルは上書きせず「そのまま」と言う。**文書がもうある作業場では、`--name` を指定したときだけ最初の文書を作る**（もう一度走らせて guide や spec を戻すとき、`docs/design.md` を勝手に増やさない） | `packages/build/src/scaffold.ts`（VS Code と共有） |
+| `new doc <file> --title <題名> [--number | --series]` | 文書と改訂履歴をテンプレートから作る。番号は指定どおり（使われていれば断る）、`--series` ならその系列の次、どちらも無ければ一番多い系列の次 | 同上 |
+| `new diagram <file> [--kind flow|free]`（`dgm new` も同じ） | 雛形の図を作る（`starterDiagram`、作図のパッケージ） | `packages/diagram/src/starter.ts` |
 
-`init` と `new` は VS Code を使わない人のためのもので、優先度は低い。
+`init` と `new` は質問をしない。足りない引数は使い方の誤り（終了コード 2）、既にあるファイル・使われている番号は内容の誤り（1）。
 `index`（横断一覧）は本体が未実装なので見送る。`export --watch` も後回し。
 
 ### パッケージ（2026-10-22 決定）

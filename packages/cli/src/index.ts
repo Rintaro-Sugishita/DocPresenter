@@ -5,3 +5,4 @@ export * from './fonts.js';
 export * from './messages.js';
 export * from './node-workspace.js';
 export * from './pdf.js';
+export * from './setup.js';

@@ -18,6 +18,7 @@
     "@docpresenter/build": "*",
     "@docpresenter/dgm": "*",
     "@docpresenter/diagram": "*",
+    "@docpresenter/markdown": "*",
     "@docpresenter/pdf": "*",
     "playwright-core": "^1.63.0"
   }

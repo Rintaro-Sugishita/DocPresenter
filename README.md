@@ -194,8 +194,8 @@ Excel ファイル（.xlsx）の読み込みや書き出しはしない。代わ
 | `packages/app-vscode` | VS Code 拡張「DocPresenter」：設計書の編集画面・書き出し・レビューのコマンド。作図の拡張を拡張パックで一緒に入れる | 製品の一部 |
 | `packages/app-vscode-diagram` | VS Code 拡張「DocPresenter Diagram」：`.dgm` の色分け・入力候補・整形・キャンバス・SVG 書き出し（base ＋ diagram だけで作る） | **する** |
 | `packages/app-web` | Web の閲覧ページ：リポジトリの URL やこの PC のフォルダを開いて組版のまま読む・PDF を出す（サーバ無し） | 製品の一部 |
-| `packages/dgm` | コマンド `dgm`：`.dgm` の export（svg / png）・check・format（base ＋ diagram だけで作る） | **する**（`@docpresenter/dgm`） |
-| `packages/cli` | コマンド `docpresenter`：文書と図の export・check・format・import | **する**（`docpresenter`） |
+| `packages/dgm` | コマンド `dgm`：`.dgm` の export（svg / png）・check・format・new（base ＋ diagram だけで作る） | **する**（`@docpresenter/dgm`） |
+| `packages/cli` | コマンド `docpresenter`：文書と図の export・check・format・import・init・new | **する**（`docpresenter`） |
 
 ## 動かす
 
@@ -246,6 +246,9 @@ npx --no-install docpresenter check --root sample --strict
 npx --no-install docpresenter import out/build/docs/order-slides.pptx --root sample   # --write で書き込む
 npx --no-install dgm export sample/shared --root sample --to svg,png --background transparent
 npx --no-install dgm format --root sample --check
+npx --no-install docpresenter init --root ../my-docs --title "注文管理 設計書"   # 作業場を用意する（上書きしない）
+npx --no-install docpresenter new doc ../my-docs/docs/order/design --title "注文" --series SD-ORD-
+npx --no-install dgm new ../my-docs/docs/order/design/flow --kind flow
 ```
 
 ## 表示言語

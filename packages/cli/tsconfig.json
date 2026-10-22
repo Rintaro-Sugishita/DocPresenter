@@ -11,6 +11,7 @@
   "references": [
     { "path": "../base" },
     { "path": "../diagram" },
+    { "path": "../markdown" },
     { "path": "../pdf" },
     { "path": "../build" },
     { "path": "../dgm" }

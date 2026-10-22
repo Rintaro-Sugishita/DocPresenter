@@ -8,7 +8,7 @@ import { parseDiagram } from '@docpresenter/diagram';
 import { parseTable } from '@docpresenter/markdown';
 import {
   documentFiles, ensureNumber, planScaffold, renderTemplate, type ScaffoldAnswers, type Shipped,
-} from '../src/scaffold.js';
+} from '@docpresenter/build';
 
 const GUIDE = readFileSync(new URL('../templates/guide.md', import.meta.url), 'utf-8');
 const SHIPPED: Shipped = { guide: GUIDE, specs: { 'dgm.md': '# dgm\n', 'table.md': '# table\n' }, theme: 'body { color: #111 }\n' };

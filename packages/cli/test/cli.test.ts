@@ -1,9 +1,10 @@
 // docpresenter over folders made for each test. PDF and PNG need a browser,
 // so these stay with what does not: HTML, the choice of files, the refusals.
 
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, relative } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { checkMessages } from '@docpresenter/base';
 import { DOC_MESSAGES, runDocpresenter } from '../src/index.js';
@@ -129,6 +130,84 @@ describe('import', () => {
     give({ 'a.txt': '' });
     expect((await run('import', join(dir, 'a.txt'))).code).toBe(2);
     expect((await run('import')).code).toBe(2);
+  });
+});
+
+describe('init と new', () => {
+  /**
+   * What `init` ships beside the command (tools/build-cli.mjs puts it in
+   * media/), laid out in a package of its own so the test needs no build.
+   */
+  function shippedPackage(): string {
+    const pkg = join(dir, '.pkg');
+    const repo = new URL('../../../', import.meta.url);
+    const copy = (from: string, to: string) => {
+      mkdirSync(dirname(join(pkg, to)), { recursive: true });
+      writeFileSync(join(pkg, to), readFileSync(new URL(from, repo)));
+    };
+    copy('packages/app-vscode/templates/guide.md', 'media/init/guide.md');
+    for (const spec of ['dgm.md', 'table.md', 'inline-text.md']) copy(`spec/${spec}`, `media/init/spec/${spec}`);
+    copy('themes/default/theme.css', 'media/theme.css');
+    return pathToFileURL(join(pkg, 'dist', 'bin.js')).href;
+  }
+
+  async function runFrom(from: string, ...argv: string[]): Promise<{ code: number; said: string }> {
+    const said: string[] = [];
+    vi.spyOn(console, 'log').mockImplementation(line => { said.push(String(line)); });
+    vi.spyOn(console, 'error').mockImplementation(line => { said.push(String(line)); });
+    const code = await runDocpresenter([...argv, '--root', dir, '--lang', 'ja'], from);
+    vi.restoreAllMocks();
+    return { code, said: said.join('\n') };
+  }
+
+  it('init → new doc → new diagram → export が通しで動く', async () => {
+    const from = shippedPackage();
+    const init = await runFrom(from, 'init', '--title', '注文管理 設計書');
+    expect(init.code).toBe(0);
+    for (const path of ['docs/design.md', 'docs/design/revision.md', '.docpresenter/guide.md',
+      '.docpresenter/spec/dgm.md', '.docpresenter/themes/default/theme.css', 'shared/glossary.table', 'CLAUDE.md']) {
+      expect(existsSync(join(dir, path)), path).toBe(true);
+    }
+    expect(readFileSync(join(dir, 'docs/design.md'), 'utf8')).toMatch(/^document: DOC-001$/m);
+    expect(readFileSync(join(dir, '.gitignore'), 'utf8')).toBe('# DocPresenter の書き出し\nout/\n*.pdf\n*.pptx\n');
+
+    // 二度目は何も書かず、そのままと言う。文書がもうあるので、題名が無くても最初の文書は作らない。
+    const again = await runFrom(from, 'init');
+    expect(again.code).toBe(0);
+    expect(again.said).toContain('作成 0 件、追記 0 件');
+    expect(again.said).toContain('最初の文書は作っていません');
+
+    const made = await run('new', 'doc', join(dir, 'docs/order/design'), '--title', '注文', '--series', 'SD-ORD-');
+    expect(made.code).toBe(0);
+    expect(made.said).toContain('docs/order/design.md を作りました（文書番号 SD-ORD-001）');
+    const text = readFileSync(join(dir, 'docs/order/design.md'), 'utf8');
+    expect(text).toMatch(/^document: SD-ORD-001$/m);
+    expect(text).toContain('../../shared/');                     // {{root}} は 2 段上
+    expect(existsSync(join(dir, 'docs/order/design/revision.md'))).toBe(true);
+    expect((await run('new', 'doc', join(dir, 'docs/order/other.md'), '--title', 'x', '--series', 'SD-ORD-')).said)
+      .toContain('SD-ORD-002');
+
+    expect((await run('new', 'diagram', join(dir, 'docs/order/design/flow'), '--kind', 'free')).code).toBe(0);
+    expect(readFileSync(join(dir, 'docs/order/design/flow.dgm'), 'utf8')).toMatch(/^free \{/);
+
+    const exported = await run('export', '--to', 'html');
+    expect(exported.code).toBe(0);
+    expect(written()).toEqual(expect.arrayContaining(['out/build/docs/design.html', 'out/build/docs/order/design.html']));
+    expect((await run('check')).code).toBe(0);
+  });
+
+  it('使われている番号・既にあるファイル・題名なしは断る', async () => {
+    give({ 'docs/a.md': '---\ndocument: SD-A-001\n---\n# a\n', 'docs/b.dgm': 'flow {\n}\n' });
+    const taken = await run('new', 'doc', join(dir, 'docs/c'), '--title', 'c', '--number', 'SD-A-001');
+    expect(taken.code).toBe(1);
+    expect(taken.said).toContain('文書番号 SD-A-001 は docs/a.md が使っています');
+    expect((await run('new', 'doc', join(dir, 'docs/a'), '--title', 'a')).code).toBe(1);
+    expect((await run('new', 'doc', join(dir, 'docs/c'))).code).toBe(2);
+    expect((await run('new', 'diagram', join(dir, 'docs/b'))).code).toBe(1);
+    expect((await run('new', 'diagram', join(dir, 'docs/x'), '--kind', 'tree')).code).toBe(2);
+    expect((await run('new', 'doc', join(dir, 'docs/con'), '--title', 'c')).code).toBe(2);
+    expect((await run('new', 'table', join(dir, 'x'))).code).toBe(2);
+    expect(existsSync(join(dir, 'docs/c.md'))).toBe(false);
   });
 });
 

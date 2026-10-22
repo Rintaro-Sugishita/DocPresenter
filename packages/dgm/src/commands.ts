@@ -4,7 +4,9 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 import { describeError, say } from '@docpresenter/base';
-import { drawingProblems, formatDiagram, type DiagramFile, type DrawingProblem } from '@docpresenter/diagram';
+import {
+  drawingProblems, formatDiagram, starterDiagram, type DiagramFile, type DrawingProblem,
+} from '@docpresenter/diagram';
 import type { Context } from './context.js';
 import { assetFile } from './context.js';
 import { Painter, readDrawing, svgOf, type PngOptions } from './drawing.js';
@@ -178,6 +180,16 @@ export function reportFindings(ctx: Context, findings: readonly Finding[]): { er
     errors: findings.filter(one => one.severity === 'error').length,
     warnings: findings.filter(one => one.severity === 'warning').length,
   };
+}
+
+/** Writes a new drawing of the kind asked, from the starter every shell makes. */
+export function newDrawing(ctx: Context, target: Target, kind: string | undefined): void {
+  if (kind !== undefined && kind !== 'flow' && kind !== 'free') {
+    throw new CliError('usage', 'cli.new.badKind', { value: kind });
+  }
+  mkdirSync(dirname(target.file), { recursive: true });
+  writeFileSync(target.file, starterDiagram(kind ?? 'flow', ctx.locale));
+  ctx.say(ctx.t('cli.new.made', { path: target.path }));
 }
 
 export interface FormatResult {
