@@ -107,6 +107,15 @@ function mount(): void {
       send({ kind: 'create', path, text });
       return { path: inDocument(documentPath, path), text };
     },
+    // A figure's file, deleted once the document stopped naming it. Let go of
+    // here at once; the host gives it back if something else still uses it.
+    deleteResource: written => {
+      const path = here(written);
+      delete files[path];
+      delete images[path];
+      send({ kind: 'delete', path });
+      return undefined;
+    },
     // A screen's item table, made from the canvas. Held here as well as
     // written, like a new resource; one already there is kept as it is.
     createFile: (written, text) => {

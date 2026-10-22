@@ -172,6 +172,8 @@ const view = mountSheetView({
   readResource: p => FILES[inWorkspace(p)],
   createImage,
   createResource,
+  // 図表のファイルを消す。この見本ではメモリの上から消すだけ。
+  deleteResource: p => { delete FILES[inWorkspace(p)]; return undefined; },
   // 画面の項目一覧（表）を画面から作る。同じ名前のファイルが在れば、それを使う。
   createFile: (p, text) => {
     if (!(inWorkspace(p) in FILES)) FILES[inWorkspace(p)] = text;

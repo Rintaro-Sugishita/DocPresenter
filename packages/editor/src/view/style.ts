@@ -104,15 +104,18 @@ export const EDITOR_STYLE = `
 /* A figure's names: its file, its caption, its label. The button shows on the
    figure the pointer is over; the form is laid over the editor. */
 .dp-figure { position: relative; }
-.dp-figure-names {
-  position: absolute; top: 4px; right: 4px; z-index: 3;
-  font: 11px system-ui, sans-serif; color: #3a4048; cursor: pointer;
-  background: #fff; border: 1px solid #c9ced6; border-radius: 3px; padding: 2px 8px;
+.dp-figure-tools {
+  position: absolute; top: 4px; right: 4px; z-index: 3; display: flex; gap: 4px;
   opacity: 0; transition: opacity 0.12s;
 }
-.dp-figure:hover > .dp-figure-names, .dp-figure-names:focus-visible { opacity: 1; }
+.dp-figure:hover > .dp-figure-tools, .dp-figure-tools:focus-within { opacity: 1; }
+.dp-figure-names, .dp-figure-delete {
+  font: 11px system-ui, sans-serif; color: #3a4048; cursor: pointer;
+  background: #fff; border: 1px solid #c9ced6; border-radius: 3px; padding: 2px 8px;
+}
 .dp-figure-names:hover { border-color: #1f5fa8; color: #1f5fa8; }
-.dp-figure-names:focus-visible { outline: 2px solid #1f5fa8; outline-offset: 1px; }
+.dp-figure-delete:hover { border-color: #b3261e; color: #b3261e; }
+.dp-figure-names:focus-visible, .dp-figure-delete:focus-visible { outline: 2px solid #1f5fa8; outline-offset: 1px; }
 .dp-names-backdrop {
   position: fixed; inset: 0; z-index: 50; background: rgba(20, 24, 31, .35);
   display: flex; align-items: flex-start; justify-content: center; padding: 10vh 16px 0;
@@ -141,6 +144,12 @@ export const EDITOR_STYLE = `
   border: 1px solid #c9ced6; background: #f7f8fa; color: #3a4048;
 }
 .dp-names-buttons .dp-names-ok { background: #1f5fa8; border-color: #1f5fa8; color: #fff; }
+.dp-delete-path { margin: -6px 0 12px; color: #6b7280; font-family: ui-monospace, monospace; word-break: break-all; }
+.dp-delete-choice { display: flex; gap: 8px; align-items: flex-start; margin-bottom: 10px; cursor: pointer; }
+.dp-delete-choice input { margin-top: 3px; }
+.dp-delete-choice input:disabled + .dp-delete-words { color: #9aa1ab; }
+.dp-delete-warn { color: #8a5a00; background: #fdf6e3; border-radius: 3px; padding: 6px 8px; margin: 0 0 10px; }
+.dp-names-buttons .dp-names-ok.dp-delete-danger { background: #b3261e; border-color: #b3261e; }
 /* Review comments on the page: the words they are about, and the card that
    shows the comment under the pointer. A comment whose text changed since is
    drawn dashed, so it reads as "this may no longer apply". */
@@ -164,7 +173,7 @@ text.dp-review-svg, .dp-review-svg text { fill: #8a5a00; font-weight: 700; }
 .dp-review-changed { color: #8a5a00; margin-top: 4px; }
 .dp-review-reply { margin-top: 4px; padding-left: 8px; border-left: 3px solid #c3d3e6; color: #3a4048; white-space: pre-wrap; }
 /* Reading (the review mode): nothing on the page offers to change the file. */
-.dp-readonly .dp-append, .dp-readonly .dp-figure-names, .dp-readonly .dp-tab-add,
+.dp-readonly .dp-append, .dp-readonly .dp-figure-tools, .dp-readonly .dp-tab-add,
 .dp-readonly .dp-tab-close, .dp-readonly .dp-import-line, .dp-readonly .dp-mermaid-switch { display: none; }
 .dp-readonly .dp-editor-pane { cursor: text; }
 /* Copying a code block. In its header, beside the language. */

@@ -130,6 +130,8 @@ export const held = new Map<string, string>();
 /** Files written through `fs.writeFile` rather than through an edit. */
 export const written = new Map<string, Uint8Array>();
 export const saved: string[] = [];
+/** Files deleted through `fs.delete`, and whether to the bin. */
+export const trashed: { path: string; useTrash: boolean }[] = [];
 const watchers: { matches(path: string): boolean; fire(): void }[] = [];
 /** How the dialogs answer, for a test that drives a command. */
 export const picks: {
@@ -212,6 +214,13 @@ export const workspace = {
       // A folder is there when something is in it.
       if ([...held.keys(), ...written.keys()].some(one => one.startsWith(`${path}/`))) return { type: 2 };
       throw new Error(`no such file: ${path}`);
+    },
+    delete: async (uri: Uri, options: { useTrash?: boolean } = {}) => {
+      const path = relative(uri);
+      if (!held.has(path) && !written.has(path)) throw new Error(`no such file: ${path}`);
+      trashed.push({ path, useTrash: options.useTrash ?? false });
+      held.delete(path);
+      written.delete(path);
     },
     writeFile: async (uri: Uri, bytes: Uint8Array) => {
       written.set(relative(uri), bytes);
@@ -319,7 +328,7 @@ export const env = { language: 'ja', openExternal: async () => true };
 
 /** Sets up a workspace for one test. */
 export function give(files: Readonly<Record<string, string>>, config: Record<string, unknown> = {}): void {
-  held.clear(); written.clear(); open.clear(); saved.length = 0; shown.length = 0;
+  held.clear(); written.clear(); open.clear(); saved.length = 0; shown.length = 0; trashed.length = 0;
   picks.dialog = undefined; picks.save = undefined; picks.quick = undefined; picks.inputs = undefined; picks.refused.length = 0;
   changed.length = 0; configured.length = 0;
   configuration = config;

@@ -21,6 +21,8 @@ export const VSCODE_MESSAGES = defineMessages({
   'vscode.move.missing': '{path} が見つからない',
   'vscode.move.exists': '{path} はもうある',
   'vscode.move.failed': '{from} を {to} に移せなかった',
+  'vscode.delete.kept': '{path} はほかでも使われているので、ファイルは残した（{users}）',
+  'vscode.delete.failed': '{path} を消せなかった',
   'vscode.exportBar': '書き出し',
 
   // --- exporting -------------------------------------------------------------------
@@ -184,6 +186,8 @@ export const VSCODE_MESSAGES = defineMessages({
   'vscode.move.missing': '{path} was not found',
   'vscode.move.exists': '{path} already exists',
   'vscode.move.failed': 'Could not move {from} to {to}',
+  'vscode.delete.kept': '{path} is used elsewhere too, so the file was kept ({users})',
+  'vscode.delete.failed': 'Could not delete {path}',
   'vscode.exportBar': 'Export',
 
   'vscode.export.reading': 'Reading the workspace…',

@@ -141,7 +141,7 @@ function wrapWords(root: HTMLElement, words: string, key: string, state: AnchorS
   const pieces: { node: Text; offset: number }[] = [];
   let text = '';
   for (let node = walker.nextNode() as Text | null; node; node = walker.nextNode() as Text | null) {
-    if (node.parentElement?.closest('.dp-review-card, .dp-figure-names, .dp-code-head, .dp-mermaid-switch')) continue;
+    if (node.parentElement?.closest('.dp-review-card, .dp-figure-tools, .dp-code-head, .dp-mermaid-switch')) continue;
     const value = node.data;
     for (let i = 0; i < value.length; i += 1) {
       if (UNPRINTED.test(value[i]!)) continue;

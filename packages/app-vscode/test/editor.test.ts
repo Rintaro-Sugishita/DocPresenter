@@ -3,7 +3,7 @@ import { applyEdit, type Edit } from '@docpresenter/base';
 import { runBuild } from '../src/build-command.js';
 import { SheetEditorProvider } from '../src/sheet-editor.js';
 import type { FromView, ToView } from '../src/protocol.js';
-import { documentAt, give, held, picks, saved, shown, written } from './fake-vscode.js';
+import { documentAt, give, held, picks, saved, shown, trashed, written } from './fake-vscode.js';
 
 const DOC = [
   '# 認証機能 設計書',
@@ -136,6 +136,32 @@ describe('VS Code のカスタムエディタ', () => {
     expect(held.get('docs/overview.md')).toBe(OTHER.replace('auth/login.dgm', 'auth/login-flow.dgm'));
     expect(saved).toContain('docs/overview.md');
     expect(held.get('docs/design.md')).toBe(DOC);
+  });
+
+  it('図のファイルを消すと、ごみ箱へ移る', async () => {
+    const view = await open();
+    await view.say({ kind: 'ready' });
+    await view.say({ kind: 'delete', path: 'docs/auth/login.dgm' });
+    expect(held.has('docs/auth/login.dgm')).toBe(false);
+    expect(trashed).toEqual([{ path: 'docs/auth/login.dgm', useTrash: true }]);
+  });
+
+  it('ほかの文書や図が使っているファイルは消さずに残し、画面に返す', async () => {
+    const OTHER = '# 概要\n\n@import "auth/login.dgm"\n';
+    const view = await open({ 'docs/design.md': DOC, 'docs/auth/login.dgm': DGM, 'docs/overview.md': OTHER });
+    await view.say({ kind: 'ready' });
+    await view.say({ kind: 'delete', path: 'docs/auth/login.dgm' });
+    expect(held.get('docs/auth/login.dgm')).toBe(DGM);
+    expect(trashed).toEqual([]);
+    expect(shown.some(message => message.includes('docs/overview.md'))).toBe(true);
+    expect(view.sent.some(one => one.kind === 'file' && one.path === 'docs/auth/login.dgm')).toBe(true);
+
+    // 画面の項目一覧として名指している図も「使っている」
+    const SCREEN = 'items "../auth/login.table"\n\nfree {\n  a [A]\n}\n';
+    const again = await open({ 'docs/design.md': DOC, 'docs/auth/login.table': '| ID |\n|--|\n', 'docs/x/screen.dgm': SCREEN });
+    await again.say({ kind: 'ready' });
+    await again.say({ kind: 'delete', path: 'docs/auth/login.table' });
+    expect(held.has('docs/auth/login.table')).toBe(true);
   });
 
   it('移す先にもうファイルがあれば、何も変えずに断る', async () => {

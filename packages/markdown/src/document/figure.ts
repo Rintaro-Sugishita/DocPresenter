@@ -59,6 +59,26 @@ export interface FigureNames {
 }
 
 /**
+ * Takes out the `@import` line at `span`, with the blank lines that kept it
+ * apart from what follows — so the paragraphs either side end up one blank
+ * line apart, as they were before it was put there.
+ */
+export function removeImportLine(source: string, span: ByteSpan): Replacement {
+  const bytes = new TextEncoder().encode(source);
+  const NL = 10;
+  let start = span.start;
+  let end = span.end;
+  // The line break after it, and one blank line after that.
+  for (let breaks = 0; breaks < 2 && bytes[end] === NL; breaks++) end++;
+  // At the end of the file there is nothing after it to keep apart from, so
+  // the blank line before it goes instead.
+  if (end >= bytes.length) {
+    while (start > 0 && bytes[start - 1] === NL && bytes[start - 2] === NL) start--;
+  }
+  return { span: { start, end }, text: '' };
+}
+
+/**
  * Renames the figure whose `@import` line is at `span`.
  *
  * A new label is carried into every `@label` in the document that pointed at

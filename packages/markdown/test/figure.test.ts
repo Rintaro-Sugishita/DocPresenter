@@ -4,7 +4,7 @@
 import { describe, expect, it } from 'vitest';
 import { applyEdit, describeError } from '@docpresenter/base';
 import {
-  FigureNameError, parseDocument, renameFigure, retargetImports, setImportLabel, setImportPath,
+  FigureNameError, parseDocument, removeImportLine, renameFigure, retargetImports, setImportLabel, setImportPath,
   type FigureNames,
 } from '../src/index.js';
 
@@ -117,5 +117,24 @@ describe('ほかの文書の取り込み行', () => {
   it('同じフォルダの中なら ../ を付けない', () => {
     const [one] = retargetImports('@import "a/x.dgm"\n', 'docs/d.md', 'docs/a/x.dgm', 'docs/a/y.dgm');
     expect(one!.text).toBe('@import "a/y.dgm"');
+  });
+});
+
+describe('図を文書から外す', () => {
+  const at = (text: string, line: string) => {
+    const start = Buffer.from(text.slice(0, text.indexOf(line))).length;
+    return { start, end: start + Buffer.from(line).length };
+  };
+  const out = (text: string, line: string): string =>
+    applyEdit(text, { ...removeImportLine(text, at(text, line)), description: '' });
+
+  it('取り込み行と、その後ろの空行 1 つが消え、前後の段落は空行 1 つで並ぶ', () => {
+    const text = '前の段落。\n\n@import "a.dgm" {#fig-a}\n\n後の段落。\n';
+    expect(out(text, '@import "a.dgm" {#fig-a}')).toBe('前の段落。\n\n後の段落。\n');
+  });
+
+  it('文書の最後なら、前の空行が消える', () => {
+    const text = '前の段落。\n\n@import "a.dgm"\n';
+    expect(out(text, '@import "a.dgm"')).toBe('前の段落。\n');
   });
 });

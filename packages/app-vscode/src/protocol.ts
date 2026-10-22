@@ -120,6 +120,11 @@ export type FromView =
    * is rewritten by the editor, with a `change` that follows this message.
    */
   | { readonly kind: 'move'; readonly from: string; readonly to: string }
+  /**
+   * Delete a figure's file, as a workspace path, after the document stopped
+   * naming it. The host keeps a file another document or drawing still uses.
+   */
+  | { readonly kind: 'delete'; readonly path: string }
   | { readonly kind: 'error'; readonly message: string }
   /** A review comment made in the review mode, on a selection of the document. */
   | {

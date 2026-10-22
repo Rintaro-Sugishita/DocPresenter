@@ -238,6 +238,42 @@ export class SheetEditorProvider implements vscode.CustomTextEditorProvider {
       for (const other of others) await other.save();
     };
 
+    /**
+     * Deletes a figure's file, to the bin — unless something else still uses
+     * it: another document's `@import`, or a drawing's `use` / `items` / overlay
+     * image. Then it is kept, the author is told by whom, and the screen gets
+     * the file back.
+     */
+    const remove = async (path: string): Promise<void> => {
+      const uri = vscode.Uri.joinPath(root, ...path.split('/'));
+      const users: string[] = [];
+      for (const one of await vscode.workspace.findFiles('**/*.{md,dgm}', IGNORED)) {
+        if (one.toString() === document.uri.toString() || one.toString() === uri.toString()) continue;
+        const text = (await vscode.workspace.openTextDocument(one)).getText();
+        const at = pathOf(one);
+        let named: boolean;
+        if (at.toLowerCase().endsWith('.md')) {
+          try { named = retargetImports(text, at, path, path).length > 0; } catch { named = false; }
+        } else {
+          named = [...text.matchAll(/^\s*(?:use|items|overlay)\s+"([^"]+)"/gm)]
+            .some(found => inWorkspace(at, found[1]!) === path);
+        }
+        if (named) users.push(at);
+      }
+      if (users.length > 0) {
+        void vscode.window.showWarningMessage(`DocPresenter: ${t('vscode.delete.kept', { path, users: users.join(', ') })}`);
+        try {
+          post({ kind: 'file', path, text: new TextDecoder().decode(await vscode.workspace.fs.readFile(uri)) });
+        } catch { /* 読めなければ戻すものも無い */ }
+        return;
+      }
+      try {
+        await vscode.workspace.fs.delete(uri, { useTrash: true });
+      } catch {
+        void vscode.window.showErrorMessage(`DocPresenter: ${t('vscode.delete.failed', { path })}`);
+      }
+    };
+
     // Messages that change files are handled one at a time, in the order they
     // were sent: a rename and the document edit after it touch the same lines.
     // Answers to the host's own questions are not queued — an export waits for
@@ -262,6 +298,7 @@ export class SheetEditorProvider implements vscode.CustomTextEditorProvider {
         }
         if (message.kind === 'change') { await inTurn(() => apply(message)); return; }
         if (message.kind === 'move') { await inTurn(() => move(message.from, message.to)); return; }
+        if (message.kind === 'delete') { await inTurn(() => remove(message.path)); return; }
         if (message.kind === 'review-update') {
           await inTurn(async () => {
             const refused = await updateNote(root, message.round, message.id, {

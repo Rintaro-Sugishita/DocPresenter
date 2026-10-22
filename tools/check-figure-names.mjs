@@ -66,7 +66,7 @@ const figure = '.dp-sheet:not([hidden]) .dp-figure[data-path="auth-design/login-
 await page.click('.dp-tab:has-text("ログイン機能")');
 await page.waitForTimeout(300);
 await page.hover(`${figure} .dp-figure-body`);
-const button = page.locator(`${figure} > .dp-figure-names`);
+const button = page.locator(`${figure} > .dp-figure-tools > .dp-figure-names`);
 check('図に乗ると「名前・題・ラベル」が出る', await button.isVisible());
 await button.click();
 await page.waitForSelector('.dp-names');

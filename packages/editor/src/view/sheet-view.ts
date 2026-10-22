@@ -7,7 +7,7 @@
 
 import {
   PICTURE, importAttribute, isAddress, joinPath, labelPrefixFor, parseDocument, parseTable,
-  renameFigure, setFenceView, setImportAttribute, sheetsOf, viewOf, type MermaidView, type Sheet,
+  removeImportLine, renameFigure, setFenceView, setImportAttribute, sheetsOf, viewOf, type MermaidView, type Sheet,
   enterInList, indentListItems, labelCandidates, type TextChange,
 } from '@docpresenter/markdown';
 import { createSuggestions } from './suggest.js';
@@ -31,6 +31,7 @@ import { DIAGRAM_STYLE } from '@docpresenter/diagram';
 import { createToolbar } from '@docpresenter/base';
 import { mountPicture, type Align, type PictureControls } from './picture.js';
 import { openFigureNames, type FigureNamesForm } from './figure-names.js';
+import { openFigureDelete, type FigureDeleteForm } from './figure-delete.js';
 import { createHistory, redoing, undoKey, undoing, type History } from '../history.js';
 
 export interface SheetViewOptions {
@@ -88,6 +89,13 @@ export interface SheetViewOptions {
    * file name of a figure is shown but cannot be changed.
    */
   readonly moveResource?: ((from: string, to: string) => string | undefined) | undefined;
+  /**
+   * Deletes the file behind a figure, as the document writes it, after the
+   * document has stopped naming it. Returns why it could not, or undefined.
+   * A host keeps a file something else still uses. Without it a figure can
+   * leave the document but its file cannot be deleted from here.
+   */
+  readonly deleteResource?: ((path: string) => string | undefined) | undefined;
   /**
    * Whether figures offer their names for changing. Off where the document on
    * screen is not a file — a drawing opened on its own — so there is no line
@@ -155,6 +163,8 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
   let pictureControls: PictureControls | undefined;
   /** The form for a figure's file name, caption and label, while it is open. */
   let namesForm: FigureNamesForm | undefined;
+  /** The question asked before a figure is taken out, while it is open. */
+  let deleteForm: FigureDeleteForm | undefined;
   let grid: { path: string; at: GridPosition; target: string } | undefined;
   let mounted: Grid | undefined;
   /** The diagram open for direct manipulation, and the shapes picked in it. */
@@ -571,7 +581,68 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
       event.stopPropagation();
       openNames(figure);
     });
-    figure.prepend(button);
+    // Taking it out is one button and a question, not two buttons: which of
+    // the two the author meant is asked when it matters.
+    const remove = element('button', 'dp-figure-delete') as HTMLButtonElement;
+    remove.type = 'button';
+    remove.textContent = t('editor.delete.button');
+    remove.title = t('editor.delete.buttonTitle');
+    remove.addEventListener('click', event => {
+      event.preventDefault();
+      event.stopPropagation();
+      openDelete(figure);
+    });
+    const tools = element('span', 'dp-figure-tools');
+    tools.append(button, remove);
+    figure.prepend(tools);
+  }
+
+  /**
+   * Asks whether the figure leaves only this document or its file goes too,
+   * and does that: the `@import` line out of the document as one edit, and
+   * the file, when asked, by the host — which keeps a file another document
+   * or drawing still uses, and says so.
+   */
+  function openDelete(figure: HTMLElement): void {
+    const span = spanOf(figure);
+    const path = figure.dataset['path'];
+    if (!span || !path) return;
+    endEdit(true);
+    namesForm?.close();
+    const line = sliceBytes(source, span.start, span.end);
+    const label = /\{[^}]*#([A-Za-z0-9_-]+)/.exec(line)?.[1];
+    const rest = sliceBytes(source, 0, span.start) + sliceBytes(source, span.end, byteLength(source));
+    const referred = label === undefined ? 0
+      : rest.split(`@${label}`).length - 1;
+    const twice = rest.includes(`@import "${path}"`);
+    const fileFixed = isAddress(path) ? t('editor.figure.fixedAddress')
+      : options.deleteResource === undefined ? t('editor.delete.fileHere')
+        : twice ? t('editor.delete.fileTwice') : undefined;
+
+    deleteForm = openFigureDelete({
+      owner,
+      root,
+      locale: settings.locale,
+      path,
+      fileFixed,
+      referred,
+      label,
+      onClose: () => { deleteForm = undefined; },
+      onChoose: choice => {
+        if (grid?.path === path) grid = undefined;
+        if (canvas?.path === path) canvas = undefined;
+        if (picture?.path === path) picture = undefined;
+        const removed = removeImportLine(source, span);
+        commit(() => ({
+          ...removed,
+          ...described(ed(choice === 'file' ? 'editor.did.deleteFile' : 'editor.did.deleteReference', { path })),
+        }), active);
+        // The document no longer names it, so taking the line back is all an
+        // undo can do here; the file goes to the host's bin.
+        if (choice === 'file') return options.deleteResource?.(path);
+        return undefined;
+      },
+    });
   }
 
   /**
@@ -955,7 +1026,7 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
     // Reading: the press is the browser's, which is how text gets selected.
     if (readOnly) return;
     // The switch on a Mermaid block is a button, not a way into the text.
-    if ((event.target as HTMLElement | null)?.closest('.dp-mermaid-switch, .dp-code-copy, .dp-figure-names')) return;
+    if ((event.target as HTMLElement | null)?.closest('.dp-mermaid-switch, .dp-code-copy, .dp-figure-tools')) return;
     // A right press on a figure is for its menu. Opening the caption or the
     // drawing under it first would replace the element the menu belongs to.
     if (event.button === 2) {
@@ -1536,6 +1607,7 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
         // Whatever was open is put away first, so nothing typed is lost.
         endEdit(true);
         namesForm?.close();
+        deleteForm?.close();
         grid = undefined;
         canvas = undefined;
         picture = undefined;
@@ -1561,6 +1633,7 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
       owner.removeEventListener('paste', onPaste);
       pictureControls?.destroy();
       namesForm?.close();
+      deleteForm?.close();
       root.replaceChildren();
       root.classList.remove('dp-editor');
     },
