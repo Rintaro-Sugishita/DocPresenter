@@ -1225,7 +1225,9 @@ export function createCanvas(options: CanvasOptions): Canvas {
   /** What can be done about the screen's item table as a whole, if anything. */
   function tableItems(): MenuItem[] {
     if (file.itemTable !== undefined) return options.itemSource !== undefined ? [syncItem()] : [];
-    if (options.newItemTable === undefined || file.mode !== 'free' || itemShapes(file).size === 0) return [];
+    // Offered for any screen, items or not yet: a table made before the
+    // items are drawn fills as they are, with "match".
+    if (options.newItemTable === undefined || file.mode !== 'free') return [];
     return [{ label: t('diagram.canvas.makeItemTable'), run: makeItemTable }];
   }
 

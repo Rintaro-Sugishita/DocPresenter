@@ -79,6 +79,15 @@ describe('the item table a screen names', () => {
     ]);
   });
 
+  // A screen drawn with no library holds the shipped pictures themselves.
+  it('takes a shipped picture of a control as an item, with no library', () => {
+    const plain = 'free {\n  part1 "選択"\n  logo [ロゴ]\n  rule "x"\n}\n\nstyle {\n'
+      + '  part1 { icon: ui/check-on }\n  rule { icon: ui/scrollbar-v }\n}\n';
+    const file = withParts(parseDiagram(plain), () => undefined);
+    expect([...itemShapes(file)]).toEqual([['part1', '入力']]);
+    expect(newItemTable(file)).toMatch(/\| 入力 +\| # +\| part1 +\| 選択 +\|/);
+  });
+
   // A library that restyles a button has not said it stopped being one.
   it('keeps a part an item when a library restyles it', () => {
     const library = 'use "default"\n\nparts {\n  primary ( ) { fill: #000000 } 200x30\n}\n';

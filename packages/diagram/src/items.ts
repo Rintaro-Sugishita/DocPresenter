@@ -70,6 +70,12 @@ const ALIGN: Readonly<Record<string, 'left' | 'center' | 'right'>> = {
   '中央': 'center', '中': 'center', '中央寄せ': 'center', 'center': 'center', 'centre': 'center',
   '右': 'right', '右寄せ': 'right', 'right': 'right',
 };
+/** The shipped pictures of controls, and the kind of item each is. */
+const PICTURE_ITEMS: Readonly<Record<string, string>> = {
+  'ui/check': '入力', 'ui/check-on': '入力', 'ui/radio': '入力', 'ui/radio-on': '入力',
+  'ui/select': '入力', 'ui/spinner': '入力', 'ui/slider': '入力',
+  'ui/grid': '表示', 'ui/list': '表示', 'ui/tree': '表示', 'ui/menu': '操作',
+};
 /** A shape written as an item turns that off with this. */
 const NOT_AN_ITEM = 'none';
 
@@ -156,7 +162,11 @@ export function readingOrder(diagram: DiagramFile): readonly string[] {
 export function itemShapes(diagram: DiagramFile): ReadonlyMap<string, string> {
   const found = new Map<string, string>();
   for (const node of diagram.nodes) {
-    const kind = diagram.style.get(node.id)?.get('item');
+    const rule = diagram.style.get(node.id);
+    // A screen drawn with no library holds the shipped pictures themselves
+    // (`{ icon: ui/check-on }`), and a check box is an item however it was put
+    // there. The library's word wins where it says one.
+    const kind = rule?.get('item') ?? PICTURE_ITEMS[rule?.get('icon') ?? ''];
     if (kind !== undefined && kind !== NOT_AN_ITEM && kind.trim() !== '') found.set(node.id, kind.trim());
   }
   return found;
