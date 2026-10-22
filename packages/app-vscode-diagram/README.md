@@ -81,9 +81,7 @@ Command Palette, or right-click a `.dgm` in the Explorer) or VS Code's own **"Fo
   route, which of two overlapping shapes is in front. Where reading order would move a shape, the shapes keep the
   order they were written in, and a notification says so.
 - The command saves the drawing (unless it had unsaved changes); "Format Document" leaves saving to you.
-- From the command line: `node tools/format-dgm.mjs --in <workspace>` lists what would change, `--write` writes it,
-  and `--check` fails (exit code 1) when a drawing is not formatted — for a CI job. The rules are in
-  [spec/dgm.md §6.3](https://github.com/Rintaro-Sugishita/DocPresenter/blob/HEAD/spec/dgm.md).
+- The rules are in [spec/dgm.md §6.3](https://github.com/Rintaro-Sugishita/DocPresenter/blob/HEAD/spec/dgm.md).
 
 ## Exporting SVG
 
@@ -102,10 +100,3 @@ of, so `a-->b` always reads as a connection from `a` to `b`.
 
 It follows VS Code's display language: Japanese when VS Code is in Japanese, English otherwise. This page is in
 English whatever the display language; the Japanese version is linked at the top.
-
-## Building and packaging
-
-Built and packed together with DocPresenter: see
-[its README](https://github.com/Rintaro-Sugishita/DocPresenter/blob/HEAD/packages/app-vscode/README.md#building).
-The canvas is built from the drawing package alone (`@docpresenter/base` and `@docpresenter/diagram`), with nothing of
-the document side in it.

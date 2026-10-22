@@ -220,7 +220,8 @@ node tools/build.mjs --in sample   # サンプルをビルド     → out/build/
 node tools/build.mjs --in sample --diff-from HEAD~3   # 前の版からの変更に印を付ける
 node tools/check.mjs --in sample   # 書き出さずに全部確かめる（エラーがあれば終了コード 1、--strict なら警告でも）
 node tools/format-dgm.mjs --in sample   # 整形が要る図を挙げる（--write で書き換え、--check なら終了コード 1）
-node tools/pptx-back.mjs out/build/auth-overview.pptx --in sample   # 直された図を読み戻す
+node tools/pptx-back.mjs out/build/auth-overview.pptx --in sample   # 直された図を読み戻す（--write で書き込む）
+node tools/pdf-review.mjs <pdf> --in sample   # PDF の注釈を指摘として取り込む（--write で書き込む）
 
 node tools/build-vscode.mjs        # VS Code 拡張（2 つ）     → packages/app-vscode/media/ と packages/app-vscode-diagram/media/
 node tools/build-web-viewer.mjs    # Web の閲覧ページ         → out/web/（GitHub Pages に置ける）
@@ -242,7 +243,9 @@ UI は日本語と英語。[決め方は決定事項 §9.4](design/decisions.md)
 CI で成果物の言語を揃えたいときは `--lang` で固定する。
 
 文言を足すときは、そのパッケージの `src/messages.ts` に日本語と英語を並べて書く。
-英語が抜けていればテスト（`checkMessages`）が落ちる。
+英語が抜けていればテスト（`checkMessages`）が落ちる。VS Code 拡張の `package.json` の文言は
+`package.nls.json`（英語）と `package.nls.ja.json`（日本語）に書き、編集画面（WebView）には `open` メッセージの
+`locale` で同じ言語を渡す。拡張機能の README は表示言語にかかわらず英語版が表示されるので、日本語版を冒頭からリンクしている。
 
 ## VS Code で使う
 
@@ -250,17 +253,24 @@ CI で成果物の言語を揃えたいときは `--lang` で固定する。
 DocPresenter を入れると、拡張パックとして DocPresenter Diagram も一緒に入る。
 
 ```
-npx tsc --build && node tools/build-vscode.mjs     # 2 つとも media/ に束ねる
-cd packages/app-vscode-diagram && npx @vscode/vsce package --no-dependencies && cd ../..
-cd packages/app-vscode && npx @vscode/vsce package --no-dependencies && cd ../..
-code --install-extension packages/app-vscode-diagram/docpresenter-diagram-0.1.0.vsix   # 作図の拡張を先に
-code --install-extension packages/app-vscode/docpresenter-0.1.0.vsix
+npx tsc --build                  # 型検査（2 つの拡張機能を含む）
+node tools/build-vscode.mjs      # 両方を出力：packages/app-vscode/media/（extension.cjs ＋ webview.js ＋ exporter.js ＋ theme.css
+                                 # ＋ mermaid-page.js ＋ harfbuzz-subset.wasm）と packages/app-vscode-diagram/media/（extension.cjs ＋ canvas.js ＋ theme.css）
+
+tools\package-vscode.bat            # ビルドして out\vsix\ に docpresenter-<バージョン>.vsix と docpresenter-diagram-<バージョン>.vsix を作成する
+tools\package-vscode.bat install    # 作成したうえで、この PC の VS Code に両方をインストールする
+code --install-extension out\vsix\docpresenter-diagram-0.1.0.vsix   # 別の PC では、作図の拡張を先に入れ、
+code --install-extension out\vsix\docpresenter-0.1.0.vsix           # 次にこちらを入れる（パックが作図の拡張を名指しするため）
 ```
+
+DocPresenter Diagram のキャンバスは作図のパッケージ（`@docpresenter/base` と `@docpresenter/diagram`）だけから作り、
+文書側のものは何も含まない。
 
 新しいリポジトリでは「DocPresenter: 作業場を初期化する」で、推奨のフォルダ・最初の文書・エージェント向けの書き方の仕様書（`.docpresenter/guide.md`）が揃う。
 `.md` を開いて「DocPresenter: この文書を開く」。編集は **1 操作 ＝ 1 つのバイト範囲**の
 `WorkspaceEdit` として渡すので、**取り消し・未保存の点・git の差分は VS Code のものがそのまま効く**。
-開発中はリポジトリを VS Code で開いて **F5**（起動の前に `npm run build:vscode` が走る）。
+開発中はリポジトリを VS Code で開いて **F5**（起動の前に `npm run build:vscode` が走り、2 つの拡張機能を読み込んで
+`sample/` を開いた開発用ウィンドウが起動する）。
 開いた文書の上にある **「書き出し: HTML / PDF / PPTX」** のボタンで、その文書を `out/build` に書き出せる。
 `output:` を持つ文書をまとめて書き出すコマンド（各文書の指定どおり／形式を選んで）もある。
 エクスプローラーで `.md` を右クリックすると「DocPresenter で開く」、`.dgm` を右クリックすると

@@ -315,8 +315,7 @@ PPTX に出力した図は、PowerPoint で修正したあと**元の `.dgm` に
 | 本文の文字を修正した | ✗（反映するのは図だけ） |
 
 - PPTX を読み込んでから書き戻すまでの間に図が変更されていた場合（未保存の変更を含む）、その図は書き戻さず、図の名前を表示する。
-- 実際の PowerPoint（Microsoft 365）で保存し直したファイルで動作を確認している。コマンドラインでは
-  `node tools/pptx-back.mjs <deck.pptx> --in <作業場>` で実行できる（`--write` を付けると書き込む）。
+- 実際の PowerPoint（Microsoft 365）で保存し直したファイルで動作を確認している。
 
 ## PDF に書かれた指摘を取り込む
 
@@ -340,8 +339,6 @@ PPTX に出力した図は、PowerPoint で修正したあと**元の `.dgm` に
   （指摘は該当語句のハイライト、回答はその返信として表示される）。顧客は PDF で回答を読み、その注釈に返信して送り返せばよい。
   取り込むと、返信は**元の指摘の下**の `replies:` に追加される。PDF に載せていた指摘と回答が二重に取り込まれることはない。
 - 納品用など、指摘を載せたくない PDF を出力するときは、設定 `docpresenter.pdfReviewNotes` をオフにしてから出力する。
-- コマンドラインでは `node tools/pdf-review.mjs <pdf> --in <作業場> [--write]` で実行できる。
-
 ## コードと Mermaid
 
 - コードブロックは、言語名（` ```sql ` など）に応じて色分けされ、ブロックの上に言語名が表示される。DocPresenter の画面では、
@@ -376,43 +373,19 @@ PPTX に出力した図は、PowerPoint で修正したあと**元の `.dgm` に
 | テキスト（色分けなし） | `plaintext` `text` `txt` |
 | Mermaid（図として表示） | `mermaid` |
 
-## ビルド
-
-```
-npx tsc --build                  # 型検査（2 つの拡張機能を含む）
-node tools/build-vscode.mjs      # 両方を出力：ここの media/（extension.cjs ＋ webview.js ＋ exporter.js ＋ theme.css ＋ mermaid-page.js
-                                 # ＋ harfbuzz-subset.wasm）と packages/app-vscode-diagram/media（extension.cjs ＋ canvas.js ＋ theme.css）
-```
-
 ## 表示言語
 
 **VS Code の表示言語に従う。** VS Code が日本語なら日本語、それ以外なら英語で表示される。対象は、コマンド名・設定の説明・通知・
 編集画面のほか、出力した文書の表紙や目次にも及ぶ。言語の切り替えは VS Code の「Configure Display Language」で行い、
 この拡張機能に専用の設定はない。
 
-- 拡張機能本体の文言は `src/messages.ts` に、`package.json` の文言は `package.nls.json`（英語）と `package.nls.ja.json`（日本語）に書く。
-- 編集画面（WebView）には、`open` メッセージの `locale` で同じ言語を渡す。
 - 「作業場を初期化する」で作成する最初の文書・用語集・`CLAUDE.md` への追記も、表示言語に合わせた言語で書かれる
   （`.docpresenter/guide.md` は今のところ日本語のみ）。
-
-## 試す
-
-リポジトリを VS Code で開き、**F5** を押す。`npm run build:vscode` でビルドしたあと、2 つの拡張機能を読み込み、
-サンプルの `sample/` フォルダを開いた状態で開発用ウィンドウが起動する。
-
-## パッケージを作る
-
-```
-tools\package-vscode.bat            # ビルドして out\vsix\ に docpresenter-<バージョン>.vsix と docpresenter-diagram-<バージョン>.vsix を作成する
-tools\package-vscode.bat install    # 作成したうえで、この PC の VS Code に両方をインストールする
-code --install-extension out\vsix\docpresenter-diagram-0.1.0.vsix   # 別の PC では、作図の拡張を先に入れ、
-code --install-extension out\vsix\docpresenter-0.1.0.vsix           # 次にこちらを入れる（パックが作図の拡張を名指しするため）
-```
 
 ## このバージョンで対応していないこと
 
 | | |
 |---|---|
-| **PDF の一括出力** | 一括ビルドにはレイアウトを組む画面がないため、PDF は文書ごとにボタンで出力する。一括で出力したい場合は `node tools/build.mjs` を使う |
+| **PDF の一括出力** | 一括ビルドにはレイアウトを組む画面がないため、PDF は文書ごとにボタンで出力する |
 | **PowerPoint での Mermaid の図の編集** | Mermaid の図は画像として載る。PowerPoint で動かせる図形にしたい場合は `.dgm` で描く |
 | **部品ライブラリの編集** | 部品は画面から選べるが、部品そのものの定義はソースに書く |

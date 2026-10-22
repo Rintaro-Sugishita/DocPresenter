@@ -315,8 +315,7 @@ Diagrams exported to PPTX can be **read back into the original `.dgm`** after th
 | Body text changed | ✗ (only diagrams are read back) |
 
 - If a diagram changed between reading and writing (unsaved changes included), it is not written, and its name is given.
-- Checked with decks saved again in real PowerPoint (Microsoft 365). From the command line:
-  `node tools/pptx-back.mjs <deck.pptx> --in <workspace>` (`--write` to write).
+- Checked with decks saved again in real PowerPoint (Microsoft 365).
 
 ## Importing comments written on a PDF
 
@@ -340,7 +339,6 @@ the PDF with annotations (highlights, sticky notes, …), they can be **imported
   replies to the annotation (or writes below it). On import, replies go **under the original comment** in `replies:`,
   and the comments and answers we put in the PDF are not imported again.
 - For a PDF that should carry no comments (a copy to deliver), turn off the setting `docpresenter.pdfReviewNotes` before exporting.
-- From the command line: `node tools/pdf-review.mjs <pdf> --in <workspace> [--write]`.
 
 ## Code and Mermaid
 
@@ -376,45 +374,21 @@ The language name on the opening line (aliases work too). Other names are not co
 | Text (no colour) | `plaintext` `text` `txt` |
 | Mermaid (becomes a diagram) | `mermaid` |
 
-## Building
-
-```
-npx tsc --build                  # type check (both extensions included)
-node tools/build-vscode.mjs      # both: media/ here (extension.cjs + webview.js + exporter.js + theme.css + mermaid-page.js
-                                 # + harfbuzz-subset.wasm) and packages/app-vscode-diagram/media (extension.cjs + canvas.js + theme.css)
-```
-
 ## Display language
 
 **It follows VS Code's display language.** Japanese when VS Code is in Japanese, English otherwise (command names,
 setting descriptions, notifications, the editor, and the cover and contents of exported documents). Change it with
 VS Code's "Configure Display Language"; the extension has no setting of its own.
 
-- The extension host's words are in `src/messages.ts`; `package.json`'s are in `package.nls.json` (English) / `package.nls.ja.json` (Japanese).
-- The editor (WebView) is told the same language by the `locale` of the `open` message.
 - The first document, the glossary and the `CLAUDE.md` section written by "Set Up This Folder" are in that language too
   (`.docpresenter/guide.md` is Japanese only for now).
 - This page is in English whatever the display language: VS Code shows one README for every language.
   The Japanese version is linked at the top.
 
-## Trying it
-
-Open the repository in VS Code and press **F5** (it builds with `npm run build:vscode`, then starts an extension host
-with both extensions and the `sample/` folder open).
-
-## Packaging
-
-```
-tools\package-vscode.bat            # builds and writes both: out\vsix\docpresenter-<version>.vsix and docpresenter-diagram-<version>.vsix
-tools\package-vscode.bat install    # the same, then installs both into this PC's VS Code
-code --install-extension out\vsix\docpresenter-diagram-0.1.0.vsix   # on another PC: the diagram extension first,
-code --install-extension out\vsix\docpresenter-0.1.0.vsix           # then this one (its pack names the other)
-```
-
 ## Not in this version
 
 | | |
 |---|---|
-| **Exporting PDFs in bulk** | A bulk build has no screen to lay pages out, so PDFs are exported one document at a time with the button. Use `node tools/build.mjs` for bulk |
+| **Exporting PDFs in bulk** | A bulk build has no screen to lay pages out, so PDFs are exported one document at a time with the button |
 | **Editing Mermaid in PowerPoint** | Mermaid diagrams go in as images. Draw with `.dgm` to get shapes you can move in PowerPoint |
 | **Editing part libraries** | Parts can be chosen on screen, but the parts themselves are written in source |

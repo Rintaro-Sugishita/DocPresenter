@@ -78,9 +78,7 @@ VS Code の **「ドキュメントのフォーマット」**（Shift+Alt+F）�
 - **図そのものは変わらない。** 整形した結果を読み直し、箱の位置・線の経路・重なった図形の前後を元と比べる。
   読み順に並べると図形が動いてしまう場合は、図形を書かれた順のまま残し、その旨を通知する。
 - コマンドは整形後に保存する（未保存の変更があったファイルは保存しない）。「ドキュメントのフォーマット」は保存しない。
-- コマンドラインでは `node tools/format-dgm.mjs --in <作業場>` で整形が要る図を一覧にでき、`--write` で書き換え、
-  `--check` を付けると整形されていない図があったときに終了コード 1 で終わる（CI 向け）。規則は
-  [spec/dgm.md §6.3](https://github.com/Rintaro-Sugishita/DocPresenter/blob/HEAD/spec/dgm.md) にある。
+- 規則は [spec/dgm.md §6.3](https://github.com/Rintaro-Sugishita/DocPresenter/blob/HEAD/spec/dgm.md) にある。
 
 ## SVG に書き出す
 
@@ -97,9 +95,3 @@ VS Code の **「ドキュメントのフォーマット」**（Shift+Alt+F）�
 ## 表示言語
 
 VS Code の表示言語に従う。VS Code が日本語なら日本語、それ以外なら英語で表示される。
-
-## ビルドとパッケージ
-
-DocPresenter と一緒にビルドし、パッケージにする。手順は
-[DocPresenter の README](https://github.com/Rintaro-Sugishita/DocPresenter/blob/HEAD/packages/app-vscode/README.ja.md#ビルド) を参照。
-キャンバスは作図のパッケージ（`@docpresenter/base` と `@docpresenter/diagram`）だけから作り、文書側のものは何も含まない。
