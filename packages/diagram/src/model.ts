@@ -69,7 +69,7 @@ export interface Point {
   readonly y: number;
 }
 
-export type EdgeStyle = 'solid' | 'dashed';
+export type EdgeStyle = 'solid' | 'dashed' | 'invisible';
 /** No head, a head at the far end, or one at each end (`<-->`). */
 export type ArrowStyle = 'none' | 'arrow' | 'both';
 
@@ -79,6 +79,11 @@ export interface Edge {
   readonly label: string | undefined;
   readonly line: EdgeStyle;
   readonly arrow: ArrowStyle;
+  /**
+   * Written with a trailing `~`: drawn, but a `flow` is not ordered by it.
+   * Of `a --> b` and `b --> a ~`, the first decides which comes first.
+   */
+  readonly loose: boolean;
   /** The connection's own line. */
   readonly span: ByteSpan;
 }

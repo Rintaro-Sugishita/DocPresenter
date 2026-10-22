@@ -71,6 +71,13 @@ describe('作図のレンダリング', () => {
     expect(svg).toContain('HTTPS');
   });
 
+  it('接続のラベルは \\n の所で行を分けて描く', () => {
+    const svg = renderDiagram(parseDiagram('flow {\n  a [A]\n  b [B]\n  a --> b "はい\\nいいえ"\n}\n'));
+    const label = /<text class="dp-edge-label"[^>]*>(.*?)<\/text>/.exec(svg)![1]!;
+    expect([...label.matchAll(/<tspan x="[^"]*" y="[^"]*">([^<]*)<\/tspan>/g)].map(m => m[1]))
+      .toEqual(['はい', 'いいえ']);
+  });
+
   it('自動レイアウトの図も描ける', () => {
     const svg = draw('sample/docs/auth-design/token-lifecycle.dgm');
     expect(svg).toContain('data-mode="flow"');

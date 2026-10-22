@@ -259,13 +259,16 @@ describe('図形の追加と削除', () => {
   });
 
   it('つなぎ替え先が既に繋がっていれば断る', () => {
-    expect(() => reconnect(parseDiagram(FLOW), FLOW, { from: 'start', to: 'next' }, { from: 'next' }))
+    expect(() => reconnect(parseDiagram(FLOW), FLOW, { from: 'start', to: 'next' }, { from: 'next', to: 'done' }))
       .toThrow(DiagramEditError);
   });
 
   it('同じ線を二度は引かない', () => {
     expect(() => connectNodes(parseDiagram(FLOW), FLOW, 'start', 'next')).toThrow(DiagramEditError);
-    expect(() => connectNodes(parseDiagram(FLOW), FLOW, 'start', 'start')).toThrow(DiagramEditError);
+  });
+
+  it('自分への線は輪として引ける', () => {
+    expect(connectNodes(parseDiagram(FLOW), FLOW, 'start', 'start').text).toContain('start --> start');
   });
 });
 

@@ -790,7 +790,6 @@ export function connectNodes(file: DiagramFile, source: string, from: string, to
   if (!file.body) throw new DiagramEditError(dgm('diagram.edit.noBody'));
   find(file, from);
   find(file, to);
-  if (from === to) throw new DiagramEditError(dgm('diagram.edit.selfLoop'));
   if (file.edges.some(e => e.from === from && e.to === to)) {
     throw new DiagramEditError(dgm('diagram.edit.alreadyConnected', { from, to }));
   }
@@ -813,7 +812,6 @@ export function reconnect(
   if (!found) throw new DiagramEditError(dgm('diagram.edit.missingLine', { from: edge.from, to: edge.to }));
   const from = ends.from ?? found.from;
   const to = ends.to ?? found.to;
-  if (from === to) throw new DiagramEditError(dgm('diagram.edit.selfLoop'));
   find(file, from);
   find(file, to);
   if (from !== found.from || to !== found.to) {
@@ -823,7 +821,7 @@ export function reconnect(
   }
   const line = sliceBytes(source, found.span.start, found.span.end);
   const written = line.replace(
-    /^(\S+?)(\s*)(<-->|<->|<-\.->|-->|->|--|-\.->)(\s*)(\S+)/,
+    /^(\S+?)(\s*)(<-->|<->|<-\.->|-->|->|--|-\.->|~~~)(\s*)(\S+)/,
     (_whole, _a, before: string, arrow: string, after: string) =>
       `${from}${before}${arrow}${after}${to}`,
   );

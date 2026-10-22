@@ -173,7 +173,7 @@ export function createCanvas(options: CanvasOptions): Canvas {
   const root = element('div', 'dp-canvas');
   const stage = element('div', 'dp-canvas-stage');
   stage.tabIndex = 0;
-  stage.innerHTML = renderDiagram(file, undefined, undefined, locale);
+  stage.innerHTML = renderDiagram(file, undefined, undefined, locale, true);
   const svg = stage.querySelector('svg');
   const bar = createBar();
   root.append(bar, stage);
@@ -641,8 +641,8 @@ export function createCanvas(options: CanvasOptions): Canvas {
       return;
     }
     // A connection is drawn by picking its two ends, so the second press is
-    // the line rather than a selection.
-    if (connecting !== undefined && connecting !== id) {
+    // the line rather than a selection — the same shape again is a loop.
+    if (connecting !== undefined) {
       const from = connecting;
       connecting = undefined;
       options.apply(() => connectNodes(file, source, from, id), [id]);
@@ -1362,8 +1362,9 @@ export function createCanvas(options: CanvasOptions): Canvas {
       },
       {
         label: connecting === undefined ? t('diagram.canvas.connect') : t('diagram.canvas.connectPick'),
+        // A group can be either end: the line runs from its frame.
         run: () => { connecting = id; describe(); },
-        disabled: node?.shape === 'group' || picked.length > 1,
+        disabled: picked.length > 1,
       },
     );
     for (const shape of PALETTE) {

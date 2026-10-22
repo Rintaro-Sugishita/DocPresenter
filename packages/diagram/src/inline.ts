@@ -33,13 +33,24 @@ const COLOUR_SPAN = /^\{color=(#[0-9a-fA-F]{3}(?:[0-9a-fA-F]{3})?)\}/;
  */
 export function parseRuns(text: string): Run[] {
   const out: Run[] = [];
-  read(text, PLAIN, out);
+  read(text, PLAIN, out, false);
+  return out;
+}
+
+/**
+ * Reads a shape's label: the same notation, and `\n` breaks the line. A label
+ * is written on one line of the file, so the break has to be spelt; the run
+ * then carries a newline, which the wrap starts a new line at.
+ */
+export function parseLabel(text: string): Run[] {
+  const out: Run[] = [];
+  read(text, PLAIN, out, true);
   return out;
 }
 
 type Style = Omit<Run, 'text'>;
 
-function read(text: string, style: Style, out: Run[]): void {
+function read(text: string, style: Style, out: Run[], breaks: boolean): void {
   let buffer = '';
   const flush = (): void => {
     if (buffer !== '') { out.push({ ...style, text: buffer }); buffer = ''; }
@@ -48,9 +59,10 @@ function read(text: string, style: Style, out: Run[]): void {
   for (let i = 0; i < text.length;) {
     const char = text[i]!;
     // A backslash hands the next character through untouched, which is how a
-    // label says `*` without meaning emphasis.
+    // label says `*` without meaning emphasis. In a shape's label `\n` is
+    // the one exception: it breaks the line.
     if (char === '\\' && i + 1 < text.length) {
-      buffer += text[i + 1];
+      buffer += breaks && text[i + 1] === 'n' ? '\n' : text[i + 1];
       i += 2;
       continue;
     }
@@ -67,7 +79,7 @@ function read(text: string, style: Style, out: Run[]): void {
       const end = text.indexOf('**', i + 2);
       if (end > i + 1) {
         flush();
-        read(text.slice(i + 2, end), { ...style, bold: true }, out);
+        read(text.slice(i + 2, end), { ...style, bold: true }, out, breaks);
         i = end + 2;
         continue;
       }
@@ -78,7 +90,7 @@ function read(text: string, style: Style, out: Run[]): void {
       const end = text.indexOf('*', i + 1);
       if (end > i + 1) {
         flush();
-        read(text.slice(i + 1, end), { ...style, italic: true }, out);
+        read(text.slice(i + 1, end), { ...style, italic: true }, out, breaks);
         i = end + 1;
         continue;
       }
@@ -88,7 +100,7 @@ function read(text: string, style: Style, out: Run[]): void {
       const found = close > i ? COLOUR_SPAN.exec(text.slice(close + 1)) : null;
       if (close > i && found) {
         flush();
-        read(text.slice(i + 1, close), { ...style, colour: found[1]! }, out);
+        read(text.slice(i + 1, close), { ...style, colour: found[1]! }, out, breaks);
         i = close + 1 + found[0].length;
         continue;
       }

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { applyEdit, sliceBytes } from '@docpresenter/base';
 import {
-  DiagramParseError, layOutDiagram, parseDiagram, parseRuns, pinNode, specimenOf, withParts, wrapRuns,
+  DiagramParseError, EDGE_LABEL, edgeLabelBox, layOutDiagram, parseDiagram, lineText, parseLabel, parseRuns, pinNode, specimenOf, withParts, wrapRuns,
   wrapText,
 } from '../src/index.js';
 
@@ -18,9 +18,9 @@ describe('作図ファイルの解析', () => {
   it('接続の線種と矢印を読み分ける', () => {
     const d = parseDiagram('flow {\n a [A]\n b [B]\n a --> b "ラベル"\n a -- b\n a -.-> b\n}');
     expect(d.edges.map(({ span, ...rest }) => rest)).toEqual([
-      { from: 'a', to: 'b', label: 'ラベル', line: 'solid', arrow: 'arrow' },
-      { from: 'a', to: 'b', label: undefined, line: 'solid', arrow: 'none' },
-      { from: 'a', to: 'b', label: undefined, line: 'dashed', arrow: 'arrow' },
+      { from: 'a', to: 'b', label: 'ラベル', line: 'solid', arrow: 'arrow', loose: false },
+      { from: 'a', to: 'b', label: undefined, line: 'solid', arrow: 'none', loose: false },
+      { from: 'a', to: 'b', label: undefined, line: 'dashed', arrow: 'arrow', loose: false },
     ]);
     // それぞれが自分の行を指している（1 本消すのに 1 行だけ触れる）。
     expect(d.edges.map(e => e.span.start)).toEqual([...new Set(d.edges.map(e => e.span.start))]);
@@ -284,6 +284,40 @@ describe('ラベルの書式', () => {
     expect(lines).toHaveLength(2);
     expect(lines[0]!.every(run => run.bold)).toBe(true);
     expect(lines[1]!.every(run => run.bold)).toBe(false);
+  });
+
+  it('図形のラベルでは \\n で改行する', () => {
+    const lines = (text: string) => wrapRuns(parseLabel(text), 1000, 14).map(lineText);
+    expect(lines('一行目\\n二行目')).toEqual(['一行目', '二行目']);
+    // 書式の中でも、書式をまたいでも切れる。
+    expect(lines('**太字\\n続き**')).toEqual(['太字', '続き']);
+    expect(lines('*斜体*\\n**太字**')).toEqual(['斜体', '太字']);
+    // \\\\n は改行ではなく、文字の \\ と n。
+    expect(lines('a\\\\nb')).toEqual(['a\\nb']);
+    // ふつうの書式（文書の地の文）では今までどおり n のまま。
+    expect(parseRuns('a\\nb').map(r => r.text).join('')).toBe('anb');
+  });
+
+  it('改行したラベルは行数ぶん高く、いちばん長い行の幅になる', () => {
+    const broken = layOutDiagram(parseDiagram('flow {\n  a [受付する受付する\\n確認]\n}')).boxes.get('a')!;
+    const one = layOutDiagram(parseDiagram('flow {\n  a [受付する受付する]\n}')).boxes.get('a')!;
+    expect(broken.lines.map(lineText)).toEqual(['受付する受付する', '確認']);
+    expect(broken.width).toBe(one.width);
+    expect(broken.height).toBeGreaterThan(one.height);
+  });
+
+  it('接続のラベルも \\n で改行し、札は行数ぶん高くなる', () => {
+    const plate = (label: string) => {
+      const laid = layOutDiagram(parseDiagram(`flow {\n  a [A]\n  b [B]\n  a --> b "${label}"\n}`));
+      return edgeLabelBox(laid.routes[0]!)!;
+    };
+    const broken = plate('はい\\nいいえ');
+    const one = plate('いいえ');
+    expect(broken.lines.map(lineText)).toEqual(['はい', 'いいえ']);
+    expect(broken.width).toBe(one.width);
+    expect(broken.height).toBe(one.height + EDGE_LABEL.lineHeight);
+    // 長くても折り返さない。
+    expect(plate('とても長い接続のラベルとても長い接続のラベル').lines).toHaveLength(1);
   });
 
   it('大きさは見える文字で決まる（印は数えない）', () => {

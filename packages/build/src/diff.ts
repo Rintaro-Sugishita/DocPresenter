@@ -250,7 +250,8 @@ export function diagramDiff(before: DiagramFile, after: DiagramFile): DiagramMar
     const key = `${edge.from}->${edge.to}`;
     const then = before_.get(key);
     if (!then) { edges.set(key, 'added'); continue; }
-    if (then.label !== edge.label || then.line !== edge.line || then.arrow !== edge.arrow) {
+    if (then.label !== edge.label || then.line !== edge.line || then.arrow !== edge.arrow
+      || then.loose !== edge.loose) {
       edges.set(key, 'changed');
     }
   }

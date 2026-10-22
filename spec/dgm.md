@@ -164,6 +164,14 @@ A label **MAY be empty** (`id []`). The label takes the inline notation in
 [`inline-text.md`](inline-text.md) — `**bold**`, `` `code` ``,
 `[text]{color=#c62828}` — because a label is prose that happens to sit in a box.
 
+A shape's label is written on one line of the file, so `\n` in it **breaks the
+line** there: `a [受付\n確認]` is drawn on two lines. This is the one escape a
+label adds to the inline notation; `\\n` is a backslash followed by `n`. The
+shape is as tall as its lines and as wide as the widest of them; a line that is
+still too long wraps as any label does. A connection's label (§3.2) breaks at
+`\n` the same way, and never wraps: its plate is as wide as its widest line and
+one line taller for each break. A group's header is one line and does not break.
+
 `:::class` names a style class the theme resolves (§7.3). It is optional and
 comes last.
 
@@ -189,12 +197,49 @@ from <connector> to ["label"]
 | `<-->` | solid | at both ends |
 | `<->` | solid | at both ends |
 | `<-.->` | dashed | at both ends |
+| `~~~` | **not drawn** | no |
 
 The rule a reader MUST apply is mechanical: the line is **dashed if the
 connector contains `.`**, it has an **arrowhead if it ends with `>`**, and a
 second one at its start **if it begins with `<`**. That leaves room for `-.-`
 to mean a dashed line without an arrowhead when it is added, with no new rule
 to learn.
+
+`~~~` is Mermaid's invisible link: it is laid out like any connection — in a
+`flow` it puts `b` after `a` — and is not drawn. A document and a slide leave it
+out; an editor MAY show it faintly so that it can be picked. It MUST NOT have a
+label, and a reader MUST report one: words on a line nobody sees are lost.
+
+Either end MAY be a group (§3.3). In a `flow`, a connection to a group that has
+no direction joins everything the group holds, so `g1 --> g2` lays all of `g2`
+after all of `g1` and the two frames do not overlap; a group with a direction is
+one shape there already (§3.5) and is joined as itself. A connection between a
+group and something inside it does not change the order. The line runs from the
+group's frame, as it runs from a shape's outline, and in a `flow` it meets the
+frame level with its other end rather than at the frame's middle, where the
+lines to what the group holds already run.
+
+Both ends MAY be the same shape or group (`a --> a`). It is drawn as a loop
+out of the side the flow does not use — the right of a top-to-bottom flow, the
+bottom of a left-to-right one — and does not change the order.
+
+When connections go round in a circle (`a --> b` and `b --> a`, or the same
+between two groups), a `flow` cannot put every one forward. It follows the ones
+a walk from the shapes nothing points at reaches first, then the rest as far as
+they do not close the circle; the others are drawn going back. A connection to
+a group is followed whole or not at all, so two groups that point at each other
+stay apart.
+
+To say which one decides, end the other with `~`:
+
+```
+a --> b
+b --> a "戻る" ~
+```
+
+A connection ending in `~` is drawn as usual, label and all, but a `flow` is
+**not ordered by it**: it runs whichever way the other connections put its
+ends. `a ~~~ b ~` is an error — a link that only orders the flow, told not to.
 
 `a <--> b` is one connection, keyed `a->b` like any other. It is not the same
 as writing `a --> b` and `b --> a`: those are two connections, each with its own
@@ -480,7 +525,7 @@ separated by a blank line.
 | shape | `id [label]:::class`, the ids padded to one column. The brackets as tight as reading them back allows: `[ /a/ ]` keeps its spaces, or it would read as a parallelogram |
 | part | `id part:"label"`; a part holding rows writes them two spaces deeper per level, `-` or `+`, then `*` for the picked one |
 | group | `group id "label" LR { a; b }`, the columns lined up. The label is left out when it is the id, which is what a group without one shows |
-| connection | `from --> to "label"`. One spelling per meaning: `-->` (also for `->`), `--`, `-.->`, `<-->` (also for `<->`), `<-.->` |
+| connection | `from --> to "label"`, with a trailing `~` when it does not order the flow. One spelling per meaning: `-->` (also for `->`), `--`, `-.->`, `<-->` (also for `<->`), `<-.->`, `~~~` |
 
 **The order.** Taken from the drawing, never from the order the lines were typed:
 

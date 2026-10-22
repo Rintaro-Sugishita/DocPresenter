@@ -66,7 +66,7 @@ const LINE_NODE = /^([A-Za-z0-9_぀-鿿]+)\s*(-{2,})$/;
  */
 const ID_CHARS = 'A-Za-z0-9_぀-鿿';
 const NODE = /^([A-Za-z0-9_぀-鿿]+)\s*(.+?)(?::::([\w-]+))?$/;
-const EDGE = /^([A-Za-z0-9_぀-鿿]+)\s*(<-->|<->|<-\.->|-->|->|--|-\.->)\s*([A-Za-z0-9_぀-鿿]+)\s*(?:"([^"]*)")?\s*$/;
+const EDGE = /^([A-Za-z0-9_぀-鿿]+)\s*(<-->|<->|<-\.->|-->|->|--|-\.->|~~~)\s*([A-Za-z0-9_぀-鿿]+)\s*(?:"([^"]*)")?\s*(~)?\s*$/;
 const GROUP = /^group\s+([A-Za-z0-9_぀-鿿]+)\s*(?:"([^"]*)")?\s*(?:(TB|TD|BT|LR|RL)\s*)?\{([^}]*)\}\s*$/;
 /**
  * `flow LR {` — Mermaid's words for the way a flow runs. Written first, as
@@ -84,9 +84,9 @@ const BEND = /^([A-Za-z0-9_぀-鿿]+)\s*-+>\s*([A-Za-z0-9_぀-鿿]+)\s*@\s*(.+)$
  * read. The first is cut where a connector or a bracket starts.
  */
 const LEADING_NAME = new RegExp(
-  `^(?:group\\s+|(?:stack|grid|tabs)\\s+)?([${ID_CHARS}-]+?)(?=\\s|$|[\\[({>"@:<]|-[-.>])`);
+  `^(?:group\\s+|(?:stack|grid|tabs)\\s+)?([${ID_CHARS}-]+?)(?=\\s|$|[\\[({>"@:<~]|-[-.>])`);
 const TARGET_NAME = new RegExp(
-  `^[${ID_CHARS}]+\\s*(?:<-\\.->|<-->|<->|-\\.->|-->|->|--|-+>)\\s*([${ID_CHARS}-]+)`);
+  `^[${ID_CHARS}]+\\s*(?:<-\\.->|<-->|<->|-\\.->|-->|->|--|-+>|~~~)\\s*([${ID_CHARS}-]+)`);
 
 /** Refuses an id written with a hyphen, naming it. */
 function refuseHyphen(name: string | undefined, line: number): void {
@@ -375,11 +375,21 @@ function parseBody(
     const edge = EDGE.exec(text);
     if (edge) {
       const connector = edge[2]!;
-      const line: EdgeStyle = connector.includes('.') ? 'dashed' : 'solid';
+      // `~~~` is Mermaid's link that is not drawn: it only says which shape
+      // the flow puts after which. A label on it would be words nobody sees.
+      if (connector === '~~~' && edge[4] !== undefined) {
+        throw new DiagramParseError(dgm('diagram.parse.invisibleLabel', { from: edge[1]!, to: edge[3]! }), source.number);
+      }
+      const line: EdgeStyle = connector === '~~~' ? 'invisible' : connector.includes('.') ? 'dashed' : 'solid';
       // `<-->` reads both ways at a glance, which is the point of writing it
       // rather than two connections drawn on top of each other.
       const arrow: ArrowStyle = connector.startsWith('<') ? 'both' : connector.endsWith('>') ? 'arrow' : 'none';
-      edges.push({ from: edge[1]!, to: edge[3]!, label: edge[4], line, arrow, span });
+      // A trailing `~`: drawn, but the flow is not ordered by it.
+      const loose = edge[5] !== undefined;
+      if (loose && line === 'invisible') {
+        throw new DiagramParseError(dgm('diagram.parse.invisibleLoose', { from: edge[1]!, to: edge[3]! }), source.number);
+      }
+      edges.push({ from: edge[1]!, to: edge[3]!, label: edge[4], line, arrow, loose, span });
       continue;
     }
 

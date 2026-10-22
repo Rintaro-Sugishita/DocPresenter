@@ -4,8 +4,8 @@
 // drawn as plain polygons rather than markers: a marker needs an id, and an id
 // cannot be repeated across the many diagrams of one page.
 
-import { EDGE_LABEL, layOutDiagram, type Box, type EdgeRoute } from '../layout.js';
-import { lineText, parseRuns, type TextLine } from '../inline.js';
+import { EDGE_LABEL, edgeLabelBox, layOutDiagram, type Box, type EdgeRoute } from '../layout.js';
+import { lineText, type TextLine } from '../inline.js';
 import { textWidth } from '../text.js';
 import type { DiagramFile, Item, Node, Point, ShapeKind } from '../model.js';
 import { DEFAULT_LOCALE, escapeAttr, escapeHtml, type Locale } from '@docpresenter/base';
@@ -35,6 +35,11 @@ export interface DiagramMarks {
 export function renderDiagram(
   diagram: DiagramFile, url?: (path: string) => string, marks?: DiagramMarks,
   locale: Locale = DEFAULT_LOCALE,
+  /**
+   * Draws the links that are not drawn (`~~~`), for an editor: they have to
+   * be seen to be picked. A document leaves them out.
+   */
+  hidden = false,
 ): string {
   const laid = layOutDiagram(diagram, locale);
   const byId = new Map(diagram.nodes.map(n => [n.id, n]));
@@ -51,7 +56,9 @@ export function renderDiagram(
   // Connections are drawn in two passes: every line and plate first, then every
   // label, so one connection's plate can never blank out another's label.
   const rounded = diagram.mode === 'flow';
-  const drawn = laid.routes.map(route => renderEdge(route, byId, laid.boxes, rounded, marks));
+  const drawn = laid.routes
+    .filter(route => hidden || route.edge.line !== 'invisible')
+    .map(route => renderEdge(route, byId, laid.boxes, rounded, marks));
   const edges = [
     ...drawn.map(e => e.geometry),
     ...drawn.map(e => e.label),
@@ -355,6 +362,7 @@ function renderEdge(
   clipped[clipped.length - 1] = border(
     to, byId.get(edge.to)?.shape ?? 'rect', points[points.length - 2]!, points[points.length - 1]);
 
+  const plate = edgeLabelBox(route);
   const change = marks?.edges.get(`${edge.from}->${edge.to}`);
   const open = `<g class="${['dp-edge', `dp-line-${edge.line}`,
     ...(change ? [`dp-diff-${change}`] : [])].join(' ')}"`
@@ -369,13 +377,13 @@ function renderEdge(
     ...(edge.arrow !== 'none'
       ? [arrowHead(clipped[clipped.length - 2]!, clipped[clipped.length - 1]!)] : []),
     ...(edge.arrow === 'both' ? [arrowHead(clipped[1]!, clipped[0]!)] : []),
-    ...(edge.label && route.labelAt ? [labelPlate(edge.label, route.labelAt)] : []),
+    ...(plate ? [labelPlate(plate)] : []),
     '</g>',
   ].join('');
 
   return {
     geometry,
-    label: edge.label && route.labelAt ? open + labelText(edge.label, route.labelAt) + '</g>' : '',
+    label: plate && route.labelAt ? open + labelText(plate, route.labelAt) + '</g>' : '',
   };
 }
 
@@ -385,14 +393,19 @@ function arrowHead(start: Point, end: Point): string {
 }
 
 /** The plate the label sits on, so the line does not run through the text. */
-function labelPlate(text: string, { x, y }: Point): string {
-  const width = textWidth(text, EDGE_LABEL.fontSize) + EDGE_LABEL.padding;
-  return `<rect class="dp-edge-plate" x="${n(x - width / 2)}" y="${n(y - EDGE_LABEL.height / 2)}"`
-    + ` width="${n(width)}" height="${EDGE_LABEL.height}" rx="2"/>`;
+function labelPlate(plate: Box): string {
+  return `<rect class="dp-edge-plate" x="${n(plate.x)}" y="${n(plate.y)}"`
+    + ` width="${n(plate.width)}" height="${n(plate.height)}" rx="2"/>`;
 }
 
-function labelText(text: string, { x, y }: Point): string {
+/** The label's lines, centred on the plate as a block. */
+function labelText(plate: Box, { x, y }: Point): string {
+  const top = y - (plate.lines.length - 1) * EDGE_LABEL.lineHeight / 2;
+  const spans = plate.lines.length === 1
+    ? runs(plate.lines[0]!)
+    : plate.lines.map((line, i) =>
+      `<tspan x="${n(x)}" y="${n(top + i * EDGE_LABEL.lineHeight)}">${runs(line)}</tspan>`).join('');
   return `<text class="dp-edge-label" x="${n(x)}" y="${n(y)}"`
-    + ` text-anchor="middle" dominant-baseline="central">${runs(parseRuns(text))}</text>`;
+    + ` text-anchor="middle" dominant-baseline="central">${spans}</text>`;
 }
 

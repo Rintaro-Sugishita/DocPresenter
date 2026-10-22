@@ -71,13 +71,14 @@ check('dgm §3.1', ':::class を読む',
 const edge = text => dgm('free {', '  a [x]', '  b [y]', `  ${text}`, '}').edges[0];
 for (const [written, line, arrow] of [
   ['a --> b', 'solid', 'arrow'], ['a -> b', 'solid', 'arrow'],
-  ['a -- b', 'solid', 'none'], ['a -.-> b', 'dashed', 'arrow'],
+  ['a -- b', 'solid', 'none'], ['a -.-> b', 'dashed', 'arrow'], ['a ~~~ b', 'invisible', 'none'],
 ]) {
   const found = edge(written);
   check('dgm §3.2', `${written} は ${line}/${arrow}`,
     found?.line === line && found?.arrow === arrow, `${found?.line}/${found?.arrow}`);
 }
 check('dgm §3.2', '接続のラベルを読む', edge('a -> b "HTTPS"')?.label === 'HTTPS');
+check('dgm §3.2', '末尾の ~ は並び順に効かない線', edge('a -> b "戻る" ~')?.loose === true && edge('a -> b')?.loose === false);
 
 // §3「L2 は『ピン』だけではない」— 入れ物
 const laidOut = (...lines) => layOutDiagram(dgm(...lines));

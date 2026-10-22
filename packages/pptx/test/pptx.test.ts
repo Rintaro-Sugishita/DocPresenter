@@ -192,3 +192,21 @@ describe('書庫', () => {
     expect(slide).toContain('本文');
   });
 });
+
+describe('接続のラベル', () => {
+  it('改行した行は段落に分かれ、札は 1 行ぶん高くなる', () => {
+    const plate = (label: string) => drawingOf(diagram(
+      'flow {', '  a [A]', '  b [B]', `  a --> b "${label}"`, '}',
+    )).connectors[0]!;
+    const broken = plate('はい' + String.fromCharCode(92) + 'nいいえ');
+    expect(broken.label!.map(line => line.map(run => run.text).join(''))).toEqual(['はい', 'いいえ']);
+    expect(broken.labelBox!.height).toBeGreaterThan(plate('いいえ').labelBox!.height);
+  });
+});
+
+describe('描かない線', () => {
+  it('~~~ はコネクタにならない', () => {
+    const drawn = drawingOf(diagram('flow {', '  a [A]', '  b [B]', '  c [C]', '  a ~~~ b', '  b --> c', '}'));
+    expect(drawn.connectors).toHaveLength(1);
+  });
+});

@@ -80,6 +80,7 @@ const CONNECTORS: readonly { written: string; detail: DiagramMessage }[] = [
   { written: '-.->', detail: 'diagram.complete.dashed' },
   { written: '<-->', detail: 'diagram.complete.both' },
   { written: '<-.->', detail: 'diagram.complete.bothDashed' },
+  { written: '~~~', detail: 'diagram.complete.invisible' },
 ];
 
 /** The properties a style rule or a part reads (spec/dgm.md §7.3, and a line's own three). */
@@ -213,7 +214,7 @@ function count(text: string, char: string): number {
 
 const GROUP_LINE = new RegExp(`^group\\s+(${ID}+)`);
 const LINE_NODE = new RegExp(`^(${ID}+?)\\s*-{2,}$`);
-const EDGE_LINE = new RegExp(`^(${ID}+?)\\s*(?:<-\\.->|<-->|<->|-\\.->|-->|->|--)\\s*(${ID}+)`);
+const EDGE_LINE = new RegExp(`^(${ID}+?)\\s*(?:<-\\.->|<-->|<->|-\\.->|-->|->|--|~~~)\\s*(${ID}+)`);
 const NODE_LINE = new RegExp(`^(${ID}+)\\s*(.*)$`);
 const PIN_LINE = new RegExp(`^(${ID}+)\\s*@`);
 const BEND_LINE = new RegExp(`^(${ID}+?)\\s*-+>\\s*(${ID}+)\\s*@`);
@@ -325,7 +326,7 @@ function inSemantics(at: At): Completion[] {
   }
 
   // `a -|` — the connector is being written.
-  const connector = new RegExp(`^\\s*${ID}*?${ID_END}\\s*(<?-[-.>]*|<)$`).exec(before);
+  const connector = new RegExp(`^\\s*${ID}*?${ID_END}\\s*(<?-[-.>]*|<|~{1,2})$`).exec(before);
   if (connector) {
     const from = column - connector[1]!.length;
     return connectors(from, say).filter(one => one.label.startsWith(connector[1]!))

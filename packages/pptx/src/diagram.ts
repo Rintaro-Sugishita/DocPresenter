@@ -7,7 +7,7 @@
 // below is a table rather than an approximation.
 
 import {
-  EDGE_LABEL, border, layOutDiagram, parseRuns, textWidth,
+  border, edgeLabelBox, layOutDiagram,
   type Box, type DiagramFile, type Point, type Run, type ShapeKind,
 } from '@docpresenter/diagram';
 import type { Attachment, DrawingBlock, DrawnConnector, DrawnShape } from './model.js';
@@ -137,7 +137,8 @@ export function drawingOf(diagram: DiagramFile, options: DrawingOptions = {}): D
   }
 
   const drawn = new Set(shapes.map(shape => shape.id));
-  const connectors: DrawnConnector[] = laid.routes.map((route): DrawnConnector => {
+  // A link that is not drawn (`~~~`) only ordered the layout.
+  const connectors: DrawnConnector[] = laid.routes.filter(route => route.edge.line !== 'invisible').map((route): DrawnConnector => {
     // Ends stop at the outlines, as on screen: a line run to the centre would
     // put its arrowhead under the shape it points at.
     const points = route.points.map(point => ({ x: point.x, y: point.y }));
@@ -151,20 +152,16 @@ export function drawingOf(diagram: DiagramFile, options: DrawingOptions = {}): D
     }
     const start = from && drawn.has(route.edge.from) ? sideOf(from, points[0]!) : undefined;
     const end = to && drawn.has(route.edge.to) ? sideOf(to, points[points.length - 1]!) : undefined;
+    const plate = edgeLabelBox(route);
     return {
       points,
       arrow: route.edge.arrow !== 'none',
       startArrow: route.edge.arrow === 'both',
       dashed: route.edge.line === 'dashed',
-      ...(route.edge.label ? { label: parseRuns(route.edge.label) as Run[] } : {}),
-      // The plate the screen sets the label on, the same size in the same place.
-      ...(route.edge.label && route.labelAt ? {
-        labelBox: {
-          x: route.labelAt.x - (textWidth(route.edge.label, EDGE_LABEL.fontSize) + EDGE_LABEL.padding) / 2,
-          y: route.labelAt.y - EDGE_LABEL.height / 2,
-          width: textWidth(route.edge.label, EDGE_LABEL.fontSize) + EDGE_LABEL.padding,
-          height: EDGE_LABEL.height,
-        },
+      ...(plate ? {
+        label: plate.lines.map(line => [...line]),
+        // The plate the screen sets the label on, the same size in the same place.
+        labelBox: { x: plate.x, y: plate.y, width: plate.width, height: plate.height },
         between: { from: route.edge.from, to: route.edge.to },
       } : {}),
       ...(start ? { start: { shape: route.edge.from, side: start } } : {}),

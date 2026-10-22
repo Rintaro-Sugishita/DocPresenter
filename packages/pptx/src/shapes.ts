@@ -133,7 +133,8 @@ function edgeLabelXml(
     + `<p:spPr>${xfrm(frame)}<a:prstGeom prst="rect"><a:avLst/></a:prstGeom>`
     + `<a:solidFill><a:srgbClr val="FFFFFF"/></a:solidFill><a:ln><a:noFill/></a:ln></p:spPr>`
     + `<p:txBody><a:bodyPr anchor="ctr" wrap="none" lIns="0" tIns="0" rIns="0" bIns="0"><a:noAutofit/></a:bodyPr>`
-    + `<a:lstStyle/>${paragraph(connector.label, EDGE_LABEL.fontSize * (EMU_PER_PX / EMU_PER_PT) * scale, '#3a4048', 'ctr')}</p:txBody></p:sp>`;
+    + `<a:lstStyle/>${connector.label.map(line =>
+      paragraph(line, EDGE_LABEL.fontSize * (EMU_PER_PX / EMU_PER_PT) * scale, '#3a4048', 'ctr')).join('')}</p:txBody></p:sp>`;
 }
 
 function shapeXml(

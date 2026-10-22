@@ -105,7 +105,8 @@ export interface DrawnConnector {
   readonly line?: string;
   /** Thickness in drawing units; the default is the one the theme draws with. */
   readonly weight?: number;
-  readonly label?: readonly Run[];
+  /** The label's lines: broken where the source said `\n`, never wrapped. */
+  readonly label?: readonly (readonly Run[])[];
   /**
    * Where the label is set, in drawing units: the plate the screen draws it on,
    * centred where the layout put it. A connector cannot hold text, so the slide

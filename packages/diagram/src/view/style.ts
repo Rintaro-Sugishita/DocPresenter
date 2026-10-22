@@ -93,6 +93,9 @@ export const DIAGRAM_STYLE = `
 /* Connections are re-routed when the shape lands, so they fade while it moves
    rather than trailing behind it. */
 .dp-canvas-dragging .dp-edge { opacity: 0.25; }
+/* A link that is not drawn (\`~~~\`) is shown faintly here only, so it can be
+   picked and deleted. */
+.dp-canvas .dp-line-invisible :is(polyline, .dp-edge-line) { stroke-dasharray: 2 4; opacity: 0.4; }
 .dp-overlay-editing { outline: none; }
 .dp-overlay-editing .dp-callout { cursor: move; }
 .dp-overlay-editing .dp-callout.dp-picked { box-shadow: 0 0 0 2px #1f5fa8; }

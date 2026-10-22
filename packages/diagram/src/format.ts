@@ -759,11 +759,12 @@ function groupLine(group: Node, columns: GroupColumns, order: ReadonlyMap<string
 function edgeLine(edge: Edge, widths: { from: number; to: number }): string {
   const from = padToWidth(edge.from, widths.from);
   const to = edge.label === undefined ? edge.to : `${padToWidth(edge.to, widths.to)} "${edge.label}"`;
-  return `${from} ${connector(edge)} ${to}`;
+  return `${from} ${connector(edge)} ${to}${edge.loose ? ' ~' : ''}`;
 }
 
 /** The connector, spelt one way for each meaning: `-->` rather than `->`. */
 function connector(edge: Edge): string {
+  if (edge.line === 'invisible') return '~~~';
   const dashed = edge.line === 'dashed';
   if (edge.arrow === 'both') return dashed ? '<-.->' : '<-->';
   if (edge.arrow === 'arrow') return dashed ? '-.->' : '-->';
@@ -991,7 +992,7 @@ function modelOf(file: DiagramFile): string {
     theme: file.theme ?? null,
     nodes: sorted(file.nodes.map(node => [node.id, node.text, node.shape, node.className ?? null,
       [...node.children].sort(), node.direction ?? null])),
-    edges: sorted(file.edges.map(edge => [edge.from, edge.to, edge.label ?? null, edge.line, edge.arrow])),
+    edges: sorted(file.edges.map(edge => [edge.from, edge.to, edge.label ?? null, edge.line, edge.arrow, edge.loose])),
     layout: sorted([...file.layout].map(([id, pin]) => [id, pin.x, pin.y, pin.width ?? null,
       pin.height ?? null, pin.z ?? null])),
     bends: sorted([...file.bends].map(([key, bend]) => [key, bend.points.map(point => [point.x, point.y])])),

@@ -14,7 +14,7 @@ import {
   applyEdit, replaceBytes, spanInFile, toLf, type Edit,
 } from '@docpresenter/base';
 import {
-  layOutDiagram, lineText, parseDiagram, parseRuns, pinNodes, setNodeText,
+  layOutDiagram, lineText, parseDiagram, parseLabel, pinNodes, setNodeText,
   type DiagramFile, type Pin,
 } from '@docpresenter/diagram';
 import { readDrawings } from '@docpresenter/pptx';
@@ -110,7 +110,9 @@ export function writeBack(pptx: Uint8Array, workspace: Workspace, locale: Locale
         continue;
       }
       if (node.shape === 'group') continue;        // a group's label is its own
-      const shown = lineText(parseRuns(node.text));
+      // A slide's text holds its lines run together, so a `\n` the label
+      // broke at is not a change.
+      const shown = lineText(parseLabel(node.text)).replace(/\n/g, '');
       if (shape.text === shown || shape.text === '') continue;
       if (shown !== node.text) {
         diagnostics.push({
@@ -164,7 +166,8 @@ export function writeBack(pptx: Uint8Array, workspace: Workspace, locale: Locale
     // dropped in silence.
     for (const label of drawing.edgeLabels) {
       const edge = file.edges.find(one => one.from === label.from && one.to === label.to);
-      const was = edge?.label === undefined ? '' : lineText(parseRuns(edge.label));
+      // Its lines come back run together, as a shape's do.
+      const was = edge?.label === undefined ? '' : lineText(parseLabel(edge.label)).replace(/\n/g, '');
       if (!edge || label.text === was) continue;
       diagnostics.push({
         severity: 'warning', path: drawing.source,

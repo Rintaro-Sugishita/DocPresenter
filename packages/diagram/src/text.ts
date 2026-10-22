@@ -50,8 +50,10 @@ export function wrapRuns(
   };
 
   for (const run of runs) {
-    for (const paragraph of run.text.split('\n')) {
-      if (paragraph !== run.text) flush();
+    for (const [index, paragraph] of run.text.split('\n').entries()) {
+      // A newline in the run ends the line before it; the run's first piece
+      // carries on the line the run before it left.
+      if (index > 0) flush();
       for (const token of tokenize(paragraph)) {
         const tokenWidth = textWidth(token, fontSize);
         const mayBreak = !NO_LINE_START.test(token);

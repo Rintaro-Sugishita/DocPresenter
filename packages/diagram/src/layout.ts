@@ -5,7 +5,7 @@
 // the pin meaningless.
 
 import { arrangeContainers, containerOf, type Hole } from './arrange.js';
-import { lineText, parseRuns, type TextLine } from './inline.js';
+import { lineText, parseLabel, parseRuns, type TextLine } from './inline.js';
 import {
   DEFAULT_SIZE, type DiagramFile, type Edge, type FlowDirection, type Node, type Point,
 } from './model.js';
@@ -99,7 +99,7 @@ const PART_ART = 44;
 
 /** The plate a connection's label sits on. The renderer draws it; the layout
  *  has to know its size so the label is not left outside the canvas. */
-export const EDGE_LABEL = { fontSize: 12, padding: 8, height: 18 } as const;
+export const EDGE_LABEL = { fontSize: 12, padding: 8, height: 18, lineHeight: 15 } as const;
 
 export function layOutDiagram(diagram: DiagramFile, locale: Locale = DEFAULT_LOCALE): LaidOutDiagram {
   const diagnostics: Phrase[] = [];
@@ -243,6 +243,23 @@ function route(
   const lanes = { left: 0, right: 0, top: 0, bottom: 0 };
   const across = axisOf(diagram.direction).across;
   const aside = parallels(diagram);
+  const byId = new Map(diagram.nodes.map(n => [n.id, n]));
+  // The group each shape is drawn in, to turn between frames rather than
+  // between the shapes inside them: a line turning midway between a shape and
+  // one inside a group runs hard against the group's frame.
+  const holder = new Map<string, string>();
+  for (const node of diagram.nodes) {
+    if (node.shape !== 'group') continue;
+    for (const child of node.children) if (!holder.has(child)) holder.set(child, node.id);
+  }
+  const frameOf = (id: string, other: string): Box => {
+    let box = boxes.get(id)!;
+    for (let at = holder.get(id), depth = 0; at !== undefined && depth < 64; at = holder.get(at), depth++) {
+      if (inside(diagram, at).has(other)) break;
+      box = boxes.get(at) ?? box;
+    }
+    return box;
+  };
 
   const routes: EdgeRoute[] = [];
   for (const edge of diagram.edges) {
@@ -258,6 +275,10 @@ function route(
     const bend = diagram.bends.get(`${edge.from}->${edge.to}`);
     if (bend && bend.points.length > 0) {
       routes.push({ edge, points: [a, ...bend.points, b], labelAt: undefined });
+      continue;
+    }
+    if (edge.from === edge.to) {
+      routes.push({ edge, points: selfLoop(from, across, byId.get(edge.from)?.shape === 'group'), labelAt: undefined });
       continue;
     }
 
@@ -288,6 +309,10 @@ function route(
     const course = courses.get(edge)
       ?? { across, back: across ? b.x < a.x : b.y < a.y };
     const turn = course.across;
+    // A group is met level with the other end, inside its frame, rather than
+    // at its centre — where the lines to what it holds already run.
+    if (byId.get(edge.from)?.shape === 'group') a = meet(from, b, turn);
+    if (byId.get(edge.to)?.shape === 'group') b = meet(to, a, turn);
     const t = (p: Point): Point => (turn ? { x: p.y, y: p.x } : p);
     const turnBox = (box: Box): Box => (turn ? { ...box, x: box.y, y: box.x, width: box.height, height: box.width } : box);
     const side = (name: keyof typeof lanes): keyof typeof lanes =>
@@ -303,10 +328,14 @@ function route(
     const tail = { x: t(a).x + shift, y: t(a).y };
     const head = { x: t(b).x + shift, y: t(b).y };
 
-    const direct = elbow(tail, head, turnBox(from), turnBox(to));
+    const direct = elbow(tail, head, turnBox(frameOf(edge.from, edge.to)), turnBox(frameOf(edge.to, edge.from)));
     if (direct.length === 4) {
-      direct[1] = { ...direct[1]!, y: direct[1]!.y + shift };
-      direct[2] = { ...direct[2]!, y: direct[2]!.y + shift };
+      // The turn moves too, the way that keeps two side-by-side lines from
+      // crossing: the one on the outside of the corner turns further out.
+      // Worked out on the line's own course, so `a -> b` and `b -> a` agree.
+      const step = -shift * Math.sign(head.x - tail.x || 1) * Math.sign(head.y - tail.y || 1);
+      direct[1] = { ...direct[1]!, y: direct[1]!.y + step };
+      direct[2] = { ...direct[2]!, y: direct[2]!.y + step };
     }
     if (fits(direct)) { done(direct); continue; }
 
@@ -358,7 +387,8 @@ const PARALLEL_GAP = 18;
 function parallels(diagram: DiagramFile): Map<Edge, number> {
   const groups = new Map<string, Edge[]>();
   for (const edge of diagram.edges) {
-    if (edge.from === edge.to) continue;
+    // A link that is not drawn takes no room beside the ones that are.
+    if (edge.from === edge.to || edge.line === 'invisible') continue;
     if ((diagram.bends.get(`${edge.from}->${edge.to}`)?.points.length ?? 0) > 0) continue;
     const key = [edge.from, edge.to].sort().join('\0');
     const list = groups.get(key);
@@ -426,11 +456,7 @@ function placeLabels(routes: readonly EdgeRoute[]): EdgeRoute[] {
   return routes.map(route => {
     const label = route.edge.label;
     if (!label) return route;
-    const width = textWidth(label, EDGE_LABEL.fontSize) + EDGE_LABEL.padding;
-    const boxAt = (at: Point): Box => ({
-      x: at.x - width / 2, y: at.y - EDGE_LABEL.height / 2,
-      width, height: EDGE_LABEL.height, z: 0, lines: [parseRuns(label)],
-    });
+    const boxAt = (at: Point): Box => plateAt(label, at);
 
     for (const t of [0.5, 0.36, 0.64, 0.24, 0.76]) {
       const at = pointAlong(route.points, t);
@@ -450,12 +476,73 @@ function placeLabels(routes: readonly EdgeRoute[]): EdgeRoute[] {
 function blocked(
   diagram: DiagramFile, boxes: ReadonlyMap<string, Box>, edge: Edge, a: Point, b: Point,
 ): boolean {
+  // A connection to a group starts inside its frame, among what it holds: those
+  // are not in the way of it.
+  const ends = new Set([...inside(diagram, edge.from), ...inside(diagram, edge.to)]);
   for (const node of diagram.nodes) {
-    if (node.id === edge.from || node.id === edge.to || node.shape === 'group') continue;
+    if (ends.has(node.id) || node.shape === 'group') continue;
     const box = boxes.get(node.id);
     if (box && crossesBox(a, b, box)) return true;
   }
   return false;
+}
+
+/**
+ * How far a connection from a shape to itself stands out from the shape. Less
+ * than a group's padding, so the loop of a shape in a group stays in its frame.
+ */
+const LOOP_REACH = 16;
+
+/**
+ * A connection from a shape to itself: out of one side and back in a little
+ * further along, on the side the flow does not use — the right of a flow down
+ * the page, the bottom of one across it. The ends start inside the shape and
+ * are cut at its outline when drawn, like any other.
+ *
+ * A group's loop is put near the start of that side rather than its middle:
+ * from the middle it hangs between two of the shapes inside, and reads as a
+ * line of theirs.
+ */
+function selfLoop(box: Box, across: boolean, group: boolean): Point[] {
+  if (across) {
+    const q = Math.min(box.width / 4, 24);
+    const x = group ? box.x + GROUP_PAD + q : box.x + box.width / 2;
+    const from = group ? box.y + box.height - 4 : box.y + box.height / 2;
+    const y = box.y + box.height + LOOP_REACH;
+    return [{ x: x - q, y: from }, { x: x - q, y }, { x: x + q, y }, { x: x + q, y: from }];
+  }
+  const q = Math.min(box.height / 4, 24);
+  const y = group ? box.y + GROUP_HEADER + GROUP_PAD + q : box.y + box.height / 2;
+  const from = group ? box.x + box.width - 4 : box.x + box.width / 2;
+  const x = box.x + box.width + LOOP_REACH;
+  return [{ x: from, y: y - q }, { x, y: y - q }, { x, y: y + q }, { x: from, y: y + q }];
+}
+
+/**
+ * Where a connection meets a group in a flow: across the flow, level with the
+ * other end as far as the frame allows; along it, the group's middle, so the
+ * line leaves through the side that faces the other end.
+ */
+function meet(group: Box, other: Point, across: boolean): Point {
+  const c = centre(group);
+  const clamp = (value: number, low: number, high: number): number =>
+    low > high ? (low + high) / 2 : Math.min(Math.max(value, low), high);
+  return across
+    ? { x: c.x, y: clamp(other.y, group.y + GROUP_HEADER + GROUP_PAD / 2, group.y + group.height - GROUP_PAD / 2) }
+    : { x: clamp(other.x, group.x + GROUP_PAD / 2, group.x + group.width - GROUP_PAD / 2), y: c.y };
+}
+
+/** A shape, or a group and everything inside it, however deep. */
+function inside(diagram: DiagramFile, id: string): Set<string> {
+  const out = new Set<string>();
+  const take = (one: string): void => {
+    if (out.has(one)) return;
+    out.add(one);
+    const node = diagram.nodes.find(n => n.id === one);
+    if (node?.shape === 'group') for (const child of node.children) take(child);
+  };
+  take(id);
+  return out;
 }
 
 /** Samples the segment rather than solving it: the boxes are large and few. */
@@ -495,11 +582,23 @@ export function pointAlong(points: readonly Point[], fraction: number): Point {
 /** The rectangle a connection's label occupies. */
 export function edgeLabelBox(route: EdgeRoute): Box | undefined {
   if (!route.edge.label || !route.labelAt) return undefined;
-  const width = textWidth(route.edge.label, EDGE_LABEL.fontSize) + EDGE_LABEL.padding;
-  return {
-    x: route.labelAt.x - width / 2, y: route.labelAt.y - EDGE_LABEL.height / 2,
-    width, height: EDGE_LABEL.height, z: 0, lines: [parseRuns(route.edge.label)],
-  };
+  return plateAt(route.edge.label, route.labelAt);
+}
+
+/**
+ * The plate a label sits on, centred at `at`. A connection's label is not
+ * wrapped — it runs along a line, not inside a box — so it breaks only where
+ * `\n` says, and the plate is as wide as its widest line.
+ */
+function plateAt(label: string, at: Point): Box {
+  const lines = wrapRuns(parseLabel(label), Infinity, EDGE_LABEL.fontSize);
+  // An unbroken label keeps the width it always had.
+  const natural = lines.length > 1
+    ? Math.max(...lines.map(line => textWidth(lineText(line), EDGE_LABEL.fontSize)))
+    : textWidth(label, EDGE_LABEL.fontSize);
+  const width = natural + EDGE_LABEL.padding;
+  const height = EDGE_LABEL.height + (lines.length - 1) * EDGE_LABEL.lineHeight;
+  return { x: at.x - width / 2, y: at.y - height / 2, width, height, z: 0, lines };
 }
 
 /**
@@ -543,10 +642,16 @@ function measure(
   // container is placed without a pin, and a text box is 34 tall because the
   // library says so.
   const given = diagram.partSizes.get(node.id);
+  const runs = parseLabel(node.text);
+  const shown = lineText(runs);
+  // A label broken by hand is as wide as its widest line, not as all of it.
+  const natural = shown.includes('\n')
+    ? Math.max(...shown.split('\n').map(line => textWidth(line, FONT)))
+    : textWidth(node.text, FONT);
   const inner = (pin?.width ?? given?.width) !== undefined
     ? (pin?.width ?? given!.width) - TEXT_PAD
-    : Math.min(MAX_NODE_WIDTH, Math.max(DEFAULT_SIZE.width, textWidth(node.text, FONT) + TEXT_PAD)) - TEXT_PAD;
-  const lines = wrapRuns(parseRuns(node.text), inner, FONT);
+    : Math.min(MAX_NODE_WIDTH, Math.max(DEFAULT_SIZE.width, natural + TEXT_PAD)) - TEXT_PAD;
+  const lines = wrapRuns(runs, inner, FONT);
   const widest = lines.reduce((w, line) => Math.max(w, textWidth(lineText(line), FONT)), 0);
   // A cylinder spends the top of its box on the lid, so the text needs the
   // room back; otherwise two lines run into the curve.
@@ -666,13 +771,37 @@ function autoPositions(
   interface Joined { readonly from: string; readonly to: string; readonly edge: Edge }
   const joins = new Map<string | undefined, Joined[]>();
   for (const edge of diagram.edges) {
-    if (!present.has(edge.from) || !present.has(edge.to)) continue;
-    const a = chain(edge.from);
-    const b = chain(edge.to);
-    const level = a.slice(1).find(one => b.includes(one));
-    const one = { from: a[a.indexOf(level) - 1]!, to: b[b.indexOf(level) - 1]!, edge };
-    const list = joins.get(level);
-    if (list) list.push(one); else joins.set(level, [one]);
+    // `b --> a ~` is drawn but does not order the flow: it goes whichever way
+    // the others put its ends.
+    if (edge.loose) continue;
+    // A connection to a group joins everything the group holds: `g1 --> g2`
+    // puts all of g2 after all of g1, so the two frames do not land on top of
+    // each other.
+    for (const from of laidOutAs(edge.from)) {
+      for (const to of laidOutAs(edge.to)) {
+        const a = chain(from);
+        const b = chain(to);
+        // A group joined to what it holds says nothing about the order.
+        if (a.includes(to) || b.includes(from)) continue;
+        const level = a.slice(1).find(one => b.includes(one));
+        const one = { from: a[a.indexOf(level) - 1]!, to: b[b.indexOf(level) - 1]!, edge };
+        const list = joins.get(level);
+        if (list) list.push(one); else joins.set(level, [one]);
+      }
+    }
+  }
+
+  /**
+   * What a connection's end stands for in the layout: a shape, or a group
+   * laid out as one shape, is itself; a group that is only a frame is what it
+   * holds.
+   */
+  function laidOutAs(id: string, seen = new Set<string>()): string[] {
+    if (present.has(id) || clusters.has(id)) return [id];
+    const node = byId.get(id);
+    if (node?.shape !== 'group' || seen.has(id)) return [];
+    seen.add(id);
+    return node.children.flatMap(child => laidOutAs(child, seen));
   }
 
   // What each layout places, in the order the file names it.
@@ -734,7 +863,7 @@ function autoPositions(
  * Worked out along the flow and across it, so one piece of code serves all
  * four directions; a reversed flow is the same layout read from the far end.
  */
-function layered<E extends { from: string; to: string }>(
+function layered<E extends { from: string; to: string; edge?: Edge }>(
   ids: readonly string[],
   edges: readonly E[],
   sizeOf: (id: string) => { width: number; height: number },
@@ -745,8 +874,7 @@ function layered<E extends { from: string; to: string }>(
   height: number;
   back: (edge: E) => boolean;
 } {
-  const back = backEdges(ids, edges);
-  const forward = edges.filter(e => !back.has(e));
+  const forward = forwardEdges(ids, edges);
 
   const rank = new Map<string, number>(ids.map(id => [id, 0]));
   for (let pass = 0; pass < ids.length; pass++) {
@@ -805,6 +933,53 @@ function layered<E extends { from: string; to: string }>(
   }
 
   return { positions, width, height, back: edge => rank.get(edge.to)! < rank.get(edge.from)! };
+}
+
+/**
+ * The edges the ranking follows: all of them but the ones that would close a
+ * cycle. A connection to a group stands for several edges here, one to each
+ * shape it holds, and they go one way together — taking some of `g1 --> g2`
+ * and some of `g2 --> g1` would interleave the two groups. So a connection is
+ * taken whole or set aside whole: first the ones the walk below finds going
+ * forward, then the rest, each only if none of its edges closes a cycle.
+ */
+function forwardEdges<E extends { from: string; to: string; edge?: Edge }>(
+  ids: readonly string[], edges: readonly E[],
+): E[] {
+  const closing = backEdges(ids, edges);
+  const whole = new Map<unknown, E[]>();
+  for (const edge of edges) {
+    const key = edge.edge ?? edge;
+    const list = whole.get(key);
+    if (list) list.push(edge); else whole.set(key, [edge]);
+  }
+  const sets = [...whole.values()];
+  const order = [
+    ...sets.filter(list => !list.some(e => closing.has(e))),
+    ...sets.filter(list => list.some(e => closing.has(e))),
+  ];
+
+  const next = new Map<string, string[]>();
+  const reaches = (from: string, to: string): boolean => {
+    const seen = new Set([from]);
+    const queue = [from];
+    while (queue.length > 0) {
+      const at = queue.shift()!;
+      if (at === to) return true;
+      for (const one of next.get(at) ?? []) if (!seen.has(one)) { seen.add(one); queue.push(one); }
+    }
+    return false;
+  };
+  const out: E[] = [];
+  for (const list of order) {
+    if (list.some(e => e.from === e.to || reaches(e.to, e.from))) continue;
+    for (const e of list) {
+      const after = next.get(e.from);
+      if (after) after.push(e.to); else next.set(e.from, [e.to]);
+      out.push(e);
+    }
+  }
+  return out;
 }
 
 /** The edges that close a cycle; ranking through them would never terminate. */
