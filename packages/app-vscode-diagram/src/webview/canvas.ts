@@ -5,6 +5,7 @@
 import { applyEdit, BASE_STYLE, describeError, localizeEdit, type Locale } from '@docpresenter/base';
 import { createCanvas, DIAGRAM_STYLE, parseDiagram, withParts } from '@docpresenter/diagram';
 import type { FromCanvas, ToCanvas } from '../protocol.js';
+import { takesFocus } from './focus.js';
 
 declare function acquireVsCodeApi(): { postMessage(message: FromCanvas): void };
 
@@ -29,7 +30,7 @@ let locale: Locale = 'ja';
 let picked: readonly string[] = [];
 let edge: string | undefined;
 
-function draw(): void {
+function draw(first = false): void {
   let file;
   try {
     file = withParts(parseDiagram(source), path => libraries[path]);
@@ -65,8 +66,10 @@ function draw(): void {
     close: () => { picked = []; edge = undefined; draw(); },
     onError: message => host.postMessage({ kind: 'error', message }),
   });
+  // Asked before the old canvas leaves the page and takes the focus with it.
+  const canvasFocused = stage.contains(document.activeElement);
   stage.replaceChildren(canvas.element);
-  canvas.focus();
+  if (takesFocus({ pageFocused: document.hasFocus(), canvasFocused, first })) canvas.focus();
 }
 
 window.addEventListener('message', (event: MessageEvent<ToCanvas>) => {
@@ -74,7 +77,7 @@ window.addEventListener('message', (event: MessageEvent<ToCanvas>) => {
   source = message.source;
   libraries = message.libraries;
   locale = message.locale;
-  draw();
+  draw(message.kind === 'open');
 });
 
 host.postMessage({ kind: 'ready' });

@@ -2,11 +2,11 @@
 // each gesture comes back as one byte range of the file, and a change made
 // elsewhere draws it again.
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { byteLength } from '@docpresenter/base';
 import { CanvasEditorProvider } from '../src/canvas-editor.js';
 import type { FromCanvas, ToCanvas } from '../src/protocol.js';
-import { documentAt, give, held, Uri, workspace } from './fake-vscode.js';
+import { documentAt, give, held, Uri, window, workspace } from './fake-vscode.js';
 
 const DGM = ['use "../shared/parts.dgm"', 'free {', '  ok   button:"送信"', '  会員 [会員]', '}', ''].join('\n');
 const PARTS = 'parts {\n  button ( ) { fill: #2f6fb5 } 120x40\n}\n';
@@ -14,6 +14,7 @@ const PARTS = 'parts {\n  button ( ) { fill: #2f6fb5 } 120x40\n}\n';
 async function open() {
   give({ 'docs/login.dgm': DGM, 'shared/parts.dgm': PARTS });
   const sent: ToCanvas[] = [];
+  const revealed: unknown[] = [];
   let receive: ((message: FromCanvas) => unknown) | undefined;
   const panel = {
     webview: {
@@ -26,10 +27,11 @@ async function open() {
       },
     },
     onDidDispose: () => ({ dispose: () => undefined }),
+    reveal: (...how: unknown[]) => { revealed.push(how); },
   };
   const document = await documentAt('docs/login.dgm');
   await new CanvasEditorProvider(Uri.file('/ext')).resolveCustomTextEditor(document as never, panel as never);
-  return { sent, document, html: () => panel.webview.html, say: async (message: FromCanvas) => { await receive?.(message); } };
+  return { sent, revealed, document, html: () => panel.webview.html, say: async (message: FromCanvas) => { await receive?.(message); } };
 }
 
 describe('キャンバス', () => {
@@ -70,5 +72,24 @@ describe('キャンバス', () => {
     await new Promise(resolve => setTimeout(resolve, 0));
     expect(view.sent.map(one => one.kind)).toEqual(['open', 'update']);
     expect(view.sent[1]!.source).toBe(`# 説明\n${DGM}`);
+  });
+
+  it('テキスト側で打つたびに描き直しても、画面を前に出さない', async () => {
+    const view = await open();
+    await view.say({ kind: 'ready' });
+    const shown = vi.spyOn(window, 'showTextDocument');
+    const { WorkspaceEdit } = await import('./fake-vscode.js');
+    for (const letter of ['#', ' ', 'x']) {
+      const edit = new WorkspaceEdit();
+      edit.insert(view.document.uri, view.document.positionAt(0), letter);
+      await workspace.applyEdit(edit);
+    }
+    await new Promise(resolve => setTimeout(resolve, 0));
+    expect(view.sent.map(one => one.kind)).toEqual(['open', 'update', 'update', 'update']);
+    expect(view.sent[3]!.source).toBe(`x #${DGM}`);
+    // フォーカスは打っているテキストエディタに残る。
+    expect(view.revealed).toEqual([]);
+    expect(shown).not.toHaveBeenCalled();
+    shown.mockRestore();
   });
 });
