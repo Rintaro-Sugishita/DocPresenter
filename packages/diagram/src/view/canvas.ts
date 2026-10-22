@@ -14,7 +14,7 @@ import { roundedPath } from '../draw/geometry.js';
 import { stencilArt, stencilParts } from '../draw/stencil.js';
 import { DEFAULT_GROUPS } from '../default-parts.js';
 import {
-  BASE_MESSAGES, DEFAULT_LOCALE, described, type Edit, type Locale, type Phrase,
+  BASE_MESSAGES, DEFAULT_LOCALE, described, enableLongPress, type Edit, type Locale, type Phrase,
 } from '@docpresenter/base';
 import { DIAGRAM_MESSAGES, dgm } from '../messages.js';
 import {
@@ -135,6 +135,8 @@ export function createCanvas(options: CanvasOptions): Canvas {
   /** What the bar says when nothing in particular is picked. */
   const HINT = t('diagram.canvas.hint');
   const laid = layOutDiagram(file, locale);
+  // A finger has no right button: a long press opens the same menus.
+  enableLongPress(owner);
   // The selection is a list rather than one id: grouping and moving several
   // shapes at once both need to know what was picked, in what order.
   let picked = options.selected.filter(id => laid.boxes.has(id));
@@ -1039,20 +1041,8 @@ export function createCanvas(options: CanvasOptions): Canvas {
     const onLine = near.line;
     if (onLine !== undefined) {
       pickLine(onLine);
-      const edge = lineOf(onLine)?.edge;
-      if (!edge) return;
-      const bent = (file.bends.get(onLine)?.points.length ?? 0) > 0;
-      menu.open(event.clientX, event.clientY, [
-        ...(bent ? [{
-          label: t('diagram.canvas.straighten'),
-          run: () => dropCorner('all'),
-        }] : []),
-        {
-          label: t('diagram.canvas.deleteLine'),
-          separated: bent,
-          run: () => options.apply(() => disconnectNodes(file, source, edge.from, edge.to), []),
-        },
-      ]);
+      const items = lineItems(onLine);
+      if (items.length > 0) menu.open(event.clientX, event.clientY, items);
       return;
     }
     if (overShape === undefined || overShape === null) {
@@ -1210,7 +1200,37 @@ export function createCanvas(options: CanvasOptions): Canvas {
     };
   }
 
-  function addItems(event: MouseEvent): MenuItem[] {
+  /** What can be done to a connection: straighten it, or take it away. */
+  function lineItems(name: string): MenuItem[] {
+    const edge = lineOf(name)?.edge;
+    if (!edge) return [];
+    const bent = (file.bends.get(name)?.points.length ?? 0) > 0;
+    return [
+      ...(bent ? [{
+        label: t('diagram.canvas.straighten'),
+        run: () => dropCorner('all'),
+      }] : []),
+      {
+        label: t('diagram.canvas.deleteLine'),
+        separated: bent,
+        run: () => options.apply(() => disconnectNodes(file, source, edge.from, edge.to), []),
+      },
+    ];
+  }
+
+  /**
+   * The menu a right click would open on what is picked — a shape, a
+   * connection, or the drawing itself — for whoever has no right button to
+   * click: a finger, or somebody who never thought to try it.
+   */
+  function pickedItems(): MenuItem[] {
+    const id = primary();
+    if (id !== undefined) return shapeItems(id);
+    if (line !== undefined) return lineItems(line);
+    return addItems();
+  }
+
+  function addItems(event?: MouseEvent): MenuItem[] {
     return [
       ...PALETTE.map((shape): MenuItem => ({
         label: t(`diagram.shape.${shape}`),
@@ -2084,6 +2104,10 @@ export function createCanvas(options: CanvasOptions): Canvas {
       });
     }
     add(t('diagram.canvas.source'), t('diagram.canvas.sourceTitle'), () => options.showSource());
+    add(t('diagram.canvas.more'), t('diagram.canvas.moreTitle'), () => {
+      const at = bar.getBoundingClientRect();
+      menu.open(at.right - 8, at.bottom + 4, pickedItems());
+    }).classList.add('dp-canvas-more');
 
     hint = element('span', 'dp-canvas-hint');
     hint.textContent = HINT;

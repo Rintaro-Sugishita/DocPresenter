@@ -46,7 +46,7 @@ export const DIAGRAM_STYLE = `
 .dp-canvas-rows[hidden] { display: none; }
 /* 入れ物の中で落とす先。隙間に出る帯と、入れ替える相手への被せ。 */
 .dp-canvas-drop { fill: #2f6fb5; opacity: 0.35; }
-.dp-canvas-stage { outline: none; position: relative; }
+.dp-canvas-stage { outline: none; position: relative; -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
 /* The text box sits over the shape being renamed: an IME needs somewhere to
    compose from, the same reason the grid keeps one over the selected cell. */
 /* The format bar over a label. The shared rule pins it to the top right of

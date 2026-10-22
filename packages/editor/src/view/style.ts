@@ -332,4 +332,8 @@ text.dp-review-svg, .dp-review-svg text { fill: #8a5a00; font-weight: 700; }
   color: #5a6270; padding: 0.55em 0.9em; white-space: nowrap;
 }
 .dp-tabbar-toggle[aria-pressed="true"] { color: #1f5fa8; font-weight: 600; }
+/* A long press opens our menu (enableLongPress); the platform's own callout
+   and text selection would open on top of it. */
+.dp-grid, .dp-tabbar, .dp-figure { -webkit-touch-callout: none; }
+.dp-grid, .dp-tabbar { -webkit-user-select: none; user-select: none; }
 `;

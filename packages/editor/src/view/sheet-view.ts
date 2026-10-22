@@ -13,7 +13,7 @@ import {
 import { createSuggestions } from './suggest.js';
 import { itemTableName, parseDiagram, withParts } from '@docpresenter/diagram';
 import {
-  applyEdit, byteLength, describeError, described, localizeEdit, sliceBytes, toggleInline,
+  applyEdit, byteLength, describeError, described, enableLongPress, localizeEdit, sliceBytes, toggleInline,
   type Edit, type InlineMark, type Phrase,
 } from '@docpresenter/base';
 import { EDITOR_MESSAGES, ed } from '../messages.js';
@@ -183,6 +183,8 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
   const owner = root.ownerDocument;
   const menu = createMenu(owner);
   injectStyle(owner);
+  // A finger has no right button: a long press opens the same menus.
+  enableLongPress(owner);
   root.classList.add('dp-editor');
   const pane = element('div', 'dp-editor-pane');
   // The listener lives on the pane, which survives a redraw; the page inside
@@ -206,7 +208,10 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
     const figure = target?.closest<HTMLElement>('.dp-figure');
     if (!figure || !nameable(figure)) return;
     event.preventDefault();
-    menu.open(event.clientX, event.clientY, [{ label: t('editor.figure.button'), run: () => openNames(figure) }]);
+    menu.open(event.clientX, event.clientY, [
+      { label: t('editor.figure.button'), run: () => openNames(figure) },
+      { label: t('editor.delete.button'), run: () => openDelete(figure) },
+    ]);
   });
   const tabbar = element('div', 'dp-tabbar');
   tabbar.setAttribute('role', 'tablist');

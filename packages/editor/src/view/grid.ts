@@ -704,6 +704,12 @@ export function createGrid(options: GridOptions): Grid {
     add(t('editor.grid.format'), t('editor.grid.formatTitle'), () =>
       options.apply(() => formatTable(table), here()));
     add(t('editor.grid.source'), t('editor.grid.sourceTitle'), () => options.showSource());
+    // The rows, the columns and the merging are on the right click — which a
+    // finger does not have. The same menu, for the cell that is picked.
+    add(t('editor.grid.more'), t('editor.grid.moreTitle'), () => {
+      const where = bar.getBoundingClientRect();
+      menu.open(where.right - 8, where.bottom + 4, rowColumnMenu());
+    });
     return bar;
   }
 }
