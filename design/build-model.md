@@ -116,14 +116,73 @@ docs/auth-overview.md          ← ルート（output: [pptx]）
 
 ## 6. CLI
 
+**設計のみ・未実装**（2026-10-22 改訂）。いまあるのは開発用の `tools/*.mjs` で、下のコマンドはそれらを置き換える。
+コマンドは **`docpresenter` 1 つ**で、サブコマンドで分ける。当初案の `build` は **`export`** に改めた
+（形式を引数で選ぶのだから「書き出す」が正しく、VS Code のコマンド名とも揃う）。
+
+### 6.1 共通の決まり
+
+- **作業場のルート**は、指定したパスから上へ辿って `.docpresenter/` のある所、無ければ `.git` のある所。
+  `--root <dir>` で上書きする（今の `--in` に当たる）。ファイルを 1 つだけ指しても、`{{root}}`・文書番号の重複・
+  テーマ・`reviews/` はルートで解く。
+- **対象**はファイルとフォルダを混ぜて**いくつでも**指定できる。フォルダは中を再帰的に辿る。省略するとルート全体。
+- **フォルダから拾う `.md` はルート（`output:` を持つ文書）だけ**。改訂履歴のような部品を成果物にしないため。
+  ファイルを直に指したときは `output:` が無くても扱う。
+- **ファイルを書き換えるコマンド（`format`・`import`）は、`--write` が無ければ変わる中身を見せるだけ**。
+  `export` は新しいファイルを作るだけなので `--write` は要らない。
+- `--lang ja|en`（無ければ `LANG` など）・`--quiet`・`--json`（機械向けの出力）。
+- **終了コード**：0 成功、1 内容の問題（エラー・未整形・`--strict` での警告）、2 使い方の誤り。
+- 位置は `path:line:column` で出す（VS Code の端末でリンクになる）。
+
+### 6.2 `export` — 書き出す
+
 ```bash
-docpresenter build                     # 全ルートをビルド
-docpresenter build docs/auth-design.md # 指定ルートのみ
-docpresenter index                     # インデックスと横断一覧
-docpresenter check                     # 診断のみ（CI 用）
+docpresenter export <ファイル|フォルダ>... [--to <形式>[,<形式>...]] [--out <dir>] [--flat]
 ```
 
-出力先は規約とする（`dist/<文書名>.<拡張子>`）。設定で変更可。
+| 入力 | 書ける形式 | `--to` が無いとき |
+|---|---|---|
+| `.md` | `html` `pdf` `pptx` | frontmatter の `output:` のとおり |
+| `.dgm` | `svg` `png` | `svg` |
+
+- `--to`（`-t`）はカンマ区切りでも、繰り返しても書ける。フォルダに `--to pdf,svg` なら `.md` は PDF、`.dgm` は SVG。
+  合わない組み合わせはフォルダからなら黙って飛ばし、**直に指したファイルなら誤り**（`a.dgm --to pdf`）。
+- **出力先の既定はルートの `out/`**。元ファイルの隣には書かない（`docs/` に成果物が混ざり、差分が汚れるため）。
+  `--out`（`-o`）で変える。
+- **フォルダ構造は保つのが既定**で、ルートからの相対パスをそのまま出力先の下に再現する
+  （`docs/order/design.md` → `out/docs/order/design.pdf`）。`--flat` で出力先の直下に並べる。
+- `--flat` で名前がぶつかったら**何も書かずに誤り**とする。片方が黙って消えるのを防ぐ。
+- **PDF と PNG はこの機械の Chromium 系ブラウザで描く**（[PDF エンジン](pdf-engine.md)と同じ。PNG のために
+  変換ライブラリは足さない）。`--chromium <path>`・`--font <path>`、PNG には `--scale <n>`・`--background <色|transparent>`。
+- 今の `tools/build.mjs` から引き継ぐもの：`--diff-from <rev|dir>`・`--show-removed`・`--no-review-notes`。
+
+### 6.3 `check` — 書き出さずに確かめる
+
+```bash
+docpresenter check [<ファイル|フォルダ>...] [--strict] [--json]
+```
+
+対象の決め方は `export` と同じ。参照切れ・循環・孤児（§5）、図と表の構文の誤りを出す。
+
+### 6.4 そのほかのコマンド
+
+| コマンド | 中身 | 今の置き場所 |
+|---|---|---|
+| `format <…> [--write] [--check]` | `.dgm` を決まった形に整える（[spec/dgm.md §6.3](../spec/dgm.md)）。`--check` は CI 向け | `tools/format-dgm.mjs` |
+| `import <file.pptx\|file.pdf>... [--write] [--into <x.review.yml>]` | `export` の逆。拡張子で決まる：PPTX は図への読み戻し、PDF は注釈を指摘として取り込む | `tools/pptx-back.mjs` / `tools/pdf-review.mjs` |
+| `init` | 作業場を用意する（VS Code の「作業場を初期化する」と同じ中身） | `packages/app-vscode/src/scaffold.ts` |
+| `new doc` / `new diagram` | 文書番号を採って文書を作る／図を作る | 同上 |
+
+`init` と `new` は VS Code を使わない人のためのもので、優先度は低い。
+`index`（横断一覧）は本体が未実装なので見送る。`export --watch` も後回し。
+
+### パッケージ（2026-10-22 決定）
+
+作図は**単独で入れられなければならない**（[パッケージ分割](packaging.md)）。コマンド名は分けずに `docpresenter` 1 つにする。
+**コマンド本体は作図側（base ＋ diagram だけ）のパッケージに置き**、`.dgm` の `export`（svg / png）・`check`・`format` を持たせる。
+文書側（markdown・build・pdf・pptx）は別パッケージで、入っていれば `.md` の `export` や `import` が使える
+（入っていなければ「文書側のパッケージを入れてください」と言う）。文書側は作図側に依存するので、文書側を入れれば両方そろう。
+同じ名前の `bin` を 2 つのパッケージが持つと衝突するため、`bin` を持つのは作図側だけにする。
 
 ## 6.5 実装したもの（2026-09-29）
 

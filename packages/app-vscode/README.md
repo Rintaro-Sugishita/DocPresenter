@@ -187,7 +187,7 @@ shared/glossary.table          A glossary several documents can take in
 .docpresenter/templates/       Templates for new documents (document.md, revision.md). Change them to your team's format
 .docpresenter/themes/default/  The theme (theme.css), a copy of the shipped one. Change it to your team's look
 CLAUDE.md / AGENTS.md          A section telling agents to read guide.md is appended (the file is made if missing)
-.gitignore                     The output folder (out/) is appended
+.gitignore                     The output folder (out/), *.pdf and *.pptx are appended (SVG and PNG are left in Git)
 ```
 
 Appending happens once, so running the command again adds nothing.

@@ -133,15 +133,21 @@ describe('作業場の初期化（続き）', () => {
     const once = after(before);
     expect(once['CLAUDE.md']).toMatch(/^# 自分の指示\n\n<!-- docpresenter:init -->/);
     expect(once['CLAUDE.md']).toContain('.docpresenter/guide.md');
-    expect(once['.gitignore']).toBe('node_modules/\n\n# DocPresenter の書き出し\nout/\n');
+    expect(once['.gitignore']).toBe('node_modules/\n\n# DocPresenter の書き出し\nout/\n*.pdf\n*.pptx\n');
 
     const again = plan(once);
     expect(again.files.filter(file => file.mode === 'append')).toEqual([]);
     expect(again.kept).toEqual(expect.arrayContaining(['CLAUDE.md', 'AGENTS.md', '.gitignore']));
   });
 
-  it('書き出し先が既に Git から外れていれば、.gitignore に足さない', () => {
-    expect(plan({ '.gitignore': '/out\n' }).kept).toContain('.gitignore');
+  it('書き出し先・PDF・PPTX が既に Git から外れていれば、.gitignore に足さない', () => {
+    expect(plan({ '.gitignore': '/out\n*.pdf\n*.pptx\n' }).kept).toContain('.gitignore');
+  });
+
+  it('足りない行だけを足す。SVG と PNG は外さない', () => {
+    const text = after({ '.gitignore': '/out\n*.pdf\n' })['.gitignore'];
+    expect(text).toBe('/out\n*.pdf\n\n# DocPresenter の書き出し\n*.pptx\n');
+    expect(text).not.toMatch(/svg|png/);
   });
 });
 

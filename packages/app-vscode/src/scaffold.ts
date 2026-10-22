@@ -235,9 +235,16 @@ export function planScaffold(
     append(path, agentPointer(words), text => text.includes(MARKER));
   }
   // The top folder the builds go in: `out/build` is kept out of Git as `out/`.
+  // PDFs and decks are kept out wherever they are written; SVG and PNG are not,
+  // since a drawing exported as a picture is often meant to be committed.
   const top = answers.outDir.replace(/^\.?\/+/, '').split('/')[0]!;
-  append('.gitignore', `${words.gitignore}\n${top}/\n`,
-    text => text.split(/\r?\n/).some(line => line.trim().replace(/^\/|\/$/g, '') === top));
+  const bare = (line: string): string => line.trim().replace(/^\/|\/$/g, '');
+  const missing = (text: string): string[] => {
+    const ignored = new Set(text.split(/\r?\n/).map(bare));
+    return [`${top}/`, '*.pdf', '*.pptx'].filter(pattern => !ignored.has(bare(pattern)));
+  };
+  append('.gitignore', `${words.gitignore}\n${missing(existing('.gitignore') ?? '').join('\n')}\n`,
+    text => missing(text).length === 0);
 
   return { files, kept, document };
 }

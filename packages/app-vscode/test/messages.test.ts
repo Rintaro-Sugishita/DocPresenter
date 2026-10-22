@@ -49,6 +49,6 @@ describe('VS Code の言語', () => {
     expect(text('docs/auth.md')).not.toMatch(/[぀-ヿ]/);
     expect(text('docs/auth/revision.md')).toContain('Revision history');
     expect(text('shared/glossary.table')).toContain('col:Term');
-    expect(text('.gitignore')).toBe('# DocPresenter output\nout/\n');
+    expect(text('.gitignore')).toBe('# DocPresenter output\nout/\n*.pdf\n*.pptx\n');
   });
 });

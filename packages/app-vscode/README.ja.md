@@ -186,7 +186,7 @@ shared/glossary.table          複数の文書から参照する用語集
 .docpresenter/templates/       新しい文書のテンプレート（document.md・revision.md）。チームの書式に合わせて編集してよい
 .docpresenter/themes/default/  テーマ（theme.css）。拡張機能に同梱のテーマの複製で、チームのデザインに合わせて編集してよい
 CLAUDE.md / AGENTS.md          guide.md を読むよう指示する節を追記（ファイルがなければ作成）
-.gitignore                     出力先（out/）を追記
+.gitignore                     出力先（out/）と *.pdf・*.pptx を追記（SVG と PNG は Git に残す）
 ```
 
 追記は一度しか行わないため、コマンドを再実行しても同じ内容が重複して追加されることはない。
