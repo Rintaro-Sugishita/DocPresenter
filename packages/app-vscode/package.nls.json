@@ -19,5 +19,12 @@
   "config.commitKey.shift-enter": "Shift+Enter commits / Enter breaks the line",
   "config.commitKey.alt-enter": "Alt+Enter commits / Enter breaks the line",
   "config.outDir.description": "The folder builds are written to (relative to the workspace).",
-  "config.pdfReviewNotes.description": "Put the review comments and answers on this document into the PDF as annotations, so a customer can read the answers and reply in the PDF. Turn off for a copy to deliver."
+  "config.pdfReviewNotes.description": "Put the review comments and answers on this document into the PDF as annotations, so a customer can read the answers and reply in the PDF. Turn off for a copy to deliver.",
+  "command.markdown.bold.title": "Markdown: Bold",
+  "command.markdown.italic.title": "Markdown: Italic",
+  "command.markdown.code.title": "Markdown: Code",
+  "command.markdown.enter.title": "Markdown: New Line (Continuing a List)",
+  "command.markdown.indent.title": "Markdown: Move List Item In",
+  "command.markdown.outdent.title": "Markdown: Move List Item Out",
+  "config.markdownEditing.description": "Help writing Markdown as text: Enter continues a list, Tab / Shift+Tab move list items, Ctrl+B / Ctrl+I / Ctrl+E mark bold, italic and code. Turn it off when another extension does the same."
 }

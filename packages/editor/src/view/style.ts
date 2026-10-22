@@ -29,6 +29,19 @@ export const EDITOR_STYLE = `
 }
 .dp-block-source:focus { outline: 2px solid #d8b96b; outline-offset: -1px; }
 
+/* What @ and @import "…" can be followed by, under the text box being written. */
+.dp-suggest {
+  position: absolute; left: 0; top: 100%; z-index: 20; margin: 2px 0 0; padding: 2px 0;
+  list-style: none; min-width: 16em; max-width: 100%; max-height: 14em; overflow: auto;
+  background: #fff; border: 1px solid #c9ced6; border-radius: 4px; box-shadow: 0 2px 8px rgba(0,0,0,.15);
+  font-family: var(--font-heading, sans-serif); font-size: 0.85em; line-height: 1.5;
+}
+.dp-suggest[hidden] { display: none; }
+.dp-suggest li { display: flex; gap: 1em; justify-content: space-between; padding: 0.15em 0.7em; cursor: pointer; }
+.dp-suggest li.dp-suggest-active { background: #e8eefc; }
+.dp-suggest-text { font-family: var(--font-mono, monospace); white-space: nowrap; }
+.dp-suggest-detail { color: #6b7380; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
 /* Where a new block begins. An empty sheet says so; a sheet with content
    keeps it quiet until the pointer is over it. */
 .dp-append {

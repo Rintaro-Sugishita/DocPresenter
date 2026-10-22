@@ -18,6 +18,7 @@
     "設計書", "仕様書", "作図", "図", "表", "フローチャート", "画面設計", "レビュー"
   ],
   "main": "./media/extension.cjs",
+  "activationEvents": ["onLanguage:markdown"],
   "extensionPack": ["docpresenter.docpresenter-diagram"],
   "contributes": {
     "customEditors": [
@@ -41,7 +42,21 @@
       { "command": "docpresenter.exportPdf", "title": "%command.exportPdf.title%", "category": "DocPresenter" },
       { "command": "docpresenter.exportPptx", "title": "%command.exportPptx.title%", "category": "DocPresenter" },
       { "command": "docpresenter.readBackPptx", "title": "%command.readBackPptx.title%", "category": "DocPresenter" },
-      { "command": "docpresenter.importPdfReview", "title": "%command.importPdfReview.title%", "category": "DocPresenter" }
+      { "command": "docpresenter.importPdfReview", "title": "%command.importPdfReview.title%", "category": "DocPresenter" },
+      { "command": "docpresenter.markdown.bold", "title": "%command.markdown.bold.title%", "category": "DocPresenter", "enablement": "editorLangId == markdown" },
+      { "command": "docpresenter.markdown.italic", "title": "%command.markdown.italic.title%", "category": "DocPresenter", "enablement": "editorLangId == markdown" },
+      { "command": "docpresenter.markdown.code", "title": "%command.markdown.code.title%", "category": "DocPresenter", "enablement": "editorLangId == markdown" },
+      { "command": "docpresenter.markdown.enter", "title": "%command.markdown.enter.title%", "category": "DocPresenter", "enablement": "editorLangId == markdown" },
+      { "command": "docpresenter.markdown.indent", "title": "%command.markdown.indent.title%", "category": "DocPresenter", "enablement": "editorLangId == markdown" },
+      { "command": "docpresenter.markdown.outdent", "title": "%command.markdown.outdent.title%", "category": "DocPresenter", "enablement": "editorLangId == markdown" }
+    ],
+    "keybindings": [
+      { "command": "docpresenter.markdown.enter", "key": "enter", "when": "editorTextFocus && editorLangId == markdown && !editorReadonly && !suggestWidgetVisible && !inlineSuggestionVisible && !editorHasMultipleSelections && !inSnippetMode && config.docpresenter.markdownEditing" },
+      { "command": "docpresenter.markdown.indent", "key": "tab", "when": "editorTextFocus && editorLangId == markdown && !editorReadonly && !suggestWidgetVisible && !inlineSuggestionVisible && !editorTabMovesFocus && !inSnippetMode && !hasOtherSuggestions && config.docpresenter.markdownEditing" },
+      { "command": "docpresenter.markdown.outdent", "key": "shift+tab", "when": "editorTextFocus && editorLangId == markdown && !editorReadonly && !suggestWidgetVisible && !inlineSuggestionVisible && !editorTabMovesFocus && !inSnippetMode && config.docpresenter.markdownEditing" },
+      { "command": "docpresenter.markdown.bold", "key": "ctrl+b", "mac": "cmd+b", "when": "editorTextFocus && editorLangId == markdown && !editorReadonly && config.docpresenter.markdownEditing" },
+      { "command": "docpresenter.markdown.italic", "key": "ctrl+i", "mac": "cmd+i", "when": "editorTextFocus && editorLangId == markdown && !editorReadonly && config.docpresenter.markdownEditing" },
+      { "command": "docpresenter.markdown.code", "key": "ctrl+e", "mac": "cmd+e", "when": "editorTextFocus && editorLangId == markdown && !editorReadonly && config.docpresenter.markdownEditing" }
     ],
     "menus": {
       "editor/title": [
@@ -92,6 +107,11 @@
           "type": "string",
           "default": "out/build",
           "description": "%config.outDir.description%"
+        },
+        "docpresenter.markdownEditing": {
+          "type": "boolean",
+          "default": true,
+          "description": "%config.markdownEditing.description%"
         },
         "docpresenter.pdfReviewNotes": {
           "type": "boolean",

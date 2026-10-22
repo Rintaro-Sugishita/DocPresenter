@@ -247,6 +247,20 @@ The templates and theme set up by the command are **files in your repository**: 
   which VS Code's undo does not reach; the screen's undo takes those back too, again as one edit.
   A file changed elsewhere since is never written over.
 
+### Writing a document as text
+
+The same help in DocPresenter's text box (click a paragraph) and in VS Code's own editor for a `.md`:
+
+| Key | What it does |
+|---|---|
+| **Enter** on a list item | Starts the next item with the same bullet, the next number, an empty task box. Enter on an empty item ends the list |
+| **Tab / Shift+Tab** on list items | Moves the items one level in (under the item above) or out. Elsewhere, Tab is Tab |
+| **Ctrl+B / Ctrl+I / Ctrl+E** | Bold, italic, code (pressed again, taken off) |
+| **`@`** | Offers the labels the document can refer to (its included documents' too), with their numbers and captions |
+| **`@import "`** | Offers the drawings, tables and other files there are, written from the document |
+
+In VS Code the keys can be turned off with the setting `docpresenter.markdownEditing` — when another Markdown extension already does the same.
+
 ### Writing and formatting a `.dgm`
 
 Drawings are the business of **DocPresenter Diagram**, which is installed with this extension: colouring and

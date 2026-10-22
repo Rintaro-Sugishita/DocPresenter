@@ -25,3 +25,4 @@ export {
   MERMAID_VIEWS, fenceInfo, fencesOf, mermaidFigure, setFenceView, viewOf,
   type Fence, type MermaidView,
 } from './html/markdown.js';
+export * from './editing.js';

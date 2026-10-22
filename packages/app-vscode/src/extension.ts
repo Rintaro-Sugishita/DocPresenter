@@ -2,12 +2,13 @@
 //
 // Registered and nothing else at start-up: the editor for documents and for
 // drawings on their own, the export buttons' commands, the commands that
-// write every document at once, the one that sets a folder up, and the
-// suggestions in a drawing opened as text.
+// write every document at once, the one that sets a folder up, and help
+// writing a document as text (lists, marks, suggestions after @).
 
 import * as vscode from 'vscode';
 import { openDrawing } from './drawing.js';
 import { registerWorkspaceProblems } from './workspace-problems.js';
+import { registerMarkdownEditing } from './markdown-editing.js';
 import { exportAll, FORMAT_LABEL } from './export-command.js';
 import { initWorkspace } from './init-command.js';
 import { newDocument } from './document-command.js';
@@ -85,6 +86,8 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand('docpresenter.importPdfReview',
       (uri?: vscode.Uri, selected?: vscode.Uri[]) => importReview(output, uri, selected)),
     registerWorkspaceProblems(output),
+    // Writing a document as text: lists, marks, and what goes after @.
+    registerMarkdownEditing(),
   );
 }
 

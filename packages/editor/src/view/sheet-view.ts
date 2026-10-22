@@ -8,7 +8,9 @@
 import {
   PICTURE, importAttribute, isAddress, joinPath, labelPrefixFor, parseDocument, parseTable,
   renameFigure, setFenceView, setImportAttribute, sheetsOf, viewOf, type MermaidView, type Sheet,
+  enterInList, indentListItems, labelCandidates, type TextChange,
 } from '@docpresenter/markdown';
+import { createSuggestions } from './suggest.js';
 import { parseDiagram, withParts } from '@docpresenter/diagram';
 import {
   applyEdit, byteLength, describeError, described, localizeEdit, sliceBytes, toggleInline,
@@ -791,10 +793,23 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
 
     const edit: BlockEdit = { host, original: host.innerHTML, span, area, prefix, fresh, path };
     host.classList.add('dp-editing');
+    const update = (): void => {
+      resize(area);
+      toolbar.sync(area.value, area.selectionStart, area.selectionEnd);
+    };
+    // What `@` and `@import "` can be followed by. A referenced file is a
+    // drawing or a table, where neither means anything.
+    const suggestions = path === undefined
+      ? createSuggestions(owner, area, {
+        labels: () => labelCandidates(source, written => options.readResource?.(written), settings.locale),
+        files: () => (options.listResources?.() ?? []).map(one => one.path),
+        importLabel: t('editor.suggest.import'),
+      }, update)
+      : undefined;
     // The bar writes Markdown. A table's cells take inline Markdown but its
     // meaning tokens are fills in the style section, and a diagram takes
     // neither — so a bar over a referenced file would write the wrong thing.
-    host.replaceChildren(...(path === undefined ? [toolbar.element, area] : [area]));
+    host.replaceChildren(...(path === undefined ? [toolbar.element, area, suggestions!.element] : [area]));
     editing = edit;
 
     resize(area);
@@ -802,26 +817,42 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
     area.setSelectionRange(area.value.length, area.value.length);
     toolbar.sync(area.value, area.selectionStart, area.selectionEnd);
 
-    const update = (): void => {
-      resize(area);
-      toolbar.sync(area.value, area.selectionStart, area.selectionEnd);
+    /** A change worked out on the text (a list carried on, items moved), applied to the box. */
+    const change = (made: TextChange): void => {
+      area.setRangeText(made.text, made.start, made.end);
+      area.setSelectionRange(made.select.start, made.select.end);
+      update();
     };
-    area.addEventListener('input', update);
+    area.addEventListener('input', () => { update(); suggestions?.update(); });
     area.addEventListener('select', update);
-    area.addEventListener('keyup', update);
-    area.addEventListener('click', update);
+    area.addEventListener('keyup', event => {
+      update();
+      if (event.key === 'ArrowLeft' || event.key === 'ArrowRight' || event.key === 'Home' || event.key === 'End') suggestions?.update();
+    });
+    area.addEventListener('click', () => { update(); suggestions?.update(); });
     area.addEventListener('blur', () => endEdit(true));
     area.addEventListener('keydown', event => {
       event.stopPropagation();
+      // An open list of suggestions has the arrows, Enter, Tab and Escape first.
+      if (!event.isComposing && suggestions?.key(event)) { event.preventDefault(); return; }
       if (event.key === 'Escape') { event.preventDefault(); endEdit(false); }
       if (event.key === 'Enter') {
+        // Enter that confirms a conversion belongs to the input method.
+        if (event.isComposing) return;
         event.preventDefault();
         if (isCommit(event, settings.commitKey)) { endEdit(true); return; }
         // Every Enter that is not the commit inserts a line break, including
-        // the modified ones a text box would otherwise swallow.
-        area.setRangeText('\n', area.selectionStart, area.selectionEnd, 'end');
-        resize(area);
-        toolbar.sync(area.value, area.selectionStart, area.selectionEnd);
+        // the modified ones a text box would otherwise swallow — and on a list
+        // item, the next item's marker with it.
+        const list = path === undefined ? enterInList(area.value, area.selectionStart, area.selectionEnd) : undefined;
+        if (list) change(list);
+        else { area.setRangeText('\n', area.selectionStart, area.selectionEnd, 'end'); update(); }
+        return;
+      }
+      // Tab on list items moves them in or out; anywhere else it leaves the box as it always has.
+      if (event.key === 'Tab' && path === undefined && !event.ctrlKey && !event.metaKey && !event.altKey) {
+        const moved = indentListItems(area.value, area.selectionStart, area.selectionEnd, event.shiftKey);
+        if (moved) { event.preventDefault(); change(moved); }
         return;
       }
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'b') {
@@ -829,6 +860,9 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
       }
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'i') {
         event.preventDefault(); applyFormat('italic');
+      }
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'e') {
+        event.preventDefault(); applyFormat('code');
       }
     });
   }

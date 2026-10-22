@@ -19,5 +19,12 @@
   "config.commitKey.shift-enter": "Shift+Enter で確定 / Enter で改行",
   "config.commitKey.alt-enter": "Alt+Enter で確定 / Enter で改行",
   "config.outDir.description": "ビルドの成果物を書くフォルダ（作業場からの相対）。",
-  "config.pdfReviewNotes.description": "PDF に、この文書への指摘と回答を注釈として入れる。顧客は PDF で回答を読み、その注釈に返信できる。納品用には外す。"
+  "config.pdfReviewNotes.description": "PDF に、この文書への指摘と回答を注釈として入れる。顧客は PDF で回答を読み、その注釈に返信できる。納品用には外す。",
+  "command.markdown.bold.title": "Markdown: 太字",
+  "command.markdown.italic.title": "Markdown: 斜体",
+  "command.markdown.code.title": "Markdown: コード",
+  "command.markdown.enter.title": "Markdown: 改行（箇条書きを続ける）",
+  "command.markdown.indent.title": "Markdown: 項目を下げる",
+  "command.markdown.outdent.title": "Markdown: 項目を上げる",
+  "config.markdownEditing.description": "Markdown をテキストで書くときの支援：Enter で箇条書きを続け、Tab / Shift+Tab で項目を下げ・上げ、Ctrl+B / Ctrl+I / Ctrl+E で太字・斜体・コードにする。ほかの拡張機能が同じことをするときは切る。"
 }
