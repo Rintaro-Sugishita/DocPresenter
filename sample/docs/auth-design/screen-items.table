@@ -21,10 +21,15 @@
 
 style {
   theme: grid
-  col:分類 { width: 18% }
-  col:必須     { width: 4em }
-  col:初期値   { width: 5em }
-  col:説明     { width: 38% }
+  col:分類     { width: 7% }
+  col:No       { width: 4% }
+  col:ID       { width: 10% }
+  col:項目名   { width: 17% }
+  col:型       { width: 15% }
+  col:必須     { width: 6% }
+  col:寄せ     { width: 6% }
+  col:初期値   { width: 7% }
+  col:説明     { width: 28% }
 
   cell:表示/説明 { fill: #fdf0d5 }
 }

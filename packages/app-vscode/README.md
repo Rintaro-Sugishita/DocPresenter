@@ -94,6 +94,14 @@ layout {
 - Drag the middle of a line to bend it and its end to reconnect it; choose the arrowheads and the weight.
 - In a flow diagram, only the shapes you moved by hand are recorded; the rest stay laid out automatically.
 
+**Screen designs: inputs with their labels, and the item table**
+
+![A login screen with its labels moved to the left, the inputs lined up](https://raw.githubusercontent.com/Rintaro-Sugishita/DocPresenter/HEAD/packages/app-vscode/images/en/4-fields.png)
+
+- An input added from "+ Part" comes with its label, ready for typing. The two move and are deleted together.
+- Right-click "Put the labels on the left / on top" to move the labels of the whole form. On the left, the inputs line up, and dragging sets the label column's width.
+- Renaming a label renames the item in the item table (`.table`) in the same single edit. Text inside an input is sample data and never becomes the item's name.
+
 **As code** (opened as text)
 
 - Opened as text in VS Code, a `.dgm` is coloured and offers suggestions as you type: shapes, parts, what to connect to, properties.
@@ -138,6 +146,9 @@ style {
 - Right-click to add or delete rows and columns, and to merge or unmerge cells.
 - Drag a column's edge to set its width. Set fill, text colour and alignment for a cell, a row, a column or the header.
 - "Tidy source" lines up the text's columns; "Source" edits the `.table` directly.
+- In an item table, the Type, Required and Align cells offer choices (Alt+↓ opens them). Types come from the words the tables use and from the parts on the screen. Space cycles Required and Align.
+
+![Choices open on a Type cell of the item table](https://raw.githubusercontent.com/Rintaro-Sugishita/DocPresenter/HEAD/packages/app-vscode/images/en/5-choices.png)
 
 **Exchanging tables with Excel: through the clipboard**
 
