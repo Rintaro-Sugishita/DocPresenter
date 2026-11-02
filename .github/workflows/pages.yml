@@ -5,7 +5,7 @@ name: Web viewer
 
 on:
   push:
-    branches: [claude/docpresenter-service-6rm7u3]
+    branches: [main]
     paths:
       - 'packages/**'
       - 'themes/**'

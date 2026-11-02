@@ -31,7 +31,7 @@ DocPresenter の組版でそのままプレビューが出るページを作る�
 
 ### 2.2 ref とパスの切り分け（要注意）
 
-ブランチ名に `/` が入る（このリポジトリの既定ブランチ自体が `claude/docpresenter-service-6rm7u3`）ので、
+ブランチ名に `/` が入ることがある（`feature/login` など）ので、
 `blob/<ref>/<path>` は URL だけでは切れない。
 
 - `GET /repos/{owner}/{repo}/branches` と `/tags`、または `GET /repos/{owner}/{repo}/commits/{候補}` を
@@ -108,7 +108,7 @@ DocPresenter の組版でそのままプレビューが出るページを作る�
 
 ## 5. 引き継ぎ時点の状態
 
-- ブランチ：`claude/docpresenter-service-6rm7u3`（既定ブランチ）。テスト 687 件・`tools/check-*.mjs` は全件通過。
+- ブランチ：`claude/docpresenter-service-6rm7u3`（当時の既定ブランチ。2026-11-02 に `main` へ改名）。テスト 687 件・`tools/check-*.mjs` は全件通過。
 - VS Code 拡張の配布用パッケージは `tools\package-vscode.bat`（`out/vsix/` に出る）。
 - 直近で入ったもの（Web 版にも関係する）：
   - 書き出しはフォルダの構成を保つ（`outputStem`。`docs/` も含め作業場の構成のまま）。

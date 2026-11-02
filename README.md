@@ -5,7 +5,7 @@
 
 ![DocPresenter で設計書を開いたところ。印刷時と同じページの形で表示される](packages/app-vscode/images/ja/1-pages.png)
 
-**ブラウザで試す：** [サンプルの設計書を Web の閲覧ページで開く](https://rintaro-sugishita.github.io/DocPresenter/view.html?src=https://github.com/Rintaro-Sugishita/DocPresenter/blob/claude/docpresenter-service-6rm7u3/sample/docs/auth-design.md)。
+**ブラウザで試す：** [サンプルの設計書を Web の閲覧ページで開く](https://rintaro-sugishita.github.io/DocPresenter/view.html?src=https://github.com/Rintaro-Sugishita/DocPresenter/blob/main/sample/docs/auth-design.md)。
 閲覧ページは <https://rintaro-sugishita.github.io/DocPresenter/> にあり、`view.html?src=<GitHub 上のファイルの URL>` で好きな文書を開ける。
 
 ## 概要
