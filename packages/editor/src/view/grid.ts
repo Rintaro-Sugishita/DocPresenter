@@ -19,6 +19,7 @@ import {
 import { BASE_MESSAGES, DEFAULT_LOCALE, type Edit, type Locale } from '@docpresenter/base';
 import { EDITOR_MESSAGES } from '../messages.js';
 import { undoKey } from '../history.js';
+import { columnFloor, fitColumns } from '../column-widths.js';
 import {
   formatTable, insertColumn, insertRow, parseClipboardGrid, pasteGrid,
   mergeDown, mergeLoses, mergeRange, mergeRight, removeColumn, removeRow, setAlign,
@@ -203,16 +204,33 @@ export function createGrid(options: GridOptions): Grid {
 
     const head = owner.createElement('thead');
     const headRow = owner.createElement('tr');
-    table.columns.forEach((column, c) => {
+    const widths = table.columns.map(column => table.style.find(r =>
+      r.selector.kind === 'column' && r.selector.name === column.header,
+    )?.declarations.get('width'));
+    const heads = table.columns.map((column, c) => {
       const node = cellNode('th', column.header, -1, c, 1, 1, undefined);
-      const width = table.style.find(r =>
-        r.selector.kind === 'column' && r.selector.name === column.header,
-      )?.declarations.get('width');
+      const width = widths[c];
       if (width !== undefined) node.style.width = width;
       addResizeHandle(node, c);
       headRow.append(node);
+      return node;
     });
     head.append(headRow);
+
+    // Widths given to some columns can leave the others too little to show a
+    // word; those keep their room, and the given ones give way, on screen only.
+    const floors = table.columns.map((column, c) => columnFloor(column.header, table.rows.flatMap(row =>
+      row.cells.filter(cell => cell.column === c && cell.colspan === 1).map(shownText))));
+    const fit = (): void => {
+      const total = grid.clientWidth;
+      if (total <= 0) return;
+      const em = Number.parseFloat(owner.defaultView?.getComputedStyle(grid).fontSize ?? '') || 16;
+      const shares = fitColumns(widths, floors, total, em);
+      heads.forEach((node, c) => { node.style.width = shares ? `${shares[c]}%` : widths[c] ?? ''; });
+    };
+    queueMicrotask(fit);
+    const Observer = owner.defaultView?.ResizeObserver;
+    if (Observer) new Observer(fit).observe(grid);
 
     const tbody = owner.createElement('tbody');
     table.rows.forEach((row, r) => {
