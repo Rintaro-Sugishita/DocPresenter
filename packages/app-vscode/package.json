@@ -3,7 +3,7 @@
   "displayName": "DocPresenter",
   "description": "%extension.description%",
   "version": "0.1.0",
-  "publisher": "docpresenter",
+  "publisher": "rintaro-sugishita",
   "private": true,
   "license": "SEE LICENSE IN legal/LICENSE.draft.md",
   "repository": { "type": "git", "url": "https://github.com/Rintaro-Sugishita/DocPresenter.git", "directory": "packages/app-vscode" },
@@ -19,7 +19,7 @@
   ],
   "main": "./media/extension.cjs",
   "activationEvents": ["onLanguage:markdown"],
-  "extensionPack": ["docpresenter.docpresenter-diagram"],
+  "extensionPack": ["rintaro-sugishita.docpresenter-diagram"],
   "contributes": {
     "customEditors": [
       {

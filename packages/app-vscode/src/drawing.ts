@@ -5,7 +5,7 @@
 import * as vscode from 'vscode';
 
 /** The diagram extension, as VS Code names it. */
-export const DIAGRAM_EXTENSION = 'docpresenter.docpresenter-diagram';
+export const DIAGRAM_EXTENSION = 'rintaro-sugishita.docpresenter-diagram';
 /** Its canvas, by the view type it registers. */
 export const DIAGRAM_CANVAS = 'docpresenterDiagram.canvas';
 
