@@ -22,6 +22,11 @@ export interface Step {
   readonly description: string;
   /** The sheet that was on screen, so taking it back shows where it happened. */
   readonly sheet: number;
+  /**
+   * Another file the same gesture changed — a screen's item table, when a
+   * label was renamed on the screen. Taken back and made again with it.
+   */
+  readonly also?: { readonly path: string | undefined; readonly before: string; readonly after: string } | undefined;
 }
 
 export interface History {

@@ -615,9 +615,14 @@ export function setNodeText(
   file: DiagramFile, id: string, text: string, source?: string,
 ): Edit {
   const node = find(file, id);
+  // A shape written as a part stays that part: `idLabel label:"…"` is renamed
+  // in its words, not turned into a box of the same words.
+  const part = file.partOf.get(id);
   const line = node.shape === 'group'
     ? groupLine({ ...node, text }, node.children)
-    : nodeLine(node, node.shape, text, gapOf(node, source));
+    : part !== undefined
+      ? `${node.id}${gapOf(node, source)}${part}:${text === '' ? '' : `"${text}"`}`
+      : nodeLine(node, node.shape, text, gapOf(node, source));
   return { span: node.span, text: line, ...described(dgm('diagram.did.text')) };
 }
 
@@ -886,14 +891,15 @@ export function nextShapeId(file: DiagramFile, shape: ShapeKind | 'part'): strin
   }
 }
 
-function idWidth(file: DiagramFile): number {
+/** How wide the ids of the layout section are written, so a new pin lines up. */
+export function idWidth(file: DiagramFile): number {
   let widest = 0;
   for (const id of file.layout.keys()) widest = Math.max(widest, id.length);
   return widest + 1;
 }
 
 /** One line with its indent and its newline, so removing it removes a line. */
-function whole(source: string, span: ByteSpan, text: string): Change {
+export function whole(source: string, span: ByteSpan, text: string): Change {
   const before = sliceBytes(source, 0, span.start);
   const indent = /[ \t]*$/.exec(before)?.[0] ?? '';
   return {
@@ -905,7 +911,7 @@ function whole(source: string, span: ByteSpan, text: string): Change {
   };
 }
 
-interface Change {
+export interface Change {
   readonly span: ByteSpan;
   readonly text: string;
 }
@@ -916,7 +922,7 @@ interface Change {
  * still shows the lines that changed and nothing else, while the write-back
  * stays a single byte range.
  */
-function splice(source: string, changes: readonly Change[], description: Phrase): Edit {
+export function splice(source: string, changes: readonly Change[], description: Phrase): Edit {
   const sorted = [...changes].sort((a, b) => a.span.start - b.span.start);
   const first = sorted[0];
   if (!first) throw new DiagramEditError(dgm('diagram.edit.noChange'));
@@ -932,4 +938,41 @@ function splice(source: string, changes: readonly Change[], description: Phrase)
   }
   text += sliceBytes(source, at, end);
   return { span: { start, end }, text, ...described(description) };
+}
+
+/**
+ * The drawing's text with a parts library named: `use "<name>"` above its
+ * first section, after the comments that open the file. A screen drawn with
+ * no library takes the shipped one the moment one of its parts is put on it.
+ */
+export function withLibrary(source: string, name: string): string {
+  // Measured on the text read as LF, as every range of the drawing is.
+  const text = source.replace(/\r\n/g, '\n');
+  const lines = text.split('\n');
+  let at = 0;
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (trimmed !== '' && !trimmed.startsWith('#')) break;
+    at += line.length + 1;
+  }
+  at = Math.min(at, text.length);
+  return `${text.slice(0, at)}use "${name}"\n\n${text.slice(at)}`;
+}
+
+/**
+ * One edit that turns one text into the other: the smallest range in which
+ * they differ. For a gesture worked out on a text the file does not have yet
+ * — the drawing with a library named — and then written as one change.
+ */
+export function editBetween(before: string, after: string, description: Phrase): Edit {
+  const shorter = Math.min(before.length, after.length);
+  let head = 0;
+  while (head < shorter && before[head] === after[head]) head += 1;
+  let tail = 0;
+  while (tail < shorter - head && before[before.length - 1 - tail] === after[after.length - 1 - tail]) tail += 1;
+  return {
+    span: { start: byteLength(before.slice(0, head)), end: byteLength(before.slice(0, before.length - tail)) },
+    text: after.slice(head, after.length - tail),
+    ...described(description),
+  };
 }

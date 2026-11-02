@@ -26,6 +26,12 @@ export interface Edit {
    * files, so editing one is a byte range in that file, not in this one.
    */
   readonly path?: string | undefined;
+  /**
+   * An edit to another file that the same gesture made — the item table's
+   * name for a label just renamed on the screen. It is written with this one
+   * and taken back with it. Its range is in that file as it stands before.
+   */
+  readonly also?: Edit | undefined;
 }
 
 /**
@@ -51,5 +57,6 @@ export function described(phrase: Phrase): { description: string; phrase: Phrase
 
 /** The edit with its description in the author's language. */
 export function localizeEdit<E extends Edit>(edit: E, locale: Locale): E {
-  return edit.phrase ? { ...edit, description: say(locale, edit.phrase) } : edit;
+  const said = edit.phrase ? { ...edit, description: say(locale, edit.phrase) } : edit;
+  return edit.also ? { ...said, also: localizeEdit(edit.also, locale) } : said;
 }

@@ -256,6 +256,18 @@ text.dp-review-svg, .dp-review-svg text { fill: #8a5a00; font-weight: 700; }
 /* A picked rectangle. The cell the keyboard is on keeps its own outline. */
 .dp-grid-table .dp-grid-picked { background: rgba(31, 95, 168, .10); }
 .dp-grid-table .dp-grid-at { box-shadow: inset 0 0 0 2px #1f5fa8; }
+/* A cell that takes its words from a list: the button that opens it, over the
+   text box, and the list under the cell. A word the screen cannot read is
+   underlined where it is written. */
+.dp-grid-opener {
+  position: absolute; top: 2px; right: 2px; bottom: 2px; z-index: 2; width: 1.4em; padding: 0;
+  border: none; border-radius: 3px; background: #e8eefc; color: #1f5fa8; cursor: pointer; font: inherit; line-height: 1;
+}
+/* As wide as its words, not as the column: a narrow 型 column would cut every
+   choice short. */
+.dp-grid-choices { min-width: 12em; max-width: none; width: max-content; font-weight: 400; text-align: left; }
+.dp-grid-choices.dp-grid-choices-up { top: auto; bottom: 100%; margin: 0 0 2px; }
+.dp-grid-table .dp-grid-unread .dp-grid-text { text-decoration: underline wavy #b3261e; }
 
 /* The text box covers the selected cell. While navigating it is invisible and
    the cell's own text shows through; typing into it flips the cell to editing,

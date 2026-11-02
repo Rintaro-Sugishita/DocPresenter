@@ -57,6 +57,20 @@ export interface GridOptions {
   readonly undo?: ((redo: boolean) => void) | undefined;
   /** Which language the bars and menus speak. */
   readonly locale?: Locale | undefined;
+  /**
+   * The words a cell is offered, for a table that knows what its columns
+   * mean — a screen's item table. Undefined for a cell that is just text.
+   */
+  readonly choices?: ((at: GridPosition) => CellChoices | undefined) | undefined;
+}
+
+/** The words one cell is offered, and whether anything else belongs there. */
+export interface CellChoices {
+  /** True when only these words are read; false when they are a start. */
+  readonly closed: boolean;
+  readonly choices: readonly { readonly text: string; readonly detail?: string | undefined }[];
+  /** Whether a word written there can be read. */
+  accepts(text: string): boolean;
 }
 
 /**
@@ -102,6 +116,28 @@ export function createGrid(options: GridOptions): Grid {
   const input = owner.createElement('input');
   input.className = 'dp-grid-input';
   input.spellcheck = false;
+
+  // What the open cell is offered, under it, and the button that opens it on
+  // a cell that is only picked — the pointer's way in, as a spreadsheet's
+  // list cell has. The words shown are those that fit what has been typed.
+  const list = element('ul', 'dp-suggest dp-grid-choices');
+  list.setAttribute('role', 'listbox');
+  list.hidden = true;
+  const opener = element('button', 'dp-grid-opener');
+  opener.textContent = '\u25be';
+  opener.tabIndex = -1;
+  opener.title = t('editor.grid.choices');
+  opener.addEventListener('mousedown', event => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (!editing) startEditing('');
+  });
+  let offered: CellChoices | undefined;
+  let shown: CellChoices['choices'] = [];
+  let active = -1;
+  // Until something is typed every word is shown: the box opens holding the
+  // cell's own text, and that is not a search.
+  let typed = false;
 
   // A cell holds inline Markdown, so the same bar that formats prose formats a
   // cell. It appears only while a cell is open: with nothing being edited
@@ -207,6 +243,13 @@ export function createGrid(options: GridOptions): Grid {
     // here would leave the grid unmoved by an alignment it had just been told
     // to apply.
     const node = element(tag, ['dp-grid-cell', alignOf(table, column, rules), ...styles].join(' '));
+    // A word the screen cannot read is shown as such where it is written,
+    // not only as a note under the drawing.
+    const offer = tag === 'td' ? options.choices?.({ row, column }) : undefined;
+    if (offer?.closed && text.trim() !== '' && !offer.accepts(text)) {
+      node.classList.add('dp-grid-unread');
+      node.title = t('editor.grid.unread');
+    }
     const colours = inlineStyle(rules);
     if (colours !== '') node.setAttribute('style', colours);
     const label = element('span', 'dp-grid-text');
@@ -284,6 +327,8 @@ export function createGrid(options: GridOptions): Grid {
     if (!extend) anchor = resolved;
     editing = false;
     input.value = '';
+    closeChoices();
+    offered = at.row < 0 ? undefined : options.choices?.(at);
     toolbar.element.hidden = true;
     repaintStyle();
     paintRange();
@@ -292,6 +337,8 @@ export function createGrid(options: GridOptions): Grid {
     if (!node) return;
     node.classList.add('dp-grid-at');
     if (!same) node.append(input);
+    if (offered && offered.choices.length > 0) node.append(opener);
+    else opener.remove();
     input.focus({ preventScroll: true });
     options.move(at);
   }
@@ -305,6 +352,87 @@ export function createGrid(options: GridOptions): Grid {
     else input.setSelectionRange(input.value.length, input.value.length);
     toolbar.element.hidden = false;
     toolbar.sync(input.value, input.selectionStart ?? 0, input.selectionEnd ?? 0);
+    typed = initial !== '';
+    showChoices();
+  }
+
+  /** Shows what the open cell is offered, as far as it fits what is typed. */
+  function showChoices(): void {
+    if (!offered || !editing) { closeChoices(); return; }
+    const value = input.value.trim().toLowerCase();
+    // A closed list is short and is all there is, so it is never cut down; an
+    // open one is cut to what has the typed text in it.
+    shown = offered.closed || !typed || value === ''
+      ? offered.choices
+      : offered.choices.filter(one => one.text.toLowerCase().includes(value));
+    if (!offered.closed && shown.length === 1 && shown[0]!.text.toLowerCase() === value) shown = [];
+    // On a closed list the word already written is where the arrows start.
+    active = offered.closed ? shown.findIndex(one => one.text.toLowerCase() === value) : -1;
+    drawChoices();
+  }
+
+  function drawChoices(): void {
+    list.replaceChildren(...shown.map((one, index) => {
+      const row = element('li', index === active ? 'dp-suggest-active' : '');
+      row.setAttribute('role', 'option');
+      row.setAttribute('aria-selected', String(index === active));
+      const text = element('span', 'dp-suggest-text');
+      // An empty word is a choice too — "as the part has it" — and needs a
+      // place to click.
+      text.textContent = one.text === '' ? '\u00a0' : one.text;
+      row.append(text);
+      if (one.detail) {
+        const detail = element('span', 'dp-suggest-detail');
+        detail.textContent = one.detail;
+        row.append(detail);
+      }
+      // Pressed, not clicked: a click would take the focus from the box first.
+      row.addEventListener('mousedown', event => {
+        event.preventDefault();
+        event.stopPropagation();
+        choose(index, at);
+      });
+      return row;
+    }));
+    list.hidden = shown.length === 0;
+    const node = nodes.get(key(at));
+    if (!list.hidden && node) {
+      node.append(list);
+      // Under the cell, unless the cell is near the bottom of the window and
+      // there is more room above it: a list opened past the bottom edge is a
+      // list nobody sees until they think to scroll.
+      list.classList.remove('dp-grid-choices-up');
+      const view = owner.defaultView;
+      const cell = node.getBoundingClientRect();
+      const below = (view?.innerHeight ?? cell.bottom) - cell.bottom;
+      if (list.offsetHeight > below && cell.top > below) list.classList.add('dp-grid-choices-up');
+    }
+    list.querySelector('.dp-suggest-active')?.scrollIntoView({ block: 'nearest' });
+  }
+
+  function closeChoices(): void {
+    list.hidden = true;
+    list.remove();
+    shown = [];
+    active = -1;
+  }
+
+  /** Writes a word from the list into the open cell and moves on. */
+  function choose(index: number, then: GridPosition): void {
+    const one = shown[index];
+    if (!one) return;
+    input.value = one.text;
+    commit(then);
+  }
+
+  /** On a closed list, the word after the one written: Space, as a check box takes it. */
+  function cycle(): void {
+    if (!offered?.closed || offered.choices.length === 0) return;
+    const now = textOf(at).trim().toLowerCase();
+    const index = offered.choices.findIndex(one => one.text.toLowerCase() === now);
+    const next = offered.choices[(index + 1) % offered.choices.length]!.text;
+    const target = at;
+    options.apply(() => setCell(table, target.row, target.column, next), target);
   }
 
   /** Formats the selection inside the open cell, as Markdown in the cell text. */
@@ -340,7 +468,11 @@ export function createGrid(options: GridOptions): Grid {
     });
     input.addEventListener('input', () => {
       if (!editing && input.value !== '') startEditing(input.value);
-      else if (editing) toolbar.sync(input.value, input.selectionStart ?? 0, input.selectionEnd ?? 0);
+      else if (editing) {
+        toolbar.sync(input.value, input.selectionStart ?? 0, input.selectionEnd ?? 0);
+        typed = true;
+        showChoices();
+      }
     });
     input.addEventListener('select', () => {
       if (editing) toolbar.sync(input.value, input.selectionStart ?? 0, input.selectionEnd ?? 0);
@@ -372,9 +504,26 @@ export function createGrid(options: GridOptions): Grid {
       }
       const step = (row: number, column: number, extend = false): void => {
         event.preventDefault();
-        if (editing) commit({ row, column });
+        if (editing && active >= 0 && shown[active]) choose(active, { row, column });
+        else if (editing) commit({ row, column });
         else place({ row, column }, extend);
       };
+
+      // An open list has the up and down arrows; Enter and Tab take the word
+      // the arrows are on, through step.
+      if (editing && !list.hidden && (event.key === 'ArrowDown' || event.key === 'ArrowUp')) {
+        event.preventDefault();
+        active = event.key === 'ArrowDown'
+          ? (active + 1) % shown.length
+          : (active <= 0 ? shown.length : active) - 1;
+        drawChoices();
+        return;
+      }
+      if (!editing && offered && offered.choices.length > 0) {
+        // Alt+Down opens the list, as it does on a spreadsheet's list cell.
+        if (event.key === 'ArrowDown' && event.altKey) { event.preventDefault(); return startEditing(''); }
+        if (event.key === ' ' && offered.closed && single()) { event.preventDefault(); return cycle(); }
+      }
 
       switch (event.key) {
         case 'Escape':

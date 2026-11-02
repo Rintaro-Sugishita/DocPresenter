@@ -8,10 +8,12 @@
 import {
   PICTURE, importAttribute, isAddress, joinPath, labelPrefixFor, parseDocument, parseTable,
   removeImportLine, renameFigure, setFenceView, setImportAttribute, sheetsOf, viewOf, type MermaidView, type Sheet,
-  enterInList, indentListItems, labelCandidates, type TextChange,
+  enterInList, indentListItems, labelCandidates, cellAt, type TableFile, type TextChange,
 } from '@docpresenter/markdown';
 import { createSuggestions } from './suggest.js';
-import { itemTableName, parseDiagram, withParts } from '@docpresenter/diagram';
+import {
+  itemCellChoices, itemColumns, itemTableName, itemTypes, parseDiagram, withParts, type DiagramFile,
+} from '@docpresenter/diagram';
 import {
   applyEdit, byteLength, describeError, described, enableLongPress, localizeEdit, sliceBytes, toggleInline,
   type Edit, type InlineMark, type Phrase,
@@ -23,7 +25,7 @@ import { DiagramEditError } from '@docpresenter/diagram';
 import { TableEditError } from '../table.js';
 import { createCanvas } from '@docpresenter/diagram';
 import { createOverlayEditor } from '@docpresenter/diagram';
-import { createGrid, type Grid, type GridPosition } from './grid.js';
+import { createGrid, type CellChoices, type Grid, type GridPosition } from './grid.js';
 import { createMenu } from '@docpresenter/base';
 import { EDITOR_STYLE } from './style.js';
 import { BASE_STYLE } from '@docpresenter/base';
@@ -775,6 +777,7 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
       move: next => { if (grid) grid = { ...grid, at: next }; },
       onTarget: target => { if (grid) grid = { ...grid, target }; },
       undo: travel,
+      choices: itemChoicesFor(current.path, table),
       showSource: () => {
         grid = undefined;
         const source = options.readResource?.(current.path) ?? '';
@@ -782,6 +785,56 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
       },
     });
     body.replaceChildren(mounted.element);
+  }
+
+  /**
+   * What the cells of a screen's item table are offered; undefined for any
+   * other table. The screen is the drawing that names this table, looked for
+   * among the drawings the document imports and the workspace has; the types
+   * offered besides its guess are this table's and the workspace's other item
+   * tables'. Both are read the first time a type cell asks, and once.
+   */
+  function itemChoicesFor(path: string, table: TableFile): ((at: GridPosition) => CellChoices | undefined) | undefined {
+    const headers = table.columns.map(one => one.header);
+    if (itemColumns(headers).id === undefined) return undefined;
+    const rows = table.rows.map((_, r) => headers.map((_, c) => cellAt(table, r, c)?.text ?? ''));
+    const here = joinPath('', path);
+    const drawings = (): string[] => [...new Set([
+      ...[...source.matchAll(/@import\s+"([^"]+\.dgm)"/gi)].map(match => match[1]!),
+      ...(options.listResources?.() ?? []).map(one => one.path).filter(one => /\.dgm$/i.test(one)),
+    ])];
+    let screen: { file: DiagramFile | undefined } | undefined;
+    const findScreen = (): DiagramFile | undefined => {
+      for (const drawing of drawings()) {
+        const text = options.readResource?.(drawing);
+        if (text === undefined) continue;
+        try {
+          const file = parseDiagram(text);
+          if (file.itemTable === undefined || joinPath(drawing, file.itemTable.path) !== here) continue;
+          return withParts(file, used => options.readResource?.(joinPath(drawing, used)));
+        } catch {
+          // A drawing that cannot be read names no table.
+        }
+      }
+      return undefined;
+    };
+    let others: readonly string[] | undefined;
+    const otherTypes = (): readonly string[] => others ??= (options.listResources?.() ?? [])
+      .map(one => one.path)
+      .filter(one => /\.table$/i.test(one) && joinPath('', one) !== here)
+      .flatMap(one => itemTypes(options.readResource?.(one) ?? ''));
+    const made = new Map<string, CellChoices | undefined>();
+    return at => {
+      const key = `${at.row},${at.column}`;
+      if (!made.has(key)) {
+        made.set(key, itemCellChoices(headers, rows, at.row, at.column, {
+          get screen() { return (screen ??= { file: findScreen() }).file; },
+          otherTypes,
+          locale: settings.locale,
+        }));
+      }
+      return made.get(key);
+    };
   }
 
   /** A screen's item table just made, to be imported once the screen names it. */
@@ -854,7 +907,12 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
             // An edit to the drawing's item table names the table as the
             // drawing writes it; the document names it from where it stands.
             const made = make();
-            return { ...made, path: made.path === undefined ? current.path : joinPath(current.path, made.path) };
+            const named = (path: string | undefined): string =>
+              (path === undefined ? current.path : joinPath(current.path, path));
+            return {
+              ...made, path: named(made.path),
+              ...(made.also ? { also: { ...made.also, path: named(made.also.path) } } : {}),
+            };
           } catch (error) {
             if (error instanceof DiagramEditError) throw new SheetEditError(error.phrase);
             throw error;
@@ -1299,6 +1357,12 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
     if (edit.path === undefined) source = written;
     const said = localizeEdit(edit, settings.locale);
     options.onChange?.(said, written);
+    // The other file the same gesture changed, written before anything is
+    // drawn: the drawing is drawn from both.
+    const also = edit.also;
+    const alsoBefore = also?.path === undefined ? undefined : options.readResource?.(also.path);
+    const alsoWritten = also === undefined || alsoBefore === undefined ? undefined : applyEdit(alsoBefore, also);
+    if (also && alsoWritten !== undefined) options.onChange?.(said.also ?? also, alsoWritten);
 
     try {
       active = Math.max(1, Math.min(select, sheets().length));
@@ -1308,6 +1372,9 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
       if (edit.path !== undefined && before !== undefined) {
         options.onChange?.({ ...edit, phrase: undefined, description: t('editor.did.undo') }, before);
       }
+      if (also && alsoBefore !== undefined) {
+        options.onChange?.({ ...also, phrase: undefined, description: t('editor.did.undo') }, alsoBefore);
+      }
       draw();
       options.onError?.(explain(error));
       return false;
@@ -1316,7 +1383,11 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
     // empty one would not be taking the edit back.
     const from = edit.path === undefined ? previous : before;
     if (record && from !== undefined) {
-      history.record({ path: edit.path, before: from, after: written, description: said.description, sheet: active });
+      history.record({
+        path: edit.path, before: from, after: written, description: said.description, sheet: active,
+        ...(also && alsoBefore !== undefined && alsoWritten !== undefined
+          ? { also: { path: also.path, before: alsoBefore, after: alsoWritten } } : {}),
+      });
     }
     return true;
   }
@@ -1336,10 +1407,16 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
       options.onError?.(t(redo ? 'editor.redo.stale' : 'editor.undo.stale', { what: step.description }));
       return;
     }
+    // The other file goes back with it, if it is still as the step left it.
+    const also = step.also;
+    const alsoNow = also === undefined ? undefined : also.path === undefined ? source : options.readResource?.(also.path);
+    const alsoChange = also === undefined ? undefined : redo ? redoing({ ...step, ...also }, alsoNow) : undoing({ ...step, ...also }, alsoNow);
+    const description = t(redo ? 'editor.did.redoOf' : 'editor.did.undoOf', { what: step.description });
     const done = commit(() => ({
       ...change,
       path: step.path,
-      description: t(redo ? 'editor.did.redoOf' : 'editor.did.undoOf', { what: step.description }),
+      description,
+      ...(also && alsoChange ? { also: { ...alsoChange, path: also.path, description } } : {}),
     }), step.sheet, false);
     if (!done) return;
     if (redo) history.redone(); else history.undone();

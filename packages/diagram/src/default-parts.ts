@@ -55,6 +55,7 @@ export const DEFAULT_GROUPS: Readonly<Record<string, `diagram.parts.group.${stri
 export const DEFAULT_PARTS = `# 同梱の画面部品
 # 自分のシステムの見た目は、作業場の parts ファイルに書いて上書きする。
 # item: は画面の項目一覧に載る部品の分類。必須の印は required の絵で描く。
+# 入力欄のラベルを左に置く製品は、label に field: left と書く（書かなければ上）。
 
 parts {
   # --- 面 ---

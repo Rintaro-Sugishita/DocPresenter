@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { applyEdit } from '@docpresenter/base';
 import {
-  DiagramEditError, formatDiagram, itemName, itemShapes, itemTableName, layOutDiagram, linkItemTable,
-  newItemTable, parseDiagram, readingOrder, renderDiagram, setItemCell, starterScreen, syncItemTable, withParts,
+  DiagramEditError, followLabel, formatDiagram, itemName, itemShapes, itemTableName, layOutDiagram, linkItemTable,
+  itemCellChoices, itemTypes, newItemTable, parseDiagram, readItemTable, readingOrder, renderDiagram, setItemCell,
+  starterScreen, syncItemTable, withParts,
 } from '../src/index.js';
 
 // The login screen of the sample, cut down to what the item list is about.
@@ -102,6 +103,16 @@ describe('the item table a screen names', () => {
     // A check box comes first in its row, so its words come after it.
     expect(itemName(file, 'keepBox')).toBe('保持する');
     expect(itemName(file, 'submit')).toBe('ログイン');
+  });
+
+  // What a text box shows is a sample of what will be typed there, not its name.
+  it('does not name an input by the sample written in it', () => {
+    const plain = 'use "default"\n\nfree {\n  mail textbox:"yamada@example.co.jp"\n'
+      + '  note error:"ID またはパスワードが違います"\n  ok primary:"送信"\n}\n';
+    const file = withParts(parseDiagram(plain), () => undefined);
+    expect(itemName(file, 'mail')).toBe('');
+    expect(itemName(file, 'note')).toBe('');
+    expect(itemName(file, 'ok')).toBe('送信');
   });
 
   it('numbers the items in the screen\'s order and marks the required ones', () => {
@@ -299,5 +310,75 @@ describe('writing one item\'s cell from the screen', () => {
     expect(() => setItemCell(screen(), TABLE, 'title', 'required', true)).toThrow(DiagramEditError);
     const narrow = '| ID | 必須 |\n|----|------|\n| idBox | ○ |\n';
     expect(() => setItemCell(screen(narrow), narrow, 'idBox', 'align', 'left')).toThrow(DiagramEditError);
+  });
+});
+
+describe('what a cell of the item table is offered', () => {
+  const TYPED = [
+    '| 分類 | ID      | 項目名 | 型            | 必須 | 寄せ |',
+    '|------|---------|--------|---------------|:----:|:----:|',
+    '| 入力 | idBox   | ID     | `varchar(64)` |  ○   |      |',
+    '| ^    | pwBox   | PW     |               |  —   |  右  |',
+    '| ^    | keepBox | 保持   |               |  ×?  |  上  |',
+    '| 操作 | submit  | 送信   | —             |      |      |',
+    '',
+  ].join('\n');
+  const grid = (source: string) => {
+    const table = readItemTable(source)!;
+    return { headers: table.headers, rows: table.rows.map(row => row.cells) };
+  };
+
+  it('offers yes and no for required, written the way the table writes them', () => {
+    const { headers, rows } = grid(TYPED);
+    const offer = itemCellChoices(headers, rows, 0, 4)!;
+    expect(offer.closed).toBe(true);
+    expect(offer.choices.map(one => one.text)).toEqual(['○', '—']);
+    expect(offer.accepts('○')).toBe(true);
+    expect(offer.accepts('×?')).toBe(false);
+  });
+
+  it('offers the sides for alignment, and empty for as the part has it', () => {
+    const { headers, rows } = grid(TYPED);
+    const offer = itemCellChoices(headers, rows, 0, 5)!;
+    expect(offer.choices.map(one => one.text)).toEqual(['左', '中央', '右', '']);
+    expect(offer.accepts('上')).toBe(false);
+    expect(offer.accepts('')).toBe(true);
+  });
+
+  it('offers a type from the part first, then the types the tables use', () => {
+    const { headers, rows } = grid(TYPED);
+    const offer = itemCellChoices(headers, rows, 1, 3, {
+      screen: screen(), otherTypes: () => ['`int`', '`varchar(64)`', '`int`'],
+    })!;
+    expect(offer.closed).toBe(false);
+    // pwBox is a text box: the varchar this table already writes, then the bare guess.
+    expect(offer.choices.map(one => one.text)).toEqual(['`varchar(64)`', '`varchar`', '`int`']);
+    expect(offer.choices[1]!.detail).toBe('textbox から');
+    const box = itemCellChoices(headers, rows, 2, 3, { screen: screen() })!;
+    expect(box.choices[0]!.text).toBe('`bool`');
+  });
+
+  it('offers nothing for a column the screen does not read, or a table with no ID', () => {
+    const { headers, rows } = grid(TYPED);
+    expect(itemCellChoices(headers, rows, 0, 2)).toBeUndefined();
+    expect(itemCellChoices(['名前', '必須'], [['a', '○']], 0, 1)).toBeUndefined();
+  });
+
+  it('reads the type cells of another item table', () => {
+    expect(itemTypes(TYPED)).toEqual(['`varchar(64)`', '', '', '—']);
+    expect(itemTypes('| 名前 | 型 |\n|---|---|\n| a | int |\n')).toEqual([]);
+  });
+});
+
+describe('an item\'s name following its label', () => {
+  it('renames the item while its name is still the label\'s words, and only then', () => {
+    const edit = followLabel(screen(), TABLE, 'idBox', 'ログイン ID', 'ユーザー ID')!;
+    expect(edit.path).toBe('items.table');
+    const after = applyEdit(TABLE, edit);
+    expect(after.split('\n')[4]).toContain('| ユーザー ID |');
+    expect(after.split('\n').filter((line, i) => line !== TABLE.split('\n')[i])).toHaveLength(1);
+    // 保持 was written apart from the screen's 保持する: it is left as it is.
+    expect(followLabel(screen(), TABLE, 'keepBox', '保持する', '状態を保持する')).toBeUndefined();
+    expect(followLabel(screen(), TABLE, 'idBox', 'ログイン ID', 'ログイン ID')).toBeUndefined();
   });
 });

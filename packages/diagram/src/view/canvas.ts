@@ -12,18 +12,24 @@ import type { DiagramFile, Item, ShapeKind } from '../model.js';
 import { renderDiagram } from '../draw/render.js';
 import { roundedPath } from '../draw/geometry.js';
 import { stencilArt, stencilParts } from '../draw/stencil.js';
-import { DEFAULT_GROUPS } from '../default-parts.js';
+import { DEFAULT_GROUPS, DEFAULT_LIBRARY } from '../default-parts.js';
+import { parseDiagram } from '../parse.js';
+import { withParts } from '../parts.js';
 import {
-  BASE_MESSAGES, DEFAULT_LOCALE, described, enableLongPress, type Edit, type Locale, type Phrase,
+  applyEdit, BASE_MESSAGES, DEFAULT_LOCALE, described, describeError, enableLongPress,
+  type Edit, type Locale, type Phrase,
 } from '@docpresenter/base';
 import { DIAGRAM_MESSAGES, dgm } from '../messages.js';
 import {
-  addNode, bendEdge, canUnpin, connectNodes, disconnectNodes, groupMembers, groupNodes,
+  addNode, bendEdge, canUnpin, editBetween, withLibrary, connectNodes, disconnectNodes, groupMembers, groupNodes,
   nextShapeId, pinNode, pinNodes, reconnect, removeNodes, setContainerCells, setItems,
   putIntoContainer, setNodePart, setNodeShape, setNodeStyle, setNodeText, unpinNode,
   DiagramEditError,
 } from '../edits.js';
-import { itemShapes, linkItemTable, newItemTable, setItemCell, syncItemTable } from '../items.js';
+import { followLabel, itemShapes, linkItemTable, newItemTable, setItemCell, syncItemTable } from '../items.js';
+import {
+  addField, addLabel, fieldOf, fieldShapes, formOf, isLabelForm, setLabelColumn, setLabelSide, type AddedField,
+} from '../fields.js';
 import { toggleInline, type InlineMark } from '@docpresenter/base';
 import { createMenu, createToolbar, type MenuItem } from '@docpresenter/base';
 import { alignIcon, lineIcon, partIcon, rowIcon, shapeIcon } from './shape-icon.js';
@@ -39,6 +45,14 @@ const SVG_NS = 'http://www.w3.org/2000/svg';
  * pressing it twice meant.
  */
 const rowPicks = new WeakMap<Document, { id: string; index: number }>();
+/**
+ * A shape whose words are to be written as soon as the canvas is back — the
+ * label of an input just added. The canvas is built again after every edit,
+ * so "and now type its name" has to outlive the one that made it.
+ */
+const textPicks = new WeakMap<Document, string>();
+/** The kinds of item that are inputs, and so come with a label. */
+const INPUTS = new Set(['入力', 'input']);
 /** A shape that draws itself from rows, and the rows it draws. */
 interface Held {
   readonly icon: Listing;
@@ -330,6 +344,22 @@ export function createCanvas(options: CanvasOptions): Canvas {
       overlay.append(handle);
     }
 
+    // The edge between a form's labels and its inputs: drag it for a width,
+    // double-click it to fit the longest label.
+    const column = labelColumn();
+    if (column) {
+      const edge = shape('rect', 'dp-canvas-column');
+      const size = 6 / scale();
+      place(edge, {
+        x: (sizing?.at ?? column.edge) - size / 2, y: column.top, width: size, height: column.height,
+        z: 0, lines: [],
+      } as Box);
+      const title = owner.createElementNS(SVG_NS, 'title');
+      title.textContent = t('diagram.canvas.labelColumn');
+      edge.append(title);
+      overlay.append(edge);
+    }
+
     const held = listingOf(row?.id);
     const listBox = boxOf(row?.id);
     if (row && held && listBox) {
@@ -560,6 +590,10 @@ export function createCanvas(options: CanvasOptions): Canvas {
   let drag: Drag | undefined;
   /** What moves with the pointer: the picked shapes and what they contain. */
   let moving = new Set<string>();
+  /** The edge of a form's label column being dragged, where the pointer has it. */
+  let sizing: { form: string; left: number; at: number } | undefined;
+  /** The field or form row a press took hold of, when it was one. */
+  let unit: { id: string; row: boolean } | undefined;
   /** The rubber band, in the drawing's coordinates. */
   let band: { from: { x: number; y: number }; to: { x: number; y: number } } | undefined;
   /**
@@ -583,6 +617,18 @@ export function createCanvas(options: CanvasOptions): Canvas {
     if (target?.closest('.dp-canvas-text, .dp-format-bar')) return;
     const onHandle = target?.closest('.dp-canvas-handle') != null && picked.length === 1;
     const onEnd = target?.closest('.dp-canvas-end')?.getAttribute('data-end');
+    const onColumn = target?.closest('.dp-canvas-column') != null ? labelColumn() : undefined;
+    if (onColumn) {
+      event.stopPropagation();
+      stage.focus({ preventScroll: true });
+      sizing = { form: onColumn.form, left: onColumn.left, at: onColumn.edge };
+      drag = {
+        kind: 'move', from: { x: event.clientX, y: event.clientY },
+        pointerId: event.pointerId, id: '', box: bandBox(), moved: false,
+        by: { x: 0, y: 0 }, size: undefined,
+      };
+      return;
+    }
     // A shape under the pointer wins; only then is a line looked for.
     const onShape = onHandle ? primary() : target?.closest('[data-node]')?.getAttribute('data-node');
     const near = onShape === undefined || onShape === null ? nearest(pointOn(event)) : {};
@@ -685,9 +731,13 @@ export function createCanvas(options: CanvasOptions): Canvas {
     pickRow(onRow === undefined ? undefined : { id, index: onRow });
     describe();
 
-    const box = boxOf(id);
+    // A label and its input are moved as one: pressing either drags the
+    // field that holds them, or the row of the form they are on.
+    const whole = onHandle ? undefined : unitOf(id);
+    unit = whole ? { id: whole.id, row: whole.id === id } : undefined;
+    const box = boxOf(whole?.id ?? id);
     if (!box) return;
-    moving = movingSet();
+    moving = whole ? new Set(whole.shapes) : movingSet();
     if (moving.size === 0) {
       options.onError?.(t('diagram.edit.empty', { id }));
       return;
@@ -696,10 +746,53 @@ export function createCanvas(options: CanvasOptions): Canvas {
       kind: onHandle ? 'resize' : 'move',
       from: { x: event.clientX, y: event.clientY },
       pointerId: event.pointerId,
-      id, box, moved: false,
+      id: whole?.id ?? id, box, moved: false,
       by: { x: 0, y: 0 }, size: undefined,
     };
   });
+
+  /**
+   * What one press moves when it is on a field: the field's stack and all it
+   * holds — or, on a form with its labels on the left, the whole row. Undefined for anything else, which moves as
+   * itself.
+   */
+  function unitOf(id: string): { id: string; shapes: readonly string[] } | undefined {
+    if (picked.length !== 1 || file.mode !== 'free') return undefined;
+    const row = formRow(id);
+    if (row) return { id, shapes: [...new Set(row.grid.cells[row.row]!.filter(cell => cell !== '.'))] };
+    const field = fieldOf(file, id);
+    if (!field || field.kind === 'left' || field.container === id) return undefined;
+    const container = file.containers.get(field.container)!;
+    return { id: field.container, shapes: [field.container, ...container.cells.flat()] };
+  }
+
+  /**
+   * The form with its labels on the left that what is picked belongs to, and
+   * where the edge of its label column is: the right of its labels, half a gap
+   * on. Undefined when one thing in such a form is not what is picked.
+   */
+  function labelColumn(): { form: string; left: number; edge: number; top: number; height: number } | undefined {
+    const id = primary();
+    if (id === undefined || picked.length !== 1 || file.mode !== 'free') return undefined;
+    const own = file.containers.get(id);
+    const grid = own && isLabelForm(file, own) ? own : formRow(id)?.grid;
+    const area = grid === undefined ? undefined : laid.boxes.get(grid.id);
+    if (!grid || !area) return undefined;
+    const labels = grid.cells
+      .filter(cells => cells.length > 1 && cells[0] !== '.' && cells[0] !== cells[1])
+      .map(cells => laid.boxes.get(cells[0]!)).filter(one => one !== undefined);
+    const left = area.x + grid.pad;
+    const width = labels.length > 0 ? Math.max(...labels.map(one => one.x + one.width)) - left : 0;
+    return { form: grid.id, left, edge: left + width + grid.gap.x / 2, top: area.y, height: area.height };
+  }
+
+  /** The row of a form with its labels on the left that a shape is on. */
+  function formRow(id: string): { grid: NonNullable<ReturnType<typeof file.containers.get>>; row: number } | undefined {
+    const grid = file.containers.get(containerOf(file).get(id) ?? '');
+    if (!grid || !isLabelForm(file, grid)) return undefined;
+    const row = grid.cells.findIndex(cells => cells.includes(id));
+    return row < 0 ? undefined : { grid, row };
+  }
 
   /**
    * What a drag moves on screen: everything picked, and everything a picked
@@ -766,6 +859,11 @@ export function createCanvas(options: CanvasOptions): Canvas {
       paint();
       return;
     }
+    if (sizing) {
+      sizing = { ...sizing, at: Math.max(sizing.left + 16, pointOn(event).x) };
+      paint();
+      return;
+    }
     if (band) {
       band = { from: band.from, to: pointOn(event) };
       paint();
@@ -811,6 +909,19 @@ export function createCanvas(options: CanvasOptions): Canvas {
     dropping = undefined;
     drawing.classList.remove('dp-canvas-dragging');
     if (stage.hasPointerCapture(event.pointerId)) stage.releasePointerCapture(event.pointerId);
+
+    if (sizing) {
+      const done = sizing;
+      sizing = undefined;
+      // A press that did not move is half of a double click: drawing the edge
+      // again now would put the second half on another element, and the
+      // browser makes no double click of that.
+      if (!current.moved) return;
+      const form = file.containers.get(done.form);
+      const width = done.at - done.left - (form?.gap.x ?? 0) / 2;
+      options.apply(() => setLabelColumn(file, source, done.form, width), [...picked]);
+      return;
+    }
 
     if (bending) {
       const which = bending;
@@ -897,7 +1008,8 @@ export function createCanvas(options: CanvasOptions): Canvas {
         () => (landed.into
           ? putIntoContainer(file, source, landed.container, landed.cells, id)
           : setContainerCells(file, source, landed.container, landed.cells)),
-        [id],
+        // What was pressed stays picked, though its field is what moved.
+        picked.length === 1 ? [...picked] : [id],
       );
       return;
     }
@@ -905,7 +1017,12 @@ export function createCanvas(options: CanvasOptions): Canvas {
     // The redraw that follows builds the canvas again, so the preview is left
     // in place: taking it off first would show the shapes jumping back.
     const by = current.by;
-    const pins = new Map(pinnedSet().map(id => {
+    // A row of a form belongs in the form: let go outside it, it stays. A
+    // field let go anywhere else is pinned there as one — its stack, not the
+    // label and the input one by one.
+    if (unit?.row) { preview = undefined; paint(); return; }
+    const pinned = unit ? [unit.id] : pinnedSet();
+    const pins = new Map(pinned.map(id => {
       const box = laid.boxes.get(id)!;
       return [id, { x: box.x - laid.origin.x + by.x, y: box.y - laid.origin.y + by.y }];
     }));
@@ -931,6 +1048,13 @@ export function createCanvas(options: CanvasOptions): Canvas {
 
   stage.addEventListener('dblclick', event => {
     const target = event.target as Element | null;
+    // The label column's edge, double-clicked: as wide as the longest label.
+    const column = target?.closest('.dp-canvas-column') != null ? labelColumn() : undefined;
+    if (column) {
+      event.preventDefault();
+      options.apply(() => setLabelColumn(file, source, column.form, 'auto'), [...picked]);
+      return;
+    }
     // Double clicking a corner takes it out. Dragging it back onto the line
     // does too, but that asks someone to aim at a line that is not drawn any
     // more — the corner is where the line goes now.
@@ -1067,6 +1191,8 @@ export function createCanvas(options: CanvasOptions): Canvas {
     id: string, at: { x: number; y: number },
   ): { container: string; cells: string[][]; mark: Box; into: boolean } | undefined {
     if (picked.length !== 1) return undefined;
+    const form = formRow(id);
+    if (form) return rowLanding(form.grid, form.row, at);
     const held = containerOf(file).get(id);
     // Its own container while it is in one — dropping inside is reordering.
     // Otherwise whichever container the pointer is over: that gesture is how
@@ -1080,6 +1206,37 @@ export function createCanvas(options: CanvasOptions): Canvas {
     }
     const found = dropInto(container, box, one => laid.boxes.get(one), id, at, laid.holes);
     return found ? { container: name, ...found, into: held === undefined } : undefined;
+  }
+
+  /**
+   * Where a row of a form would go: between the rows the pointer is between.
+   * The row moves whole, so the label stays with its input.
+   */
+  function rowLanding(
+    grid: NonNullable<ReturnType<typeof file.containers.get>>, from: number, at: { x: number; y: number },
+  ): { container: string; cells: string[][]; mark: Box; into: boolean } | undefined {
+    const area = laid.boxes.get(grid.id);
+    if (!area || at.x < area.x || at.x > area.x + area.width || at.y < area.y || at.y > area.y + area.height) {
+      return undefined;
+    }
+    const spans = grid.cells.map(cells => {
+      const boxes = cells.filter(cell => cell !== '.').map(cell => laid.boxes.get(cell)).filter(one => one !== undefined);
+      return boxes.length === 0 ? undefined
+        : { top: Math.min(...boxes.map(one => one.y)), bottom: Math.max(...boxes.map(one => one.y + one.height)) };
+    });
+    let to = spans.findIndex(span => span !== undefined && at.y < (span.top + span.bottom) / 2);
+    if (to < 0) to = grid.cells.length;
+    // Dropped where it is — above or below itself — is no move.
+    if (to === from || to === from + 1) return undefined;
+    const cells = grid.cells.map(row => [...row]);
+    const [row] = cells.splice(from, 1);
+    cells.splice(to > from ? to - 1 : to, 0, row!);
+    const edge = to < spans.length ? spans[to]?.top ?? area.y : spans[spans.length - 1]?.bottom ?? area.y + area.height;
+    const gap = to < spans.length ? -grid.gap.y / 2 : grid.gap.y / 2;
+    return {
+      container: grid.id, cells, into: false,
+      mark: { x: area.x + grid.pad, y: edge + gap - 1.5, width: area.width - grid.pad * 2, height: 3, z: area.z, lines: [] },
+    };
   }
 
   /**
@@ -1322,9 +1479,84 @@ export function createCanvas(options: CanvasOptions): Canvas {
    * library to speak of, such as a network diagram.
    */
   function partItems(event?: MouseEvent): MenuItem[] {
-    return file.library.size > 0
-      ? libraryItems(name => addPart(name, event))
-      : stencilItems(event);
+    // A screen drawn with no library still wants a text box and a button,
+    // which are no pictures: the shipped library's parts are offered, and the
+    // first one put on it names that library in the file. The pictures stay
+    // after them, for a drawing that is not a screen.
+    const drawing = file.library.size > 0 ? { file, source } : file.mode === 'free' ? shipped() : undefined;
+    if (!drawing) return stencilItems(event);
+    const items = libraryItems(name => addPart(name, event, true, drawing), undefined, drawing.file);
+    // An input comes with its label. For the odd one that should not, the
+    // same parts again, as they are.
+    if (drawing.file.mode === 'free' && [...drawing.file.library.keys()].some(name => isInputPart(name, drawing.file))) {
+      items.push({
+        label: t('diagram.canvas.addBare'), separated: true,
+        items: libraryItems(name => addPart(name, event, false, drawing), undefined, drawing.file),
+      });
+    }
+    if (drawing.file !== file) {
+      items.push(...stencilItems(event).map((item, index) => ({ ...item, separated: index === 0 })));
+    }
+    return items;
+  }
+
+  /**
+   * The drawing as it would be with the shipped parts named — for a screen
+   * that names no library, worked out on the text it will have once the
+   * `use` line is written.
+   */
+  function shipped(): { file: DiagramFile; source: string } {
+    const text = withLibrary(source, DEFAULT_LIBRARY);
+    return { file: withParts(parseDiagram(text), () => undefined), source: text };
+  }
+
+  /**
+   * An edit worked out on `drawing`, written as one change to the file as it
+   * is: the `use` line a shipped part needs comes with the part.
+   */
+  function onFile(drawing: { file: DiagramFile; source: string }, edit: Edit): Edit {
+    if (drawing.source === source) return edit;
+    return editBetween(source.replace(/\r\n/g, '\n'), applyEdit(drawing.source, edit), edit.phrase ?? dgm('diagram.did.addPart'));
+  }
+
+  /** Whether a part of the library is an input, which is drawn with a label. */
+  function isInputPart(name: string, drawing: DiagramFile = file): boolean {
+    return INPUTS.has(drawing.library.get(name)?.style.get('item')?.trim().toLowerCase() ?? '');
+  }
+
+  /**
+   * Adds an input with its label, next to what is picked, and opens the
+   * label's words: what the field is called is the next thing anyone does.
+   */
+  function addInput(name: string, event?: MouseEvent, drawing = { file, source }): void {
+    const near = picked.length === 1 ? picked[0] : undefined;
+    let added: AddedField;
+    try {
+      added = addField(drawing.file, drawing.source, {
+        // The point is where it goes only when what is picked has no
+        // arrangement to put it in.
+        part: name, label: t('diagram.new.label'), near,
+        at: event ? pointIn(event) : emptySpot(),
+      });
+    } catch (error) {
+      if (error instanceof DiagramEditError) { options.onError?.(describeEdit(error)); return; }
+      throw error;
+    }
+    textPicks.set(owner, added.label);
+    options.apply(() => onFile(drawing, added.edit), [added.item]);
+  }
+
+  /** Gives an input a label, and opens its words. */
+  function labelInput(id: string): void {
+    let added: AddedField;
+    try {
+      added = addLabel(file, source, id, t('diagram.new.label'));
+    } catch (error) {
+      if (error instanceof DiagramEditError) { options.onError?.(describeEdit(error)); return; }
+      throw error;
+    }
+    textPicks.set(owner, added.label);
+    options.apply(() => added.edit, [id]);
   }
 
   function stencilItems(event?: MouseEvent): MenuItem[] {
@@ -1349,9 +1581,9 @@ export function createCanvas(options: CanvasOptions): Canvas {
    * of the library already divided them — the same answer the picture menu
    * gives, taken from the file instead of from this code.
    */
-  function libraryItems(run: (name: string) => void, current?: string): MenuItem[] {
+  function libraryItems(run: (name: string) => void, current?: string, drawing: DiagramFile = file): MenuItem[] {
     const kinds = new Map<string, MenuItem[]>();
-    for (const [name, part] of file.library) {
+    for (const [name, part] of drawing.library) {
       const icon = part.style.get('icon');
       const drawn = icon === undefined ? undefined : stencilArt(icon);
       const one: MenuItem = {
@@ -1372,15 +1604,19 @@ export function createCanvas(options: CanvasOptions): Canvas {
     return [...kinds].map(([group, items]): MenuItem => ({ label: group, items }));
   }
 
-  /** Adds a shape written as one of the library's parts. */
-  function addPart(name: string, event?: MouseEvent): void {
+  /** Adds a shape written as one of the library's parts — an input with its label, unless told not to. */
+  function addPart(name: string, event?: MouseEvent, labelled = true, drawing = { file, source }): void {
+    if (labelled && drawing.file.mode === 'free' && isInputPart(name, drawing.file)) {
+      addInput(name, event, drawing);
+      return;
+    }
     const into = beside();
     const at = file.mode === 'free' && !into
       ? (event ? pointIn(event) : emptySpot())
       : undefined;
     options.apply(
-      () => addNode(file, source, { shape: 'rect', text: '', at, part: name, into }),
-      [nextShapeId(file, 'part')],
+      () => onFile(drawing, addNode(drawing.file, drawing.source, { shape: 'rect', text: '', at, part: name, into })),
+      [nextShapeId(drawing.file, 'part')],
     );
   }
 
@@ -1493,6 +1729,7 @@ export function createCanvas(options: CanvasOptions): Canvas {
           file.partOf.get(id)),
       });
     }
+    items.push(...fieldItems(id));
     if (file.itemTable !== undefined && options.itemSource !== undefined) {
       items.push({ label: t('diagram.canvas.itemList'), separated: true, items: itemListItems(id) });
     }
@@ -1502,11 +1739,63 @@ export function createCanvas(options: CanvasOptions): Canvas {
       disabled: !canUnpin(file, id),
       run: () => options.apply(() => unpinNode(file, source, id), [id]),
     });
+    const going = withFields(picked);
     items.push({
-      label: deleteLabel(),
-      run: () => options.apply(() => removeNodes(file, source, [...picked]), []),
+      label: deleteLabel(going),
+      run: () => options.apply(() => removeNodes(file, source, going), []),
     });
+    // An input goes with its label; taking the input alone is still there.
+    if (going.length !== picked.length) {
+      items.push({
+        label: t('diagram.canvas.deleteInputOnly'),
+        run: () => options.apply(() => removeNodes(file, source, [...picked]), []),
+      });
+    }
     return items;
+  }
+
+  /**
+   * What a screen's inputs offer: a label for one that has none, and the
+   * side its form puts labels on.
+   */
+  function fieldItems(id: string): MenuItem[] {
+    if (file.mode !== 'free') return [];
+    const out: MenuItem[] = [];
+    const field = fieldOf(file, id);
+    if (itemShapes(file).has(id) && field?.label === undefined) {
+      out.push({ label: t('diagram.canvas.addLabel'), run: () => labelInput(id) });
+    }
+    const form = formOf(file, id);
+    if (form) {
+      const left = isLabelForm(file, form);
+      out.push({
+        label: left ? t('diagram.canvas.labelsTop') : t('diagram.canvas.labelsLeft'),
+        run: () => options.apply(() => setLabelSide(file, source, id, left ? 'top' : 'left'), [id]),
+      });
+    }
+    return out.map((one, index) => ({ ...one, separated: index === 0 }));
+  }
+
+  /**
+   * A label's new words, and its item's name in the table with them — while
+   * the name is still the label's old words. Only for a label that names one
+   * item: a caption over a row of two inputs names neither on its own.
+   */
+  function withItemName(edit: Edit, id: string, was: string, now: string): Edit {
+    const table = options.itemSource;
+    const links = [...file.itemLinks?.links.values() ?? []].filter(link => link.label === id);
+    if (table === undefined || links.length !== 1) return edit;
+    const also = followLabel(file, table, links[0]!.id, was, now);
+    return also ? { ...edit, also } : edit;
+  }
+
+  /** The shapes picked, and the labels and fields that go with the inputs among them. */
+  function withFields(ids: readonly string[]): string[] {
+    return [...new Set(ids.flatMap(id => fieldShapes(file, id)))];
+  }
+
+  function describeEdit(error: DiagramEditError): string {
+    return describeError(error, locale);
   }
 
   /**
@@ -1515,14 +1804,16 @@ export function createCanvas(options: CanvasOptions): Canvas {
    * Deleting a group is an ungrouping: the line that names its contents goes,
    * and the contents stay where they are.
    */
-  function deleteLabel(): string {
-    const ids = new Set(picked);
+  function deleteLabel(going: readonly string[] = picked): string {
+    const ids = new Set(going);
     if (picked.length === 1 && file.nodes.find(n => n.id === picked[0])?.shape === 'group') {
       return t('diagram.canvas.ungroup');
     }
     const lines = file.edges.filter(e => ids.has(e.from) || ids.has(e.to)).length;
+    // An input and its label are one thing to whoever deletes them.
     const what = picked.length > 1
-      ? t('diagram.canvas.deleteCount', { count: picked.length }) : t('diagram.canvas.delete');
+      ? t('diagram.canvas.deleteCount', { count: picked.length })
+      : going.length > picked.length ? t('diagram.canvas.deleteField') : t('diagram.canvas.delete');
     return lines === 0 ? what : t('diagram.canvas.deleteWithLines', { what, lines });
   }
 
@@ -1586,7 +1877,7 @@ export function createCanvas(options: CanvasOptions): Canvas {
       toolbar.element.remove();
       stage.focus({ preventScroll: true });
       if (!keep || text === node.text) return;
-      options.apply(() => setNodeText(file, id, text, options.source), [id]);
+      options.apply(() => withItemName(setNodeText(file, id, text, options.source), id, node.text, text), [id]);
     };
     input.addEventListener('blur', () => finish(true));
     for (const event of ['input', 'select', 'keyup', 'click']) {
@@ -1695,7 +1986,7 @@ export function createCanvas(options: CanvasOptions): Canvas {
     }
     if ((event.key === 'Delete' || event.key === 'Backspace') && picked.length > 0) {
       event.preventDefault();
-      const ids = [...picked];
+      const ids = withFields(picked);
       const going = new Set(ids);
       // A deletion that takes connections with it is confirmed where the shape
       // is, the way the grid confirms a merge: Ctrl+Z would bring them back,
@@ -1709,7 +2000,7 @@ export function createCanvas(options: CanvasOptions): Canvas {
           rect.top + ((box?.y ?? 0) + (box?.height ?? 0)) * factor,
           [
             {
-              label: deleteLabel(),
+              label: deleteLabel(ids),
               run: () => options.apply(() => removeNodes(file, source, ids), []),
             },
             { label: BASE_MESSAGES.in(locale)('base.cancel'), run: () => {} },
@@ -2117,7 +2408,16 @@ export function createCanvas(options: CanvasOptions): Canvas {
 
   describe();
   paint();
-  return { element: root, focus: () => stage.focus({ preventScroll: true }) };
+  return {
+    element: root,
+    focus: () => {
+      stage.focus({ preventScroll: true });
+      // The label of an input just added: its words are what comes next.
+      const pending = textPicks.get(owner);
+      textPicks.delete(owner);
+      if (pending !== undefined && file.nodes.some(n => n.id === pending)) beginText(pending);
+    },
+  };
 }
 
 /** Ids come from the file, so they may hold anything a quoted name can. */

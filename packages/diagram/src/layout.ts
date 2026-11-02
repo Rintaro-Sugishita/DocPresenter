@@ -130,7 +130,7 @@ export function layOutDiagram(diagram: DiagramFile, locale: Locale = DEFAULT_LOC
   const plain = diagram.nodes.filter(n => n.shape !== 'group');
   const groups = diagram.nodes.filter(n => n.shape === 'group');
 
-  const sizes = new Map<string, { width: number; height: number; lines: readonly TextLine[] }>();
+  const sizes = new Map<string, { width: number; height: number; lines: readonly TextLine[]; natural?: number }>();
   for (const node of plain) sizes.set(node.id, measure(node, diagram));
 
   const auto = diagram.mode === 'flow'
@@ -707,7 +707,7 @@ function lookProblems(node: Node, rule: ReadonlyMap<string, string> | undefined)
 
 function measure(
   node: Node, diagram: DiagramFile,
-): { width: number; height: number; lines: readonly TextLine[] } {
+): { width: number; height: number; lines: readonly TextLine[]; natural?: number } {
   // A line has no inside, so nothing about it is measured from its words: it is
   // as long as the default width and flat, until a pin says otherwise.
   if (node.shape === 'line') return { width: DEFAULT_SIZE.width, height: 0, lines: [] };
@@ -740,6 +740,9 @@ function measure(
       width: given.width,
       height: lines.length > 1 ? Math.max(given.height, lines.length * LINE_HEIGHT) : given.height,
       lines,
+      // A caption is as wide as the library says, but a column of captions
+      // sized `auto` is as wide as the longest of their words.
+      ...(node.shape === 'text' ? { natural: Math.ceil(natural) + TEXT_PAD } : {}),
     };
   }
   return {

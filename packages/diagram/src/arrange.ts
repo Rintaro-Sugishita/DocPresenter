@@ -46,6 +46,8 @@ export interface Size {
   readonly width: number;
   readonly height: number;
   readonly lines: readonly TextLine[];
+  /** For words with no frame: as wide as the words, which an `auto` column takes. */
+  readonly natural?: number | undefined;
 }
 
 /** Which container each shape is in, by the shape's id. */
@@ -246,19 +248,22 @@ function columnWidths(
 ): number[] {
   const count = Math.max(1, ...container.cells.map(row => row.length));
   const spec = Array.from({ length: count }, (_, i) => container.cols[i] ?? '1fr');
-  const widest = (column: number): number => {
+  const widest = (column: number, words: boolean): number => {
     let found = 0;
     for (const row of container.cells) {
       const cell = row[column];
       // A name spanning several columns is not what decides any one of them.
       if (cell === undefined || cell === EMPTY_CELL) continue;
       if (area(container, cell).cols > 1) continue;
-      found = Math.max(found, intrinsic(cell).width);
+      const size = intrinsic(cell);
+      found = Math.max(found, words ? size.natural ?? size.width : size.width);
     }
     return found;
   };
 
-  const widths = spec.map((one, i) => (one === 'auto' || one === '1fr' ? widest(i) : Number(one)));
+  // `auto` is as wide as what is written: a column of captions is as wide as
+  // its longest caption, not as the 320 the library gives a label.
+  const widths = spec.map((one, i) => (one === 'auto' || one === '1fr' ? widest(i, one === 'auto') : Number(one)));
   if (room === undefined) return widths;
 
   const gaps = container.gap.x * Math.max(0, count - 1);

@@ -54,6 +54,7 @@ const HEADERS = {
   category: ['分類', '種別', 'Category', 'Kind'],
   required: ['必須', 'Required'],
   align: ['寄せ', '配置', 'Align', 'Alignment'],
+  type: ['型', 'データ型', 'Type', 'Data type'],
 } as const;
 
 export type ItemColumn = keyof typeof HEADERS;
@@ -178,10 +179,11 @@ export function itemShapes(diagram: DiagramFile): ReadonlyMap<string, string> {
  * A field is a caption and a box, and which comes first is how the container
  * starts: a stack that opens with a caption puts each caption before its box
  * (`ログイン ID` over its input), one that opens with a box puts it after (a
- * check box and the words to its right). A shape with neither beside it — a
- * button — is named by its own words. Asked again of the container when the
- * shape has no neighbour there, because a row of two inputs shares the
- * caption above the row.
+ * check box and the words to its right). In a grid — a form with its labels
+ * on the left — it is the cell before it on the same row. A shape with
+ * neither beside it — a button — is named by its own words. Asked again of
+ * the container when the shape has no neighbour there, because a row of two
+ * inputs shares the caption above the row.
  */
 export function labelOf(diagram: DiagramFile, id: string, items?: ReadonlyMap<string, string>): string | undefined {
   const kinds = items ?? itemShapes(diagram);
@@ -196,7 +198,15 @@ export function labelOf(diagram: DiagramFile, id: string, items?: ReadonlyMap<st
   for (let depth = 0; depth < 32; depth++) {
     const holder = held.get(at);
     const container = holder === undefined ? undefined : diagram.containers.get(holder);
-    if (!container || container.kind === 'grid' || container.kind === 'tabs') break;
+    if (!container || container.kind === 'tabs') break;
+    // A form of labels on the left is a grid with the caption in the cell
+    // before the item, on the same row.
+    if (container.kind === 'grid') {
+      const row = container.cells.find(cells => cells.includes(at));
+      const before = row?.[row.indexOf(at) - 1];
+      if (before !== at && isCaption(before)) return before;
+      break;
+    }
     const all = members(container);
     const index = all.indexOf(at);
     const before = isCaption(all[0]);
@@ -207,11 +217,24 @@ export function labelOf(diagram: DiagramFile, id: string, items?: ReadonlyMap<st
   return undefined;
 }
 
-/** What an item is called on the screen. */
+/**
+ * The items whose own words are their name: a button says what it does, a
+ * check box what it turns on. What a text box, a list or a message holds is a
+ * sample of what will be there — an address, a sentence — and naming the item
+ * after it would name it after whatever the drawing happens to show.
+ */
+const NAMED_BY_OWN_WORDS = new Set(['操作', 'action', 'operation']);
+const LABELLED_PICTURES = new Set(['ui/check', 'ui/check-on', 'ui/radio', 'ui/radio-on']);
+
+/** What an item is called on the screen; empty when nothing on it says. */
 export function itemName(diagram: DiagramFile, id: string, items?: ReadonlyMap<string, string>): string {
+  const kinds = items ?? itemShapes(diagram);
   const byId = new Map(diagram.nodes.map(node => [node.id, node]));
-  const label = labelOf(diagram, id, items);
-  return (label === undefined ? byId.get(id)?.text : byId.get(label)?.text)?.trim() ?? '';
+  const label = labelOf(diagram, id, kinds);
+  if (label !== undefined) return byId.get(label)?.text.trim() ?? '';
+  const kind = kinds.get(id)?.trim().toLowerCase() ?? '';
+  const named = NAMED_BY_OWN_WORDS.has(kind) || LABELLED_PICTURES.has(diagram.style.get(id)?.get('icon') ?? '');
+  return named ? byId.get(id)?.text.trim() ?? '' : '';
 }
 
 /**
@@ -567,4 +590,174 @@ export function setItemCell(
     ? dgm(value === true ? 'diagram.items.setRequired' : 'diagram.items.clearRequired', { id })
     : dgm('diagram.items.setAlign', { id });
   return { span: row.span, text: replaceField(row.text, at, text), ...described(phrase), path: written.path };
+}
+
+/** A word a cell of an item table can take, and why it is offered. */
+export interface ItemCellChoice {
+  readonly text: string;
+  readonly detail?: string | undefined;
+}
+
+/** What a cell of an item table is offered while it is written. */
+export interface ItemCellChoices {
+  /**
+   * True when the screen reads nothing else there — required, alignment — so
+   * the choices are all there is; false when they are only a start (a type).
+   */
+  readonly closed: boolean;
+  readonly choices: readonly ItemCellChoice[];
+  /** Whether the screen can read a word written there. Every word, for an open column. */
+  accepts(text: string): boolean;
+}
+
+export interface ItemCellContext {
+  /** The screen that names the table, its parts applied: what a row's item was drawn as. */
+  readonly screen?: DiagramFile | undefined;
+  /** The types the workspace's other item tables write, one per row (`itemTypes`). */
+  readonly otherTypes?: (() => readonly string[]) | undefined;
+  readonly locale?: Locale | undefined;
+}
+
+/**
+ * The type an item's part suggests. A guess to start from — the author knows
+ * the length of the field and the code it holds; the drawing does not.
+ */
+const PART_TYPES: Readonly<Record<string, string>> = {
+  textbox: 'varchar', textarea: 'text', select: 'varchar', spinner: 'int', slider: 'int',
+  checkbox: 'bool', checked: 'bool', radio: 'varchar', selected: 'varchar',
+};
+const PICTURE_TYPES: Readonly<Record<string, string>> = {
+  'ui/check': 'bool', 'ui/check-on': 'bool', 'ui/radio': 'varchar', 'ui/radio-on': 'varchar',
+  'ui/select': 'varchar', 'ui/spinner': 'int', 'ui/slider': 'int',
+};
+
+/**
+ * What one cell of an item table is offered: yes or no for required, a side
+ * for alignment, each written the way the table already writes it; and for a
+ * type, what the item's part suggests, then the types this table and the
+ * others already use, the most used first. Undefined for any other cell.
+ *
+ * `rows` are the cells as a reader sees them, a `^` already replaced.
+ */
+export function itemCellChoices(
+  headers: readonly string[], rows: readonly (readonly string[])[], row: number, column: number,
+  context: ItemCellContext = {},
+): ItemCellChoices | undefined {
+  const columns = itemColumns(headers);
+  if (columns.id === undefined || row < 0) return undefined;
+  const t = DIAGRAM_MESSAGES.in(context.locale ?? DEFAULT_LOCALE);
+  const japanese = /[^\x00-\x7f]/.test(headers[column] ?? '');
+  const used = (test: (cell: string) => boolean): string | undefined =>
+    rows.map(cells => (cells[column] ?? '').trim()).find(cell => cell !== '' && test(cell));
+
+  if (column === columns.required) {
+    const yes = used(cell => requiredOf(cell) === true) ?? (japanese ? '○' : 'yes');
+    const no = used(cell => requiredOf(cell) === false) ?? (japanese ? '—' : '');
+    return {
+      closed: true,
+      choices: [{ text: yes, detail: t('diagram.items.choice.required') }, { text: no, detail: t('diagram.items.choice.optional') }],
+      accepts: text => requiredOf(text) !== undefined,
+    };
+  }
+  if (column === columns.align) {
+    const sides = japanese ? ['左', '中央', '右'] : ['left', 'center', 'right'];
+    return {
+      closed: true,
+      choices: [...sides.map(text => ({ text })), { text: '', detail: t('diagram.items.choice.partAlign') }],
+      accepts: text => alignOf(text) !== null,
+    };
+  }
+  if (column !== columns.type) return undefined;
+  // Worked out when the list is opened, not when the grid asks whether the
+  // cell reads: the other tables and the screen are read for it.
+  let choices: readonly ItemCellChoice[] | undefined;
+  return {
+    closed: false,
+    get choices() { return choices ??= typeChoices(rows, row, column, columns.id!, context); },
+    accepts: () => true,
+  };
+}
+
+/** What the part suggests, then the types the tables use, the most used first. */
+function typeChoices(
+  rows: readonly (readonly string[])[], row: number, column: number, idColumn: number, context: ItemCellContext,
+): ItemCellChoice[] {
+  const t = DIAGRAM_MESSAGES.in(context.locale ?? DEFAULT_LOCALE);
+  const counts = (cells: Iterable<string>): Map<string, number> => {
+    const found = new Map<string, number>();
+    for (const cell of cells) {
+      const text = cell.trim();
+      if (!NOTHING.has(text) && text !== MERGE_UP) found.set(text, (found.get(text) ?? 0) + 1);
+    }
+    return found;
+  };
+  const here = counts(rows.map(cells => cells[column] ?? ''));
+  const elsewhere = counts(context.otherTypes?.() ?? []);
+  const said = (text: string): string | undefined => {
+    const mine = here.get(text);
+    const theirs = elsewhere.get(text);
+    return mine !== undefined ? t('diagram.items.choice.here', { count: String(mine) })
+      : theirs !== undefined ? t('diagram.items.choice.elsewhere', { count: String(theirs) }) : undefined;
+  };
+  const byUse = [...new Set([...here.keys(), ...elsewhere.keys()])].sort((a, b) =>
+    (here.get(b) ?? 0) - (here.get(a) ?? 0) || (elsewhere.get(b) ?? 0) - (elsewhere.get(a) ?? 0));
+
+  const choices: ItemCellChoice[] = [];
+  const offered = new Set<string>();
+  const offer = (text: string, detail: string | undefined): void => {
+    if (offered.has(text)) return;
+    offered.add(text);
+    choices.push({ text, detail });
+  };
+  // What the part suggests comes first — and before it, the ways the tables
+  // already write that type, `varchar(64)` before a bare `varchar`.
+  const guess = guessType(rows[row]?.[idColumn] ?? '', context.screen);
+  if (guess !== undefined) {
+    const bare = (text: string): string => text.replace(/`/g, '').trim().toLowerCase();
+    for (const text of byUse) if (bare(text) === guess.type || bare(text).startsWith(`${guess.type}(`)) offer(text, said(text));
+    // Written in code when the column writes its types so.
+    const coded = byUse.filter(text => text.startsWith('`')).length * 2 > byUse.length;
+    offer(coded ? `\`${guess.type}\`` : guess.type, t('diagram.items.choice.fromPart', { part: guess.part }));
+  }
+  for (const text of byUse) offer(text, said(text));
+  return choices;
+}
+
+/** The type cells of an item table, one per row; none when it is not one. */
+export function itemTypes(source: string): readonly string[] {
+  const table = readItemTable(source);
+  if (table === undefined) return [];
+  const columns = itemColumns(table.headers);
+  const at = columns.type;
+  return columns.id === undefined || at === undefined ? [] : table.rows.map(one => one.cells[at] ?? '');
+}
+
+/** The type a row's item suggests, from the part it was drawn as. */
+function guessType(id: string, screen: DiagramFile | undefined): { type: string; part: string } | undefined {
+  if (screen === undefined || id.trim() === '') return undefined;
+  const part = screen.partOf.get(id.trim());
+  const icon = screen.style.get(id.trim())?.get('icon') ?? '';
+  const type = (part === undefined ? undefined : PART_TYPES[part]) ?? PICTURE_TYPES[icon];
+  return type === undefined ? undefined : { type, part: part ?? icon };
+}
+
+/**
+ * An item's name in the table, changed to what its label now says — but only
+ * while the name is still the label's old words. A name the author wrote
+ * differently was written on purpose (the table names, the screen words), and
+ * a label edit is no reason to overwrite it. Undefined when there is nothing
+ * to change.
+ */
+export function followLabel(diagram: DiagramFile, source: string, id: string, was: string, now: string): Edit | undefined {
+  const written = diagram.itemTable;
+  const table = written === undefined ? undefined : readItemTable(source);
+  if (written === undefined || table === undefined) return undefined;
+  const columns = itemColumns(table.headers);
+  if (columns.id === undefined || columns.name === undefined) return undefined;
+  const row = table.rows.find(one => one.cells[columns.id!]!.trim() === id);
+  if (!row || row.cells[columns.name]!.trim() !== was.trim() || was.trim() === now.trim()) return undefined;
+  return {
+    span: row.span, text: replaceField(row.text, columns.name, escapeCell(now.trim())),
+    ...described(dgm('diagram.did.renameItem')), path: written.path,
+  };
 }

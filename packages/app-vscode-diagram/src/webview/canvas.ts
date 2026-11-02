@@ -65,17 +65,21 @@ function draw(first = false): void {
       picked = selected;
       edge = line;
       try {
-        const change = localizeEdit(make(), locale);
-        const path = change.path;
-        // An edit to the item table is written to the table; the drawing is
-        // drawn again from the table as it will be.
-        const base = path === undefined ? source : libraries[path] ?? '';
-        if (path === undefined) source = applyEdit(source, change);
-        else libraries = { ...libraries, [path]: applyEdit(base, change) };
-        host.postMessage({
-          kind: 'edit', start: change.span.start, end: change.span.end, text: change.text, base,
-          ...(path === undefined ? {} : { path }),
-        });
+        const made = localizeEdit(make(), locale);
+        // A label renamed on the screen may rename its item in the table too:
+        // two files, each written as its own edit.
+        for (const change of made.also ? [made, made.also] : [made]) {
+          const path = change.path;
+          // An edit to the item table is written to the table; the drawing is
+          // drawn again from the table as it will be.
+          const base = path === undefined ? source : libraries[path] ?? '';
+          if (path === undefined) source = applyEdit(source, change);
+          else libraries = { ...libraries, [path]: applyEdit(base, change) };
+          host.postMessage({
+            kind: 'edit', start: change.span.start, end: change.span.end, text: change.text, base,
+            ...(path === undefined ? {} : { path }),
+          });
+        }
       } catch (error) {
         host.postMessage({ kind: 'error', message: describeError(error, locale) });
       }

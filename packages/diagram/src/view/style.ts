@@ -65,6 +65,9 @@ export const DIAGRAM_STYLE = `
   fill: rgba(31, 95, 168, 0.12); stroke: #1f5fa8; stroke-width: 1.5; pointer-events: none;
 }
 .dp-canvas-handle { fill: #fff; stroke: #1f5fa8; stroke-width: 1.5; cursor: nwse-resize; }
+/* The edge between a form's labels and its inputs. */
+.dp-canvas-column { fill: #1f5fa8; fill-opacity: .35; cursor: col-resize; }
+.dp-canvas-column:hover { fill-opacity: .7; }
 /* The picked row of a tree, a list or a menu. An outline and no fill: the row
    is still part of the picture, and the words under it have to stay readable. */
 .dp-canvas-row {

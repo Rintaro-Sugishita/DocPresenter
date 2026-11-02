@@ -213,6 +213,13 @@ describe('図形の追加と削除', () => {
     expect(written).toContain('  db      [(会員データベース)]');
   });
 
+  it('部品で書いた図形は、文字を変えても同じ部品のまま', () => {
+    const source = 'use "default"\n\nfree {\n  idLabel  label:"ログイン ID"\n  pwBox    textbox:\n}';
+    const file = parseDiagram(source);
+    expect(applyEdit(source, setNodeText(file, 'idLabel', 'ユーザー ID', source))).toContain('  idLabel  label:"ユーザー ID"');
+    expect(applyEdit(source, setNodeText(file, 'pwBox', '****', source))).toContain('  pwBox    textbox:"****"');
+  });
+
   it('元の行を渡さなければ空白ひとつ', () => {
     const source = 'free {\n  db      [(会員 DB)]\n}';
     const written = applyEdit(source, setNodeText(parseDiagram(source), 'db', 'X'));
