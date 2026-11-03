@@ -417,3 +417,9 @@ VS Code's "Configure Display Language"; the extension has no setting of its own.
 | **Exporting PDFs in bulk** | A bulk build has no screen to lay pages out, so PDFs are exported one document at a time with the button |
 | **Editing Mermaid in PowerPoint** | Mermaid diagrams go in as images. Draw with `.dgm` to get shapes you can move in PowerPoint |
 | **Editing part libraries** | Parts can be chosen on screen, but the parts themselves are written in source |
+
+## Licence
+
+DocPresenter is Copyright © 2026 Rintaro Sugishita. The licence is not final yet; until it is, all rights are reserved
+([LICENSE.md](https://github.com/Rintaro-Sugishita/DocPresenter/blob/HEAD/LICENSE.md)). The intended terms — free to use and pass on, but not to change — are drafted in
+[legal/LICENSE.draft.md](https://github.com/Rintaro-Sugishita/DocPresenter/blob/HEAD/legal/LICENSE.draft.md), which is not in force.
