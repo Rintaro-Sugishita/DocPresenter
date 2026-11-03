@@ -49,6 +49,10 @@ Contribution to:
 - distribute it and those derivative works; and
 - **sublicense** these rights, through any number of tiers.
 
+Under the Copyright Act of Japan, this includes the rights in Articles 27
+(translation and adaptation) and 28 (the original author's rights in a
+derivative work), which a grant must name to be sure of covering them.
+
 This licence lets us distribute your Contribution **under whatever terms the
 project uses, now or later, including terms that are not open source** — today
 that means [the project's source-available licence](LICENSE.draft.md).
@@ -146,16 +150,32 @@ If you would rather not agree, that is fine — **open an issue instead**. A goo
 bug report is worth more to us than most patches, and it needs no paperwork
 ([CONTRIBUTING.md](../CONTRIBUTING.md)).
 
+## 10. Versions of this agreement
+
+Each Contribution is governed by the version of this agreement you had agreed
+to when you submitted it. If we publish a new version, it applies only to
+Contributions you submit after agreeing to it; until you do, we will not take
+new Contributions from you under the old one without saying so.
+
 ---
 
 ## Notes on this draft
 
-To settle before the first release:
+Checked without a lawyer (reasoning in [design/licensing.md §8](../design/licensing.md)):
 
-1. **Legal review**, particularly [§5](#5-moral-rights) — a non-assertion
-   covenant for moral rights is the usual construction under Japanese law, and
-   its scope ("as far as necessary") should be checked against how
-   Japanese-law CLAs actually word it.
+- **Moral rights** ([§5](#5-moral-rights)): Japanese law makes them personal to
+  the author (Copyright Act Article 59), so a covenant not to assert them is the
+  usual construction; it is kept, scoped to what the licences need.
+- **Articles 27 and 28** are now named in [§2](#2-grant-of-copyright-licence).
+  Article 61(2) presumes they stay with the author when copyright is
+  *transferred* unless named; this is a licence, not a transfer, but naming them
+  removes the doubt for "prepare derivative works".
+- **Versions**: [§10](#10-versions-of-this-agreement) says the version agreed to
+  governs, as Apache does.
+
+Still open:
+
+1. **A lawyer's reading**, should one ever be affordable.
 2. **A corporate agreement (CCLA)** is not drafted. Apache's split of ICLA and
    CCLA is the model; until the CCLA exists, a contributor submitting work their
    employer owns needs an individual permission from that employer
@@ -164,10 +184,7 @@ To settle before the first release:
    records a reply against a GitHub account. Which bot, and where the record
    lives, is undecided; a click-through record must survive the repository
    moving.
-4. **Version and re-agreement.** If this agreement changes materially, do
-   earlier contributors have to agree again? Apache's answer is that the version
-   agreed to governs the Contributions made under it. Say so explicitly.
-5. **Specification contributions.** `spec/` is
+4. **Specification contributions.** `spec/` is
    [free for anyone to implement](../spec/README.md), but its *text* is still
    copyrighted. A correction to the spec is a Contribution under this agreement
    like any other; confirm that this is what we want, rather than putting
