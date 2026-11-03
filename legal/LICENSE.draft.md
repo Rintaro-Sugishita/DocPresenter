@@ -2,8 +2,10 @@
 
 > **This is a draft. It is not in force and grants nothing.**
 >
-> No lawyer has reviewed this text. Until a release of DocPresenter ships a
-> licence file of its own, the software in this repository is under
+> No lawyer has reviewed this text. It has been checked, as far as we could
+> without one, against the Japanese statutes it has to live with (see
+> [Notes on this draft](#notes-on-this-draft)). Until a release of DocPresenter
+> ships a licence file of its own, the software in this repository is under
 > "all rights reserved" and this document is only the wording we intend to use.
 > Read [design/licensing.md](../design/licensing.md) for why each clause is
 > here; that document is the reasoning, this one is the wording.
@@ -11,13 +13,10 @@
 > Open questions are collected in [Notes on this draft](#notes-on-this-draft)
 > and must be settled before the first release.
 
-This licence is modelled on the **PolyForm Strict License 1.0.0**
-(<https://polyformproject.org/licenses/strict/1.0.0/>), which says
-"use it, pass it on, do not change it" in fewer words than anyone else manages.
-Two things PolyForm Strict does not say had to be added, because without them a
-library nobody may change is a library nobody can use: building is not
-changing ([§4](#4-building-is-not-changing)), and an abandoned library may be
-repaired ([§5](#5-repairs-when-the-software-is-unmaintained)).
+In short: **use it, pass it on, do not change it.** Two things are spelled out
+because without them a library nobody may change is a library nobody can use:
+building is not changing ([§4](#4-building-is-not-changing)), and an abandoned
+library may be repaired ([§5](#5-repairs-when-the-software-is-unmaintained)).
 
 ---
 
@@ -107,10 +106,11 @@ This licence is conditioned on all of the following:
    published it. Saying that yours is "a patched copy of DocPresenter x.y.z" is
    accurate and allowed.
 4. **Keep the notices.** [§6](#6-notices) still applies.
-5. **Offer it back.** If you distribute the change publicly, you grant the
-   licensor the same licence to that change that the
-   [Contributor Licence Agreement](CLA.draft.md) would give, and you make the
-   change available to the licensor on request.
+
+We also **ask** — this is a request, not a condition — that if you distribute
+such a change publicly, you tell us about it and let us take it into the
+software under the [Contributor Licence Agreement](CLA.draft.md). Declining does
+not affect your licence.
 
 If the software becomes maintained again, this section stops permitting **new**
 changes. Changes already made and distributed under it stay licensed, and you
@@ -162,37 +162,67 @@ company's behalf.
 ## 11. No other rights
 
 These terms do not give you any rights the licensor has not granted here, and
-do not imply a licence from anyone other than the licensor. The licensor is not
+do not imply a licence from anyone other than the licensor.
+
+These terms do not cover files that carry a licence of their own: third-party
+components included with the software, which stay under their own licences
+(listed in `THIRD-PARTY-NOTICES.md`), and any part the licensor publishes under
+another licence, which says so in a licence file in that part's directory. The licensor is not
 obliged to grant any further rights, to keep publishing the software, or to
 release future versions under these terms.
 
 ## 12. Violations and termination
 
-The first time you are found to have broken any of these terms, you may keep
-your licence if you **stop the breach and put right what it caused within 30
-days** of being told about it. Otherwise all your licences end immediately.
+The first time you are notified in writing that you have broken any of these
+terms, you may keep your licence if you **stop the breach and put right what it
+caused within 30 days** of receiving the notice. Otherwise all your licences end immediately.
 
 Any second breach ends all your licences immediately and permanently.
 
 Ending your licences does not end the licence of anyone who received the
 software from you and is themselves in compliance.
 
-## 13. No liability and no warranty
+## 13. Moral rights
 
-***As far as the law allows, the software comes AS IS, without any warranty or
-condition, and the licensor will not be liable to anyone for any damages or
-other liability arising out of these terms or the use of or nature of the
-software, under any kind of legal claim.***
+The licensor will not exercise the author's moral rights — including the right
+to integrity and the right to be named, under Articles 19 and 20 of the
+Copyright Act of Japan and the like elsewhere — against anything these terms
+permit: building as [§4](#4-building-is-not-changing) describes, repairs as
+[§5](#5-repairs-when-the-software-is-unmaintained) allows, and carrying the
+notice where [§6](#6-notices) allows rather than inside every file.
 
-## 14. Governing law and language
+## 14. No warranty, and limited liability
 
-These terms are governed by the laws of Japan, and the Tokyo District Court has
-exclusive jurisdiction over disputes arising from them.
+The software is provided **free of charge and as is**, without any warranty or
+condition of any kind, including that it works, that it is fit for a purpose,
+that it is free of defects, or that it infringes no one's rights.
+
+The licensor will not be liable to anyone for any damages arising out of these
+terms or the use or nature of the software, under any kind of legal claim,
+except as follows:
+
+1. **Wilful misconduct and gross negligence.** Nothing in this section limits
+   the licensor's liability for damage caused by its wilful misconduct or gross
+   negligence.
+2. **Where the law does not allow a full exclusion.** If a law that cannot be
+   set aside by agreement — such as the Consumer Contract Act of Japan — makes
+   the licensor liable for damage caused by its negligence that is not gross
+   negligence, the licensor's liability for that damage is limited to ordinary
+   damage that arises directly from it, and excludes damage arising from
+   special circumstances and lost profits. This limitation applies only to
+   negligence that is not gross negligence.
+
+## 15. Governing law and language
+
+These terms are governed by the laws of Japan. The Tokyo District Court has
+exclusive jurisdiction as the court of first instance over disputes arising
+from them, except where a law protecting consumers lets a consumer bring or
+answer a claim in another court.
 
 The English text of these terms is the authoritative one. Any translation is
 provided for convenience and does not change the terms.
 
-## 15. Definitions
+## 16. Definitions
 
 - **the licensor** — the individual or entity offering these terms, that is,
   the copyright holder named in [§6](#6-notices).
@@ -215,26 +245,43 @@ provided for convenience and does not change the terms.
 
 ## Notes on this draft
 
-To settle before the first release:
+This text has not been reviewed by a lawyer. What was checked without one, and
+what changed because of it (the reasoning is in
+[design/licensing.md §8](../design/licensing.md)):
 
-1. **Legal review.** The whole text, but especially [§5](#5-repairs-when-the-software-is-unmaintained)
-   (is "unmaintained" defined tightly enough to be workable, and loosely enough
-   to reassure an adopter?) and [§12](#12-violations-and-termination) (a cure
-   period of 30 days, once).
-2. **Name.** "DocPresenter Source-Available License" assumes the product name.
-   The drawing tool [has no public name yet](../design/packaging.md).
-3. **The offer-back condition** ([§5](#5-repairs-when-the-software-is-unmaintained), item 5)
-   is a decision this draft makes and `design/licensing.md` did not: a public
-   self-defence fix comes with a licence back to us. It solves the problem
-   [§6.6 of the policy](../design/licensing.md) describes — a fork we cannot
-   take code from — for the one case where we allowed the fork in the first
-   place. Confirm we want it; it is a condition, so ignoring it makes the fix
-   unlicensed, which is a heavier consequence than it may look.
-4. **Whether to reuse PolyForm's own wording.** Modelling on PolyForm Strict is
-   not the same as using its text. If we want its text, check how the PolyForm
-   project asks its licences to be reused and renamed.
-5. **Relicensing the relay server.** The relay server is to be
-   [open source](../design/platforms.md) (MIT or Apache-2.0); it must be
-   excluded from this licence's scope by directory, in writing.
-6. **Bundled third-party material.** `THIRD-PARTY-NOTICES` and the Noto font
-   attribution are separate obligations this licence does not discharge.
+1. **Reuse of PolyForm wording.** Parts of the structure and wording (acceptance,
+   patent defence, definitions) come from the PolyForm Strict License 1.0.0. The
+   PolyForm Project lets anyone reuse its licence text, but a changed licence
+   must not mention PolyForm. These terms are far from PolyForm Strict (which
+   is non-commercial and forbids distribution), so they no longer name it.
+2. **Liability under the Consumer Contract Act of Japan.** Article 8 voids a
+   clause that fully excludes a business's liability to a consumer, and (since
+   June 2023, Article 8(3)) a clause that partly excludes it without saying it
+   applies only to negligence short of gross negligence. Whether an individual
+   giving software away counts as a "business" (事業者) is unclear, so
+   [§14](#14-no-warranty-and-limited-liability) is written to hold either way:
+   wilful misconduct and gross negligence are carved out, and the fallback
+   limitation says it applies only to ordinary negligence. "As far as the law
+   allows" was dropped; that kind of saving phrase is what Article 8(3) targets.
+3. **Moral rights.** Under Japanese law the author's moral rights cannot be
+   licensed or transferred, only not exercised; a copyright licence alone does
+   not cover minifying (integrity) or dropping the name from a bundle
+   (attribution). [§13](#13-moral-rights) adds the undertaking.
+4. **Jurisdiction.** A consumer's own court cannot always be contracted away
+   (Code of Civil Procedure Article 3-7(5) for consumers abroad), so the Tokyo
+   court clause gives way where consumer law says so.
+5. **The offer-back condition** in §5 became a request. As a condition, a
+   repairer who missed it would be distributing without a licence — too heavy a
+   trap in a clause meant to reassure adopters.
+6. **Scope.** [§11](#11-no-other-rights) now excludes third-party components
+   and any part published under its own licence (the relay server is to be MIT
+   or Apache-2.0), so no directory-by-directory list is needed here.
+
+Still open:
+
+- **A lawyer's reading**, should one ever be affordable, above all of
+  [§5](#5-repairs-when-the-software-is-unmaintained) and
+  [§14](#14-no-warranty-and-limited-liability).
+- **Name.** "DocPresenter Source-Available License" assumes the product name.
+- **Putting it in force** is a decision, not a drafting step: rename this file
+  to `LICENSE.md` in place of the current notice, drop "DRAFT" and the banner.

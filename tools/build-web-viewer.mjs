@@ -9,6 +9,7 @@
 import { copyFileSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { rolldown } from 'rolldown';
+import { packageDir, packagesInOutputs, writeNotices } from './third-party-notices.mjs';
 
 const OUT = 'out/web';
 rmSync(OUT, { recursive: true, force: true });
@@ -35,7 +36,7 @@ writeFileSync('out/web-viewer-entry.js', entry);
 // loaded only for a document that draws with it, and the PDF writer only when
 // "Download PDF" is pressed (packages/app-web/src/viewer.ts).
 const bundle = await rolldown({ input: 'out/web-viewer-entry.js', platform: 'browser' });
-await bundle.write({
+const bundleOut = await bundle.write({
   dir: OUT, format: 'es', minify: true,
   entryFileNames: 'viewer.js', chunkFileNames: 'chunks/[name]-[hash].js',
 });
@@ -48,6 +49,11 @@ for (const file of scripts) {
 }
 
 copyFileSync(createRequire(import.meta.url).resolve('harfbuzzjs/dist/harfbuzz-subset.wasm'), `${OUT}/harfbuzz-subset.wasm`);
+
+// The licences of everything the bundle and the subsetter carry, served next to them.
+const notices = packagesInOutputs(bundleOut);
+notices.add(packageDir('harfbuzzjs'));
+writeNotices(`${OUT}/THIRD-PARTY-NOTICES.md`, notices, 'DocPresenter web viewer');
 
 const page = `<!doctype html>
 <html lang="ja"><head><meta charset="utf-8">
