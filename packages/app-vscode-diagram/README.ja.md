@@ -95,3 +95,9 @@ VS Code の **「ドキュメントのフォーマット」**（Shift+Alt+F）�
 ## 表示言語
 
 VS Code の表示言語に従う。VS Code が日本語なら日本語、それ以外なら英語で表示される。
+
+## ライセンス
+
+DocPresenter の著作権は Rintaro Sugishita にある。ライセンスはまだ確定しておらず、確定するまでは全権利留保とする
+（[LICENSE.md](https://github.com/Rintaro-Sugishita/DocPresenter/blob/HEAD/LICENSE.md)）。予定している条件（自由に使い・配ってよいが、改変は不可）は
+[legal/LICENSE.draft.md](https://github.com/Rintaro-Sugishita/DocPresenter/blob/HEAD/legal/LICENSE.draft.md) にあるが、まだ効力を持たない。

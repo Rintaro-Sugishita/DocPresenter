@@ -8,7 +8,7 @@
 > Read [design/licensing.md](../design/licensing.md) for why each clause is
 > here; that document is the reasoning, this one is the wording.
 >
-> Open questions are collected in [§14 Notes on this draft](#14-notes-on-this-draft)
+> Open questions are collected in [Notes on this draft](#notes-on-this-draft)
 > and must be settled before the first release.
 
 This licence is modelled on the **PolyForm Strict License 1.0.0**

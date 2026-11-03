@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "description": "docpresenter: export, check, format and import design documents from the command line. Published as `docpresenter`.",
-  "license": "SEE LICENSE IN legal/LICENSE.draft.md",
+  "license": "SEE LICENSE IN LICENSE.md",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",

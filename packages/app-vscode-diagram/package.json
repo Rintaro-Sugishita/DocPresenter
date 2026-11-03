@@ -5,7 +5,7 @@
   "version": "0.1.0",
   "publisher": "rintaro-sugishita",
   "private": true,
-  "license": "SEE LICENSE IN legal/LICENSE.draft.md",
+  "license": "SEE LICENSE IN LICENSE.md",
   "repository": { "type": "git", "url": "https://github.com/Rintaro-Sugishita/DocPresenter.git", "directory": "packages/app-vscode-diagram" },
   "engines": { "vscode": "^1.95.0" },
   "icon": "icon.png",
