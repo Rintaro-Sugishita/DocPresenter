@@ -11,6 +11,9 @@ rem Install them elsewhere with, the diagram extension first:
 rem   code --install-extension docpresenter-diagram-<version>.vsix
 rem   code --install-extension docpresenter-<version>.vsix
 rem or VS Code: Extensions view, "..." menu, "Install from VSIX...".
+rem
+rem Each .vsix carries the repository's LICENSE.md: it is copied into the package
+rem folder for vsce to pick up, and removed again afterwards (also on failure).
 
 setlocal
 cd /d "%~dp0.."
@@ -38,19 +41,30 @@ set VSIX=%OUTDIR%\docpresenter-%VERSION%.vsix
 set DIAGRAM_VSIX=%OUTDIR%\docpresenter-diagram-%DIAGRAM_VERSION%.vsix
 if not exist "%OUTDIR%" mkdir "%OUTDIR%"
 
+if not exist LICENSE.md (
+  echo [ERROR] LICENSE.md was not found at the repository root.
+  goto :fail
+)
+copy /y LICENSE.md packages\app-vscode-diagram\LICENSE.md >nul
+if errorlevel 1 goto :fail
+copy /y LICENSE.md packages\app-vscode\LICENSE.md >nul
+if errorlevel 1 goto :fail
+
 echo === Package: %DIAGRAM_VSIX% ===
 pushd packages\app-vscode-diagram
-call "%~dp0..\node_modules\.bin\vsce.cmd" package --no-dependencies --allow-missing-repository --skip-license -o "%DIAGRAM_VSIX%"
+call "%~dp0..\node_modules\.bin\vsce.cmd" package --no-dependencies --allow-missing-repository -o "%DIAGRAM_VSIX%"
 set RESULT=%ERRORLEVEL%
 popd
 if not "%RESULT%"=="0" goto :fail
 
 echo === Package: %VSIX% ===
 pushd packages\app-vscode
-call "%~dp0..\node_modules\.bin\vsce.cmd" package --no-dependencies --allow-missing-repository --skip-license -o "%VSIX%"
+call "%~dp0..\node_modules\.bin\vsce.cmd" package --no-dependencies --allow-missing-repository -o "%VSIX%"
 set RESULT=%ERRORLEVEL%
 popd
 if not "%RESULT%"=="0" goto :fail
+
+call :cleanlicense
 
 if /i "%~1"=="install" (
   echo === Install into VS Code: the diagram extension first, then the one whose pack names it ===
@@ -68,7 +82,14 @@ endlocal
 exit /b 0
 
 :fail
+call :cleanlicense
 echo.
 echo [ERROR] Packaging failed.
 endlocal
 exit /b 1
+
+rem Removes the LICENSE.md copies placed in the package folders for vsce.
+:cleanlicense
+if exist packages\app-vscode-diagram\LICENSE.md del /q packages\app-vscode-diagram\LICENSE.md
+if exist packages\app-vscode\LICENSE.md del /q packages\app-vscode\LICENSE.md
+exit /b 0

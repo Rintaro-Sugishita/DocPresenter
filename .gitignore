@@ -10,3 +10,6 @@ packages/cli/media/
 .vscode/*
 !.vscode/launch.json
 !.vscode/tasks.json
+# Copied in by tools/package-vscode.bat while packing the .vsix files
+packages/app-vscode/LICENSE.md
+packages/app-vscode-diagram/LICENSE.md
