@@ -191,26 +191,30 @@ permit: building as [§4](#4-building-is-not-changing) describes, repairs as
 [§5](#5-repairs-when-the-software-is-unmaintained) allows, and carrying the
 notice where [§6](#6-notices) allows rather than inside every file.
 
-## 14. No warranty, and limited liability
+## 14. No warranty, and no liability
 
 The software is provided **free of charge and as is**, without any warranty or
 condition of any kind, including that it works, that it is fit for a purpose,
-that it is free of defects, or that it infringes no one's rights.
+that it is free of defects, or that it infringes no one's rights. You decide
+whether it is fit for what you use it for, and you keep your own backups.
 
-The licensor will not be liable to anyone for any damages arising out of these
-terms or the use or nature of the software, under any kind of legal claim,
-except as follows:
+**The licensor will not be liable to anyone for any damage** arising out of
+these terms or the use or nature of the software, under any kind of legal
+claim — contract, tort, or otherwise. That includes, without limit, loss of
+business, profits, revenue, or data, interruption of work, claims made against
+you by others, and the cost of replacing the software.
 
-1. **Wilful misconduct and gross negligence.** Nothing in this section limits
-   the licensor's liability for damage caused by its wilful misconduct or gross
-   negligence.
-2. **Where the law does not allow a full exclusion.** If a law that cannot be
-   set aside by agreement — such as the Consumer Contract Act of Japan — makes
-   the licensor liable for damage caused by its negligence that is not gross
-   negligence, the licensor's liability for that damage is limited to ordinary
-   damage that arises directly from it, and excludes damage arising from
-   special circumstances and lost profits. This limitation applies only to
-   negligence that is not gross negligence.
+**If you use the software for a business** — as a company or other
+organisation, or as an individual acting in the course of a trade — this
+exclusion applies to you in full.
+
+**Only if you are a consumer**, and a law that cannot be set aside by agreement
+(such as the Consumer Contract Act of Japan) makes the exclusion above
+ineffective against you, then instead: for damage caused by the licensor's
+negligence that is not gross negligence, the licensor's liability is limited to
+ordinary damage arising directly from it, and excludes damage arising from
+special circumstances and lost profits. This limitation applies only to
+negligence that is not gross negligence.
 
 ## 15. Governing law and language
 
@@ -254,15 +258,19 @@ what changed because of it (the reasoning is in
    PolyForm Project lets anyone reuse its licence text, but a changed licence
    must not mention PolyForm. These terms are far from PolyForm Strict (which
    is non-commercial and forbids distribution), so they no longer name it.
-2. **Liability under the Consumer Contract Act of Japan.** Article 8 voids a
-   clause that fully excludes a business's liability to a consumer, and (since
-   June 2023, Article 8(3)) a clause that partly excludes it without saying it
-   applies only to negligence short of gross negligence. Whether an individual
-   giving software away counts as a "business" (事業者) is unclear, so
-   [§14](#14-no-warranty-and-limited-liability) is written to hold either way:
-   wilful misconduct and gross negligence are carved out, and the fallback
-   limitation says it applies only to ordinary negligence. "As far as the law
-   allows" was dropped; that kind of saving phrase is what Article 8(3) targets.
+2. **Liability under the Consumer Contract Act of Japan.** The exclusion is
+   total. The Act does not apply between the licensor and a business user, so
+   against companies and anyone using the software in their trade it stands as
+   written. The Act can only reach a consumer (an individual not acting in a
+   trade), and only if an individual giving software away counts as a
+   "business" (事業者), which is unclear. For that case alone,
+   [§14](#14-no-warranty-and-no-liability) falls back to a limit written the
+   way Article 8(3) (since June 2023) requires: it says it covers only
+   negligence short of gross negligence. "As far as the law allows" was dropped;
+   that kind of saving phrase is what Article 8(3) targets. Liability for wilful
+   misconduct or gross negligence is generally held not to be excludable under
+   Japanese law whatever a contract says; the text does not pretend otherwise,
+   but does not volunteer it either.
 3. **Moral rights.** Under Japanese law the author's moral rights cannot be
    licensed or transferred, only not exercised; a copyright licence alone does
    not cover minifying (integrity) or dropping the name from a bundle
@@ -281,7 +289,7 @@ Still open:
 
 - **A lawyer's reading**, should one ever be affordable, above all of
   [§5](#5-repairs-when-the-software-is-unmaintained) and
-  [§14](#14-no-warranty-and-limited-liability).
+  [§14](#14-no-warranty-and-no-liability).
 - **Name.** "DocPresenter Source-Available License" assumes the product name.
 - **Putting it in force** is a decision, not a drafting step: rename this file
   to `LICENSE.md` in place of the current notice, drop "DRAFT" and the banner.
