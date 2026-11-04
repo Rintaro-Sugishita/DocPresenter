@@ -418,8 +418,13 @@ VS Code's "Configure Display Language"; the extension has no setting of its own.
 | **Editing Mermaid in PowerPoint** | Mermaid diagrams go in as images. Draw with `.dgm` to get shapes you can move in PowerPoint |
 | **Editing part libraries** | Parts can be chosen on screen, but the parts themselves are written in source |
 
+## Known issues
+
+Defects we know about and have not fixed yet are listed in
+[KNOWN-ISSUES.md](https://github.com/Rintaro-Sugishita/DocPresenter/blob/HEAD/KNOWN-ISSUES.md). Please read it before relying on the extension for important work.
+
 ## Licence
 
-DocPresenter is Copyright © 2026 Rintaro Sugishita. The licence is not final yet; until it is, all rights are reserved
-([LICENSE.md](https://github.com/Rintaro-Sugishita/DocPresenter/blob/HEAD/LICENSE.md)). The intended terms — free to use and pass on, but not to change — are drafted in
-[legal/LICENSE.draft.md](https://github.com/Rintaro-Sugishita/DocPresenter/blob/HEAD/legal/LICENSE.draft.md), which is not in force.
+DocPresenter is Copyright © 2026 Rintaro Sugishita. It is free to use, including commercially, and to pass on unchanged;
+changing it is not permitted. It comes as is, with no warranty and no liability. The terms are in
+[LICENSE.md](https://github.com/Rintaro-Sugishita/DocPresenter/blob/HEAD/LICENSE.md).

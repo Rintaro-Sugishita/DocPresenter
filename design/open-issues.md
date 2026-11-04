@@ -110,7 +110,7 @@
 | **R13 変更箇所の表示の実装**（差分の型・レンダリング・表と図のモデル差分・Git からの取得） | [変更箇所の表示 §6](diff-marking.md) |
 | フォルダ直編集からレビューへ移る導線（コミットの無い状態で付けた指摘を最初のコミットに結び直せるか） | [提供形態 §3.3](platforms.md) |
 | MPE 互換の範囲の明示 | [参照記法](reference-syntax.md) |
-| ~~ライセンス~~ → 方針も**条文と CLA のドラフト**も作成済み（[`legal/`](../legal/LICENSE.draft.md)、[経緯](licensing.md)）。公開済みで現時点は全権利留保（[`LICENSE.md`](../LICENSE.md)）。弁護士なしで法令と照らして直した（[licensing.md §8](licensing.md)）。残るのは**発効させるかの判断**、**CCLA と同意の取り方**、**書き出した HTML に入る Mermaid の表示** | [パッケージ分割 §7](packaging.md) |
+| ~~ライセンス~~ → 条文は **2026-11-04 に発効**（[`LICENSE.md`](../LICENSE.md)。弁護士なしで法令と照らして直した。[経緯](licensing.md)）。残るのは **CLA の発効（CCLA と同意の取り方）**、**書き出した HTML に入る Mermaid の表示** | [パッケージ分割 §7](packaging.md) |
 | **公開名**（作図ツールの製品名と `.dgm` の見え方） | [パッケージ分割 §7](packaging.md) |
 
 ## 所見

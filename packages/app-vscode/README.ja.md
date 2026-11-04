@@ -415,8 +415,12 @@ PPTX に出力した図は、PowerPoint で修正したあと**元の `.dgm` に
 | **PowerPoint での Mermaid の図の編集** | Mermaid の図は画像として載る。PowerPoint で動かせる図形にしたい場合は `.dgm` で描く |
 | **部品ライブラリの編集** | 部品は画面から選べるが、部品そのものの定義はソースに書く |
 
+## 既知の不具合
+
+分かっていて、まだ直していない不具合は [KNOWN-ISSUES.md](https://github.com/Rintaro-Sugishita/DocPresenter/blob/HEAD/KNOWN-ISSUES.md) に載せている。
+大事な作業に使う前に確認してほしい。
+
 ## ライセンス
 
-DocPresenter の著作権は Rintaro Sugishita にある。ライセンスはまだ確定しておらず、確定するまでは全権利留保とする
-（[LICENSE.md](https://github.com/Rintaro-Sugishita/DocPresenter/blob/HEAD/LICENSE.md)）。予定している条件（自由に使い・配ってよいが、改変は不可）は
-[legal/LICENSE.draft.md](https://github.com/Rintaro-Sugishita/DocPresenter/blob/HEAD/legal/LICENSE.draft.md) にあるが、まだ効力を持たない。
+DocPresenter の著作権は Rintaro Sugishita にある。商用を含めて無償で使え、そのまま再配布できる。改変は許諾していない。
+無保証で、作者は損害を賠償しない。条文は [LICENSE.md](https://github.com/Rintaro-Sugishita/DocPresenter/blob/HEAD/LICENSE.md)（英語が正文）。

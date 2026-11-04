@@ -323,7 +323,7 @@ DocPresenter Diagram のキャンバスは作図のパッケージ（`@docpresen
 ## 仕様
 
 `.dgm` と `.table` の仕様は **英語で [`spec/`](spec/README.md) にあります**。
-この 2 つの形式は[ライセンスの対象外](legal/LICENSE.draft.md)で、**誰がどの言語で実装しても構いません**。
+この 2 つの形式は[ライセンスの対象外](LICENSE.md#7-file-formats-and-notations-are-not-covered)で、**誰がどの言語で実装しても構いません**。
 
 | | |
 |---|---|
@@ -333,17 +333,17 @@ DocPresenter Diagram のキャンバスは作図のパッケージ（`@docpresen
 
 ## ライセンス
 
-**ソースは公開していますが、オープンソースではありません。ライセンスはまだ確定していません。**
-確定するまでは全権利留保です（[`LICENSE.md`](LICENSE.md)）。予定している条件は、再配布は自由、改変は許諾しない
-（ビルド・バンドル・最小化は改変に当たらない）というものです。
+**ソースは公開していますが、オープンソースではありません。**
+商用を含めて自由に使い、そのまま再配布できます。改変は許諾していません（ビルド・バンドル・最小化は改変に当たりません）。
+無償・無保証で、作者は損害を賠償しません。条文は [`LICENSE.md`](LICENSE.md)（英語が正文）です。
 
 | | |
 |---|---|
-| [`LICENSE.md`](LICENSE.md) | 現時点の扱い。**許諾はまだ出していません** |
-| [`legal/LICENSE.draft.md`](legal/LICENSE.draft.md) | 条文のドラフト。**まだ効力を持ちません**（法務確認前） |
+| [`LICENSE.md`](LICENSE.md) | ライセンスの条文（2026-11-04 発効。それ以前に公開した版にも適用） |
 | [`legal/CLA.draft.md`](legal/CLA.draft.md) | 貢献の許諾のドラフト。著作権は貢献者が持ったままです |
 | [design/licensing.md](design/licensing.md) | 方針とその理由 |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | 報告と PR の手順 |
+| [KNOWN-ISSUES.md](KNOWN-ISSUES.md) | 分かっている不具合 |
 
 ## 設計
 
