@@ -9,12 +9,34 @@ import { gzipSync } from 'node:zlib';
 import { chromium } from 'playwright-core';
 import { rolldown } from 'rolldown';
 import { findChromium } from './pdf-writer.mjs';
+import { compactNotices, packagesInOutputs } from './third-party-notices.mjs';
 
-/** The page script as one minified piece. */
+/** The page script as one minified piece, and the notices of what went into it. */
 export async function mermaidRuntime() {
   const bundle = await rolldown({ input: 'packages/editor/dist/mermaid-page.js', platform: 'browser' });
-  const { output } = await bundle.generate({ format: 'iife', codeSplitting: false, minify: true });
-  return output[0].code;
+  const result = await bundle.generate({ format: 'iife', codeSplitting: false, minify: true });
+  return { code: result.output[0].code, notices: compactNotices(packagesInOutputs(result)).text };
+}
+
+/**
+ * The comment every page carrying the script starts it with. The code inside is
+ * minified and packed, so the licences it was written under cannot ride along
+ * as comments in it; they go here, readable in the page's source, with no
+ * network needed (LICENSE.md §6; the third parties' own terms).
+ */
+export function noticeBanner(notices) {
+  const text = [
+    'This page draws its diagrams with a script from DocPresenter.',
+    'DocPresenter is Copyright © 2026 Rintaro Sugishita. All rights reserved.',
+    'Licence: https://github.com/Rintaro-Sugishita/DocPresenter/blob/HEAD/LICENSE.md',
+    '',
+    'The script includes the following third-party software, each under its own',
+    'licence. Each package lists its copyright lines and the licence text it is',
+    'under, by number; the texts follow the list.',
+    '',
+    notices,
+  ].join('\n');
+  return `/*!\n${text.replace(/\*\//g, '* /')}\n*/\n`;
 }
 
 /**
@@ -26,7 +48,8 @@ export async function mermaidRuntime() {
  * when the page is opened: about a third of the size, and nothing fetched.
  */
 export async function mermaidScript() {
-  return packScript(await mermaidRuntime());
+  const { code, notices } = await mermaidRuntime();
+  return noticeBanner(notices) + packScript(code);
 }
 
 export function packScript(code) {

@@ -125,6 +125,12 @@ third-party notices page, an `about` screen — or as a comment the build
 preserves. The notice must reach the person who receives the software; it need
 not survive inside a minified file.
 
+**What the software produces is yours** — documents, drawings, and the files
+you export. Where an exported file carries a part of the software, such as the
+script an exported HTML page draws its diagrams with, the notice the software
+puts in that file is enough: you need not add a copy of these terms, and you
+may distribute the file as you wish so long as you leave that notice in it.
+
 ## 7. File formats and notations are not covered
 
 This licence covers **code**. It does not cover the **file formats and
