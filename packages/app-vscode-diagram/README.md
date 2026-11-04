@@ -101,8 +101,13 @@ of, so `a-->b` always reads as a connection from `a` to `b`.
 It follows VS Code's display language: Japanese when VS Code is in Japanese, English otherwise. This page is in
 English whatever the display language; the Japanese version is linked at the top.
 
+## Known issues
+
+Defects we know about and have not fixed yet are listed in
+[KNOWN-ISSUES.md](https://github.com/Rintaro-Sugishita/DocPresenter/blob/HEAD/KNOWN-ISSUES.md). Please read it before relying on the extension for important work.
+
 ## Licence
 
-DocPresenter is Copyright © 2026 Rintaro Sugishita. The licence is not final yet; until it is, all rights are reserved
-([LICENSE.md](https://github.com/Rintaro-Sugishita/DocPresenter/blob/HEAD/LICENSE.md)). The intended terms — free to use and pass on, but not to change — are drafted in
-[legal/LICENSE.draft.md](https://github.com/Rintaro-Sugishita/DocPresenter/blob/HEAD/legal/LICENSE.draft.md), which is not in force.
+DocPresenter is Copyright © 2026 Rintaro Sugishita. It is free to use, including commercially, and to pass on unchanged;
+changing it is not permitted. It comes as is, with no warranty and no liability. The terms are in
+[LICENSE.md](https://github.com/Rintaro-Sugishita/DocPresenter/blob/HEAD/LICENSE.md).

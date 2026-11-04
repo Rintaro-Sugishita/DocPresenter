@@ -13,7 +13,7 @@ Contributor Licence Agreement, with one addition Japanese law requires
 ([§5](#5-moral-rights)).
 
 **Why it is needed at all.** DocPresenter is distributed under terms that do
-not permit changes ([`LICENSE.draft.md`](LICENSE.draft.md)). A contributor
+not permit changes ([`LICENSE.md`](../LICENSE.md)). A contributor
 cannot sign a `Signed-off-by` line certifying that their patch may go out under
 those terms, because those terms are exactly what forbids the patch. So the
 permission has to come the other way: from you, to us, once.
@@ -55,7 +55,7 @@ derivative work), which a grant must name to be sure of covering them.
 
 This licence lets us distribute your Contribution **under whatever terms the
 project uses, now or later, including terms that are not open source** — today
-that means [the project's source-available licence](LICENSE.draft.md).
+that means [the project's source-available licence](../LICENSE.md).
 
 **You keep your copyright in your Contribution.** You may use it, publish it,
 and license it to anyone else, on any terms, for any purpose. Nothing here

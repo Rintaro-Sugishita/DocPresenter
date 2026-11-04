@@ -7,7 +7,7 @@ written for **someone who wants to implement them without asking us**, which is
 explicitly allowed: the formats are not covered by the software's licence, and
 an independent reader, writer, or editor of these formats needs no permission
 from us and owes us nothing
-([LICENSE §7](../legal/LICENSE.draft.md), [design/licensing.md §6.4](../design/licensing.md)).
+([LICENSE §7](../LICENSE.md#7-file-formats-and-notations-are-not-covered), [design/licensing.md §6.4](../design/licensing.md)).
 
 We borrowed most of the notation rather than inventing it. If a construct looks
 like Mermaid or like a GFM table, that is deliberate, and the differences are
