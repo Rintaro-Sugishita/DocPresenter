@@ -296,8 +296,8 @@ node tools/build-vscode.mjs      # 両方を出力：packages/app-vscode/media/�
 
 tools\package-vscode.bat            # ビルドして out\vsix\ に docpresenter-<バージョン>.vsix と docpresenter-diagram-<バージョン>.vsix を作成する
 tools\package-vscode.bat install    # 作成したうえで、この PC の VS Code に両方をインストールする
-code --install-extension out\vsix\docpresenter-diagram-0.1.0.vsix   # 別の PC では、作図の拡張を先に入れ、
-code --install-extension out\vsix\docpresenter-0.1.0.vsix           # 次にこちらを入れる（パックが作図の拡張を名指しするため）
+code --install-extension out\vsix\docpresenter-diagram-0.1.1.vsix   # 別の PC では、作図の拡張を先に入れ、
+code --install-extension out\vsix\docpresenter-0.1.1.vsix           # 次にこちらを入れる（パックが作図の拡張を名指しするため）
 ```
 
 DocPresenter Diagram のキャンバスは作図のパッケージ（`@docpresenter/base` と `@docpresenter/diagram`）だけから作り、
