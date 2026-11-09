@@ -421,30 +421,237 @@ function route(
       ? edgeOf('right') + CHANNEL_GAP * lanes[side('right')]
       : edgeOf('left') - CHANNEL_GAP * lanes[side('left')];
 
-    const besides = [tail, { x, y: tail.y }, { x, y: head.y }, head];
-    if (fits(besides)) {
-      lanes[side(beside)]++;
-      done(besides);
-      continue;
-    }
-
+    // Every way round is weighed rather than the first that is clear taken:
+    // a way through nothing can still cross or run along the lines drawn
+    // before it, and two lines wound round each other read as neither.
+    // `lanes` are the outside channels a way takes up, kept for the next line.
+    type Way = { points: Point[]; lanes: (keyof typeof lanes)[] };
+    const turned = all.map(turnBox);
+    const fromFrame = turnBox(frameOf(edge.from, edge.to));
+    const toFrame = turnBox(frameOf(edge.to, edge.from));
     const end = back ? 'top' : 'bottom';
     const y = end === 'bottom'
       ? edgeOf('bottom') + CHANNEL_GAP * lanes[side('bottom')]
       : edgeOf('top') - CHANNEL_GAP * lanes[side('top')];
+    const outer = gapsOf(tail, head, fromFrame, toFrame);
 
-    const around = [tail, { x, y: tail.y }, { x, y }, { x: head.x, y }, head];
-    if (fits(around)) {
-      lanes[side(beside)]++;
-      lanes[side(end)]++;
-      done(around);
-      continue;
+    // Between the shapes: leaving along the flow and turning in the gap
+    // between rows, so the line does not cut across its neighbours.
+    const between: Way[] = gapRoutes(tail, head, fromFrame, toFrame, turned).map(points => ({ points, lanes: [] }));
+    // Outside: the channel beside the drawing, straight across or through the
+    // gaps between rows.
+    const outside: Way[] = [
+      { points: [tail, { x, y: tail.y }, { x, y: head.y }, head], lanes: [beside] },
+      { points: tidy([tail, { x: tail.x, y: outer.leave }, { x, y: outer.leave },
+        { x, y: outer.enter }, { x: head.x, y: outer.enter }, head]), lanes: [beside] },
+    ];
+    const around: Way[] = [
+      { points: [tail, { x, y: tail.y }, { x, y }, { x: head.x, y }, head], lanes: [beside, end] },
+      { points: [tail, { x: tail.x, y }, { x: head.x, y }, head], lanes: [end] },
+    ];
+    // A line going back keeps to its own side when it can, so the direction
+    // reads at a glance; a line going on takes the best way there is.
+    const tiers: Way[][] = back ? [outside, [...between, ...around]] : [[...between, ...outside, ...around]];
+
+    const ends = [frameOf(edge.from, edge.to), frameOf(edge.to, edge.from)];
+    // Lines from or to the same shape may run together into it — they meet
+    // there anyway; only crossing them counts.
+    const drawn = routes.map(one => ({
+      points: one.points,
+      merges: [one.edge.from, one.edge.to].some(id => id === edge.from || id === edge.to),
+    }));
+    const cost = (way: Way): number => {
+      const real = way.points.map(t);
+      return pathLength(real) + BEND_COST * (real.length - 2) + tangle(real, drawn, ends) * TANGLE_COST;
+    };
+    const cheapest = (ways: readonly Way[]): Way | undefined => {
+      let best: Way | undefined;
+      let lowest = Infinity;
+      for (const way of ways) {
+        const value = cost(way);
+        if (value < lowest) { best = way; lowest = value; }
+      }
+      return best;
+    };
+
+    let chosen: Way | undefined;
+    for (const tier of tiers) {
+      chosen = cheapest(tier.filter(way => fits(way.points)));
+      if (chosen) break;
     }
-
-    lanes[side(end)]++;
-    done([tail, { x: tail.x, y }, { x: head.x, y }, head]);
+    if (!chosen) {
+      // Nothing is clear. The way that runs through the fewest shapes is the
+      // least wrong; through the shapes between them is the most.
+      const crossings = (points: readonly Point[]): number => {
+        const real = points.map(t);
+        let count = 0;
+        for (const node of diagram.nodes) {
+          if (node.shape === 'group' || node.id === edge.from || node.id === edge.to) continue;
+          const box = boxes.get(node.id);
+          if (!box) continue;
+          for (let i = 0; i + 1 < real.length; i++) {
+            if (crossesBox(real[i]!, real[i + 1]!, box)) { count++; break; }
+          }
+        }
+        return count;
+      };
+      const every = tiers.flat();
+      const fewest = Math.min(...every.map(way => crossings(way.points)));
+      chosen = cheapest(every.filter(way => crossings(way.points) === fewest))!;
+    }
+    for (const one of chosen.lanes) lanes[side(one)]++;
+    done(chosen.points);
   }
   return placeLabels(routes);
+}
+
+/** What a corner adds to a way, in pixels of length: a straighter way reads easier. */
+const BEND_COST = 24;
+/** What crossing or running along a line already drawn adds to a way. */
+const TANGLE_COST = 400;
+
+function pathLength(points: readonly Point[]): number {
+  let total = 0;
+  for (let i = 0; i + 1 < points.length; i++) {
+    total += Math.abs(points[i + 1]!.x - points[i]!.x) + Math.abs(points[i + 1]!.y - points[i]!.y);
+  }
+  return total;
+}
+
+/**
+ * How many times a way crosses, or runs along, the lines drawn before it.
+ * Inside the shapes at its two ends does not count: lines leaving the same
+ * shape all start at its centre, and meeting there is not a tangle.
+ */
+function tangle(
+  points: readonly Point[],
+  drawn: readonly { readonly points: readonly Point[]; readonly merges: boolean }[],
+  ends: readonly Box[],
+): number {
+  const within = (p: Point): boolean =>
+    ends.some(box => p.x >= box.x - 1 && p.x <= box.x + box.width + 1 && p.y >= box.y - 1 && p.y <= box.y + box.height + 1);
+  let count = 0;
+  for (const { points: other, merges } of drawn) {
+    for (let i = 0; i + 1 < points.length; i++) {
+      const a = points[i]!;
+      const b = points[i + 1]!;
+      for (let j = 0; j + 1 < other.length; j++) {
+        const c = other[j]!;
+        const d = other[j + 1]!;
+        const along = alongside(a, b, c, d);
+        if (along) {
+          if (!merges && !within(along)) count++;
+          continue;
+        }
+        const at = intersection(a, b, c, d);
+        // A line that joins one into the same shape meets it at a corner;
+        // that is the two running together, not crossing.
+        const corner = (p: Point): boolean => Math.abs(p.x - at!.x) < 0.5 && Math.abs(p.y - at!.y) < 0.5;
+        if (at && !within(at) && !(merges && [a, b, c, d].some(corner))) count++;
+      }
+    }
+  }
+  return count;
+}
+
+/** Where two segments cross, if they do; parallel segments never cross. */
+function intersection(a: Point, b: Point, c: Point, d: Point): Point | undefined {
+  const r = { x: b.x - a.x, y: b.y - a.y };
+  const s = { x: d.x - c.x, y: d.y - c.y };
+  const denominator = r.x * s.y - r.y * s.x;
+  if (Math.abs(denominator) < 1e-9) return undefined;
+  const t = ((c.x - a.x) * s.y - (c.y - a.y) * s.x) / denominator;
+  const u = ((c.x - a.x) * r.y - (c.y - a.y) * r.x) / denominator;
+  if (t < 0 || t > 1 || u < 0 || u > 1) return undefined;
+  return { x: a.x + r.x * t, y: a.y + r.y * t };
+}
+
+/** How close two lines may run side by side before they read as one. */
+const ALONGSIDE = 6;
+
+/**
+ * The middle of the stretch where two straight runs lie on top of each other
+ * or nearly so, if they share more than a few pixels; otherwise nothing.
+ */
+function alongside(a: Point, b: Point, c: Point, d: Point): Point | undefined {
+  const flat = (p: Point, q: Point): boolean => Math.abs(p.y - q.y) < 0.5;
+  const upright = (p: Point, q: Point): boolean => Math.abs(p.x - q.x) < 0.5;
+  const overlap = (p: number, q: number, r: number, s: number): [number, number] | undefined => {
+    const low = Math.max(Math.min(p, q), Math.min(r, s));
+    const high = Math.min(Math.max(p, q), Math.max(r, s));
+    return high - low > ALONGSIDE ? [low, high] : undefined;
+  };
+  if (flat(a, b) && flat(c, d) && Math.abs(a.y - c.y) < ALONGSIDE) {
+    const span = overlap(a.x, b.x, c.x, d.x);
+    return span && { x: (span[0] + span[1]) / 2, y: a.y };
+  }
+  if (upright(a, b) && upright(c, d) && Math.abs(a.x - c.x) < ALONGSIDE) {
+    const span = overlap(a.y, b.y, c.y, d.y);
+    return span && { x: a.x, y: (span[0] + span[1]) / 2 };
+  }
+  return undefined;
+}
+
+/** How many places between the shapes a line is tried through before going outside. */
+const GAP_TRIES = 16;
+
+/**
+ * Where a line in a flow turns when it cannot go straight: in the gap after
+ * the row it leaves and the gap before the row it enters. Worked out on a flow
+ * running down the page, as the routing is.
+ */
+function gapsOf(tail: Point, head: Point, from: Box, to: Box): { leave: number; enter: number } {
+  const half = RANK_GAP / 2;
+  if (head.y > tail.y + 1) return { leave: from.y + from.height + half, enter: to.y - half };
+  if (head.y < tail.y - 1) return { leave: from.y - half, enter: to.y + to.height + half };
+  // Side by side in one row: under both of them.
+  const under = Math.max(from.y + from.height, to.y + to.height) + half;
+  return { leave: under, enter: under };
+}
+
+/**
+ * The ways between the shapes for a line that cannot go straight: turning in
+ * the gap before the row it enters, or after the row it leaves; and failing
+ * those, down a gap between two columns, nearest the middle first.
+ */
+function gapRoutes(tail: Point, head: Point, from: Box, to: Box, boxes: readonly Box[]): Point[][] {
+  const { leave, enter } = gapsOf(tail, head, from, to);
+  const out: Point[][] = [
+    tidy([tail, { x: tail.x, y: enter }, { x: head.x, y: enter }, head]),
+    tidy([tail, { x: tail.x, y: leave }, { x: head.x, y: leave }, head]),
+  ];
+  const middle = (tail.x + head.x) / 2;
+  const low = Math.min(leave, enter);
+  const high = Math.max(leave, enter);
+  // The gaps beside the shapes the line has to pass, in the rows between.
+  const columns = new Set<number>();
+  for (const box of boxes) {
+    if (box.y + box.height < low || box.y > high) continue;
+    columns.add(Math.round(box.x - NODE_GAP / 2));
+    columns.add(Math.round(box.x + box.width + NODE_GAP / 2));
+  }
+  const xs = [...columns].sort((a, b) => Math.abs(a - middle) - Math.abs(b - middle) || a - b);
+  for (const x of xs.slice(0, GAP_TRIES)) {
+    out.push(tidy([tail, { x: tail.x, y: leave }, { x, y: leave }, { x, y: enter }, { x: head.x, y: enter }, head]));
+  }
+  return out;
+}
+
+/** Drops corners that turn nowhere: repeated points, and points on a straight run. */
+function tidy(points: readonly Point[]): Point[] {
+  const out: Point[] = [];
+  for (const p of points) {
+    const last = out[out.length - 1];
+    if (last && Math.abs(last.x - p.x) < 0.5 && Math.abs(last.y - p.y) < 0.5) continue;
+    const before = out[out.length - 2];
+    if (before && last && ((Math.abs(before.x - last.x) < 0.5 && Math.abs(last.x - p.x) < 0.5)
+      || (Math.abs(before.y - last.y) < 0.5 && Math.abs(last.y - p.y) < 0.5))) {
+      out[out.length - 1] = p;
+      continue;
+    }
+    out.push(p);
+  }
+  return out;
 }
 
 /** Between two connections that join the same two shapes. */
@@ -722,6 +929,9 @@ function measure(
   const natural = shown.includes('\n')
     ? Math.max(...shown.split('\n').map(line => textWidth(line, FONT)))
     : textWidth(node.text, FONT);
+  // A diamond holds its words in the middle, where it is widest, so it wraps
+  // them narrower than a box would and then grows round them.
+  if (node.shape === 'diamond' && !given) return diamond(runs, natural, pin?.width);
   const inner = (pin?.width ?? given?.width) !== undefined
     ? (pin?.width ?? given!.width) - TEXT_PAD
     : Math.min(MAX_NODE_WIDTH, Math.max(DEFAULT_SIZE.width, natural + TEXT_PAD)) - TEXT_PAD;
@@ -750,6 +960,52 @@ function measure(
     height: Math.max(DEFAULT_SIZE.height, lines.length * LINE_HEIGHT + TEXT_PAD + lid + art),
     lines,
   };
+}
+
+/** The widest a diamond's words run before they wrap. */
+const DIAMOND_TEXT = 140;
+/** Room kept between a diamond's words and its slanted sides. */
+const DIAMOND_INSET = 4;
+/**
+ * How much of a diamond's width its words may take before it grows wider
+ * rather than only taller. Past this, the height the words need climbs
+ * steeply, and the diamond turns into a needle.
+ */
+const DIAMOND_SHARE = 0.65;
+
+/**
+ * The size of a diamond round its words.
+ *
+ * A diamond is a box with its corners cut off, so words sized for the box run
+ * out through the slanted sides — a broken line most of all, since each line
+ * adds height where the diamond has the least width. A block of text `tw`
+ * wide and `th` tall fits when `tw / w + th / h <= 1`: the block's corner
+ * then sits on the outline. The default width is kept while the words take
+ * no more than `DIAMOND_SHARE` of it; past that the diamond is made twice as
+ * wide as the words, the smallest that holds them. The height follows.
+ *
+ * The block is measured by the glyphs, not the line pitch: the room above the
+ * first line and below the last is part of the pitch, not of the words.
+ */
+function diamond(
+  runs: ReturnType<typeof parseLabel>, natural: number, pinned: number | undefined,
+): { width: number; height: number; lines: readonly TextLine[] } {
+  const wrap = pinned !== undefined
+    ? Math.max(1, pinned / 2 - DIAMOND_INSET * 2)
+    : Math.min(DIAMOND_TEXT, Math.max(1, natural));
+  const lines = wrapRuns(runs, wrap, FONT, true);
+  const widest = lines.reduce((w, line) => Math.max(w, textWidth(lineText(line), FONT)), 0);
+  const tw = Math.ceil(widest) + DIAMOND_INSET * 2;
+  // Less room above and below than at the sides: a glyph's box already has
+  // some room inside it there.
+  const th = lines.length * LINE_HEIGHT - (LINE_HEIGHT - FONT) + DIAMOND_INSET;
+  const width = pinned
+    ?? (tw / DEFAULT_SIZE.width <= DIAMOND_SHARE ? DEFAULT_SIZE.width : Math.max(DEFAULT_SIZE.width, tw * 2));
+  // A pinned width narrower than the words leaves no room to grow into; it is
+  // the author's width, so the diamond grows tall instead, as far as reason.
+  const share = Math.min(0.8, tw / width);
+  const height = Math.max(DEFAULT_SIZE.height, Math.ceil(th / (1 - share)));
+  return { width, height, lines };
 }
 
 /** How one connection runs, decided where its two ends were laid out. */

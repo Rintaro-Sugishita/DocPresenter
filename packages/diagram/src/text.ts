@@ -30,6 +30,12 @@ export function textWidth(text: string, fontSize: number): number {
  */
 export function wrapRuns(
   runs: readonly Run[], maxWidth: number, fontSize: number,
+  /**
+   * Break a word wider than the line inside it. A box simply grows round a
+   * long word; a shape that grows twice as fast as its words, as a diamond
+   * does, would rather break it.
+   */
+  breakWords = false,
 ): Run[][] {
   const lines: Run[][] = [];
   let current: Run[] = [];
@@ -54,7 +60,9 @@ export function wrapRuns(
       // A newline in the run ends the line before it; the run's first piece
       // carries on the line the run before it left.
       if (index > 0) flush();
-      for (const token of tokenize(paragraph)) {
+      const tokens = tokenize(paragraph).flatMap(token =>
+        (breakWords && token.length > 1 && textWidth(token, fontSize) > maxWidth ? [...token] : [token]));
+      for (const token of tokens) {
         const tokenWidth = textWidth(token, fontSize);
         const mayBreak = !NO_LINE_START.test(token);
         if (current.length > 0 && mayBreak && width + tokenWidth > maxWidth) flush();
