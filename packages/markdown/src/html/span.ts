@@ -7,7 +7,8 @@
 // for is to make something stand out, and that has no meaning to preserve.
 //
 // A class is still accepted, for a theme that defines named colours, and files
-// written against the earlier vocabulary keep rendering.
+// written against the earlier vocabulary keep rendering. `{.underline}` is
+// Pandoc's class for underlining, and is drawn as `<u>`.
 
 import type { MarkdownIt, StateInline } from 'markdown-it';
 
@@ -30,7 +31,8 @@ function rule(state: StateInline, silent: boolean): boolean {
   const colour = COLOUR.exec(rest);
   const named = CLASS.exec(rest);
   const token = named?.[1];
-  const matched = colour ?? (token !== undefined && TOKENS.has(token) ? named : undefined);
+  const underline = token === 'underline';
+  const matched = colour ?? (token !== undefined && (TOKENS.has(token) || underline) ? named : undefined);
   if (!matched) return false;
 
   if (!silent) {
@@ -40,14 +42,15 @@ function rule(state: StateInline, silent: boolean): boolean {
     // would come out as broken tags.
     const start = state.pos;
     const max = state.posMax;
-    const open = state.push('dp_span_open', 'span', 1);
+    const tag = !colour && underline ? 'u' : 'span';
+    const open = state.push('dp_span_open', tag, 1);
     if (colour) open.attrSet('style', `color:${colour[1]}`);
-    else open.attrSet('class', `dp-text-${token}`);
+    else if (!underline) open.attrSet('class', `dp-text-${token}`);
 
     state.pos = start + 1;
     state.posMax = close;
     state.md.inline.tokenize(state);
-    state.push('dp_span_close', 'span', -1);
+    state.push('dp_span_close', tag, -1);
     state.posMax = max;
   }
   state.pos = close + 1 + matched[0].length;

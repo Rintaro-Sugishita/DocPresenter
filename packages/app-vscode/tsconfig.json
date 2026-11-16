@@ -14,6 +14,7 @@
     { "path": "../diagram" },
     { "path": "../editor" },
     { "path": "../markdown" },
-    { "path": "../pdf" }
+    { "path": "../pdf" },
+    { "path": "../xlsx" }
   ]
 }

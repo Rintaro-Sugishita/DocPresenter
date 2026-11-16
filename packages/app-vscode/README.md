@@ -22,6 +22,7 @@ person or to an AI. DocPresenter keeps the document as **text files in your repo
 | **Draw** | Diagrams (flowcharts, state diagrams, system diagrams, screen sketches) are `.dgm` text files. Write the boxes and arrows; the layout is computed, and only what you move by hand is recorded |
 | **Number and cross-reference** | Figures, tables and headings are numbered for you, references like `@fig-login` become "Figure 3", and a table of contents and cover are made |
 | **Export** | One click gives HTML, PDF (fonts embedded) or PPTX (diagrams and tables stay editable in PowerPoint) |
+| **Mark what changed** | Compare with an earlier version (a commit, tag, branch, or another folder) and export with the changed paragraphs, table cells and shapes marked. Nobody paints them by hand |
 | **Check** | Broken references and mistakes in diagrams and tables show up in the Problems panel |
 | **Bring changes back** | Shapes moved or text fixed in the exported PowerPoint can be read back into the `.dgm` |
 | **Take reviews from people without Git** | Customers annotate the PDF as usual; their comments are imported into a review file, tied to the exact words they marked, and your answers travel back in the next PDF |
@@ -150,9 +151,53 @@ style {
 
 ![Choices open on a Type cell of the item table](https://raw.githubusercontent.com/Rintaro-Sugishita/DocPresenter/HEAD/packages/app-vscode/images/en/5-choices.png)
 
-**Exchanging tables with Excel: through the clipboard**
+**Editing in Excel (saving writes it back)**
 
-Excel files (.xlsx) are neither imported nor exported. Cells go back and forth through the clipboard instead.
+A table can be edited in Excel. The file stays the `.table` text, so the Git diff and reviews work as before.
+
+1. Right-click a `.table` and choose **"Open Table in Excel (Saving Writes It Back)"** — or right-click the table on the
+   document screen, use the button at the editor's top right, or the Command Palette.
+2. Excel opens. Edit as usual; each **save (Ctrl+S)** writes the changes back into the `.table` and saves it. Only the
+   lines of the cells you changed, and the lines of the formatting rules, are rewritten.
+
+| What you do in Excel | How it comes back into the `.table` |
+|---|---|
+| Change text, add or delete rows | Only that cell's line; only the rows added or deleted |
+| Merge cells | `^` (merged with the one above) and `<` (with the one to the left) |
+| Bold, italic, strikethrough, underline, superscript, subscript, text colour | Written inside the cell (`**`, `*`, `~~`, `[…]{.underline}`, `^…^`, `~…~`, `[…]{color=#…}`), part of a cell too |
+| Alignment | The delimiter row (`:---:`) when most of the column shares it; a rule for a single cell otherwise. A number Excel put at the right by itself comes back right-aligned |
+| Fill | A `fill` rule for that cell |
+| Column width | The column's `width` rule (in the unit it already uses; characters, `ch`, when it had none) |
+
+- **Numbers** that come back exactly as written — `120`, `1.50`, `1,000`, `50%` — go to Excel as numbers, so `SUM`
+  adds them up. Anything a number would change, such as `001` or `1-2`, goes as text. A value newly typed in Excel
+  comes back as Excel shows it.
+- **Formulas** come back as their values; the formula itself is not kept in the table.
+- **Not written back:** borders (the theme decides them), pictures, cell comments, row heights.
+- The workbook for Excel is made outside the workspace (in the extension's storage), so nothing appears in Git. It is deleted when Excel closes it.
+- Numbers in a column with no alignment sit at the left in Excel too, as they do on the page.
+- If the same table was also edited in VS Code while Excel had it open, **only what was changed in Excel comes back**.
+  A cell changed on both sides keeps the file's text, and you are told. If rows or columns were added or removed on
+  both sides, nothing is written back; open the table in Excel again.
+- An auto-numbered `#` cell shows as a number in Excel and stays `#` if left alone.
+
+**Taking in an existing Excel workbook**
+
+A table already kept in Excel can be imported from its `.xlsx` sheet as it is (read only; the workbook is never written).
+
+```
+@import "estimate.xlsx"                 the first sheet, as far as it is filled in
+@import "estimate.xlsx#Detail"          the sheet named Detail
+@import "estimate.xlsx#Detail!A3:F20"   that area; its first row is the header
+```
+
+Like a table, it is numbered, captioned and referenced (`@tbl-…`), and goes into HTML, PDF and PPTX, with its merges,
+formatting, fills and column widths. Right-click it on the document screen to open the workbook it comes from. Review
+comments and change marks cannot point inside a workbook: make new tables as `.table` files, which a diff can show.
+
+**Through the clipboard**
+
+Cells also go back and forth with a spreadsheet by copy and paste.
 
 - **Excel → table**: copy a range in Excel or Google Sheets, pick a cell in the table and paste. The values land with
   that cell at the top left, and the table grows rows and columns as needed. The whole paste is one edit, so one undo.
@@ -161,7 +206,7 @@ Excel files (.xlsx) are neither imported nor exported. Cells go back and forth t
   rather than repeating the value.
 - A cell with a line break (Alt+Enter) or quotes in it travels as one cell. A table cell is one line, so a pasted line
   break becomes a space, and a `|` is written as the character `\|`.
-- Formatting (colours, borders) does not travel: values only.
+- The clipboard carries values only, not formatting (colours, borders). To edit with formatting, use "Open in Excel".
 
 ## The files
 
@@ -257,6 +302,9 @@ The templates and theme set up by the command are **files in your repository**: 
 - On the screen, **Ctrl+Z undoes and Ctrl+Y (Ctrl+Shift+Z) redoes**. Diagrams and tables live in files of their own,
   which VS Code's undo does not reach; the screen's undo takes those back too, again as one edit.
   A file changed elsewhere since is never written over.
+- **Zooming a diagram:** **Ctrl+wheel** (or pinch on a touchpad) over a diagram, or the buttons that appear at its top right
+  on hover (− / scale / + / fit to width). Pressing the scale goes back to 100%. A zoomed diagram scrolls in its frame;
+  move it with **Space+drag** (or a middle-button drag). This is the screen only: files and exports are unaffected.
 
 ### Writing a document as text
 
@@ -269,6 +317,15 @@ The same help in DocPresenter's text box (click a paragraph) and in VS Code's ow
 | **Ctrl+B / Ctrl+I / Ctrl+E** | Bold, italic, code (pressed again, taken off) |
 | **`@`** | Offers the labels the document can refer to (its included documents' too), with their numbers and captions |
 | **`@import "`** | Offers the drawings, tables and other files there are, written from the document |
+| **Ctrl+click** on `@import "…"` | Opens that file. Paths are relative to the document; starting with `/`, from the top of the workspace; an absolute path on this machine (`C:\…`) works too |
+
+**Formatting:** the bar that appears over an opened block applies bold, italic, code, **strikethrough, underline,
+superscript, subscript** and text colour (pressed again, taken off). They are written as Pandoc writes them:
+`~~struck~~`, `[underlined]{.underline}`, `x^2^`, `H~2~O`; a space inside superscript or subscript is written `\ `.
+They carry through to table cells, drawing labels, PDF and PPTX.
+
+Opening a block puts **the caret near where you pressed, and the page stays where it was** (a long block no longer
+jumps to its last line).
 
 In VS Code the keys can be turned off with the setting `docpresenter.markdownEditing` — when another Markdown extension already does the same.
 
@@ -301,8 +358,16 @@ Switch with **"Edit / Read (review)"** at the top of the screen (remembered per 
 - **Read (review):** clicking the text does not start editing, so text can be selected. Selecting shows
   **"Add a comment"**; the comment is appended to a review file (`reviews/*.review.yml`). The first time, you are asked
   which review file to use. A list of the comments on this document is shown beside the page; click one to go to it.
-- **Edit:** comments are marked **where they are now**. Hover to see the comment, its answer and status.
-  Turn the marks off with **"Comment marks"** at the top when they get in the way.
+- **Edit:** comments are marked **where they are now**. Open a block and select words in it to get **"Add a note"**,
+  so you can add **notes** while writing (not once you have started changing the block's text).
+- **Review comments and notes:** what is added in Read mode or imported from a PDF is a **review comment**; what is added
+  in Edit is a **note**. Both go into the same review file; a note carries `type: comment`. **Review comments go into the
+  PDF as annotations; notes are never exported.**
+- **Bubbles:** review comments and notes stay on the page as bubbles (review comments yellow, notes blue): those on words
+  in the margin to the right of the page, those on a shape just above the shape. Switch them with **"Comments"** at the
+  top (in Edit this hides the marks too; in Read the marks stay, and hovering one shows the comment).
+- **On a shape:** right-click a shape and choose **"Comment on this shape"** (Edit, a note) or **"Add a review comment on
+  this shape"** (Read). It is anchored to that shape's line in the `.dgm`.
 - Where the text has changed since the comment, the mark is dotted and says so. Comments whose place can no longer
   be found stay in the list.
 - **Status and answer:** in the list in Read mode, choose each comment's status (Open / Resolved / Won't fix / Question)
@@ -314,6 +379,7 @@ Switch with **"Edit / Read (review)"** at the top of the screen (remembered per 
 | What you want | How |
 |---|---|
 | The open document, in one format | **"Export: HTML / PDF / PPTX"** above the document. The "…" menu at the editor's top right and commands such as "DocPresenter: Export This Document as PDF" do the same |
+| The open document, with what changed since an earlier version marked | **"With Changes…"** above the document (or "DocPresenter: Export This Document with Changes Since an Earlier Version Marked…"). See "Marking what changed" below |
 | Every document with `output:`, as each one says | **"DocPresenter: Export Every Output (as each document's output: says)"** |
 | Every document with `output:`, in formats you choose | **"DocPresenter: Export Every Output in Formats of My Choice…"** (choose from HTML / PDF / PPTX; this overrides `output:`) |
 
@@ -321,6 +387,35 @@ Switch with **"Edit / Read (review)"** at the top of the screen (remembered per 
 - PDF pages are laid out by DocPresenter's own screen. When exporting several documents, a "DocPresenter export" panel
   opens beside the editor and closes when done. Fonts installed on this PC are embedded
   (on Windows, Yu Gothic, and MS Gothic for code).
+
+### Marking what changed
+
+"What did you change since the version we sent?" — answered from the Git history, marked in the export. Nothing is
+written into the source files.
+
+1. Open the document in DocPresenter and press **"With Changes…"** above it.
+2. Pick **the version to compare with**: the commits that changed this document (newest first), tags, other branches.
+   You can also type one (`HEAD~3`), or pick **another folder** — a copy someone without Git sent you.
+3. Pick the **format** (PDF / HTML / PPTX).
+4. For PDF and HTML, pick **how what was taken out is shown**: struck through, or left out.
+
+<img src="https://raw.githubusercontent.com/Rintaro-Sugishita/DocPresenter/HEAD/packages/app-vscode/images/en/6-changes.png" alt="Exported against v1.1: only the paragraph, table cell and shape that changed are marked, with a legend" width="570">
+
+| What | How it is marked |
+|---|---|
+| Text | Changed and added paragraphs are shaded, with a bar on the left (so a black-and-white print still shows where) |
+| Tables | Changed cells, added rows |
+| Diagrams | Shapes whose label or kind changed, added shapes and arrows. **A shape that was only moved is not marked** |
+
+- A legend at the end says what was compared with. The PDF carries the same marks; in PPTX the shapes' fill changes.
+- The marked file goes beside the plain export, named like **`<document>.changes.pdf`**, so the plain one is not overwritten.
+- The version and format picked last time are offered first next time.
+- With "Struck through", what was taken out is shown too, and the legend adds "Removed".
+  - Text: removed paragraphs and lines, and the old wording of a changed line, stay where they were, struck through with a dashed bar.
+  - Tables: removed rows stay where they were; a changed cell keeps its old words struck through before the new ones. Removed columns are named under the table.
+  - Diagrams: a removed shape or arrow has no place left in the drawing, so it is named under it ("Removed from the drawing:").
+  - PPTX does not show what was taken out (the question is not asked).
+- From the command line: `docpresenter build docs/design.md --diff-from v1.2`; add `--show-removed strike` to show what was taken out.
 
 ## Reading diagrams changed in PowerPoint back
 
@@ -364,6 +459,7 @@ the PDF with annotations (highlights, sticky notes, …), they can be **imported
   replies to the annotation (or writes below it). On import, replies go **under the original comment** in `replies:`,
   and the comments and answers we put in the PDF are not imported again.
 - For a PDF that should carry no comments (a copy to deliver), turn off the setting `docpresenter.pdfReviewNotes` before exporting.
+- **Notes** written in Edit never go into a PDF, whatever the setting.
 
 ## Code and Mermaid
 

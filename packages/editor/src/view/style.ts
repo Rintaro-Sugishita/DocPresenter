@@ -172,6 +172,55 @@ text.dp-review-svg, .dp-review-svg text { fill: #8a5a00; font-weight: 700; }
 .dp-review-body { white-space: pre-wrap; }
 .dp-review-changed { color: #8a5a00; margin-top: 4px; }
 .dp-review-reply { margin-top: 4px; padding-left: 8px; border-left: 3px solid #c3d3e6; color: #3a4048; white-space: pre-wrap; }
+/* A comment on a shape of a drawing: the shape's outline, not only its words. */
+/* The theme draws every shape's outline from .dp-diagram .dp-node, so these say .dp-diagram too. */
+.dp-diagram .dp-review-node > rect, .dp-diagram .dp-review-node > ellipse,
+.dp-diagram .dp-review-node > polygon, .dp-diagram .dp-review-node > path {
+  stroke: #e0a800; stroke-width: 2.5px;
+}
+.dp-diagram .dp-review-node[data-review-state="changed"] > * { stroke-dasharray: 5 3; }
+.dp-diagram .dp-review-node { cursor: help; }
+.dp-diagram .dp-review-node.dp-review-lit > rect, .dp-diagram .dp-review-node.dp-review-lit > ellipse,
+.dp-diagram .dp-review-node.dp-review-lit > polygon, .dp-diagram .dp-review-node.dp-review-lit > path {
+  stroke: #c27c00; stroke-width: 3.5px;
+}
+mark.dp-review-mark.dp-review-lit { background: rgba(255, 196, 0, .62); }
+.dp-review-block.dp-review-lit { outline-color: #c27c00; outline-width: 3px; }
+/* The bubbles: comments that stay on the page. Those on words go in a margin
+   to the right of the page, so the pane keeps room for it; those on a shape
+   sit beside the shape, pointing at it. */
+.dp-editor-pane > .dp-page { position: relative; }
+.dp-editor-pane.dp-with-bubbles { padding-right: 262px; }
+.dp-review-bubbles-margin { position: absolute; top: 0; left: calc(100% + 14px); width: 232px; }
+.dp-review-bubbles-figure { position: absolute; top: 0; left: 0; width: 0; height: 0; overflow: visible; z-index: 4; }
+.dp-review-bubble {
+  position: absolute; box-sizing: border-box; text-align: left;
+  background: #fffbea; color: #1f2329; border: 1px solid #e3c35a; border-radius: 6px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, .12); padding: 6px 8px;
+  font: 12px/1.45 system-ui, sans-serif; cursor: pointer;
+}
+.dp-review-bubble:hover, .dp-review-bubble.dp-review-lit { z-index: 6; border-color: #c27c00; box-shadow: 0 4px 14px rgba(0, 0, 0, .2); }
+.dp-review-bubble-margin { left: 0; right: 0; }
+.dp-review-bubble-node { width: max-content; max-width: 240px; }
+.dp-review-bubble .dp-review-body {
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 4; overflow: hidden;
+}
+.dp-review-bubble:hover .dp-review-body { -webkit-line-clamp: unset; }
+.dp-review-bubble .dp-review-reply { display: none; }
+.dp-review-bubble:hover .dp-review-reply { display: block; }
+.dp-review-bubble .dp-review-item[data-status="resolved"], .dp-review-bubble .dp-review-item[data-status="wontfix"] { opacity: .6; }
+.dp-review-bubble::before {
+  content: ""; position: absolute; width: 10px; height: 10px; box-sizing: border-box;
+  background: #fffbea; border: 1px solid #e3c35a; border-width: 0 0 1px 1px;
+}
+.dp-review-bubble:hover::before, .dp-review-bubble.dp-review-lit::before { border-color: #c27c00; }
+/* The author's own notes are blue; the review findings, yellow. */
+.dp-review-bubble-comment, .dp-review-bubble-comment::before { background: #eef5ff; border-color: #8fb4e3; }
+.dp-review-bubble-comment:hover, .dp-review-bubble-comment.dp-review-lit,
+.dp-review-bubble-comment:hover::before, .dp-review-bubble-comment.dp-review-lit::before { border-color: #3d73b9; }
+.dp-review-bubble-margin::before { left: -6px; top: 9px; transform: rotate(45deg); }
+.dp-review-bubble-above::before { left: var(--tail, 12px); bottom: -6px; transform: rotate(-45deg); }
+.dp-review-bubble-below::before { left: var(--tail, 12px); top: -6px; transform: rotate(135deg); }
 /* Reading (the review mode): nothing on the page offers to change the file. */
 .dp-readonly .dp-append, .dp-readonly .dp-figure-tools, .dp-readonly .dp-tab-add,
 .dp-readonly .dp-tab-close, .dp-readonly .dp-import-line, .dp-readonly .dp-mermaid-switch { display: none; }

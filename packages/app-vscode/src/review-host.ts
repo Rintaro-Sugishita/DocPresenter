@@ -57,6 +57,7 @@ export async function loadNotes(root: vscode.Uri, documentPath: string, source =
         ...(comment.author === undefined ? {} : { author: comment.author }),
         ...(comment.date === undefined ? {} : { date: comment.date }),
         replies: comment.replies.map(one => ({ body: one.body, ...(one.author ? { author: one.author } : {}) })),
+        ...(comment.type === 'comment' ? { type: 'comment' as const } : {}),
       });
     }
   }
@@ -70,7 +71,7 @@ export async function loadNotes(root: vscode.Uri, documentPath: string, source =
  */
 export async function addNote(
   root: vscode.Uri, documentPath: string,
-  note: { anchor: Anchor; precision: Precision; body: string },
+  note: { anchor: Anchor; precision: Precision; body: string; type?: 'comment' | undefined },
   chosen: { file?: string },
   number?: string,
 ): Promise<string | undefined> {
@@ -105,6 +106,7 @@ export async function addNote(
   const stem = documentPath.split('/').pop()!.replace(/\.md$/i, '');
   const { text } = appendScreenComment(before, {
     anchor: note.anchor, precision: note.precision, body: note.body,
+    ...(note.type === 'comment' ? { type: 'comment' as const } : {}),
     document: documentPath, date: new Date().toISOString(), ...(number ? { number } : {}),
     ...(author ? { author } : {}), ...(commit ? { commit } : {}), ...(changed ? { uncommitted: true } : {}),
   }, t('vscode.reviewMode.round', { document: stem }), chosen.file);

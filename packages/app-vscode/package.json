@@ -2,7 +2,7 @@
   "name": "docpresenter",
   "displayName": "DocPresenter",
   "description": "%extension.description%",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "publisher": "rintaro-sugishita",
   "private": true,
   "license": "SEE LICENSE IN LICENSE.md",
@@ -41,6 +41,8 @@
       { "command": "docpresenter.exportHtml", "title": "%command.exportHtml.title%", "category": "DocPresenter" },
       { "command": "docpresenter.exportPdf", "title": "%command.exportPdf.title%", "category": "DocPresenter" },
       { "command": "docpresenter.exportPptx", "title": "%command.exportPptx.title%", "category": "DocPresenter" },
+      { "command": "docpresenter.exportChanges", "title": "%command.exportChanges.title%", "category": "DocPresenter" },
+      { "command": "docpresenter.openInExcel", "title": "%command.openInExcel.title%", "category": "DocPresenter", "icon": "$(table)" },
       { "command": "docpresenter.readBackPptx", "title": "%command.readBackPptx.title%", "category": "DocPresenter" },
       { "command": "docpresenter.importPdfReview", "title": "%command.importPdfReview.title%", "category": "DocPresenter" },
       { "command": "docpresenter.markdown.bold", "title": "%command.markdown.bold.title%", "category": "DocPresenter", "enablement": "editorLangId == markdown" },
@@ -61,10 +63,12 @@
     "menus": {
       "editor/title": [
         { "command": "docpresenter.openToSide", "when": "resourceExtname == .md && !activeCustomEditorId", "group": "navigation" },
+        { "command": "docpresenter.openInExcel", "when": "resourceExtname == .table", "group": "navigation" },
         { "command": "docpresenter.openEditor", "when": "resourceExtname == .md && !activeCustomEditorId", "group": "navigation" },
         { "command": "docpresenter.exportHtml", "when": "activeCustomEditorId == docpresenter.sheets", "group": "docpresenter@1" },
         { "command": "docpresenter.exportPdf", "when": "activeCustomEditorId == docpresenter.sheets", "group": "docpresenter@2" },
-        { "command": "docpresenter.exportPptx", "when": "activeCustomEditorId == docpresenter.sheets", "group": "docpresenter@3" }
+        { "command": "docpresenter.exportPptx", "when": "activeCustomEditorId == docpresenter.sheets", "group": "docpresenter@3" },
+        { "command": "docpresenter.exportChanges", "when": "activeCustomEditorId == docpresenter.sheets", "group": "docpresenter@4" }
       ],
       "editor/context": [
         { "command": "docpresenter.openToSide", "when": "resourceExtname == .md && !activeCustomEditorId", "group": "navigation@9" }
@@ -74,10 +78,12 @@
         { "command": "docpresenter.newDiagram", "when": "explorerResourceIsFolder", "group": "navigation@8" },
         { "command": "docpresenter.openEditor", "when": "resourceExtname == .md", "group": "navigation@9" },
         { "command": "docpresenter.readBackPptx", "when": "resourceExtname == .pptx", "group": "navigation@9" },
+        { "command": "docpresenter.openInExcel", "when": "resourceExtname == .table", "group": "navigation@9" },
         { "command": "docpresenter.importPdfReview", "when": "resourceExtname == .pdf", "group": "navigation@9" }
       ],
       "commandPalette": [
         { "command": "docpresenter.init", "when": "workspaceFolderCount > 0" },
+        { "command": "docpresenter.openInExcel", "when": "workspaceFolderCount > 0" },
         { "command": "docpresenter.check", "when": "workspaceFolderCount > 0" },
         { "command": "docpresenter.newDocument", "when": "workspaceFolderCount > 0" },
         { "command": "docpresenter.newDiagram", "when": "workspaceFolderCount > 0" },
@@ -87,7 +93,8 @@
         { "command": "docpresenter.openToSide", "when": "resourceExtname == .md" },
         { "command": "docpresenter.exportHtml", "when": "activeCustomEditorId == docpresenter.sheets" },
         { "command": "docpresenter.exportPdf", "when": "activeCustomEditorId == docpresenter.sheets" },
-        { "command": "docpresenter.exportPptx", "when": "activeCustomEditorId == docpresenter.sheets" }
+        { "command": "docpresenter.exportPptx", "when": "activeCustomEditorId == docpresenter.sheets" },
+        { "command": "docpresenter.exportChanges", "when": "activeCustomEditorId == docpresenter.sheets" }
       ]
     },
     "configuration": {
@@ -127,6 +134,7 @@
     "@docpresenter/diagram": "*",
     "@docpresenter/editor": "*",
     "@docpresenter/markdown": "*",
-    "@docpresenter/pdf": "*"
+    "@docpresenter/pdf": "*",
+    "@docpresenter/xlsx": "*"
   }
 }

@@ -8,7 +8,7 @@
 import type { Phrase } from '@docpresenter/base';
 import { pdf } from './messages.js';
 import { mapPathData } from './plan.js';
-import type { FontFamily, Item, TextItem } from './plan.js';
+import type { FillItem, FontFamily, Item, TextItem } from './plan.js';
 
 export interface Offset {
   readonly left: number;
@@ -85,8 +85,10 @@ function walk(node: Element, at: Offset, items: Placed[], diagnostics: Phrase[])
         // ascent started above its own line, was handed to the piece before,
         // and that piece's neighbour then painted its background over it.
         const ascent = ascentOf(getComputedStyle(node));
+        const lines = decorationOf(node);
         for (const run of textRuns(child, node, at)) {
           items.push({ item: run, top: run.y - ascent, ...(cell ? { cell } : {}) });
+          for (const line of decorationLines(run, lines)) items.push({ item: line, top: run.y - ascent, ...(cell ? { cell } : {}) });
         }
       }
     }
@@ -345,7 +347,8 @@ function svgItems(svg: SVGSVGElement, at: Offset): Item[] {
     };
 
     if (element instanceof SVGTextContentElement && element.textContent) {
-      items.push(...svgText(element, to, scale, style, mark));
+      const lines = decorationOf(element);
+      for (const run of svgText(element, to, scale, style, mark)) items.push(run, ...decorationLines(run, lines));
       continue;
     }
     if (element instanceof SVGRectElement) {
@@ -398,6 +401,40 @@ function svgItems(svg: SVGSVGElement, at: Offset): Item[] {
     }
   }
   return items;
+}
+
+/**
+ * The lines drawn through or under a piece of text: an underline or a
+ * strikethrough set on it or on the inline elements around it. CSS does not
+ * inherit `text-decoration`, it draws it across the descendants, so it is
+ * looked for up to the block (or the `<text>` of a drawing).
+ */
+function decorationOf(element: Element): { underline: boolean; strike: boolean } {
+  const found = { underline: false, strike: false };
+  for (let at: Element | null = element; at; at = at.parentElement) {
+    const style = getComputedStyle(at);
+    const line = style.textDecorationLine;
+    if (line.includes('underline')) found.underline = true;
+    if (line.includes('line-through')) found.strike = true;
+    const svg = at instanceof SVGElement;
+    if (svg ? at.tagName.toLowerCase() === 'text' : !style.display.startsWith('inline')) break;
+  }
+  return found;
+}
+
+/** The underline and the strikethrough of one run, as thin filled boxes in its colour. */
+function decorationLines(run: TextItem, lines: { underline: boolean; strike: boolean }): FillItem[] {
+  const width = run.width ?? 0;
+  if (width <= 0) return [];
+  const thick = Math.max(0.5, run.size * 0.06);
+  const line = (y: number): FillItem => ({
+    kind: 'fill', x: run.x, y, width, height: thick, colour: run.colour,
+    ...(run.span ? { span: run.span } : {}), ...(run.doc ? { doc: run.doc } : {}),
+  });
+  return [
+    ...(lines.underline ? [line(run.y + run.size * 0.1)] : []),
+    ...(lines.strike ? [line(run.y - run.size * 0.3 - thick / 2)] : []),
+  ];
 }
 
 /** A label inside a drawing. `text-anchor` is already in the reported position. */

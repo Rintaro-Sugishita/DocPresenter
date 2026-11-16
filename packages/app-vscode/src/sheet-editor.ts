@@ -18,6 +18,7 @@ import { inWorkspace } from './paths.js';
 import type { FromView, ToView } from './protocol.js';
 import { hostLocale, t } from './l10n.js';
 import { exportDocument, type OpenView } from './export-command.js';
+import { exportChanges } from './changes-command.js';
 import { addNote, loadNotes, updateNote, watchReviews } from './review-host.js';
 import { documentNumberOf, parseDocument } from '@docpresenter/markdown';
 import { themePaths } from '@docpresenter/build';
@@ -26,6 +27,8 @@ import { PAGE_STYLE } from './page-style.js';
 /** Text the document could refer to, and pictures it could show. */
 const TEXT_FILES = '**/*.{dgm,table,mmd,ermlx,md}';
 const IMAGE_FILES = '**/*.{png,jpg,jpeg,gif,webp,svg}';
+/** Workbooks a sheet can be imported from (`@import "見積.xlsx#内訳"`). */
+const WORKBOOK_FILES = '**/*.xlsx';
 const IGNORED = '**/{node_modules,out,dist,.git}/**';
 
 export class SheetEditorProvider implements vscode.CustomTextEditorProvider {
@@ -53,6 +56,16 @@ export class SheetEditorProvider implements vscode.CustomTextEditorProvider {
       return;
     }
     await exportDocument(view, format, this.context, this.output);
+  }
+
+  /** Writes the document in front with what changed since an earlier version marked. */
+  async exportChanges(): Promise<void> {
+    const view = this.activeView();
+    if (!view) {
+      void vscode.window.showInformationMessage(`DocPresenter: ${t('vscode.openFirst')}`);
+      return;
+    }
+    await exportChanges(view, this.context, this.output);
   }
 
   async resolveCustomTextEditor(
@@ -121,11 +134,15 @@ export class SheetEditorProvider implements vscode.CustomTextEditorProvider {
       for (const uri of await vscode.workspace.findFiles(IMAGE_FILES, IGNORED)) {
         images[pathOf(uri)] = panel.webview.asWebviewUri(uri).toString();
       }
+      const workbooks: Record<string, string> = {};
+      for (const uri of await vscode.workspace.findFiles(WORKBOOK_FILES, IGNORED)) {
+        try { workbooks[pathOf(uri)] = Buffer.from(await vscode.workspace.fs.readFile(uri)).toString('base64'); } catch { /* 無いものとして扱う */ }
+      }
       post({
         kind: 'open',
         path: documentPath,
         source: document.getText(),
-        files, images,
+        files, images, workbooks,
         commitKey: commitKey(),
         locale: hostLocale(),
       });
@@ -296,6 +313,18 @@ export class SheetEditorProvider implements vscode.CustomTextEditorProvider {
           await exportDocument(view, message.format, this.context, this.output);
           return;
         }
+        if (message.kind === 'open-external') {
+          await vscode.env.openExternal(vscode.Uri.joinPath(root, ...message.path.split('/')));
+          return;
+        }
+        if (message.kind === 'open-in-excel') {
+          await vscode.commands.executeCommand('docpresenter.openInExcel', vscode.Uri.joinPath(root, ...message.path.split('/')));
+          return;
+        }
+        if (message.kind === 'export-changes') {
+          await exportChanges(view, this.context, this.output);
+          return;
+        }
         if (message.kind === 'change') { await inTurn(() => apply(message)); return; }
         if (message.kind === 'move') { await inTurn(() => move(message.from, message.to)); return; }
         if (message.kind === 'delete') { await inTurn(() => remove(message.path)); return; }
@@ -363,11 +392,21 @@ export class SheetEditorProvider implements vscode.CustomTextEditorProvider {
     const themeWatcher = vscode.workspace.createFileSystemWatcher('**/themes/**/theme.css');
     const themeChanged = [themeWatcher.onDidChange, themeWatcher.onDidCreate, themeWatcher.onDidDelete]
       .map(on => on(() => { void sendTheme(); }));
+    // A workbook saved in Excel is redrawn where a sheet of it is imported.
+    const workbookWatcher = vscode.workspace.createFileSystemWatcher(WORKBOOK_FILES);
+    const workbookChanged = [workbookWatcher.onDidChange, workbookWatcher.onDidCreate].map(on => on(async uri => {
+      if (/(^|\/)~\$/.test(uri.path)) return;
+      try {
+        post({ kind: 'workbook', path: pathOf(uri), data: Buffer.from(await vscode.workspace.fs.readFile(uri)).toString('base64') });
+      } catch { /* 保存の途中。次の知らせで読む */ }
+    }));
 
     panel.onDidDispose(() => {
       reviews.dispose();
       for (const one of themeChanged) one.dispose();
       themeWatcher.dispose();
+      for (const one of workbookChanged) one.dispose();
+      workbookWatcher.dispose();
       watching.dispose();
       settings.dispose();
       this.views.delete(panel);
@@ -415,6 +454,7 @@ ${exportBar ? `<div class="dp-export" role="toolbar" aria-label="${t('vscode.exp
   <button type="button" data-format="html">HTML</button>
   <button type="button" data-format="pdf">PDF</button>
   <button type="button" data-format="pptx">PPTX</button>
+  <button type="button" class="dp-export-changes" title="${t('vscode.changes.buttonTitle')}">${t('vscode.changes.button')}</button>
   <span class="dp-export-status" role="status" aria-live="polite"></span>
 </div>` : ''}
 <div class="dp-main"><div id="editor"></div><aside class="dp-review-panel" hidden></aside></div>

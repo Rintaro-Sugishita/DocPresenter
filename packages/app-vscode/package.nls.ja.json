@@ -11,6 +11,8 @@
   "command.exportHtml.title": "DocPresenter: この文書を HTML に書き出す",
   "command.exportPdf.title": "DocPresenter: この文書を PDF に書き出す",
   "command.exportPptx.title": "DocPresenter: この文書を PPTX に書き出す",
+  "command.openInExcel.title": "DocPresenter: 表を Excel で開く（保存すると書き戻す）",
+  "command.exportChanges.title": "DocPresenter: この文書を、前の版からの変更箇所に印を付けて書き出す…",
   "command.readBackPptx.title": "DocPresenter: PPTX の修正を図に読み戻す…",
   "command.importPdfReview.title": "DocPresenter: PDF の注釈を指摘として取り込む（複数の PDF も可）…",
   "config.commitKey.description": "開いているブロックを確定するキー。ほかの Enter は改行になる。",

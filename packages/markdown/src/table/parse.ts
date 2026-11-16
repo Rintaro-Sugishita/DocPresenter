@@ -259,6 +259,9 @@ function parseSelector(text: string): Selector {
     case 'col':  return { kind: 'column', name: rest };
     case 'row':  return { kind: 'row', which: rest === 'odd' || rest === 'even' ? rest : 'all' };
     case 'cell': {
+      // `cell:[BY=ROW]/COL` names the row by another column's text.
+      const by = /^\[([^=\]]+)=(.*)\]\/(.*)$/.exec(rest);
+      if (by) return { kind: 'cell', row: by[2]!, column: by[3]!, by: by[1]! };
       const [row, column] = splitOnce(rest, '/');
       return { kind: 'cell', row, column };
     }

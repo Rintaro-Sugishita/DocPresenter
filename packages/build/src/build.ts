@@ -431,7 +431,9 @@ export function reviewNotesOf(workspace: Workspace, document: string, number?: s
   const notes: ReviewNoteSource[] = [];
   for (const round of workspace.list().filter(path => /\.review\.yml$/i.test(path)).sort()) {
     for (const comment of parseReviewFile(read.read(round) ?? '', round)) {
-      if (!isAbout(comment, document, number) || comment.status === 'orphaned') continue;
+      // A comment the author wrote on the screen stays on the screen; the PDF
+      // carries the review findings only (design/review-model.md §9.8).
+      if (!isAbout(comment, document, number) || comment.status === 'orphaned' || comment.type === 'comment') continue;
       const file = anchorFileOf(comment, document);
       if (!file || comment.start === undefined || comment.end === undefined || comment.quote === undefined) continue;
       const current = read.read(file);

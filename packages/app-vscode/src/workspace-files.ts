@@ -24,10 +24,13 @@ export async function readWorkspace(): Promise<ReadWorkspace> {
   const uris = await vscode.workspace.findFiles('**/*', IGNORED);
   const text = new Map<string, string>();
   const data = new Map<string, string>();
+  const binary = new Map<string, Uint8Array>();
   for (const uri of uris) {
     const path = vscode.workspace.asRelativePath(uri, false).split('\\').join('/');
     const extension = path.slice(path.lastIndexOf('.') + 1).toLowerCase();
     const bytes = await vscode.workspace.fs.readFile(uri);
+    // A workbook a sheet is imported from: the build turns the sheet into a table.
+    if (extension === 'xlsx') { binary.set(path, bytes); continue; }
     if (MEDIA[extension]) {
       data.set(path, `data:${MEDIA[extension]};base64,${Buffer.from(bytes).toString('base64')}`);
     } else {
@@ -37,9 +40,10 @@ export async function readWorkspace(): Promise<ReadWorkspace> {
   return {
     text,
     workspace: {
-      list: () => [...text.keys(), ...data.keys()],
+      list: () => [...text.keys(), ...data.keys(), ...binary.keys()],
       read: path => text.get(path),
       dataUrl: path => data.get(path),
+      bytes: path => binary.get(path),
     },
   };
 }

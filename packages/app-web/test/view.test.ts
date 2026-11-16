@@ -5,6 +5,7 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { Workspace } from '@docpresenter/build';
+import { writeXlsx } from '@docpresenter/xlsx';
 import { compose, gather, heldWorkspace, viewableUnder, viewingRoot, type FileSource } from '../src/index.js';
 
 const SAMPLE = join(import.meta.dirname, '../../../sample');
@@ -65,6 +66,21 @@ describe('取り込みの閉包を集める', () => {
     expect([...held.texts.keys()]).toEqual(['docs/a.md']);
     const composed = compose(heldWorkspace(source, held), 'docs/a.md', options);
     expect(composed.diagnostics.map(d => d.message).join('\n')).toContain('docs/gone.dgm');
+  });
+
+  it('xlsx のシートを取り込む文書は、ブックを取りに行って表として組む', async () => {
+    const book = writeXlsx({ header: ['品目', '金額'], rows: [[{ text: '設計' }, { text: '1,200' }]], merges: [], widths: [10, 10] }, { sheet: '内訳' });
+    const source: FileSource = {
+      paths: ['docs/a.md', 'docs/見積.xlsx'],
+      text: async () => '# A\n\n@import "見積.xlsx#内訳" {#tbl-cost caption="費用"}\n',
+      image: async () => `data:application/octet-stream;base64,${Buffer.from(book).toString('base64')}`,
+    };
+    const { held } = await gather(source, workspace => { compose(workspace, 'docs/a.md', options); });
+    expect([...held.binaries!.keys()]).toEqual(['docs/見積.xlsx']);
+    const composed = compose(heldWorkspace(source, held), 'docs/a.md', options);
+    expect(composed.diagnostics.filter(d => d.severity === 'error')).toEqual([]);
+    expect(composed.body).toContain('<table class="dp-table"');
+    expect(composed.body).toContain('1,200');
   });
 
   it('多すぎれば途中で止めてそう返す', async () => {

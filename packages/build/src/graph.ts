@@ -7,6 +7,7 @@
 // else: a file nobody imports is not part of anybody's build, which is worth
 // saying out loud rather than quietly leaving out.
 
+import { splitWorkbookPath } from '@docpresenter/xlsx';
 import { parseDiagram } from '@docpresenter/diagram';
 import {
   duplicateNumbers, isAddress, isBuildRoot, joinPath, parseDocument, type DocumentFile,
@@ -176,7 +177,8 @@ function walk(
         });
         continue;
       }
-      if (!present.has(target)) {
+      // A workbook's sheet is named after `#`; the file is what has to be there.
+      if (!present.has(splitWorkbookPath(target).file)) {
         diagnostics.push({
           severity: 'error', path,
           ...said(locale, 'build.missing', { target }),

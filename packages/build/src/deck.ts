@@ -7,6 +7,7 @@
 // becomes native shapes. Prose that happens to sit beside the figure follows
 // it; prose on its own becomes a slide of text.
 
+import { isWorkbookPath } from '@docpresenter/xlsx';
 import { parseDiagram, parseRuns, withParts, type Run } from '@docpresenter/diagram';
 import {
   cellAt, columnWidths, describe, shownText, fencesOf, joinPath, parseTable, selectRows, sheetsOf, viewOf,
@@ -99,7 +100,8 @@ function blockOf(
       return undefined;
     }
   }
-  if (/\.table$/i.test(block.path)) {
+  // A workbook's sheet arrives as the text of a table (workspace.ts).
+  if (/\.table$/i.test(block.path) || isWorkbookPath(block.path)) {
     if (source === undefined) {
       diagnostics.push(t('build.missing', { target: block.path }));
       return undefined;

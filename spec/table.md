@@ -253,8 +253,18 @@ still renders; a reader SHOULD report it as a diagnostic.
 | `row:odd` / `row:even` | body rows, counted from 1 |
 | `row:all` | every body row |
 | `cell:ROW/COL` | one cell, by leading-cell text and header text |
+| `cell:[BY=ROW]/COL` | one cell, by the text of the row's cell in the column headed `BY`, and header text |
 | `range:FIRST..LAST` | the rows from `FIRST` to `LAST` (§3) |
 | `range:NAME` | the rows of the named range `NAME` (§5) |
+
+The leading cell of a row is the first cell that **starts** on it. When the
+leading column repeats down the table — a category merged down with `^`, a
+running number `#` — the leading text does not tell one row from another, and
+`cell:[BY=ROW]/COL` names the row by another column instead:
+`cell:[ID=idBox]/Type` is the `Type` cell of the row whose `ID` cell reads
+`idBox`. It selects every row whose cell in `BY` reads `ROW`, so a writer picks a
+column whose text is unique; DocPresenter uses the leading cell when it is
+unique and otherwise the first column that is. `ROW` runs to the last `]/`.
 
 `row:odd` and `row:even` exist for striping, and a note about them: **striping is
 a theme's business**, and a table that sets it per file is usually a table
@@ -329,6 +339,12 @@ A merged cell copies as its text in its starting position and empty strings
 elsewhere; on paste, the markers are not interpreted — a pasted `^` is the
 character `^`, and a tool that guessed otherwise would silently merge cells
 nobody asked to merge.
+
+A tool MAY go further and open a table in a spreadsheet as a workbook, writing
+the changes back into the file when the workbook is saved. DocPresenter does,
+and the format is unchanged by it: the file stays the source, and what a
+workbook can say beyond §2–§6 — formulas, borders, pictures, row heights — is
+not written back. A formula comes back as its value.
 
 ## 8. Not in version 0.1
 

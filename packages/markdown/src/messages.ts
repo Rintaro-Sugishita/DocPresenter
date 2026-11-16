@@ -44,6 +44,8 @@ export const MARKDOWN_MESSAGES = defineMessages({
   'markdown.diff.changed': '変更',
   'markdown.diff.removed': '削除',
   'markdown.diff.from': '{from} からの変更',
+  'markdown.diff.goneColumns': '削除した列：',
+  'markdown.diff.goneParts': '図から削除：',
   'markdown.code.text': 'テキスト',
 }, {
   'markdown.parse.separatorNeedsBlank': '`---` needs a blank line before it (otherwise it reads as a setext heading)',
@@ -78,6 +80,8 @@ export const MARKDOWN_MESSAGES = defineMessages({
   'markdown.diff.changed': 'Changed',
   'markdown.diff.removed': 'Removed',
   'markdown.diff.from': 'Changes since {from}',
+  'markdown.diff.goneColumns': 'Removed columns:',
+  'markdown.diff.goneParts': 'Removed from the drawing:',
   'markdown.code.text': 'Text',
 });
 

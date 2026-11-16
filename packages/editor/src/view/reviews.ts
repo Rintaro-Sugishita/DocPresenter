@@ -7,13 +7,20 @@
 // is over the mark. It also turns a selection on the page into an anchor, for
 // a new comment.
 //
+// A comment on a drawing whose range is one shape's line is put on that shape
+// (design/review-model.md §9.6), and a new comment can be made on a shape.
+// Each comment can also be shown as a bubble that stays on the page: in the
+// margin beside the words, or beside the shape it is about.
+//
 // It only reads the page. Whoever shows it decides when: always in the review
-// mode, and in the editing mode only while the marks are switched on.
+// mode, and in the editing mode only while the comments are switched on. None
+// of it is output: a PDF or a slide is built from the source, not from here.
 
 import {
   DEFAULT_LOCALE, importedPathOf, locateAnchor, narrowAnchor, sliceBytes,
   type Anchor, type AnchorState, type Locale, type Precision,
 } from '@docpresenter/base';
+import { nodeAtSpan, nodeSpan, parseDiagram } from '@docpresenter/diagram';
 import { EDITOR_MESSAGES } from '../messages.js';
 
 export interface ReviewNote {
@@ -33,6 +40,8 @@ export interface ReviewNote {
   readonly author?: string | undefined;
   readonly date?: string | undefined;
   readonly replies: readonly { readonly body: string; readonly author?: string | undefined }[];
+  /** `comment` for the author's own note (never in a PDF); absent for a review finding. */
+  readonly type?: 'comment' | undefined;
 }
 
 /** Where a note was found on this page, for the list beside it. */
@@ -71,7 +80,7 @@ export function paintReviews(page: HTMLElement, notes: readonly ReviewNote[], op
     const words = sliceBytes(current, at.start, at.end);
     const shown = note.file === options.documentPath
       ? markInDocument(page, note, at, words, at.state)
-      : markInFigures(page, note, words, at.state, options.documentPath);
+      : markInFigures(page, note, words, at.state, options.documentPath, nodeOf(note.file, current, at));
     return { note, state: at.state, shown };
   });
 }
@@ -85,8 +94,14 @@ export function clearReviews(page: HTMLElement): void {
   for (const node of page.querySelectorAll<Element>('[data-review]')) {
     node.removeAttribute('data-review');
     node.removeAttribute('data-review-state');
-    node.classList.remove('dp-review-block', 'dp-review-svg');
+    node.classList.remove('dp-review-block', 'dp-review-svg', 'dp-review-node');
   }
+  for (const layer of page.querySelectorAll('.dp-review-bubbles')) layer.remove();
+}
+
+/** The shape of a drawing a range is about, when the file is a drawing and the range one shape's line. */
+function nodeOf(file: string, current: string, at: { start: number; end: number }): string | undefined {
+  return /\.dgm$/i.test(file) ? nodeAtSpan(current, at.start, at.end) : undefined;
 }
 
 /** A comment on the document's own text: its words in the block that holds them. */
@@ -109,23 +124,32 @@ function markInDocument(
 /** A comment on a drawing or a table: the figures that show that file. */
 function markInFigures(
   page: HTMLElement, note: ReviewNote, words: string, state: AnchorState, documentPath: string,
+  node: string | undefined,
 ): boolean {
   let shown = false;
   for (const figure of page.querySelectorAll<HTMLElement>('.dp-figure[data-path]')) {
     const path = importedPathOf(documentPath, `@import "${figure.dataset['path']}"`);
     if (path !== note.file) continue;
     shown = true;
+    // A shape's line: the shape itself, outline and all.
+    const shape = node === undefined ? null
+      : figure.querySelector<SVGElement>(`svg.dp-diagram [data-node="${cssEscape(node)}"]`);
+    if (shape) { tag(shape, note.key, state, 'dp-review-node'); continue; }
     if (!wrapWords(figure, words, note.key, state)) tag(figure, note.key, state);
   }
   return shown;
 }
 
-function tag(node: Element, key: string, state: AnchorState): void {
+function cssEscape(text: string): string {
+  return typeof CSS !== 'undefined' && CSS.escape ? CSS.escape(text) : text.replace(/["\\]/g, '\\$&');
+}
+
+function tag(node: Element, key: string, state: AnchorState, className?: string): void {
   const keys = new Set((node.getAttribute('data-review') ?? '').split(' ').filter(Boolean));
   keys.add(key);
   node.setAttribute('data-review', [...keys].join(' '));
   node.setAttribute('data-review-state', state);
-  node.classList.add(node instanceof SVGElement ? 'dp-review-svg' : 'dp-review-block');
+  node.classList.add(className ?? (node instanceof SVGElement ? 'dp-review-svg' : 'dp-review-block'));
 }
 
 /**
@@ -194,31 +218,7 @@ export function attachReviewCards(
     const keys = (target.getAttribute('data-review') ?? '').split(' ');
     const placed = notes().filter(one => keys.includes(one.note.key));
     if (placed.length === 0) { card.hidden = true; return; }
-    card.replaceChildren(...placed.map(({ note, state }) => {
-      const item = owner.createElement('div');
-      item.className = 'dp-review-item';
-      const head = owner.createElement('div');
-      head.className = 'dp-review-head';
-      head.textContent = [`#${note.id}`, note.author, t(`editor.review.status.${statusKey(note.status)}`)]
-        .filter(Boolean).join('　');
-      const body = owner.createElement('div');
-      body.className = 'dp-review-body';
-      body.textContent = note.body || t('editor.review.noBody');
-      item.append(head, body);
-      if (state === 'changed') {
-        const warn = owner.createElement('div');
-        warn.className = 'dp-review-changed';
-        warn.textContent = t('editor.review.changed');
-        item.append(warn);
-      }
-      for (const answer of [...(note.reply ? [{ body: note.reply, author: undefined }] : []), ...note.replies]) {
-        const reply = owner.createElement('div');
-        reply.className = 'dp-review-reply';
-        reply.textContent = `${answer.author ? `${answer.author}: ` : ''}${answer.body}`;
-        item.append(reply);
-      }
-      return item;
-    }));
+    card.replaceChildren(...placed.map(one => noteItem(owner, one, t)));
     card.hidden = false;
     const view = owner.defaultView!;
     const width = Math.min(360, view.innerWidth - 24);
@@ -234,6 +234,39 @@ export function attachReviewCards(
   pane.addEventListener('mousemove', onMove);
   pane.addEventListener('mouseleave', () => { card.hidden = true; });
   return () => { pane.removeEventListener('mousemove', onMove); card.remove(); };
+}
+
+/** One comment as a card and a bubble show it: who, its state, what it says, and the answers. */
+function noteItem(
+  owner: Document, { note, state }: PlacedNote, t: ReturnType<typeof EDITOR_MESSAGES.in>,
+): HTMLElement {
+  const item = owner.createElement('div');
+  item.className = 'dp-review-item';
+  item.dataset['status'] = statusKey(note.status);
+  item.dataset['type'] = note.type ?? 'review';
+  const head = owner.createElement('div');
+  head.className = 'dp-review-head';
+  head.textContent = [
+    `#${note.id}`, t(note.type === 'comment' ? 'editor.review.typeComment' : 'editor.review.typeReview'),
+    note.author, t(`editor.review.status.${statusKey(note.status)}`),
+  ].filter(Boolean).join('　');
+  const body = owner.createElement('div');
+  body.className = 'dp-review-body';
+  body.textContent = note.body || t('editor.review.noBody');
+  item.append(head, body);
+  if (state === 'changed') {
+    const warn = owner.createElement('div');
+    warn.className = 'dp-review-changed';
+    warn.textContent = t('editor.review.changed');
+    item.append(warn);
+  }
+  for (const answer of [...(note.reply ? [{ body: note.reply, author: undefined }] : []), ...note.replies]) {
+    const reply = owner.createElement('div');
+    reply.className = 'dp-review-reply';
+    reply.textContent = `${answer.author ? `${answer.author}: ` : ''}${answer.body}`;
+    item.append(reply);
+  }
+  return item;
 }
 
 /** The statuses the review model names; anything else reads as open. */
@@ -261,4 +294,143 @@ export function selectionAnchor(
   if (from === undefined || to === undefined || Number.isNaN(from)) return undefined;
   const { anchor, precision } = narrowAnchor({ file: documentPath, start: from, end: to }, marked, read);
   return { anchor, precision, marked };
+}
+
+
+/**
+ * The anchor for a comment on one shape of a drawing on the page: the line
+ * that declares it, narrowed to its words. Undefined when the press was not on
+ * a shape of a drawing this document placed, or the drawing cannot be read.
+ */
+export function nodeAnchor(
+  target: Element, documentPath: string, read: (path: string) => string | undefined,
+): { anchor: Anchor; precision: Precision; marked: string } | undefined {
+  const shape = target.closest('svg.dp-diagram [data-node]');
+  const figure = target.closest<HTMLElement>('.dp-figure[data-path]');
+  const id = shape?.getAttribute('data-node');
+  if (!shape || !figure || !id || figure.closest('[data-doc]')) return undefined;
+  const file = importedPathOf(documentPath, `@import "${figure.dataset['path']}"`);
+  if (!file || !/\.dgm$/i.test(file)) return undefined;
+  const text = read(file);
+  const span = text === undefined ? undefined : nodeSpan(text, id);
+  if (text === undefined || !span) return undefined;
+  let words = '';
+  try { words = parseDiagram(text).nodes.find(node => node.id === id)?.text ?? ''; } catch { words = ''; }
+  const marked = words.trim() === '' ? id : words;
+  // Narrowed or not, the range stays inside the shape's line, so it is found
+  // on the shape again.
+  const { anchor, precision } = narrowAnchor({ file, start: span.start, end: span.end }, marked, read);
+  return { anchor, precision, marked };
+}
+
+export interface BubbleOptions {
+  readonly locale?: Locale | undefined;
+  /** Called with a comment's key when its bubble is pressed. */
+  readonly onPick?: ((key: string) => void) | undefined;
+}
+
+/**
+ * Shows every comment found on the page as a bubble that stays there: beside
+ * the shape it is about, for a comment on a shape; otherwise in the margin to
+ * the right of the page, level with its words, pushed down where they would
+ * overlap. Called again after a redraw, a zoom, or a change of size; the
+ * bubbles from before are taken off first.
+ */
+export function layoutBubbles(page: HTMLElement, placed: readonly PlacedNote[], options: BubbleOptions = {}): void {
+  for (const layer of page.querySelectorAll('.dp-review-bubbles')) layer.remove();
+  const owner = page.ownerDocument;
+  const t = EDITOR_MESSAGES.in(options.locale ?? DEFAULT_LOCALE);
+  const byKey = new Map(placed.map(one => [one.note.key, one]));
+  const seen = new Set<string>();
+
+  // The first thing on the page, on a sheet that is showing, that carries each comment.
+  const targets: { element: Element; keys: string[] }[] = [];
+  for (const element of page.querySelectorAll<Element>('[data-review]')) {
+    if (element.closest('.dp-sheet[hidden]')) continue;
+    const box = element.getBoundingClientRect();
+    if (box.width === 0 && box.height === 0) continue;
+    const keys = (element.getAttribute('data-review') ?? '').split(' ')
+      .filter(key => key !== '' && byKey.has(key) && !seen.has(key));
+    if (keys.length === 0) continue;
+    for (const key of keys) seen.add(key);
+    targets.push({ element, keys });
+  }
+
+  const bubble = (keys: readonly string[], className: string): HTMLElement => {
+    const node = owner.createElement('div');
+    // Only the author's own notes: a bubble with a review finding in it reads as one.
+    const kind = keys.every(key => byKey.get(key)!.note.type === 'comment') ? 'comment' : 'review';
+    node.className = `dp-review-bubble ${className} dp-review-bubble-${kind}`;
+    node.dataset['bubble'] = keys.join(' ');
+    node.append(...keys.map(key => noteItem(owner, byKey.get(key)!, t)));
+    node.addEventListener('mousedown', event => event.stopPropagation());
+    node.addEventListener('click', event => {
+      event.stopPropagation();
+      options.onPick?.(keys[0]!);
+    });
+    // The bubble and what it is about light up together.
+    const light = (on: boolean): void => {
+      node.classList.toggle('dp-review-lit', on);
+      for (const key of keys) {
+        for (const mark of page.querySelectorAll(`[data-review~="${cssEscape(key)}"]`)) {
+          mark.classList.toggle('dp-review-lit', on);
+        }
+      }
+    };
+    node.addEventListener('mouseenter', () => light(true));
+    node.addEventListener('mouseleave', () => light(false));
+    return node;
+  };
+
+  // Beside a shape: in the frame the drawing scrolls in, so it moves with it.
+  const margin: { element: Element; keys: string[] }[] = [];
+  const layers = new Map<HTMLElement, HTMLElement>();
+  for (const target of targets) {
+    if (!target.element.classList.contains('dp-review-node')) { margin.push(target); continue; }
+    const frame = target.element.closest('svg')?.parentElement;
+    if (!frame) { margin.push(target); continue; }
+    let layer = layers.get(frame);
+    if (!layer) {
+      layer = owner.createElement('div');
+      layer.className = 'dp-review-bubbles dp-review-bubbles-figure';
+      if (owner.defaultView?.getComputedStyle(frame).position === 'static') frame.style.position = 'relative';
+      frame.append(layer);
+      layers.set(frame, layer);
+    }
+    const node = bubble(target.keys, 'dp-review-bubble-node');
+    layer.append(node);
+    const box = target.element.getBoundingClientRect();
+    const room = frame.getBoundingClientRect();
+    const x = box.right - room.left + frame.scrollLeft;
+    const top = box.top - room.top + frame.scrollTop;
+    const height = node.offsetHeight;
+    const width = node.offsetWidth;
+    // Above the shape's right corner, pointing down at it; below it when
+    // there is no room above.
+    const above = top - height - 10 >= 0;
+    node.classList.add(above ? 'dp-review-bubble-above' : 'dp-review-bubble-below');
+    const left = Math.max(0, Math.min(x - 24, frame.scrollWidth - width));
+    node.style.left = `${left}px`;
+    node.style.top = `${above ? top - height - 10 : box.bottom - room.top + frame.scrollTop + 10}px`;
+    node.style.setProperty('--tail', `${Math.max(10, Math.min(width - 20, x - 12 - left))}px`);
+  }
+
+  if (margin.length === 0) return;
+  // In the margin: level with the words, in the order they come, never on top
+  // of each other.
+  const layer = owner.createElement('div');
+  layer.className = 'dp-review-bubbles dp-review-bubbles-margin';
+  page.append(layer);
+  const room = page.getBoundingClientRect();
+  const sorted = margin
+    .map(target => ({ target, top: target.element.getBoundingClientRect().top - room.top }))
+    .sort((a, b) => a.top - b.top);
+  let floor = 0;
+  for (const { target, top } of sorted) {
+    const node = bubble(target.keys, 'dp-review-bubble-margin');
+    layer.append(node);
+    const at = Math.max(top, floor);
+    node.style.top = `${at}px`;
+    floor = at + node.offsetHeight + 8;
+  }
 }

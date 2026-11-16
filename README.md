@@ -42,7 +42,7 @@ reviews/*.review.yml      顧客レビューの指摘と回答
 | **採番と参照** | 図・表・章に番号を振り、`@fig-…` のような参照を「図 3」などに置き換える。目次と表紙も生成する。番号はソースに書かないため、図を 1 つ追加しても無関係な行に差分が出ない |
 | **出力** | 文書ごとに **HTML / PDF / PPTX** を `out/build` に出力する。PDF にはフォントを埋め込み、長い表は複数ページに分割し、指定した表は横向きのページに配置する。PPTX の図と表は、PowerPoint で編集できる図形と表として出力する |
 | **検証** | 参照切れ、どの出力にも含まれていないファイル、図や表の記述ミスを、出力せずに `パス:行:列` の形式で一覧にする。エラーがあると終了コード 1 で終わるため、CI でのチェックにも使える |
-| **変更箇所の表示** | コミット・タグ・ブランチ・別フォルダのいずれかと比較し、変更された箇所に印を付けて出力する。変更箇所を手作業で色付けする必要はない |
+| **変更箇所の表示** | コミット・タグ・ブランチ・別フォルダのいずれかと比較し、変更された箇所に印を付けて出力する。変更箇所を手作業で色付けする必要はない。VS Code では文書の上の **「変更箇所付き…」** ボタンから、CLI では `--diff-from` で使う |
 | **PowerPoint からの反映** | 出力した PPTX 上で図形を動かしたり文字を直したりした場合、その変更だけを元の `.dgm` に反映できる |
 | **レビューの取り込み** | Git を使わない顧客には、PDF に注釈を書いてもらうだけで済む。注釈は `reviews/*.review.yml` に取り込み、回答を載せた PDF を再び渡せる。指摘はソース上の位置と引用文で記録するため、文書の版が進んでも該当箇所を追跡できる |
 
@@ -296,8 +296,8 @@ node tools/build-vscode.mjs      # 両方を出力：packages/app-vscode/media/�
 
 tools\package-vscode.bat            # ビルドして out\vsix\ に docpresenter-<バージョン>.vsix と docpresenter-diagram-<バージョン>.vsix を作成する
 tools\package-vscode.bat install    # 作成したうえで、この PC の VS Code に両方をインストールする
-code --install-extension out\vsix\docpresenter-diagram-0.1.2.vsix   # 別の PC では、作図の拡張を先に入れ、
-code --install-extension out\vsix\docpresenter-0.1.2.vsix           # 次にこちらを入れる（パックが作図の拡張を名指しするため）
+code --install-extension out\vsix\docpresenter-diagram-0.1.3.vsix   # 別の PC では、作図の拡張を先に入れ、
+code --install-extension out\vsix\docpresenter-0.1.3.vsix           # 次にこちらを入れる（パックが作図の拡張を名指しするため）
 ```
 
 DocPresenter Diagram のキャンバスは作図のパッケージ（`@docpresenter/base` と `@docpresenter/diagram`）だけから作り、

@@ -370,6 +370,10 @@ function runs(line: TextLine): string {
       ...(run.italic ? ['font-style="italic"'] : []),
       ...(run.code ? ['class="dp-code"'] : []),
       ...(run.colour && COLOUR.test(run.colour) ? [`fill="${escapeAttr(run.colour)}"`] : []),
+      ...(run.strike || run.underline
+        ? [`text-decoration="${[run.underline ? 'underline' : '', run.strike ? 'line-through' : ''].filter(Boolean).join(' ')}"`]
+        : []),
+      ...(run.script ? [`baseline-shift="${run.script === 'sup' ? 'super' : 'sub'}" font-size="70%"`] : []),
     ];
     return attributes.length === 0 ? text : `<tspan ${attributes.join(' ')}>${text}</tspan>`;
   }).join('');

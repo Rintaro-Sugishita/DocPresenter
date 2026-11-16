@@ -13,6 +13,7 @@ import {
   prepare, renderPage, said, themeOf, type BuildDiagnostic, type PreparedDocument, type Workspace,
 } from '@docpresenter/build';
 import { isAddress, parseDocument } from '@docpresenter/markdown';
+import { isWorkbookPath, splitWorkbookPath } from '@docpresenter/xlsx';
 
 /** Where the files come from: in the page, GitHub at one commit. */
 export interface FileSource {
@@ -26,6 +27,8 @@ export interface FileSource {
 export interface Held {
   readonly texts: Map<string, string | undefined>;
   readonly images: Map<string, string | undefined>;
+  /** Workbooks a sheet is imported from: fetched as a picture is, and kept as bytes. */
+  readonly binaries?: Map<string, Uint8Array | undefined>;
 }
 
 /** Past this many files a document is not one document; stop and say so. */
@@ -37,7 +40,8 @@ export const MOST_FILES = 400;
  * the build reports it missing, which is the truth.
  */
 export function heldWorkspace(
-  source: Pick<FileSource, 'paths'>, held: Held, wanted?: { texts: Set<string>; images: Set<string> },
+  source: Pick<FileSource, 'paths'>, held: Held,
+  wanted?: { texts: Set<string>; images: Set<string>; binaries?: Set<string> },
 ): Workspace {
   const present = new Set(source.paths);
   return {
@@ -52,7 +56,19 @@ export function heldWorkspace(
       if (present.has(path)) wanted?.images.add(path);
       return undefined;
     },
+    bytes: path => {
+      if (held.binaries?.has(path)) return held.binaries.get(path);
+      if (present.has(path)) wanted?.binaries?.add(path);
+      return undefined;
+    },
   };
+}
+
+/** The bytes a `data:` URL carries. */
+function bytesOfDataUrl(url: string | undefined): Uint8Array | undefined {
+  const comma = url?.indexOf(',') ?? -1;
+  if (url === undefined || comma < 0) return undefined;
+  return Uint8Array.from(atob(url.slice(comma + 1)), char => char.charCodeAt(0));
 }
 
 /**
@@ -64,11 +80,11 @@ export async function gather(
   source: FileSource, render: (workspace: Workspace) => void,
   progress?: (count: number) => void, most = MOST_FILES,
 ): Promise<{ held: Held; complete: boolean }> {
-  const held: Held = { texts: new Map(), images: new Map() };
+  const held: Held = { texts: new Map(), images: new Map(), binaries: new Map() };
   for (;;) {
-    const wanted = { texts: new Set<string>(), images: new Set<string>() };
+    const wanted = { texts: new Set<string>(), images: new Set<string>(), binaries: new Set<string>() };
     render(heldWorkspace(source, held, wanted));
-    if (wanted.texts.size === 0 && wanted.images.size === 0) return { held, complete: true };
+    if (wanted.texts.size === 0 && wanted.images.size === 0 && wanted.binaries.size === 0) return { held, complete: true };
     if (held.texts.size + held.images.size + wanted.texts.size + wanted.images.size > most) {
       return { held, complete: false };
     }
@@ -78,6 +94,9 @@ export async function gather(
       }),
       ...[...wanted.images].map(async path => {
         held.images.set(path, await source.image(path).catch(() => undefined));
+      }),
+      ...[...wanted.binaries].map(async path => {
+        held.binaries!.set(path, bytesOfDataUrl(await source.image(path).catch(() => undefined)));
       }),
     ]);
     progress?.(held.texts.size + held.images.size);
@@ -144,7 +163,9 @@ export function compose(workspace: Workspace, path: string, options: ComposeOpti
   // every document in the repository). The same sentence, for the same thing.
   for (const block of prepared.document.blocks) {
     if (block.kind !== 'import' || isAddress(block.path) || /\.md$/i.test(block.path)) continue;
-    const there = PICTURE.test(block.path) ? read.dataUrl?.(block.path) : read.read(block.path);
+    const there = PICTURE.test(block.path) ? read.dataUrl?.(block.path)
+      : isWorkbookPath(block.path) ? read.bytes?.(splitWorkbookPath(block.path).file)
+        : read.read(block.path);
     if (there !== undefined) continue;
     diagnostics.push({
       severity: 'error', path: block.doc ?? viewing.root, span: block.span,

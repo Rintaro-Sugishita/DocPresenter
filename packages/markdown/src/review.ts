@@ -29,6 +29,11 @@ export interface StoredComment {
   readonly author?: string | undefined;
   readonly date?: string | undefined;
   readonly replies: readonly { readonly body: string; readonly author?: string | undefined; readonly date?: string | undefined }[];
+  /**
+   * `comment` for a note the author wrote on the editing screen: shown on the
+   * screen, never put in a PDF. Absent for a review finding (指摘), which is.
+   */
+  readonly type?: 'comment' | undefined;
 }
 
 /**
@@ -83,6 +88,7 @@ export function parseReviewFile(text: string, round: string): StoredComment[] {
       replies: replies.filter(one => one && typeof one === 'object').map(one => ({
         body: str(one['body']) ?? '', author: str(one['author']), date: str(one['date']),
       })),
+      ...(entry['type'] === 'comment' ? { type: 'comment' as const } : {}),
     }];
   });
 }

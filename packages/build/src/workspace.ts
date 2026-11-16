@@ -4,6 +4,7 @@
 // a browser over a directory handle, and in a test over a map held in memory;
 // all three can answer these four questions, and none of them belongs in here.
 
+import { withWorkbooks } from '@docpresenter/xlsx';
 import { toLf } from '@docpresenter/base';
 
 export interface Workspace {
@@ -20,6 +21,12 @@ export interface Workspace {
    * package's business either way.
    */
   dataUrl?(path: string): string | undefined;
+  /**
+   * A binary's bytes. Only a workbook is read this way: a sheet imported with
+   * `@import "見積.xlsx#内訳"` is turned into the text of a table when it is
+   * read, and from then on is a table like any other.
+   */
+  bytes?(path: string): Uint8Array | undefined;
   /**
    * Fetches a picture written as an `http(s)` address and returns it as a
    * `data:` URL, or undefined when it cannot be had.
@@ -59,13 +66,15 @@ export interface Artifact {
  */
 export function asLf(workspace: Workspace): Workspace {
   if (LF.has(workspace)) return workspace;
-  const read = (path: string): string | undefined => {
+  const plain = (path: string): string | undefined => {
     const text = workspace.read(path);
     return text === undefined ? undefined : toLf(text);
   };
+  const read = withWorkbooks(plain, path => workspace.bytes?.(path));
   const wrapped: Workspace = {
     list: () => workspace.list(),
     read,
+    ...(workspace.bytes ? { bytes: (path: string) => workspace.bytes!(path) } : {}),
     ...(workspace.dataUrl ? { dataUrl: (path: string) => workspace.dataUrl!(path) } : {}),
     ...(workspace.inline ? { inline: (address: string) => workspace.inline!(address) } : {}),
   };

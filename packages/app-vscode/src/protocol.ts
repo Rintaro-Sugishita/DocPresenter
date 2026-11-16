@@ -38,6 +38,8 @@ export interface ReviewNoteMessage {
   readonly author?: string;
   readonly date?: string;
   readonly replies: readonly { readonly body: string; readonly author?: string }[];
+  /** `comment` for the author's own note; absent for a review finding. */
+  readonly type?: 'comment';
 }
 
 /** Host → WebView. */
@@ -51,6 +53,8 @@ export type ToView =
     readonly files: Readonly<Record<string, string>>;
     /** Pictures, by workspace path, as URLs the WebView may load. */
     readonly images: Readonly<Record<string, string>>;
+    /** Workbooks a document may take a sheet of, by workspace path, base64. */
+    readonly workbooks?: Readonly<Record<string, string>>;
     readonly commitKey: CommitKey;
     /** VS Code's display language, so the editor speaks the same one as the host. */
     readonly locale: Locale;
@@ -58,6 +62,8 @@ export type ToView =
   /** Somebody else changed a file — the document itself, or one it refers to. */
   | { readonly kind: 'file'; readonly path: string; readonly text: string }
   | { readonly kind: 'image'; readonly path: string; readonly url: string }
+  /** A workbook saved, or added: its bytes, base64. */
+  | { readonly kind: 'workbook'; readonly path: string; readonly data: string }
   | { readonly kind: 'settings'; readonly commitKey: CommitKey }
   /**
    * The workspace's own theme for the document on screen, in place of the one
@@ -132,6 +138,8 @@ export type FromView =
     readonly anchor: { readonly file: string; readonly start: number; readonly end: number; readonly quote: string };
     readonly precision: 'text' | 'block' | 'none';
     readonly body: string;
+    /** `comment` when made while editing: the author's own note, never put in a PDF. */
+    readonly type?: 'comment';
   }
   /** The state of a review comment, or the answer to it, set in the review panel. */
   | {
@@ -143,6 +151,12 @@ export type FromView =
   }
   /** The author pressed an export button. */
   | { readonly kind: 'export'; readonly format: ExportFormat }
+  /** The author asked to export with what changed since an earlier version marked. */
+  | { readonly kind: 'export-changes' }
+  /** A table of the document, to be opened in Excel and written back when Excel saves it. */
+  | { readonly kind: 'open-in-excel'; readonly path: string }
+  /** A workbook a sheet is imported from, opened in whatever opens it. */
+  | { readonly kind: 'open-external'; readonly path: string }
   | {
     readonly kind: 'measured'; readonly id: number;
     readonly plan?: PagePlan; readonly diagnostics?: readonly string[]; readonly error?: string;

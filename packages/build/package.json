@@ -9,6 +9,7 @@
     "@docpresenter/base": "*",
     "@docpresenter/diagram": "*",
     "@docpresenter/markdown": "*",
-    "@docpresenter/pptx": "*"
+    "@docpresenter/pptx": "*",
+    "@docpresenter/xlsx": "*"
   }
 }

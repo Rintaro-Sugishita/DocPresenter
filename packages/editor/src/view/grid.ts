@@ -10,7 +10,7 @@
 // each change the file is re-read and the grid is rebuilt from it.
 
 import {
-  cellAt, shownText, type Align, type Cell, type Selector, type StyleRule, type TableFile,
+  cellAt, cellSelectorFor, shownText, type Align, type Cell, type Selector, type StyleRule, type TableFile,
 } from '@docpresenter/markdown';
 import {
   alignOf, cellClasses, cellRules, headerClasses, headerRules, inlineMarkdown,
@@ -595,9 +595,9 @@ export function createGrid(options: GridOptions): Grid {
       case 'header': return { kind: 'header' };
       case 'column': return column === undefined ? undefined : { kind: 'column', name: column };
       case 'row': return rowKey === undefined ? undefined : { kind: 'range', from: rowKey, to: rowKey };
-      case 'cell':
-        return column === undefined || rowKey === undefined
-          ? undefined : { kind: 'cell', row: rowKey, column };
+      // A cell is named by its leading cell, or by another column when the
+      // leading one repeats down the table (`^` merged, `#` numbered).
+      case 'cell': return at.row < 0 ? undefined : cellSelectorFor(table, at.row, at.column);
       default: return undefined;
     }
   }

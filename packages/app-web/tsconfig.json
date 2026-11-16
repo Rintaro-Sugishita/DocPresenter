@@ -17,6 +17,7 @@
     { "path": "../markdown" },
     { "path": "../build" },
     { "path": "../editor" },
-    { "path": "../pdf" }
+    { "path": "../pdf" },
+    { "path": "../xlsx" }
   ]
 }

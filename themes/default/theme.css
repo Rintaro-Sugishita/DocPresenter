@@ -396,6 +396,27 @@ h1.dp-diff-changed, h2.dp-diff-changed, h3.dp-diff-changed, h4.dp-diff-changed {
   font-size: 0.8em; float: right;
 }
 
+/* 消えたもの（--show-removed strike のときだけ出る）。取り消し線と、破線の帯で示す。 */
+.dp-prose.dp-diff-removed {
+  border-left: 3px dashed #b3261e;
+  padding-left: 0.6em;
+  margin-left: -0.9em;
+  color: #6b4040;
+}
+.dp-prose.dp-diff-removed * { text-decoration: inherit; }
+.dp-prose.dp-diff-removed::before {
+  content: "－"; color: #b3261e; font-family: var(--font-heading);
+  font-size: 0.8em; float: right; text-decoration: none;
+}
+.dp-table tr.dp-diff-removed td { background: var(--diff-removed); color: #6b4040; }
+.dp-table del, .dp-diff-gone del { text-decoration: line-through; text-decoration-color: #b3261e; }
+.dp-table .dp-diff-was { color: #6b4040; }
+.dp-diff-gone {
+  margin: 0.4em 0 0; font-size: 0.85em; font-family: var(--font-heading); color: #3a4048;
+  display: flex; flex-wrap: wrap; gap: 0.3em 0.6em; align-items: baseline;
+}
+.dp-diff-gone del { background: var(--diff-removed); padding: 0 0.3em; }
+
 /* 図の中では、塗りは図形自身のものなので枠線で示す。 */
 .dp-diagram .dp-diff-added > rect, .dp-diagram .dp-diff-added > polygon,
 .dp-diagram .dp-diff-added > path, .dp-diagram .dp-diff-added > ellipse {

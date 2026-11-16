@@ -9,6 +9,8 @@ import * as vscode from 'vscode';
 import { openDrawing } from './drawing.js';
 import { registerWorkspaceProblems } from './workspace-problems.js';
 import { registerMarkdownEditing } from './markdown-editing.js';
+import { registerImportLinks } from './import-links.js';
+import { registerExcel } from './excel-command.js';
 import { exportAll, FORMAT_LABEL } from './export-command.js';
 import { initWorkspace } from './init-command.js';
 import { newDocument } from './document-command.js';
@@ -56,6 +58,8 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand('docpresenter.exportHtml', () => provider.export('html')),
     vscode.commands.registerCommand('docpresenter.exportPdf', () => provider.export('pdf')),
     vscode.commands.registerCommand('docpresenter.exportPptx', () => provider.export('pptx')),
+    // The document in front, compared with an earlier version, the changes marked.
+    vscode.commands.registerCommand('docpresenter.exportChanges', () => provider.exportChanges()),
     // Every document with an `output:`, in the formats each one names.
     vscode.commands.registerCommand('docpresenter.build', () => exportAll(context, output)),
     // Every document with an `output:`, in the formats picked here instead.
@@ -88,6 +92,9 @@ export function activate(context: vscode.ExtensionContext): void {
     registerWorkspaceProblems(output),
     // Writing a document as text: lists, marks, and what goes after @.
     registerMarkdownEditing(),
+    registerImportLinks(),
+    // A table edited in Excel, written back each time Excel saves it.
+    registerExcel(context, output),
   );
 }
 

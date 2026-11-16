@@ -19,21 +19,50 @@ export interface RangeMark {
   readonly change: Change;
 }
 
+/**
+ * Lines of one source file that are gone: what they said, and where in the
+ * file as it is now they used to be. Lines that were replaced are gone too, and
+ * sit where their replacement starts.
+ */
+export interface RemovedText {
+  readonly doc: string;
+  /** The byte offset, in the file as it is now, the lines stood before. */
+  readonly at: number;
+  /** The lines as they were written, Markdown and all. */
+  readonly text: string;
+}
+
+/** A row that is gone, with what it said under each column the table has now. */
+export interface RemovedRow {
+  /** The index, in the table as it is now, of the row it stood above; the row count when it was last. */
+  readonly before: number;
+  readonly cells: readonly string[];
+}
+
 export interface TableMarks {
-  /** Keyed `row/column` by the texts that name them, as a selector does. */
+  /** Keyed `row/column` by their indexes in the table as it is now. */
   readonly cells: ReadonlyMap<string, Change>;
-  /** Rows added or removed whole, by the text of their leading cell. */
-  readonly rows: ReadonlyMap<string, Change>;
+  /** Rows added whole, by their index in the table as it is now. */
+  readonly rows: ReadonlyMap<number, Change>;
+  /** What a changed cell said before, keyed as `cells` is. */
+  readonly was?: ReadonlyMap<string, string>;
+  readonly removedRows?: readonly RemovedRow[];
+  /** Columns that are gone, by their headers. */
+  readonly removedColumns?: readonly string[];
 }
 
 export interface DiagramMarks {
   readonly nodes: ReadonlyMap<string, Change>;
   /** Keyed `from->to`. */
   readonly edges: ReadonlyMap<string, Change>;
+  /** Shapes and connections that are gone, as their words: a drawing has no place left to put them. */
+  readonly removed?: { readonly nodes: readonly string[]; readonly edges: readonly string[] };
 }
 
 export interface DiffMarks {
   readonly ranges: readonly RangeMark[];
+  /** What is gone from the prose, drawn struck through when `showRemoved` asks. */
+  readonly removed?: readonly RemovedText[];
   readonly tables: ReadonlyMap<string, TableMarks>;
   readonly diagrams: ReadonlyMap<string, DiagramMarks>;
   /** What to do with something that is gone: leave it out, or strike it through. */

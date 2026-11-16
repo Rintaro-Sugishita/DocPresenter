@@ -55,4 +55,12 @@ describe('PDF に載せる指摘', () => {
     const [note] = reviewNotesOf(workspace(files), 'docs/new.md', 'SD-9');
     expect(note).toMatchObject({ file: 'docs/new.md', ...at(DOC, '管理者'), body: '誰が解除するのか' });
   });
+
+  it('編集画面で書いたコメントは載せない。載せるのは指摘だけ', () => {
+    const review = REVIEW.replace(
+      '    body: "誰が解除するのか"', '    body: "誰が解除するのか"' + String.fromCharCode(10) + '    type: comment');
+    expect(review).toContain('type: comment');
+    const notes = reviewNotesOf(workspace({ 'docs/a.md': DOC, 'reviews/r.review.yml': review }), 'docs/a.md');
+    expect(notes).toEqual([]);
+  });
 });

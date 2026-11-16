@@ -19,7 +19,7 @@ const KNOWN_ATTRIBUTES = new Set([
 
 /** Extensions that decide the kind of an unlabelled import. */
 const FIGURE_EXTENSIONS = ['.dgm', '.mmd', '.ermlx', '.svg', '.png', '.jpg', '.jpeg', '.gif'];
-const TABLE_EXTENSIONS = ['.table', '.csv'];
+const TABLE_EXTENSIONS = ['.table', '.csv', '.xlsx'];
 
 /**
  * `locale` is the language the numbers read in — 図 2 or Figure 2 — and the
@@ -146,7 +146,8 @@ function kindOfImport(block: Import, diagnostics: Diagnostic[], locale: Locale):
 }
 
 function kindOfPath(path: string): ElementKind | undefined {
-  const lower = path.toLowerCase();
+  // A workbook's sheet is named after `#`: `見積.xlsx#内訳!A1:F20`.
+  const lower = path.toLowerCase().replace(/(\.xlsx)#.*$/, '$1');
   if (FIGURE_EXTENSIONS.some(e => lower.endsWith(e))) return 'figure';
   if (TABLE_EXTENSIONS.some(e => lower.endsWith(e))) return 'table';
   return undefined;

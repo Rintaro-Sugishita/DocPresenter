@@ -1,8 +1,11 @@
 // The chrome both editors share: the formatting bar, the colour swatches
 // and the context menu. A drawing and a document are edited in different
-// ways, but these three are the same in both, so they are styled once.
+// ways, but these three are the same in both, so they are styled once. The
+// zoom on a drawing is the same in both too, and goes with them.
 
-export const BASE_STYLE = `
+import { ZOOM_STYLE } from './zoom.js';
+
+export const BASE_STYLE = ZOOM_STYLE + `
 .dp-format-bar {
   position: absolute; top: -2.4em; right: 0; z-index: 2;
   display: flex; align-items: stretch; gap: 1px;
@@ -19,6 +22,8 @@ export const BASE_STYLE = `
 .dp-format-bold { font-weight: 700; }
 .dp-format-italic { font-style: italic; }
 .dp-format-code { font-family: ui-monospace, monospace; }
+.dp-format-strike { text-decoration: line-through; }
+.dp-format-underline { text-decoration: underline; }
 .dp-format-divider { width: 1px; background: #565c66; margin: 0.3em 0.25em; }
 /* Each token button shows a swatch of the colour the theme gives that meaning,
    so the bar shows the vocabulary instead of only naming it. */

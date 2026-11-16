@@ -220,4 +220,4 @@ export function labelCandidates(source: string, read: DocumentReader, locale: Lo
 }
 
 /** The files `@import` can take in: drawings, tables, Mermaid, documents and pictures. */
-export const IMPORTABLE = /\.(dgm|table|mmd|mermaid|ermlx|md|png|jpe?g|gif|webp|svg)$/i;
+export const IMPORTABLE = /\.(dgm|table|xlsx|mmd|mermaid|ermlx|md|png|jpe?g|gif|webp|svg)$/i;

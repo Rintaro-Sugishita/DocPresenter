@@ -77,7 +77,8 @@ export function wrapRuns(
 }
 
 function sameStyle(a: Run, b: Run): boolean {
-  return a.bold === b.bold && a.italic === b.italic && a.code === b.code && a.colour === b.colour;
+  return a.bold === b.bold && a.italic === b.italic && a.code === b.code && a.colour === b.colour
+    && !!a.strike === !!b.strike && !!a.underline === !!b.underline && a.script === b.script;
 }
 
 /** Characters Japanese typesetting forbids at the start of a line. */

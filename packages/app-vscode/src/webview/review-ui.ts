@@ -3,19 +3,29 @@
 // Editing is what the editor always was. Reading (review) is the same page with
 // nothing offering to change the file: text is selected rather than opened,
 // comments are marked where they are now, listed beside the page, and a new
-// one is made on a selection. While editing, the marks can be kept on — or
-// switched off when they are in the way. Both choices are remembered per
-// editor, as VS Code keeps a WebView's state.
+// one is made on a selection. While editing, a comment is made on what is
+// selected in the source box open, and in either mode on a shape of a drawing,
+// from the menu on it.
+//
+// The comments are shown as bubbles that stay on the page — beside the words,
+// or beside the shape — and can be switched off when they are in the way; in
+// the editing mode that takes the marks off too. Both choices are remembered
+// per editor, as VS Code keeps a WebView's state. None of it reaches a PDF or
+// a slide.
 
 import {
-  EDITOR_MESSAGES, attachReviewCards, clearReviews, paintReviews, selectionAnchor,
+  EDITOR_MESSAGES, attachReviewCards, clearReviews, layoutBubbles, nodeAnchor, paintReviews, selectionAnchor,
   type PlacedNote, type ReviewNote, type SheetView,
 } from '@docpresenter/editor';
-import type { Locale } from '@docpresenter/base';
+import type { Locale, MenuItem } from '@docpresenter/base';
+import { inWorkspace } from '../paths.js';
 import { VSCODE_MESSAGES } from '../messages.js';
 import type { FromView } from '../protocol.js';
 
 export type Mode = 'edit' | 'view';
+
+/** What a new comment is about: where, how exactly, and the words, to show on the form. */
+type Found = NonNullable<ReturnType<typeof selectionAnchor>>;
 
 interface Saved { mode?: Mode; marks?: boolean }
 
@@ -45,10 +55,14 @@ export function createReviewUi(options: ReviewUiOptions) {
   let placed: PlacedNote[] = [];
   let page: HTMLElement | undefined;
 
-  attachReviewCards(editor, () => placed, options.locale());
+  // With the bubbles on, the comment is already on the page; the card under
+  // the pointer is for when they are off.
+  attachReviewCards(editor, () => (bubbles() ? [] : placed), options.locale());
 
   const remember = (): void => options.state.set({ mode, marks });
   const showing = (): boolean => !!bar && (mode === 'view' || marks);
+  /** Whether the comments stay on the page as bubbles. The same switch as the marks. */
+  const bubbles = (): boolean => !!bar && marks;
 
   /** Marks the notes on the page as it is drawn now, and lists them. */
   function paint(next?: HTMLElement): void {
@@ -57,6 +71,44 @@ export function createReviewUi(options: ReviewUiOptions) {
     placed = showing() ? paintReviews(page, notes, { documentPath: options.documentPath(), read: options.read, locale: options.locale() }) : [];
     if (!showing()) clearReviews(page);
     list();
+    layout();
+  }
+
+  // The bubbles are placed from where things are on screen, so they are
+  // placed again whenever that may have moved: a redraw, a zoom, another
+  // sheet, a narrower window.
+  let pending = false;
+  function layout(): void {
+    if (pending) return;
+    pending = true;
+    requestAnimationFrame(() => {
+      pending = false;
+      if (!page || !page.isConnected) return;
+      const pane = page.parentElement;
+      const shown = bubbles() ? placed.filter(one => one.shown) : [];
+      pane?.classList.toggle('dp-with-bubbles', shown.length > 0);
+      layoutBubbles(page, shown, { locale: options.locale(), onPick: key => pick(key) });
+    });
+  }
+  const watcher = new ResizeObserver(() => layout());
+  watcher.observe(editor);
+  let watched: HTMLElement | undefined;
+  const watchPage = (): void => {
+    if (!page || watched === page) return;
+    if (watched) watcher.unobserve(watched);
+    watched = page;
+    watcher.observe(page);
+  };
+
+  /** A bubble pressed: its entry in the list, in the review mode. */
+  function pick(key: string): void {
+    if (mode !== 'view' || !panel) return;
+    const index = placed.findIndex(one => one.note.key === key);
+    const entry = panel.querySelectorAll<HTMLElement>('.dp-review-entry')[index];
+    entry?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    entry?.classList.remove('dp-review-flash');
+    void entry?.getBoundingClientRect();
+    entry?.classList.add('dp-review-flash');
   }
 
   /** The panel beside the page: every comment on the document, in review mode. */
@@ -196,7 +248,6 @@ export function createReviewUi(options: ReviewUiOptions) {
   function setMode(next: Mode): void {
     mode = next;
     for (const button of modeButtons) button.setAttribute('aria-pressed', String(button.dataset['mode'] === mode));
-    if (marksLabel) marksLabel.hidden = mode === 'view';
     options.view()?.setReadOnly(mode === 'view');
     closeAdd();
     remember();
@@ -213,30 +264,76 @@ export function createReviewUi(options: ReviewUiOptions) {
   let form: HTMLFormElement | undefined;
   function closeAdd(): void { addButton?.remove(); addButton = undefined; form?.remove(); form = undefined; }
 
-  editor.addEventListener('mouseup', () => {
-    if (mode !== 'view' || form) return;
-    // After the browser has settled the selection.
-    setTimeout(() => {
-      const selection = window.getSelection();
-      const found = selectionAnchor(selection, options.documentPath(), options.read);
+  /** The button that offers a comment on what was found, beside where it is. */
+  function offer(found: Found, rect: DOMRect): void {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'dp-review-add';
+    button.textContent = t()(mode === 'edit' ? 'vscode.review.addComment' : 'vscode.review.addButton');
+    button.style.left = `${Math.max(4, Math.min(rect.right, window.innerWidth - 120))}px`;
+    button.style.top = `${Math.max(4, rect.top - 32)}px`;
+    // Pressing it must not take the selection away from what it is about.
+    button.addEventListener('mousedown', event => event.preventDefault());
+    button.addEventListener('click', () => openForm(found, rect));
+    document.body.append(button);
+    addButton = button;
+  }
+
+  /**
+   * While editing, the page is not selected but opened: a block is its source
+   * in a box. What is selected there is a range of the file already, as long
+   * as the box still says what the file says.
+   */
+  function sourceFound(): Found | undefined {
+    const at = options.view()?.sourceSelection();
+    if (!at) return undefined;
+    const file = at.path === undefined ? options.documentPath() : inWorkspace(options.documentPath(), at.path);
+    return {
+      anchor: { file, start: at.start, end: at.end, quote: at.text },
+      precision: 'text',
+      marked: at.text,
+    };
+  }
+
+  const settle = (event: Event): void => {
+    if (form) return;
+    if (event instanceof KeyboardEvent && !event.shiftKey && !event.key.startsWith('Arrow') && event.key !== 'Shift') {
+      // Typing: the button would only be in the way.
       addButton?.remove();
       addButton = undefined;
-      if (!found || !selection) return;
-      const rect = selection.getRangeAt(0).getBoundingClientRect();
-      const button = document.createElement('button');
-      button.type = 'button';
-      button.className = 'dp-review-add';
-      button.textContent = t()('vscode.review.addButton');
-      button.style.left = `${Math.min(rect.right, window.innerWidth - 120)}px`;
-      button.style.top = `${Math.max(4, rect.top - 32)}px`;
-      button.addEventListener('mousedown', event => event.preventDefault());
-      button.addEventListener('click', () => openForm(found, rect));
-      document.body.append(button);
-      addButton = button;
+      return;
+    }
+    // After the browser has settled the selection.
+    setTimeout(() => {
+      addButton?.remove();
+      addButton = undefined;
+      if (mode === 'view') {
+        const selection = window.getSelection();
+        const found = selectionAnchor(selection, options.documentPath(), options.read);
+        if (found && selection) offer(found, selection.getRangeAt(0).getBoundingClientRect());
+        return;
+      }
+      const box = (event.target as Element | null)?.closest?.('textarea.dp-block-source');
+      const found = box ? sourceFound() : undefined;
+      if (box && found) offer(found, box.getBoundingClientRect());
     }, 0);
-  });
+  };
+  editor.addEventListener('mouseup', settle);
+  editor.addEventListener('keyup', settle);
 
-  function openForm(found: NonNullable<ReturnType<typeof selectionAnchor>>, at: DOMRect): void {
+  /** The line on the menu of a drawing's shape that makes a comment on it. */
+  function figureMenu(target: Element): readonly MenuItem[] {
+    if (!bar || form) return [];
+    const found = nodeAnchor(target, options.documentPath(), options.read);
+    if (!found) return [];
+    const rect = (target.closest('[data-node]') ?? target).getBoundingClientRect();
+    return [{
+      label: t()(mode === 'edit' ? 'vscode.review.addOnShape' : 'vscode.review.reviewOnShape'),
+      run: () => openForm(found, rect),
+    }];
+  }
+
+  function openForm(found: Found, at: DOMRect): void {
     addButton?.remove();
     addButton = undefined;
     const box = document.createElement('form');
@@ -245,7 +342,10 @@ export function createReviewUi(options: ReviewUiOptions) {
     on.className = 'dp-review-on';
     on.textContent = t()('vscode.review.on', { words: found.marked.replace(/\s+/g, ' ').slice(0, 60) });
     const area = document.createElement('textarea');
-    area.placeholder = t()('vscode.review.placeholder');
+    // Made while editing, it is the author's own note: shown on the screen and
+    // never put in a PDF. Made while reading, it is a review finding, which is.
+    const asComment = mode === 'edit';
+    area.placeholder = t()(asComment ? 'vscode.review.commentPlaceholder' : 'vscode.review.placeholder');
     const buttons = document.createElement('div');
     buttons.className = 'dp-review-buttons';
     const cancel = document.createElement('button');
@@ -264,7 +364,10 @@ export function createReviewUi(options: ReviewUiOptions) {
       event.preventDefault();
       const body = area.value.trim();
       if (body === '') { area.focus(); return; }
-      options.send({ kind: 'review-add', anchor: found.anchor, precision: found.precision, body });
+      options.send({
+        kind: 'review-add', anchor: found.anchor, precision: found.precision, body,
+        ...(asComment ? { type: 'comment' as const } : {}),
+      });
       closeAdd();
       window.getSelection()?.removeAllRanges();
     });
@@ -278,7 +381,11 @@ export function createReviewUi(options: ReviewUiOptions) {
     /** The comments on this document, as the host sends them. */
     setNotes(next: readonly ReviewNote[]): void { notes = next; paint(); },
     /** Called after every redraw of the page. */
-    paint,
+    paint(next?: HTMLElement): void { paint(next); watchPage(); },
+    /** Places the bubbles again, after something on the page moved. */
+    layout,
+    /** The lines a drawing's menu gets, for the shape pressed. */
+    figureMenu,
     /** Applies the remembered mode to a newly mounted view. */
     apply(): void { setMode(mode); },
   };

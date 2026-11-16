@@ -8,7 +8,9 @@
 // is a drawing nobody will tidy up.
 import { cpSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
+import { pathToFileURL } from 'node:url';
 import { chromium } from 'playwright-core';
+import { findChromium } from './pdf-writer.mjs';
 
 const check = (name, ok, detail = '') => {
   console.log(`${ok ? '○' : '✗'} ${name}${detail ? ' — ' + detail : ''}`);
@@ -34,7 +36,15 @@ edit('docs/auth-design.md',
 edit('shared/system-architecture.dgm',
   'cache   [(セッションキャッシュ)]', 'cache   [(セッション置き場)]');
 edit('docs/auth-design/screen-items.table',
-  '| 入力 |  1 | ログイン ID', '| 入力 |  1 | ログイン名');
+  '| 入力 |  # | idBox   | ログイン ID', '| 入力 |  # | idBox   | ログイン名');
+// 前の版にはあって、今は無いもの（--show-removed strike のときだけ出る）
+edit('docs/auth-design.md',
+  '\n### 画面項目 {#sec-screen-items}', '\nロック中の利用者には、解除の窓口を画面で案内する。\n\n### 画面項目 {#sec-screen-items}');
+edit('docs/auth-design/screen-items.table',
+  '| 表示 |  — |         | エラーメッセージ',
+  '| ^    |  — | signup  | 新規登録             | —               |  —   |      |   —    | 登録画面へ遷移                                     |\n| 表示 |  — |         | エラーメッセージ');
+edit('shared/system-architecture.dgm',
+  '  note1   >社内 NW からのみ接続可]', '  note1   >社内 NW からのみ接続可]\n  audit   [監査ログ]\n  api     -> audit');
 // 位置だけの違い。これは変更ではない
 edit('shared/system-architecture.dgm',
   '  api     @ (460, 120) 140x60', '  api     @ (480, 140) 140x60');
@@ -42,10 +52,10 @@ edit('shared/system-architecture.dgm',
 execFileSync('node', ['tools/build.mjs', '--in', 'sample', '--diff-from', BEFORE],
   { encoding: 'utf8' });
 
-const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' });
+const browser = await chromium.launch({ executablePath: findChromium(process.argv.includes('--chromium') ? process.argv[process.argv.indexOf('--chromium') + 1] : undefined) });
 const page = await browser.newPage({ viewport: { width: 1100, height: 900 } });
 page.on('pageerror', e => { console.log('✗ ページエラー:', e.message); process.exitCode = 1; });
-await page.goto('file://' + process.cwd() + '/out/build/docs/auth-design.html');
+await page.goto(pathToFileURL(process.cwd() + '/out/build/docs/auth-design.html').href);
 await page.waitForTimeout(300);
 
 const marked = selector => page.$$eval(selector, nodes => nodes.map(n => n.textContent.trim()));
@@ -102,6 +112,41 @@ const fillOf = id => {
 };
 check('PPTX では変わった図形の塗りが変わる', fillOf('cache') === 'FDF0D5', fillOf('cache'));
 check('PPTX では変わっていない図形はそのまま', fillOf('web') === 'FFFFFF', fillOf('web'));
+
+check('頼まなければ、消えたものは出ない', (await page.$$('.dp-diff-removed:not(.dp-diff-key)')).length === 0);
+
+// 消えたものを取り消し線で見せる
+execFileSync('node', ['tools/build.mjs', '--in', 'sample', '--diff-from', BEFORE, '--show-removed', 'strike'],
+  { encoding: 'utf8' });
+await page.goto(pathToFileURL(process.cwd() + '/out/build/docs/auth-design.html').href);
+await page.waitForTimeout(300);
+const goneProse = await marked('.dp-prose.dp-diff-removed');
+check('消えた段落が取り消し線で出る', goneProse.some(text => text.includes('解除の窓口')), goneProse.join(' / ').slice(0, 80));
+const struckStyle = await page.$eval('.dp-prose.dp-diff-removed p', node => getComputedStyle(node).textDecorationLine);
+check('　取り消し線が引かれている', struckStyle.includes('line-through'), struckStyle);
+check('　消えた段落は、その後ろにあった見出しの前に出る',
+  await page.evaluate(() => {
+    const gone = [...document.querySelectorAll('.dp-prose.dp-diff-removed')].find(n => n.textContent.includes('解除の窓口'));
+    const heading = document.getElementById('sec-screen-items');
+    return !!gone && !!heading && (gone.compareDocumentPosition(heading) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
+  }));
+const oldWords = await marked('td del.dp-diff-was');
+check('書き換えたセルには元の文字が取り消しで残る', oldWords.includes('ログイン名'), oldWords.join(' / '));
+const goneRows = await marked('tr.dp-diff-removed');
+check('消えた表の行が元の位置に出る', goneRows.some(text => text.includes('新規登録')), goneRows.join(' / ').slice(0, 80));
+const goneParts = await marked('.dp-diff-gone');
+check('図から消えた図形と線が図の下に名前で出る',
+  goneParts.some(text => text.includes('監査ログ') && text.includes('認証 API → 監査ログ')), goneParts.join(' / '));
+check('凡例に「削除」が載る', (await page.textContent('.dp-diff-legend')).includes('削除'));
+await page.screenshot({ path: 'out/diff-removed-page.png', fullPage: true });
+const struckPdf = await getDocument({
+  data: new Uint8Array(readFileSync('out/build/docs/auth-design.pdf')), useSystemFonts: false,
+}).promise;
+let struckText = '';
+for (let n = 1; n <= struckPdf.numPages; n++) {
+  struckText += (await (await struckPdf.getPage(n)).getTextContent()).items.map(item => item.str).join('');
+}
+check('PDF にも消えた段落が出る', struckText.includes('解除の窓口'));
 
 // 比べる相手が無いときは、印も凡例も出ない
 execFileSync('node', ['tools/build.mjs', '--in', 'sample'], { encoding: 'utf8' });

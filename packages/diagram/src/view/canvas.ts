@@ -16,7 +16,7 @@ import { DEFAULT_GROUPS, DEFAULT_LIBRARY } from '../default-parts.js';
 import { parseDiagram } from '../parse.js';
 import { withParts } from '../parts.js';
 import {
-  applyEdit, BASE_MESSAGES, DEFAULT_LOCALE, described, describeError, enableLongPress,
+  applyEdit, attachZoom, BASE_MESSAGES, DEFAULT_LOCALE, described, describeError, enableLongPress,
   type Edit, type Locale, type Phrase,
 } from '@docpresenter/base';
 import { DIAGRAM_MESSAGES, dgm } from '../messages.js';
@@ -51,6 +51,12 @@ const rowPicks = new WeakMap<Document, { id: string; index: number }>();
  * so "and now type its name" has to outlive the one that made it.
  */
 const textPicks = new WeakMap<Document, string>();
+/**
+ * How far the drawing is zoomed, kept per document for the same reason: every
+ * edit builds the canvas again, and an edit is no reason to zoom back out.
+ * A host that keeps it itself passes `zoom` and `onZoom` instead.
+ */
+const zoomPicks = new WeakMap<Document, number | undefined>();
 /** The kinds of item that are inputs, and so come with a label. */
 const INPUTS = new Set(['入力', 'input']);
 /** A shape that draws itself from rows, and the rows it draws. */
@@ -130,6 +136,10 @@ export interface CanvasOptions {
     readonly path: string;
     readonly create: (text: string) => string | undefined;
   } | undefined;
+  /** The zoom to start at (1 is the drawing's own size); undefined fits it to the page. */
+  readonly zoom?: number | undefined;
+  /** Told when the zoom changes. Without it the canvas keeps the zoom itself, per document. */
+  readonly onZoom?: ((scale: number | undefined) => void) | undefined;
 }
 
 export interface Canvas {
@@ -211,7 +221,13 @@ export function createCanvas(options: CanvasOptions): Canvas {
   stage.innerHTML = renderDiagram(file, undefined, undefined, locale, true);
   const svg = stage.querySelector('svg');
   const bar = createBar();
-  root.append(bar, stage);
+  // The stage scrolls inside its own frame once it is zoomed past the page,
+  // and the zoom buttons sit on the frame's corner, out of the scroll.
+  const view = element('div', 'dp-canvas-view');
+  const scroller = element('div', 'dp-canvas-scroll');
+  scroller.append(stage);
+  view.append(scroller);
+  root.append(bar, view);
 
   function element(tag: string, className: string): HTMLElement {
     const node = owner.createElement(tag);
@@ -234,6 +250,18 @@ export function createCanvas(options: CanvasOptions): Canvas {
   // coordinates and scale with it. Nothing here is ever written to a file.
   const overlay = shape('g', 'dp-canvas-overlay');
   drawing.append(overlay);
+
+  // A drag moves shapes here, so only Space with a drag, or the middle
+  // button, pans. The handles are drawn to a size on screen, so a new zoom
+  // draws them again.
+  attachZoom(view, scroller, () => drawing, {
+    locale,
+    initial: options.onZoom ? options.zoom : (options.zoom ?? zoomPicks.get(owner)),
+    onChange: next => {
+      if (options.onZoom) options.onZoom(next); else zoomPicks.set(owner, next);
+      paint();
+    },
+  });
 
   /** Screen pixels per drawing unit: the SVG may be shown smaller than it is. */
   function scale(): number {

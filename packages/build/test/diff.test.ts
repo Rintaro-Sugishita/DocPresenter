@@ -7,7 +7,7 @@
 import { describe, expect, it } from 'vitest';
 import { parseDiagram } from '@docpresenter/diagram';
 import { parseTable } from '@docpresenter/markdown';
-import { diagramDiff, lineRanges, tableDiff } from '../src/diff.js';
+import { diagramDiff, lineRanges, removedLines, tableDiff } from '../src/diff.js';
 
 const NL = String.fromCharCode(10);
 const lines = (...rows: string[]): string => rows.join(NL);
@@ -57,7 +57,7 @@ describe('表', () => {
     const after = parseTable(lines(
       '| 分類 | 値 | 備考 |', '|------|----|------|',
       '| 入力 | 9 | あ |', '| 操作 | 2 | い |'));
-    expect([...tableDiff(before, after).cells.entries()]).toEqual([['入力/値', 'changed']]);
+    expect([...tableDiff(before, after).cells.entries()]).toEqual([['0/1', 'changed']]);
   });
 
   it('行が増えても下の行は変更にならない', () => {
@@ -65,8 +65,20 @@ describe('表', () => {
       '| 分類 | 値 | 備考 |', '|------|----|------|',
       '| 表示 | 0 | う |', '| 入力 | 1 | あ |', '| 操作 | 2 | い |'));
     const marks = tableDiff(before, after);
-    expect([...marks.rows.entries()]).toEqual([['表示', 'added']]);
+    expect([...marks.rows.entries()]).toEqual([[0, 'added']]);
     expect(marks.cells.size).toBe(0);
+  });
+
+  it('先頭の列が結合（^）や連番（#）でも、変わったセルだけを指す', () => {
+    const merged = parseTable(lines(
+      '| 分類 | No | 項目名 | 型 |', '|------|---:|--------|----|',
+      '| 入力 | # | ログイン ID | varchar |', '| ^ | # | パスワード | varchar |', '| ^ | # | 保持 | bool |'));
+    const edited = parseTable(lines(
+      '| 分類 | No | 項目名 | 型 |', '|------|---:|--------|----|',
+      '| 入力 | # | ログイン名 | varchar |', '| ^ | # | パスワード | varchar |', '| ^ | # | 保持 | bool |'));
+    const marks = tableDiff(merged, edited);
+    expect([...marks.cells.entries()]).toEqual([['0/2', 'changed']]);
+    expect(marks.rows.size).toBe(0);
   });
 
   it('行が入れ替わっても変更ではない', () => {
@@ -115,5 +127,46 @@ describe('図', () => {
       'free {', '  a {あ}', '  b [(い)]', '  a -> b "x"', '}',
       'layout {', '  a @ (0, 0)', '  b @ (0, 100)', '}'));
     expect([...diagramDiff(before, after).nodes.entries()]).toEqual([['a', 'changed']]);
+  });
+});
+
+describe('消えたもの（--show-removed strike）', () => {
+  it('消えた行は、次に続く行の位置に、書いてあったとおりの文字で返る', () => {
+    const before = lines('# 見出し', '', 'あ', '', 'い', '', 'う');
+    const after = lines('# 見出し', '', 'あ', '', 'う');
+    const gone = removedLines(before, after, '');
+    expect(gone).toEqual([{ doc: '', at: Buffer.byteLength(after.slice(0, after.indexOf('う'))), text: 'い' }]);
+  });
+
+  it('書き換えた行は、新しい行の頭に古い文字が置かれる', () => {
+    const gone = removedLines(lines('あ', '古い文', 'う'), lines('あ', '新しい文', 'う'), '');
+    expect(gone).toEqual([{ doc: '', at: 4, text: '古い文' }]);
+  });
+
+  it('末尾で消えた行は文書の終わりに、空行だけの削除と前付けの設定は出さない', () => {
+    const before = lines('---', 'title: 旧', '---', '', 'あ', '', '', 'い');
+    const after = lines('---', 'title: 新', '---', '', 'あ');
+    const gone = removedLines(before, after, '');
+    expect(gone).toEqual([{ doc: '', at: Buffer.byteLength(after), text: 'い' }]);
+  });
+
+  it('表は、変わったセルの元の文字と、消えた行・列を返す', () => {
+    const before = parseTable(lines(
+      '| 分類 | 値 | 備考 |', '|------|----|------|',
+      '| 入力 | 1 | あ |', '| 表示 | 3 | え |', '| 操作 | 2 | い |'));
+    const after = parseTable(lines(
+      '| 分類 | 値 |', '|------|----|',
+      '| 入力 | 9 |', '| 操作 | 2 |'));
+    const marks = tableDiff(before, after);
+    expect([...marks.was!.entries()]).toEqual([['0/1', '1']]);
+    expect(marks.removedRows).toEqual([{ before: 1, cells: ['表示', '3'] }]);
+    expect(marks.removedColumns).toEqual(['備考']);
+  });
+
+  it('図は、消えた図形と線をその文字で返す', () => {
+    const before = parseDiagram(lines(
+      'free {', '  a [あ]', '  b [(い)]', '  c [う]', '  a -> b "x"', '  b -> c', '}'));
+    const after = parseDiagram(lines('free {', '  a [あ]', '  b [(い)]', '  a -> b "x"', '}'));
+    expect(diagramDiff(before, after).removed).toEqual({ nodes: ['う'], edges: ['い → う'] });
   });
 });

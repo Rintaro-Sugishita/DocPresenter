@@ -15,7 +15,8 @@ import { byteLength, toLf } from '@docpresenter/base';
 import { parseDiagram, type DiagramFile } from '@docpresenter/diagram';
 import {
   cellAt, parseTable,
-  type Change, type DiagramMarks, type DiffMarks, type RangeMark,
+  shownText,
+  type Change, type DiagramMarks, type DiffMarks, type RangeMark, type RemovedRow, type RemovedText,
   type TableFile, type TableMarks,
 } from '@docpresenter/markdown';
 import { asLf, type Workspace } from './workspace.js';
@@ -37,6 +38,7 @@ export interface DiffOptions {
 
 export function diffOf(options: DiffOptions): DiffMarks {
   const ranges: RangeMark[] = [];
+  const removed: RemovedText[] = [];
   const tables = new Map<string, TableMarks>();
   const diagrams = new Map<string, DiagramMarks>();
 
@@ -55,6 +57,7 @@ export function diffOf(options: DiffOptions): DiffMarks {
         continue;
       }
       ranges.push(...lineRanges(before, now, doc));
+      removed.push(...removedLines(before, now, doc));
       continue;
     }
     if (/\.table$/i.test(path)) {
@@ -74,7 +77,7 @@ export function diffOf(options: DiffOptions): DiffMarks {
   }
 
   return {
-    ranges, tables, diagrams,
+    ranges, removed, tables, diagrams,
     showRemoved: options.showRemoved ?? 'none',
     from: options.from,
   };
@@ -130,6 +133,48 @@ export function lineRanges(before: string, after: string, doc: string): RangeMar
 }
 
 /**
+ * The lines that are gone, each run of them placed where it stood in the new
+ * text: at the start of the lines that replaced it, or of the line that now
+ * follows. Lines that were only blank, and the front matter (settings, not
+ * prose), are left out.
+ */
+export function removedLines(before: string, after: string, doc: string): RemovedText[] {
+  const a = before.split('\n');
+  const b = after.split('\n');
+  const settings = frontMatterLines(a);
+  const starts: number[] = [];
+  let offset = 0;
+  for (const line of b) { starts.push(offset); offset += byteLength(line) + 1; }
+  const at = (index: number): number => (index < b.length ? starts[index]! : byteLength(after));
+
+  const found: RemovedText[] = [];
+  const take = (from: number, to: number, where: number): void => {
+    const lines = a.slice(Math.max(from, settings), to);
+    if (lines.every(line => line.trim() === '')) return;
+    // A run is cut at its blank edges, so what is drawn is the words, not the gaps.
+    while (lines[0]?.trim() === '') lines.shift();
+    while (lines[lines.length - 1]?.trim() === '') lines.pop();
+    found.push({ doc, at: at(where), text: lines.join('\n') });
+  };
+  let ai = 0;
+  let bi = 0;
+  for (const [ax, bx] of lcs(a, b)) {
+    if (ax > ai) take(ai, ax, bi);
+    ai = ax + 1;
+    bi = bx + 1;
+  }
+  if (ai < a.length) take(ai, a.length, bi);
+  return found;
+}
+
+/** How many leading lines are front matter (`---` … `---`). */
+function frontMatterLines(lines: readonly string[]): number {
+  if (lines[0]?.trim() !== '---') return 0;
+  const end = lines.findIndex((line, i) => i > 0 && (line.trim() === '---' || line.trim() === '...'));
+  return end < 0 ? 0 : end + 1;
+}
+
+/**
  * Matching line pairs: the longest common subsequence of the two line lists.
  *
  * An earlier version anchored on lines that appear exactly once in both files,
@@ -171,46 +216,104 @@ function lcs(a: readonly string[], b: readonly string[]): [number, number][] {
 // --- tables ---------------------------------------------------------------
 
 function wholeTable(table: TableFile): TableMarks {
-  const rows = new Map<string, Change>();
-  for (let r = 0; r < table.rows.length; r++) rows.set(keyOf(table, r), 'added');
+  const rows = new Map<number, Change>();
+  for (let r = 0; r < table.rows.length; r++) rows.set(r, 'added');
   return { cells: new Map(), rows };
 }
 
 /**
- * Cells, not lines. A row is matched by the text of its leading cell and a
- * column by its header — the same names a style rule uses — so a row that moves
- * is not a change, and a row that is inserted does not mark everything below it.
+ * Cells, not lines. A column is matched by its header — the name a style rule
+ * uses. A row is matched by what it holds: first a row whose every cell is the
+ * same (so a row that moves is not a change), then, among the rest, the row
+ * that shares the most cells with it (so a row with one cell edited is that
+ * row, changed). A row that shares no cell with any that is left is added, and
+ * an inserted row does not mark everything below it.
+ *
+ * Rows are not matched by their leading cell's text: a leading column is
+ * often a category merged down (`^`) or a running number (`#`), the same in
+ * row after row.
  */
 export function tableDiff(before: TableFile, after: TableFile): TableMarks {
   const cells = new Map<string, Change>();
-  const rows = new Map<string, Change>();
+  const rows = new Map<number, Change>();
+  const was = new Map<string, string>();
+  const columnOf = after.columns.map(column =>
+    before.columns.findIndex(old => old.header === column.header));
+  const textAt = (table: TableFile, r: number, c: number): string => cellAt(table, r, c)?.text ?? '';
+  const signature = (table: TableFile, r: number, columns: readonly number[]): string =>
+    columns.map(c => (c < 0 ? '\u0000' : textAt(table, r, c))).join('\u0001');
 
-  const oldRows = new Map<string, number>();
-  before.rows.forEach((_, r) => oldRows.set(keyOf(before, r), r));
-
+  // Rows the same in every column both versions have.
+  const shared = columnOf.filter(c => c >= 0);
+  const free = new Map<string, number[]>();
+  before.rows.forEach((_, r) => {
+    const key = signature(before, r, shared);
+    free.set(key, [...(free.get(key) ?? []), r]);
+  });
+  const pairOf = new Map<number, number>();
+  const left: number[] = [];
   after.rows.forEach((_, r) => {
-    const key = keyOf(after, r);
-    const was = oldRows.get(key);
-    if (was === undefined) {
-      rows.set(key, 'added');
-      return;
+    const key = signature(after, r, columnOf.map((c, i) => (c < 0 ? -1 : i)).filter(i => i >= 0));
+    const same = free.get(key);
+    if (same && same.length > 0) pairOf.set(r, same.shift()!);
+    else left.push(r);
+  });
+  const unpaired = new Set([...free.values()].flat());
+
+  // The rest: the old row that shares the most cells.
+  for (const r of left) {
+    let best = -1;
+    let most = 0;
+    for (const was of unpaired) {
+      let alike = 0;
+      columnOf.forEach((old, c) => {
+        if (old >= 0 && textAt(after, r, c) !== '' && textAt(after, r, c) === textAt(before, was, old)) alike += 1;
+      });
+      if (alike > most) { most = alike; best = was; }
     }
+    if (best < 0) { rows.set(r, 'added'); continue; }
+    unpaired.delete(best);
+    pairOf.set(r, best);
     for (let c = 0; c < after.columns.length; c++) {
-      const header = after.columns[c]?.header ?? '';
-      const oldColumn = before.columns.findIndex(column => column.header === header);
       const now = cellAt(after, r, c);
       if (!now || now.row !== r || now.column !== c) continue;
-      if (oldColumn < 0) { cells.set(`${key}/${header}`, 'added'); continue; }
-      const then = cellAt(before, was, oldColumn);
-      if ((then?.text ?? '') !== now.text) cells.set(`${key}/${header}`, 'changed');
+      const old = columnOf[c]!;
+      if (old < 0) { cells.set(`${r}/${c}`, 'added'); continue; }
+      if (textAt(before, best, old) !== now.text) {
+        cells.set(`${r}/${c}`, 'changed');
+        was.set(`${r}/${c}`, shownAt(before, best, old));
+      }
     }
-  });
+  }
 
-  return { cells, rows };
+  // The rows left over are gone. Each goes above the first row now whose
+  // partner stood after it, so it reappears where it was.
+  const removedRows: RemovedRow[] = [...unpaired].sort((x, y) => x - y).map(old => {
+    let at = after.rows.length;
+    for (let r = 0; r < after.rows.length; r++) {
+      const partner = pairOf.get(r);
+      if (partner !== undefined && partner > old) { at = r; break; }
+    }
+    return { before: at, cells: columnOf.map(c => (c < 0 ? '' : shownAt(before, old, c))) };
+  });
+  const removedColumns = before.columns
+    .filter(column => !after.columns.some(now => now.header === column.header))
+    .map(column => column.header);
+
+  // A column that is new is new in every row that was already there.
+  for (const [r] of pairOf) {
+    columnOf.forEach((old, c) => {
+      const now = cellAt(after, r, c);
+      if (old < 0 && now && now.row === r && now.column === c) cells.set(`${r}/${c}`, 'added');
+    });
+  }
+  return { cells, rows, was, removedRows, removedColumns };
 }
 
-function keyOf(table: TableFile, row: number): string {
-  return table.rows[row]?.cells[0]?.text ?? '';
+/** What a cell showed: a running number as its number, a merged cell as the cell it joins. */
+function shownAt(table: TableFile, row: number, column: number): string {
+  const cell = cellAt(table, row, column);
+  return cell ? shownText(cell) : '';
 }
 
 // --- drawings -------------------------------------------------------------
@@ -256,5 +359,17 @@ export function diagramDiff(before: DiagramFile, after: DiagramFile): DiagramMar
     }
   }
 
-  return { nodes, edges };
+  // What is gone has no place left in the drawing, so it is named instead.
+  const now = new Set(after.nodes.map(node => node.id));
+  const nowEdges = new Set(after.edges.map(edge => `${edge.from}->${edge.to}`));
+  const words = (id: string): string => {
+    const text = was.get(id)?.text.trim();
+    return text ? text : id;
+  };
+  const removed = {
+    nodes: before.nodes.filter(node => !now.has(node.id)).map(node => words(node.id)),
+    edges: before.edges.filter(edge => !nowEdges.has(`${edge.from}->${edge.to}`))
+      .map(edge => `${words(edge.from)} → ${words(edge.to)}${edge.label ? ` (${edge.label})` : ''}`),
+  };
+  return { nodes, edges, ...(removed.nodes.length + removed.edges.length > 0 ? { removed } : {}) };
 }

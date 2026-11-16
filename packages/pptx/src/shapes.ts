@@ -30,6 +30,9 @@ function runXml(run: Run, size: number, colour: string): string {
   const properties = [
     `lang="ja-JP"`, `sz="${Math.round(size * 100)}"`,
     run.bold ? 'b="1"' : '', run.italic ? 'i="1"' : '',
+    run.underline ? 'u="sng"' : '', run.strike ? 'strike="sngStrike"' : '',
+    // DrawingML raises and lowers by a share of the size, in thousandths of a percent.
+    run.script === 'sup' ? 'baseline="30000"' : run.script === 'sub' ? 'baseline="-25000"' : '',
   ].filter(Boolean).join(' ');
   const fill = `<a:solidFill><a:srgbClr val="${hex(run.colour ?? colour, '1C1F24')}"/></a:solidFill>`;
   const face = run.code ? '<a:latin typeface="Consolas"/><a:ea typeface="Consolas"/>' : '';

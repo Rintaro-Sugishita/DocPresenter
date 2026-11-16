@@ -27,3 +27,4 @@ export * from './view/overlay.js';
 export * from './complete.js';
 export * from './items.js';
 export * from './fields.js';
+export * from './node-anchor.js';

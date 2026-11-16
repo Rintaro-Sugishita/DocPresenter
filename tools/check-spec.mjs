@@ -503,6 +503,14 @@ check('table §6.2', 'range: は名前で行を選ぶ',
   !rowRules(ranged, 2).some(r => r.declarations.get('fill') === 'changed'));
 check('table §3', 'cell: は先頭セルと見出しの文字で 1 つのセルを選ぶ',
   cellRules(ranged, ranged.rows[2].cells[1], 2).some(r => r.declarations.get('fill') === '#fdf0d5'));
+{
+  // 先頭の列が ^ で繰り返す表は、別の列の文字で行を名指しする
+  const merged = parseTable(['| 分類 | ID    | 型      |', '|------|-------|---------|',
+    '| 入力 | idBox | varchar |', '| ^    | pwBox | varchar |', '', 'style {', '  cell:[ID=pwBox]/型 { fill: #fdf0d5 }', '}'].join(NL));
+  const fillOf = row => cellRules(merged, merged.rows[row].cells.find(cell => cell.column === 2), row)
+    .some(r => r.declarations.get('fill') === '#fdf0d5');
+  check('table §6.2', 'cell:[BY=ROW]/COL は列 BY の文字で行を選ぶ', !fillOf(0) && fillOf(1));
+}
 
 const lineSpan = (() => {
   const src = ['| 用語 | 説明 |', '|------|------|', '| 会員 | 登録済みの利用者 |'].join(NL);

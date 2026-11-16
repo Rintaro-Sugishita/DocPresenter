@@ -8,7 +8,7 @@
 // shared link means the same thing tomorrow. A folder on this computer cannot
 // travel in a link; it is moved about in the page itself.
 
-import { describeError, type Locale } from '@docpresenter/base';
+import { attachZoom, describeError, ZOOM_STYLE, type Locale } from '@docpresenter/base';
 import { hasMermaid, takeIn, type BuildDiagnostic, type Workspace } from '@docpresenter/build';
 import { addressOf, ViewerError, type Addressed, type Fetch, type Host, type Location } from './hosts/index.js';
 import { WEB_MESSAGES, type WebMessage } from './messages.js';
@@ -86,6 +86,9 @@ export function startViewer(env: ViewerEnvironment): void {
   const theme = doc.createElement('style');
   theme.dataset['dpTheme'] = '';
   doc.head.prepend(theme);
+  const chrome = doc.createElement('style');
+  chrome.textContent = ZOOM_STYLE;
+  doc.head.append(chrome);
   doc.body.append(bar, status, notes, main);
 
   const say = (text: string, kind: 'ok' | 'busy' | 'refused' = 'ok'): void => {
@@ -562,6 +565,7 @@ export function startViewer(env: ViewerEnvironment): void {
     bar.replaceChildren(...top);
     theme.textContent = composed.style;
     main.innerHTML = composed.body;
+    addZooms(main, locale);
     void drawn(main, composed.body).catch(fail);
 
     const failed = [...held.texts, ...held.images].filter(([, value]) => value === undefined).map(([path]) => path);
@@ -699,4 +703,20 @@ function button(doc: Document, label: string, onClick: () => unknown): HTMLButto
   made.textContent = label;
   made.addEventListener('click', () => { void onClick(); });
   return made;
+}
+
+/**
+ * Makes every drawing on the page zoomable where it stands. Reading is all
+ * this page does, so a plain drag pans the zoomed drawing.
+ */
+function addZooms(main: HTMLElement, locale: Locale): void {
+  for (const svg of main.querySelectorAll<SVGSVGElement>('svg.dp-diagram')) {
+    const host = svg.parentElement;
+    if (!host || host.classList.contains('dp-zoom-scroll')) continue;
+    const frame = main.ownerDocument.createElement('div');
+    frame.className = 'dp-zoom-scroll';
+    svg.replaceWith(frame);
+    frame.append(svg);
+    attachZoom(host, frame, () => svg, { locale, plainDragPans: true });
+  }
 }

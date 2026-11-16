@@ -1,6 +1,6 @@
 # Inline text
 
-Version 0.1 (draft) · part of the [DocPresenter format specifications](README.md)
+Version 0.2 (draft) · part of the [DocPresenter format specifications](README.md)
 
 A label in a drawing, a cell in a table, and a paragraph in a document are all
 prose, so all three take the same inline notation. Someone who has learnt it
@@ -18,7 +18,7 @@ This document specifies that notation. It is deliberately small.
 
 The distinction matters. **A drawing is SVG**, where a styled stretch of text is
 a `tspan` and there is no such thing as a link, an image, or a list. So a `.dgm`
-label recognises exactly the four constructs in §2 and nothing else. A cell and
+label recognises exactly the constructs in §2 and nothing else. A cell and
 a paragraph are HTML, where the whole of CommonMark's inline syntax applies, and
 §2 describes the part of it that overlaps plus the one extension.
 
@@ -85,7 +85,32 @@ than marked by hand.
 A colour applies to the text it brackets, and nests with §2.1 and §2.2 in either
 order.
 
-### 2.5 Escaping
+### 2.5 Strikethrough, superscript, subscript, underline
+
+```
+~~struck~~
+x^2^
+H~2~O
+[underlined]{.underline}
+```
+
+Added in 0.2, written as Pandoc writes them ([design/decisions.md](../design/decisions.md):
+borrow notation, do not invent it).
+
+- `~~` opens and closes strikethrough, as GFM writes it.
+- `^` opens and closes superscript; a single `~` opens and closes subscript. A
+  `~` that is half of `~~` is never subscript.
+- **The words inside `^…^` and `~…~` hold no bare space.** As in Pandoc, a
+  space there is written `\ `. A pair with a bare space inside, or with nothing
+  inside, is text: `3^2 and 4^2` and `10~20 件` are what they say.
+- Underline is a bracketed span (§2.4) with Pandoc's class `.underline`. A
+  span takes one attribute: an underlined colour is two spans,
+  `[[text]{.underline}]{color=#c62828}`.
+
+Superscript and subscript do not combine with each other. All four nest with
+§2.1–§2.4 in either order.
+
+### 2.6 Escaping
 
 A backslash passes the next character through untouched:
 
@@ -100,8 +125,8 @@ A backslash at the very end of the text is a literal backslash.
 ## 3. The result
 
 A reader produces a sequence of **runs**. A run is a stretch of text that is
-drawn one way throughout, carrying four properties: strong, emphasis, code, and
-colour. Runs are flat: nested marks combine into one run's properties rather
+drawn one way throughout, carrying these properties: strong, emphasis, code,
+colour, strikethrough, underline, and a raise (superscript or subscript). Runs are flat: nested marks combine into one run's properties rather
 than nesting in the output.
 
 For a drawing, this matters twice over:
@@ -115,12 +140,10 @@ For a drawing, this matters twice over:
 
 ## 4. What is not here
 
-No links, no images, no footnotes, no strikethrough, no subscript, no maths.
-Each of them has been left out for the same reason: a drawing cannot show it and
-a table cell rarely needs it, and a notation that is bigger than the thing it
-describes is a notation people get wrong.
+No links, no images, no footnotes, no maths. Each of them has been left out
+for the same reason: a drawing cannot show it and a table cell rarely needs it,
+and a notation that is bigger than the thing it describes is a notation people
+get wrong.
 
-Strikethrough is the one most likely to arrive. When it does, it arrives as
-GFM's `~~text~~` and not as anything new
-([design/decisions.md](../design/decisions.md): borrow notation, do not invent
-it).
+Strikethrough, superscript, subscript and underline were in this list until
+0.2. They arrived as Pandoc's notation (§2.5), not as anything new.

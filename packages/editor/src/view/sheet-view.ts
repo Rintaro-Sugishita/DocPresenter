@@ -26,7 +26,7 @@ import { TableEditError } from '../table.js';
 import { createCanvas } from '@docpresenter/diagram';
 import { createOverlayEditor } from '@docpresenter/diagram';
 import { createGrid, type CellChoices, type Grid, type GridPosition } from './grid.js';
-import { createMenu } from '@docpresenter/base';
+import { attachZoom, createMenu, type MenuItem } from '@docpresenter/base';
 import { EDITOR_STYLE } from './style.js';
 import { BASE_STYLE } from '@docpresenter/base';
 import { DIAGRAM_STYLE } from '@docpresenter/diagram';
@@ -114,6 +114,17 @@ export interface SheetViewOptions {
    */
   readonly decorate?: (page: HTMLElement) => void;
   /**
+   * Called when a drawing is zoomed, with its figure: whatever the host put on
+   * top of it (the comments beside its shapes) has moved.
+   */
+  readonly onZoom?: (figure: HTMLElement) => void;
+  /**
+   * More lines for the menu on a figure, from whoever shows comments: what
+   * the press was on (a shape of a drawing, say) decides what they offer.
+   * Offered while reading too, unlike the figure's own lines.
+   */
+  readonly figureMenu?: (figure: HTMLElement, target: Element) => readonly MenuItem[];
+  /**
    * What Ctrl+Z takes back. A host that mounts the view again — because a
    * picture arrived, or a file changed — passes the same one each time, so the
    * history outlives the view. Without it the view keeps its own.
@@ -144,6 +155,14 @@ export interface SheetView {
    * them, through `decorate`).
    */
   setReadOnly(on: boolean): void;
+  /**
+   * What is selected in the source box open now, as a byte range of the file
+   * it came from: the document when `path` is undefined, otherwise the
+   * referenced file as the document names it. Undefined when nothing is
+   * selected, or once the box differs from the file — a range of words not
+   * written yet is a range of nothing.
+   */
+  sourceSelection(): { path: string | undefined; start: number; end: number; text: string } | undefined;
   /** Applies changed settings without losing the place. */
   configure(settings: EditorSettings): void;
   destroy(): void;
@@ -160,6 +179,8 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
   let sections: HTMLElement[] = [];
   let tabs: HTMLElement[] = [];
   let editing: BlockEdit | undefined;
+  /** Where the pointer went down to open what opens next, so the caret starts there. */
+  let press: { x: number; y: number } | undefined;
   /** The table whose grid is open, and where the selection sits in it. */
   let picture: { path: string } | undefined;
   let pictureControls: PictureControls | undefined;
@@ -204,16 +225,18 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
   // A figure's names are asked for from its button, or from the menu on it.
   // The grid and the canvas have menus of their own, and keep them.
   pane.addEventListener('contextmenu', event => {
-    if (readOnly) return;
     const target = event.target as HTMLElement | null;
     if (target?.closest('.dp-grid, .dp-canvas, .dp-canvas-host, .dp-block-source')) return;
     const figure = target?.closest<HTMLElement>('.dp-figure');
-    if (!figure || !nameable(figure)) return;
-    event.preventDefault();
-    menu.open(event.clientX, event.clientY, [
+    if (!figure || !target) return;
+    const more = options.figureMenu?.(figure, target) ?? [];
+    const own: MenuItem[] = readOnly || !nameable(figure) ? [] : [
       { label: t('editor.figure.button'), run: () => openNames(figure) },
       { label: t('editor.delete.button'), run: () => openDelete(figure) },
-    ]);
+    ];
+    if (own.length + more.length === 0) return;
+    event.preventDefault();
+    menu.open(event.clientX, event.clientY, [...own, ...more]);
   });
   const tabbar = element('div', 'dp-tabbar');
   tabbar.setAttribute('role', 'tablist');
@@ -242,6 +265,8 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
     readonly fresh: boolean;
     /** The referenced file being edited, or undefined for the document. */
     readonly path: string | undefined;
+    /** The text the box opened with: the range of the file, as it is in the file. */
+    readonly initial: string;
   }
 
   let toolbar = createToolbar(owner, applyFormat, settings.locale);
@@ -566,6 +591,34 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
         : value === 'center' ? 'editor.did.alignCenter' : 'editor.did.alignRight')
       : (value === undefined ? ed('editor.did.unwidth') : ed('editor.did.width.set', { value }));
     commit(() => ({ span, text: written, ...described(said) }), active);
+  }
+
+  // --- 図の拡大・縮小 ----------------------------------------------------------
+
+  /** How far each drawing is zoomed, by its path, so a redraw keeps it. */
+  const zooms = new Map<string, number | undefined>();
+
+  /**
+   * Puts the zoom on a drawing. The drawing goes into a frame of its own that
+   * scrolls once it outgrows the page; the buttons stay on the figure's
+   * corner. Editor chrome: the output is built from the source, not from here.
+   */
+  function addZoom(figure: HTMLElement): void {
+    const body = figure.querySelector<HTMLElement>(':scope > .dp-figure-body');
+    const svg = body?.querySelector<SVGSVGElement>(':scope > svg.dp-diagram');
+    if (!body || !svg) return;
+    const frame = element('div', 'dp-zoom-scroll');
+    svg.replaceWith(frame);
+    frame.append(svg);
+    const key = figure.dataset['path'] ?? '';
+    attachZoom(body, frame, () => frame.querySelector<SVGSVGElement>(':scope > svg'), {
+      locale: settings.locale,
+      initial: zooms.get(key),
+      onChange: next => {
+        zooms.set(key, next);
+        options.onZoom?.(figure);
+      },
+    });
   }
 
   // --- 図表の名前（ファイル名・題・ラベル） ------------------------------------
@@ -900,6 +953,9 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
       },
       selected: current.selected,
       selectedEdge: current.edge,
+      // The zoom the drawing was read at is the zoom it is edited at.
+      zoom: zooms.get(current.path),
+      onZoom: (next: number | undefined) => { zooms.set(current.path, next); },
       apply: (make: () => Edit, selected: readonly string[], edge?: string | undefined) => {
         if (canvas?.path === current.path) canvas = { ...canvas, selected, edge };
         commit(() => {
@@ -968,12 +1024,21 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
   ): void {
     endEdit(true);
 
+    // Where the block is on screen, and where in it the press was, before its
+    // source takes its place: the source opens where the reader was looking,
+    // with the caret near what they pressed, rather than scrolling the page to
+    // the block's last line.
+    const before = host.getBoundingClientRect();
+    const pressed = press;
+    press = undefined;
+    const share = pressed ? pressShare(host, before, pressed) : undefined;
+
     const area = owner.createElement('textarea');
     area.className = 'dp-block-source';
     area.value = initial;
     area.spellcheck = false;
 
-    const edit: BlockEdit = { host, original: host.innerHTML, span, area, prefix, fresh, path };
+    const edit: BlockEdit = { host, original: host.innerHTML, span, area, prefix, fresh, path, initial };
     host.classList.add('dp-editing');
     const update = (): void => {
       resize(area);
@@ -995,8 +1060,15 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
     editing = edit;
 
     resize(area);
-    area.focus();
-    area.setSelectionRange(area.value.length, area.value.length);
+    // A new block is empty; an opened one starts where it was pressed, or at
+    // its top when nothing was (a figure's source, opened from its canvas).
+    // The caret is placed before the box takes focus: placed after, the
+    // browser scrolls the page to show it, from wherever the page was while
+    // the box replaced the block — which, for a long block, is the top.
+    const caret = fresh ? area.value.length : Math.round((share ?? 0) * area.value.length);
+    area.setSelectionRange(caret, caret);
+    keepInView(host, before, area, share ?? 0);
+    area.focus({ preventScroll: true });
     toolbar.sync(area.value, area.selectionStart, area.selectionEnd);
 
     /** A change worked out on the text (a list carried on, items moved), applied to the box. */
@@ -1089,13 +1161,13 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
     // Reading: the press is the browser's, which is how text gets selected.
     if (readOnly) return;
     // The switch on a Mermaid block is a button, not a way into the text.
-    if ((event.target as HTMLElement | null)?.closest('.dp-mermaid-switch, .dp-code-copy, .dp-figure-tools')) return;
+    if ((event.target as HTMLElement | null)?.closest('.dp-mermaid-switch, .dp-code-copy, .dp-figure-tools, .dp-zoom-bar')) return;
     // A right press on a figure is for its menu. Opening the caption or the
     // drawing under it first would replace the element the menu belongs to.
     if (event.button === 2) {
       const pressed = event.target as HTMLElement | null;
       const figure = pressed?.closest<HTMLElement>('.dp-figure');
-      if (figure && nameable(figure)
+      if (figure && (nameable(figure) || options.figureMenu)
         && !pressed?.closest('.dp-grid, .dp-canvas, .dp-canvas-host, .dp-block-source')) return;
     }
     const target = (event.target as HTMLElement | null)?.closest<HTMLElement>(CLICKABLE);
@@ -1113,6 +1185,7 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
     // would then move focus to whatever was under the pointer — by that time a
     // detached node — and the editor would blur and close on the way up.
     event.preventDefault();
+    press = { x: event.clientX, y: event.clientY };
 
     // Remember what was pressed before closing anything, then find it again:
     // closing redraws, and the element pressed is replaced by an equal one.
@@ -1324,9 +1397,42 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
     return { start: raw[0]!, end: raw[1]! };
   }
 
+  /**
+   * How far through a block's text a press was, from 0 to 1: the row of the
+   * block it was on and how far along that row. The source has marks the page
+   * does not print, so this is near the word pressed rather than on it — near
+   * enough that the caret is on screen and in the right line or two.
+   */
+  function pressShare(host: HTMLElement, box: DOMRect, at: { x: number; y: number }): number | undefined {
+    if (box.height <= 0 || box.width <= 0 || at.y < box.top || at.y > box.bottom) return undefined;
+    const style = owner.defaultView?.getComputedStyle(host);
+    const line = parseFloat(style?.lineHeight ?? '') || (parseFloat(style?.fontSize ?? '') || 16) * 1.6;
+    const rows = Math.max(1, Math.round(box.height / line));
+    const row = Math.min(rows - 1, Math.floor(((at.y - box.top) / box.height) * rows));
+    const along = Math.min(1, Math.max(0, (at.x - box.left) / box.width));
+    return Math.min(1, Math.max(0, (row + along) / rows));
+  }
+
+  /**
+   * Puts the block back where it was on screen once its source has replaced
+   * it, then makes sure the caret's line is showing.
+   */
+  function keepInView(host: HTMLElement, before: DOMRect, area: HTMLTextAreaElement, share: number): void {
+    pane.scrollTop += host.getBoundingClientRect().top - before.top;
+    const view = pane.getBoundingClientRect();
+    const box = area.getBoundingClientRect();
+    const y = box.top + share * box.height;
+    if (y < view.top + 24 || y > view.bottom - 24) pane.scrollTop += y - (view.top + view.height / 2);
+  }
+
   function resize(area: HTMLTextAreaElement): void {
+    // Measuring at `auto` makes a long box short for a moment, and the page
+    // with it: the browser pulls the scroll back to fit, and the reader is
+    // sent to the top. The scroll is put back once the box has its height.
+    const keep = pane.scrollTop;
     area.style.height = 'auto';
     area.style.height = `${area.scrollHeight}px`;
+    if (pane.scrollTop !== keep) pane.scrollTop = keep;
   }
 
   function sheets(): readonly Sheet[] {
@@ -1495,6 +1601,7 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
     for (const figure of page.querySelectorAll<HTMLElement>('.dp-figure')) addNamesButton(figure);
     for (const block of page.querySelectorAll<HTMLElement>('.dp-mermaid')) addMermaidSwitch(block);
     for (const block of page.querySelectorAll<HTMLElement>('.dp-code')) addCopyButton(block);
+    for (const figure of page.querySelectorAll<HTMLElement>('.dp-figure')) addZoom(figure);
     options.decorate?.(page);
     if (grid) {
       const figure = page.querySelector<HTMLElement>(`.dp-figure[data-path="${cssEscape(grid.path)}"]`);
@@ -1683,6 +1790,16 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
     get source() { return source; },
     get active() { return active; },
     select,
+    sourceSelection() {
+      const current = editing;
+      if (!current || current.fresh) return undefined;
+      const { area } = current;
+      if (area.value !== current.initial || area.selectionStart === area.selectionEnd) return undefined;
+      const text = area.value.slice(area.selectionStart, area.selectionEnd);
+      if (text.trim() === '') return undefined;
+      const start = current.span.start + byteLength(area.value.slice(0, area.selectionStart));
+      return { path: current.path, start, end: start + byteLength(text), text };
+    },
     setReadOnly(on) {
       if (on === readOnly) return;
       if (on) {

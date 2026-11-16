@@ -45,6 +45,15 @@ check('図が描かれる', await page.locator('svg.dp-diagram').count() === 1);
 const fill = await page.locator('[data-node="api"] rect').first().evaluate(el => getComputedStyle(el).fill);
 check('テーマの見た目で描かれる（黒く塗りつぶさない）', fill === 'rgb(255, 255, 255)', fill);
 
+// 拡大: ボタンで大きくなり、そのまま図形を動かせる。
+const widthBefore = (await page.locator('svg.dp-diagram').boundingBox()).width;
+await page.locator('.dp-canvas-view').hover({ position: { x: 20, y: 20 } });
+for (let i = 0; i < 3; i += 1) await page.click('.dp-zoom-in', { force: true });
+await page.waitForTimeout(200);
+const widthAfter = (await page.locator('svg.dp-diagram').boundingBox()).width;
+check('キャンバスもボタンで拡大できる', widthAfter > widthBefore * 1.2, `${Math.round(widthBefore)} → ${Math.round(widthAfter)}`);
+await page.locator('[data-node="api"]').first().scrollIntoViewIfNeeded();
+
 const box = await page.locator('[data-node="api"]').first().boundingBox();
 await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
 await page.mouse.down();
@@ -58,6 +67,12 @@ check('動かすと、その図形のピンの 1 行だけが書き換えとし�
   && bytes.subarray(edit.start, edit.end).toString() === 'api     @ (460, 120) 140x60'
   && /^api +@ \(\d+, +\d+\) 140x60$/.test(edit.text),
   edit && JSON.stringify(edit.text));
+
+const outline = await page.locator('.dp-canvas-outline').first().boundingBox();
+const shape = await page.locator('[data-node="api"] rect').first().boundingBox();
+check('　拡大していても、選択の枠は図形に重なる',
+  outline && shape && Math.abs(outline.x - shape.x) < 12 && Math.abs(outline.width - shape.width) < 16,
+  JSON.stringify([outline, shape]));
 
 await page.evaluate(() => window.postMessage({ kind: 'update', source: 'free {\n  a [A\n}\n', libraries: {}, locale: 'ja' }, '*'));
 await page.waitForTimeout(200);

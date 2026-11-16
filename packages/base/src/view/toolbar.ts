@@ -47,6 +47,10 @@ export function createToolbar(
   add('bold', 'B', t('base.format.bold'), 'dp-format-bold');
   add('italic', 'I', t('base.format.italic'), 'dp-format-italic');
   add('code', '</>', t('base.format.code'), 'dp-format-code');
+  add('strike', 'S', t('base.format.strike'), 'dp-format-strike');
+  add('underline', 'U', t('base.format.underline'), 'dp-format-underline');
+  add('sup', 'x²', t('base.format.sup'), 'dp-format-sup');
+  add('sub', 'x₂', t('base.format.sub'), 'dp-format-sub');
 
   const divider = owner.createElement('span');
   divider.className = 'dp-format-divider';

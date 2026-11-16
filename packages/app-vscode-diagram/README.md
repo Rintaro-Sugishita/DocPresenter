@@ -50,6 +50,8 @@ Right-click a `.dgm` → **"Open in DocPresenter Diagram"**, or press **Ctrl+K V
   them up or spread them evenly; drag the middle of a line to bend it.
 - Every gesture is written back as **one byte range** of the file, handed to VS Code as a `WorkspaceEdit`: undo, the
   unsaved dot and the Git diff are VS Code's own, and the text beside the canvas changes as you drag.
+- Zoom with **Ctrl+wheel** (pinch) or the buttons at the top right (− / scale / + / fit to width). While zoomed,
+  **Space+drag** (or a middle-button drag) moves the view.
 - **"Source"** shows the text beside the canvas. While the text cannot be read (half typed), the canvas keeps the last
   picture and says what is wrong.
 

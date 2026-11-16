@@ -8,6 +8,7 @@
 
 import { isLocale, toLf } from '@docpresenter/base';
 import { VSCODE_MESSAGES } from '../messages.js';
+import { isWorkbookPath, splitWorkbookPath, withWorkbooks } from '@docpresenter/xlsx';
 import { joinPath, parseDocument, renderDocument, resolveDocument } from '@docpresenter/markdown';
 import {
   createHistory, DEFAULT_SETTINGS, mountSheetView, starterResource,
@@ -48,10 +49,18 @@ let restoreTheme: (() => void) | undefined;
 
 const here = (written: string): string => inWorkspace(documentPath, written);
 
+/** Workbooks a sheet can be imported from, by workspace path. */
+let workbooks: Record<string, Uint8Array> = {};
+/** Reads a file of the workspace; a workbook's sheet comes back as the text of a table. */
+const reader = (): ((path: string) => string | undefined) =>
+  withWorkbooks(path => files[path], path => workbooks[path.replace(/#.*$/, '')]);
+let readFile = reader();
+const bytesOf = (base64: string): Uint8Array => Uint8Array.from(atob(base64), char => char.charCodeAt(0));
+
 // The editing and review modes, and the review comments on the page.
 const reviews = createReviewUi({
   send,
-  read: path => (path === documentPath ? source : files[path]),
+  read: path => (path === documentPath ? source : readFile(path)),
   documentPath: () => documentPath,
   locale: () => settings.locale,
   view: () => view,
@@ -62,7 +71,7 @@ const reviews = createReviewUi({
 });
 
 const loader = {
-  read: (path: string): string | undefined => files[here(path)],
+  read: (path: string): string | undefined => readFile(here(path)),
   url: (path: string): string | undefined => (/^https?:\/\//.test(path)
     ? path : images[here(path)]),
 };
@@ -91,7 +100,7 @@ function mount(): void {
     render,
     settings,
     history,
-    readResource: path => files[here(path)],
+    readResource: path => readFile(here(path)),
     listResources: () => Object.keys(files)
       .filter(path => /\.(dgm|table|mmd|ermlx)$/i.test(path))
       .sort((a, b) => a.localeCompare(b))
@@ -169,6 +178,20 @@ function mount(): void {
       void drawMermaid(page, settings.locale);
       reviews.paint(page);
     },
+    // A zoomed drawing moved the shapes its comments point at.
+    onZoom: () => reviews.layout(),
+    // A comment on one shape of a drawing, from the menu on it; a table,
+    // opened in Excel and written back when Excel saves it.
+    figureMenu: (figure, target) => {
+      const path = figure.dataset['path'];
+      const say = VSCODE_MESSAGES.in(settings.locale);
+      const excel = path === undefined ? []
+        : /\.table$/i.test(path) ? [{ label: say('vscode.excel.menu'), run: () => send({ kind: 'open-in-excel', path: here(path) }) }]
+          // A sheet imported from a workbook: the workbook is the team's own, opened as it is.
+          : isWorkbookPath(path) ? [{ label: say('vscode.excel.openSource'), run: () => send({ kind: 'open-external', path: here(splitWorkbookPath(path).file) }) }]
+            : [];
+      return [...excel, ...reviews.figureMenu(target)];
+    },
   });
   if (at > 0) view.select(at);
   reviews.apply();
@@ -184,6 +207,8 @@ window.addEventListener('message', (event: MessageEvent<ToView>) => {
     source = toLf(message.source);
     files = Object.fromEntries(Object.entries(message.files).map(([path, text]) => [path, toLf(text)]));
     images = { ...message.images };
+    workbooks = Object.fromEntries(Object.entries(message.workbooks ?? {}).map(([path, data]) => [path, bytesOf(data)]));
+    readFile = reader();
     settings = {
       commitKey: message.commitKey,
       locale: isLocale(message.locale) ? message.locale : DEFAULT_SETTINGS.locale,
@@ -195,6 +220,12 @@ window.addEventListener('message', (event: MessageEvent<ToView>) => {
     if (message.path === documentPath) source = toLf(message.text);
     else if (files[message.path] === undefined && !/\.(dgm|table|mmd|ermlx)$/i.test(message.path)) return;
     else files[message.path] = toLf(message.text);
+    mount();
+    return;
+  }
+  if (message.kind === 'workbook') {
+    workbooks[message.path] = bytesOf(message.data);
+    readFile = reader();
     mount();
     return;
   }
@@ -232,11 +263,12 @@ window.addEventListener('message', (event: MessageEvent<ToView>) => {
 // file; what needs a browser — laying the page out for a PDF, drawing Mermaid
 // as a picture for a slide — comes back here as a request.
 
-const exportButtons = [...document.querySelectorAll<HTMLButtonElement>('.dp-export button[data-format]')];
+const exportButtons = [...document.querySelectorAll<HTMLButtonElement>('.dp-export button[data-format], .dp-export-changes')];
 const exportStatus = document.querySelector<HTMLElement>('.dp-export-status');
 for (const button of exportButtons) {
   button.addEventListener('click', () => {
-    send({ kind: 'export', format: button.dataset['format'] as ExportFormat });
+    const format = button.dataset['format'] as ExportFormat | undefined;
+    send(format === undefined ? { kind: 'export-changes' } : { kind: 'export', format });
   });
 }
 

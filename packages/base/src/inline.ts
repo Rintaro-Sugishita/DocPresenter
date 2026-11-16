@@ -1,4 +1,10 @@
-// Inline formatting: bold, italic, code and colour.
+// Inline formatting: bold, italic, code, strikethrough, superscript,
+// subscript, underline and colour.
+//
+// The four added on 2026-11-13 are written as Pandoc writes them, beside the
+// colour that already was: `~~消す~~`, `x^2^`, `H~2~O`, `[下線]{.underline}`.
+// Pandoc does not allow a bare space inside `^…^` or `~…~`, so a space there
+// is written `\ `, which is what keeps `3^2 and 4^2` from reading as one.
 //
 // These work on the text of one block, in string indices, because that is what
 // a text box hands you. The byte-range discipline applies where it matters —
@@ -13,7 +19,8 @@
 // out, which is not a meaning to preserve; the changed and deleted parts are
 // marked from the diff instead.
 
-export type InlineMark = 'bold' | 'italic' | 'code' | { readonly color: string };
+export type InlineMark =
+  | 'bold' | 'italic' | 'code' | 'strike' | 'sup' | 'sub' | 'underline' | { readonly color: string };
 
 /** `#abc` or `#aabbcc`. Nothing else is written into a document. */
 export const COLOUR = /^#[0-9a-fA-F]{3}([0-9a-fA-F]{3})?$/;
@@ -22,6 +29,10 @@ export interface InlineState {
   readonly bold: boolean;
   readonly italic: boolean;
   readonly code: boolean;
+  readonly strike: boolean;
+  readonly sup: boolean;
+  readonly sub: boolean;
+  readonly underline: boolean;
   /** The colour the selection already carries, if any. */
   readonly color: string | undefined;
 }
@@ -50,6 +61,10 @@ export function inlineStateAt(text: string, start: number, end: number): InlineS
     bold: level >= 2,
     italic: level === 1 || level === 3,
     code: codeAround(text, trimmed) !== undefined,
+    strike: wrapAround(text, trimmed, '~~') !== undefined,
+    sup: wrapAround(text, trimmed, '^') !== undefined,
+    sub: wrapAround(text, trimmed, '~') !== undefined,
+    underline: underlineAround(text, trimmed) !== undefined,
     color: colourAround(text, trimmed),
   };
 }
@@ -59,7 +74,14 @@ export function toggleInline(
 ): Replacement {
   const span = trim(text, start, end);
   if (isColour(mark)) return toggleColour(text, span, mark.color);
-  return mark === 'code' ? toggleCode(text, span) : toggleEmphasis(text, span, mark);
+  switch (mark) {
+    case 'code': return toggleCode(text, span);
+    case 'strike': return toggleWrap(text, span, '~~');
+    case 'sup': return toggleWrap(text, span, '^');
+    case 'sub': return toggleWrap(text, span, '~');
+    case 'underline': return toggleUnderline(text, span);
+    default: return toggleEmphasis(text, span, mark);
+  }
 }
 
 /**
@@ -157,6 +179,74 @@ function toggleColour(text: string, span: Span, colour: string): Replacement {
   const written = `[${inner}]{color=${colour}}`;
   return {
     start: span.start, end: span.end, text: written,
+    select: { start: span.start + 1, end: span.start + 1 + inner.length },
+  };
+}
+
+/**
+ * The words a `~~`, `^` or `~` pair holds, when the selection is those words or
+ * the words with the marks. A single `~` is subscript only when it is not half
+ * of a `~~`.
+ */
+function wrapAround(text: string, span: Span, marker: '~~' | '^' | '~'): Span | undefined {
+  const lone = (at: number): boolean => marker !== '~' || (text[at] !== '~');
+  if (wrappedBy(text, span, marker) && lone(span.start - marker.length - 1) && lone(span.end + marker.length)) {
+    return span;
+  }
+  const inner = text.slice(span.start, span.end);
+  if (inner.length > marker.length * 2 && inner.startsWith(marker) && inner.endsWith(marker)
+    && (marker !== '~' || (!inner.startsWith('~~') && !inner.endsWith('~~')))) {
+    return { start: span.start + marker.length, end: span.end - marker.length };
+  }
+  return undefined;
+}
+
+/**
+ * Strikethrough, superscript and subscript: one pair of marks around the
+ * words, put on or taken off. Inside `^…^` and `~…~` a space is `\ `.
+ */
+function toggleWrap(text: string, span: Span, marker: '~~' | '^' | '~'): Replacement {
+  const spaced = marker !== '~~';
+  const inside = wrapAround(text, span, marker);
+  if (inside) {
+    const held = text.slice(inside.start, inside.end);
+    const inner = spaced ? held.replace(/\\ /g, ' ') : held;
+    const start = inside.start - marker.length;
+    return { start, end: inside.end + marker.length, text: inner, select: { start, end: start + inner.length } };
+  }
+  const plain = text.slice(span.start, span.end);
+  const inner = spaced ? plain.replace(/(?<!\\) /g, '\\ ') : plain;
+  return {
+    start: span.start, end: span.end, text: `${marker}${inner}${marker}`,
+    select: { start: span.start + marker.length, end: span.start + marker.length + inner.length },
+  };
+}
+
+const UNDERLINE = /^\]\{\.underline\}/;
+
+/** The words of a `[…]{.underline}` the selection is, or is exactly inside. */
+function underlineAround(text: string, span: Span): Span | undefined {
+  if (text[span.start - 1] === '[' && UNDERLINE.test(text.slice(span.end))) return span;
+  const inner = text.slice(span.start, span.end);
+  if (inner.startsWith('[') && inner.endsWith(']{.underline}')) {
+    return { start: span.start + 1, end: span.end - ']{.underline}'.length };
+  }
+  return undefined;
+}
+
+/** Underline is a bracketed span with Pandoc's class for it, as colour is a span with a colour. */
+function toggleUnderline(text: string, span: Span): Replacement {
+  const inside = underlineAround(text, span);
+  if (inside) {
+    const inner = text.slice(inside.start, inside.end);
+    const start = inside.start - 1;
+    return {
+      start, end: inside.end + ']{.underline}'.length, text: inner, select: { start, end: start + inner.length },
+    };
+  }
+  const inner = text.slice(span.start, span.end);
+  return {
+    start: span.start, end: span.end, text: `[${inner}]{.underline}`,
     select: { start: span.start + 1, end: span.start + 1 + inner.length },
   };
 }

@@ -115,6 +115,8 @@ DocPresenter の組版でそのままプレビューが出るページを作る�
   - テーマは `.docpresenter/themes/` を優先（`themeOf`）。
   - テンプレートの差し込み口 `{{root}}`（リポジトリ直下への相対パス）。
   - PDF にはレビュー指摘と回答が注釈として入る（`docpresenter.pdfReviewNotes`）。閲覧ページの PDF も同じ経路を通る。
+    編集画面で書いたコメント（`type: comment`）は載らない（[review-model.md §9.8](review-model.md)）。
+  - 2026-11-11：閲覧ページの図も拡大・縮小できる（Ctrl+ホイール、図の右上のボタン。拡大中はドラッグで動かせる）。
 
 ## 6. 段階 1 の実装（2026-10-12）
 

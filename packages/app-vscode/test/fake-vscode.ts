@@ -21,6 +21,7 @@ export class Range {
 export class Uri {
   private constructor(readonly path: string) {}
   static file(path: string): Uri { return new Uri(path); }
+  static parse(text: string): Uri { return new Uri(text); }
   /** As VS Code's: the segments joined, and `.` and `..` resolved. */
   static joinPath(base: Uri, ...parts: string[]): Uri {
     const segments: string[] = [];
@@ -87,7 +88,19 @@ type FormattingProvider = {
 /** What the extension registered for "Format Document". */
 export const formatters: { selector: unknown; provider: FormattingProvider }[] = [];
 
+export class DocumentLink {
+  tooltip?: string;
+  constructor(readonly range: Range, readonly target?: Uri) {}
+}
+interface LinkProvider { provideDocumentLinks(document: { uri: Uri; getText(): string }): Promise<DocumentLink[]> }
+/** What the extension registered to turn text into links. */
+export const linkers: { selector: unknown; provider: LinkProvider }[] = [];
+
 export const languages = {
+  registerDocumentLinkProvider: (selector: unknown, provider: LinkProvider) => {
+    linkers.push({ selector, provider });
+    return { dispose: () => undefined };
+  },
   registerCompletionItemProvider: (selector: unknown, provider: CompletionProvider, ...triggers: string[]) => {
     completions.push({ selector, provider, triggers });
     return { dispose: () => undefined };
@@ -189,6 +202,8 @@ export const workspace = {
   workspaceFolders: [{ uri: ROOT, name: 'w', index: 0 }],
   getWorkspaceFolder: () => ({ uri: ROOT, name: 'w', index: 0 }),
   asRelativePath: (uri: Uri) => relative(uri),
+  /** The documents opened so far, as VS Code lists the open ones. */
+  get textDocuments(): TextDocument[] { return [...open.values()]; },
   findFiles: async (pattern: string) => {
     // Only the part of glob this extension uses: `**/*` for everything,
     // `**/*.{a,b}` for a set of kinds, and `**/*.a` (or `*.a.b`) for one.
@@ -284,6 +299,8 @@ export const window = {
   showErrorMessage: (message: string) => { shown.push(message); },
   showWarningMessage: (message: string) => { shown.push(message); },
   showInformationMessage: (message: string) => { shown.push(message); },
+  /** A line in the status bar: recorded with the messages, as a test reads what was said. */
+  setStatusBarMessage: (message: string) => { shown.push(message); return { dispose: () => undefined }; },
   showTextDocument: async () => undefined,
   /** What the next file dialog answers. */
   showOpenDialog: async () => picks.dialog,
@@ -320,6 +337,9 @@ export const commands = {
   registerCommand: () => ({ dispose: () => undefined }),
   executeCommand: async () => undefined,
 };
+
+/** How a quick pick's items are told apart: a separator, or something to pick. */
+export const QuickPickItemKind = { Separator: -1, Default: 0 } as const;
 
 export const Disposable = { from: () => ({ dispose: () => undefined }) };
 

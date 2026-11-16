@@ -26,6 +26,10 @@ export function nodeWorkspace(root: string, fetched?: (address: string, bytes: n
         return readFileSync(inside(path), 'utf8');
       } catch { return undefined; }
     },
+    // A workbook's sheet is imported as a table: the build reads its bytes.
+    bytes(path) {
+      try { return /\.xlsx$/i.test(path) ? new Uint8Array(readFileSync(inside(path))) : undefined; } catch { return undefined; }
+    },
     dataUrl(path) {
       const type = MEDIA[path.slice(path.lastIndexOf('.') + 1).toLowerCase()];
       if (!type) return undefined;

@@ -3,7 +3,7 @@
 // a literal colour or width.
 
 import { markClass, type TableMarks } from './diff.js';
-import { shownText, type Align, type Cell, type StyleRule, type TableFile } from '../table/model.js';
+import { cellSelectorRow, shownText, type Align, type Cell, type StyleRule, type TableFile } from '../table/model.js';
 import { markdown } from './markdown.js';
 
 const ALIGN_CLASS: Readonly<Record<Align, string>> = {
@@ -41,11 +41,16 @@ export function renderTable(table: TableFile, marks?: TableMarks): string {
     })
     .join('');
 
-  const body = table.rows.map((row, r) => {
+  const gone = removedRowsAt(table, marks);
+  const struck = (r: number): string[] => (gone.get(r) ?? []).map(cells =>
+    `<tr class="dp-diff-removed">${cells.map((text, c) =>
+      `<td${styleAttrs(alignOf(table, c, columnRules(table, table.columns[c]?.header)), [])}>`
+      + `${text === '' ? '' : `<del>${renderCellText(table, text)}</del>`}</td>`).join('')}</tr>`);
+  const body = [...table.rows.flatMap((row, r) => {
     const cells = row.cells.map(cell => renderCell(table, cell, r, marks)).join('');
-    const changed = markClass(marks?.rows.get(keyOfRow(table, r)));
-    return `<tr${styleAttrs('', rowRules(table, r), changed)}>${cells}</tr>`;
-  }).join('\n');
+    const changed = markClass(marks?.rows.get(r));
+    return [...struck(r), `<tr${styleAttrs('', rowRules(table, r), changed)}>${cells}</tr>`];
+  }), ...struck(table.rows.length)].join('\n');
 
   return [
     `<table class="dp-table"${table.theme ? ` data-theme="${escapeAttr(table.theme)}"` : ''}>`,
@@ -82,18 +87,42 @@ function columnGroup(table: TableFile): string {
     .join('')}</colgroup>`;
 }
 
+/**
+ * The rows that are gone, by the row they go above. A row cannot be put
+ * inside a merge running down past it, so one that would be goes below it.
+ */
+function removedRowsAt(table: TableFile, marks: TableMarks | undefined): Map<number, (readonly string[])[]> {
+  const at = new Map<number, (readonly string[])[]>();
+  for (const row of marks?.removedRows ?? []) {
+    let before = Math.min(row.before, table.rows.length);
+    for (let moved = true; moved && before < table.rows.length;) {
+      moved = false;
+      for (let r = 0; r < before; r++) {
+        for (const cell of table.rows[r]!.cells) {
+          if (r + cell.rowspan > before) { before = r + cell.rowspan; moved = true; }
+        }
+      }
+    }
+    const cells = row.cells.slice(0, table.columns.length);
+    at.set(before, [...(at.get(before) ?? []), cells]);
+  }
+  return at;
+}
+
 function renderCell(table: TableFile, cell: Cell, row: number, marks?: TableMarks): string {
   const rules = cellRules(table, cell, row);
-  // A cell is named the way a selector names it: by the text of its row's
-  // leading cell and of its column's header.
-  const changed = markClass(marks?.cells.get(
-    `${keyOfRow(table, row)}/${table.columns[cell.column]?.header ?? ''}`));
+  // Marked by where it is: the diff matched the rows and columns already.
+  const key = `${row}/${cell.column}`;
+  const changed = markClass(marks?.cells.get(key));
   const attributes = [
     cell.rowspan > 1 ? ` rowspan="${cell.rowspan}"` : '',
     cell.colspan > 1 ? ` colspan="${cell.colspan}"` : '',
     styleAttrs(alignOf(table, cell.column, rules), rules, changed),
   ].join('');
-  return `<td${attributes}>${renderCellText(table, shownText(cell))}</td>`;
+  // What the cell said before, struck through ahead of what it says now.
+  const was = marks?.was?.get(key);
+  const before = was === undefined || was === '' ? '' : `<del class="dp-diff-was">${renderCellText(table, was)}</del> `;
+  return `<td${attributes}>${before}${renderCellText(table, shownText(cell))}</td>`;
 }
 
 function columnRules(table: TableFile, header: string | undefined): readonly StyleRule[] {
@@ -179,11 +208,10 @@ export function cellClasses(table: TableFile, cell: Cell, row: number): string[]
 
 export function cellRules(table: TableFile, cell: Cell, row: number): readonly StyleRule[] {
   const columnName = table.columns[cell.column]?.header;
-  const rowName = table.rows[row]?.cells[0]?.text;
   return table.style.filter(rule => {
     const s = rule.selector;
     if (s.kind === 'column') return s.name === columnName;
-    if (s.kind === 'cell') return s.column === columnName && s.row === rowName;
+    if (s.kind === 'cell') return s.column === columnName && cellSelectorRow(table, s, row);
     return false;
   });
 }
@@ -197,11 +225,6 @@ function styleAttrs(align: string, rules: readonly StyleRule[], extra = ''): str
   const inline = inlineStyle(rules);
   const style = inline === '' ? '' : ` style="${escapeAttr(inline)}"`;
   return `${classAttr([align, ...declarationClasses(rules), ...(extra ? [extra.trim()] : [])])}${style}`;
-}
-
-/** A row is named by the text of its leading cell, as everything else names it. */
-function keyOfRow(table: TableFile, row: number): string {
-  return table.rows[row]?.cells[0]?.text ?? '';
 }
 
 /**

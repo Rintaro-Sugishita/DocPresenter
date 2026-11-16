@@ -13,7 +13,7 @@ import type { Block, DocumentFile, Import } from '../document/model.js';
 import type { NumberedElement, ResolvedDocument } from '../numbering/model.js';
 import { markdown, mermaidFigure, viewOf, type RenderEnv } from './markdown.js';
 import { joinPath } from './path.js';
-import { legend, markClass, markOf, type DiffMarks } from './diff.js';
+import { legend, markClass, markOf, type DiffMarks, type RemovedText } from './diff.js';
 import { escapeAttr, escapeHtml, renderTable, selectRows } from './table.js';
 
 /** Reading referenced files is injected so this package stays platform-neutral. */
@@ -56,9 +56,11 @@ export function renderDocument(
   // The document is emitted sheet by sheet: `---` is a boundary between
   // sections, not an element inside one, so the page breaks where the author
   // saw it break while writing.
-  const sheets = sheetsOf(document, resolved).map(sheet => {
+  const split = sheetsOf(document, resolved);
+  const gone = removedPlacer(split.flatMap(sheet => sheet.blocks), options);
+  const sheets = split.map(sheet => {
     const blocks = sheet.blocks
-      .map(block => renderBlock(block, elementByBlock, resolved, options))
+      .map(block => gone(block, piece => renderBlock(piece, elementByBlock, resolved, options)))
       .join('\n');
     // A sheet with no heading of its own is named by the document it takes in.
     const borrowed = importedHeadingOf(sheet.blocks, path => options.loader.read(path));
@@ -70,6 +72,70 @@ export function renderDocument(
   // The legend belongs to the build, not to the document: it explains marks the
   // author never wrote and cannot remove.
   return options.marks ? `${sheets}\n${legend(options.marks, options.locale)}` : sheets;
+}
+
+/**
+ * Puts what is gone from the prose back where it stood, struck through: above
+ * the block that took its place or now follows it, between the paragraphs of
+ * a block it stood inside, and after the last block of its file when it was
+ * at the end. Only when the build was asked to.
+ */
+function removedPlacer(
+  blocks: readonly Block[], options: RenderOptions,
+): (block: Block, render: (piece: Block) => string) => string {
+  const marks = options.marks;
+  if (marks?.showRemoved !== 'strike' || !marks.removed?.length) return (block, render) => render(block);
+  const pending = [...marks.removed].sort((x, y) => x.at - y.at);
+  const last = new Map<string, Block>();
+  for (const block of blocks) last.set(block.doc ?? '', block);
+  const locale = options.locale ?? DEFAULT_LOCALE;
+  const struck = (text: string): string =>
+    `<div class="dp-prose dp-diff-removed">${markdown.render(text, { locale })}</div>`;
+  const take = (doc: string, test: (at: number) => boolean): RemovedText[] => {
+    const found: RemovedText[] = [];
+    for (let i = 0; i < pending.length;) {
+      const one = pending[i]!;
+      if (one.doc === doc && test(one.at)) { found.push(one); pending.splice(i, 1); } else i++;
+    }
+    return found;
+  };
+  return (block, render) => {
+    const doc = block.doc ?? '';
+    const { start, end } = block.span;
+    // Only prose can be cut between its lines; anything inside another block goes above it.
+    const cuttable = block.kind === 'prose';
+    const parts: string[] = take(doc, at => at <= start || (!cuttable && at < end)).map(one => struck(one.text));
+    if (cuttable) {
+      const inside = take(doc, at => at > start && at < end);
+      parts.push(...cutProse(block, inside.map(one => one.at)).map((piece, i) =>
+        (piece ? render(piece) : '') + (inside[i] ? `\n${struck(inside[i]!.text)}` : '')).filter(Boolean));
+    } else {
+      parts.push(render(block));
+    }
+    if (last.get(doc) === block) parts.push(...take(doc, () => true).map(one => struck(one.text)));
+    return parts.join('\n');
+  };
+}
+
+/**
+ * A prose block cut at line starts (byte offsets in the file), as one block
+ * per stretch between them; a stretch that is only blank lines is undefined.
+ */
+function cutProse(block: Extract<Block, { kind: 'prose' }>, cuts: readonly number[]): (Block | undefined)[] {
+  const lines = block.text.split('\n');
+  const starts: number[] = [];
+  let offset = block.span.start;
+  for (const line of lines) { starts.push(offset); offset += byteLength(line) + 1; }
+  const at = cuts.map(cut => starts.indexOf(cut)).map(index => (index < 0 ? 0 : index));
+  const pieces: (Block | undefined)[] = [];
+  let from = 0;
+  for (const to of [...at, lines.length]) {
+    const text = lines.slice(from, to).join('\n');
+    const span = { start: starts[from] ?? block.span.end, end: (starts[from] ?? block.span.end) + byteLength(text) };
+    pieces.push(text.trim() === '' ? undefined : { ...block, text, span });
+    from = Math.max(from, to);
+  }
+  return pieces;
 }
 
 function renderBlock(
@@ -199,6 +265,15 @@ function say(
   return MARKDOWN_MESSAGES.in(options.locale ?? DEFAULT_LOCALE)(id, params);
 }
 
+/** What is gone from a table or a drawing and has no place left in it, named and struck through. */
+function goneList(
+  options: RenderOptions, id: 'markdown.diff.goneColumns' | 'markdown.diff.goneParts', names: readonly string[] | undefined,
+): string {
+  if (!names?.length) return '';
+  return `<p class="dp-diff-gone"><span class="dp-diff-gone-label">${escapeHtml(say(options, id, {}))}</span> `
+    + names.map(name => `<del class="dp-diff-removed">${escapeHtml(name)}</del>`).join(' ') + '</p>';
+}
+
 function renderResource(
   path: string, source: string, attributes: ReadonlyMap<string, string>, options: RenderOptions,
 ): string {
@@ -218,16 +293,22 @@ function renderKnown(
   path: string, source: string, attributes: ReadonlyMap<string, string>,
   url: (target: string) => string, options: RenderOptions,
 ): string {
-  if (path.toLowerCase().endsWith('.table')) {
+  // A sheet of a workbook arrives as the text of a table: the host turned it into one.
+  const workbook = /\.xlsx(#.*)?$/i.test(path);
+  if (path.toLowerCase().endsWith('.table') || workbook) {
     const table = parseTable(source);
-    const marks = options.marks?.tables.get(path);
+    const found = options.marks?.tables.get(path);
+    const strike = options.marks?.showRemoved === 'strike';
+    const marks = found && !strike ? { cells: found.cells, rows: found.rows } : found;
     const rows = attributes.get('rows');
-    if (rows === undefined) return renderTable(table, marks);
+    const columns = strike ? goneList(options, 'markdown.diff.goneColumns', found?.removedColumns) : '';
+    if (rows === undefined) return renderTable(table, marks) + columns;
     const selected = selectRows(table, rows);
     if (!selected) {
       return `<p class="dp-missing">${escapeHtml(say(options, 'markdown.missingRange', { rows }))}</p>`;
     }
-    return renderTable(selected, marks);
+    // Rows picked out of a table have nowhere to put the rows that are gone.
+    return renderTable(selected, marks && { ...marks, removedRows: [] }) + columns;
   }
   if (/\.(mmd|mermaid)$/i.test(path)) {
     // The choice between the drawing and its code is on the `@import` line,
@@ -247,7 +328,9 @@ function renderKnown(
         specimenOf(diagram, used => options.loader.read(joinPath(path, used)), options.locale),
         url, marks, options.locale);
     }
-    if (diagram.mode !== 'overlay') return renderDiagram(diagram, url, marks, options.locale);
+    const gone = options.marks?.showRemoved === 'strike' && marks?.removed
+      ? goneList(options, 'markdown.diff.goneParts', [...marks.removed.nodes, ...marks.removed.edges]) : '';
+    if (diagram.mode !== 'overlay') return renderDiagram(diagram, url, marks, options.locale) + gone;
     // The image is written relative to the diagram, not to the document.
     const image = diagram.image === undefined ? undefined : url(joinPath(path, diagram.image));
     return renderOverlay(diagram, image, options.locale);

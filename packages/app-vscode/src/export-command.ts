@@ -58,6 +58,22 @@ export interface WriteOutOptions {
   readonly output: Pick<vscode.OutputChannel, 'appendLine' | 'clear' | 'show'>;
   /** How far it has got, for whoever is showing it. */
   readonly progress?: (message: string) => void;
+  /** Marks what changed since an earlier version, written beside the plain export. */
+  readonly changes?: Changes;
+}
+
+/** An earlier version to compare with, and how what it had and this one lacks is shown. */
+export interface Changes {
+  /** The commit, tag, branch or folder, as the legend names it. */
+  readonly from: string;
+  /** A file of the workspace as it was then; undefined when it was not there. */
+  readonly read: (path: string) => string | undefined;
+  readonly showRemoved: 'none' | 'strike';
+}
+
+/** Where a marked export goes: beside the plain one, so neither overwrites the other. */
+export function changesPath(path: string): string {
+  return path.replace(/(\.[^./]+)?$/, ext => `.changes${ext}`);
 }
 
 export interface WriteOutResult {
@@ -111,6 +127,10 @@ export async function writeOut(options: WriteOutOptions): Promise<WriteOutResult
       reviewNotes: vscode.workspace.getConfiguration('docpresenter').get<boolean>('pdfReviewNotes') !== false,
       ...(options.only === undefined ? {} : { only: options.only }),
       ...(options.formats === undefined ? {} : { formats: options.formats }),
+      ...(options.changes === undefined ? {} : {
+        diffFrom: { name: options.changes.from, read: options.changes.read },
+        showRemoved: options.changes.showRemoved,
+      }),
       outDir: outDirOf(),
       style: theme => themeOf(path => text.get(path), theme) ?? options.shipped,
       builtAt: new Date().toISOString(),
@@ -132,11 +152,12 @@ export async function writeOut(options: WriteOutOptions): Promise<WriteOutResult
       output.appendLine(`  ${trouble.severity === 'error' ? '✗' : '!'} ${where}${trouble.message}`);
     }
     const written: string[] = [];
-    for (const artifact of result.artifacts) {
+    for (const built of result.artifacts) {
+      const artifact = options.changes === undefined ? built : { ...built, path: changesPath(built.path) };
       await save(folder.uri, artifact);
       written.push(artifact.path);
       const bytes = artifact.bytes?.length ?? new TextEncoder().encode(artifact.text).length;
-      const pdf = report.get(artifact.path);
+      const pdf = report.get(built.path);
       const pages = pdf ? t('vscode.export.pages', { pages: pdf.pages, font: pdf.font }) : '';
       output.appendLine(t('vscode.export.artifact', {
         path: artifact.path, root: artifact.root, format: artifact.format,
@@ -180,7 +201,7 @@ export function mediaOf(context: vscode.ExtensionContext): (name: string) => Pro
 /** The open document, written in one format — the buttons above it. */
 export async function exportDocument(
   view: OpenView, format: ExportFormat, context: vscode.ExtensionContext,
-  output: vscode.OutputChannel,
+  output: vscode.OutputChannel, changes?: Changes,
 ): Promise<void> {
   const label = FORMAT_LABEL[format];
   view.post({ kind: 'export-state', busy: true, message: t('vscode.export.busy', { format: label }) });
@@ -195,6 +216,7 @@ export async function exportDocument(
       only: [view.documentPath], formats: [format], output, media,
       shipped: new TextDecoder().decode(await media('theme.css') ?? new Uint8Array()),
       renderer: async () => view,
+      ...(changes === undefined ? {} : { changes }),
     });
     const path = result.written[0];
     if (!path) {

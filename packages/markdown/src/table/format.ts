@@ -70,7 +70,9 @@ export function formatSelector(selector: Selector): string {
     case 'header': return 'header';
     case 'column': return `col:${selector.name}`;
     case 'row': return `row:${selector.which}`;
-    case 'cell': return `cell:${selector.row}/${selector.column}`;
+    case 'cell': return selector.by === undefined
+      ? `cell:${selector.row}/${selector.column}`
+      : `cell:[${selector.by}=${selector.row}]/${selector.column}`;
     case 'range': return `range:${selector.from}..${selector.to}`;
     case 'namedRange': return `range:${selector.name}`;
   }

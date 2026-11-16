@@ -6,6 +6,7 @@
     { "path": "packages/markdown" },
     { "path": "packages/pdf" },
     { "path": "packages/pptx" },
+    { "path": "packages/xlsx" },
     { "path": "packages/build" },
     { "path": "packages/editor" },
     { "path": "packages/app-vscode" },

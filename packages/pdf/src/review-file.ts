@@ -159,6 +159,8 @@ export interface ScreenComment {
   readonly commit?: string | undefined;
   /** True when the anchored file differs from the commit: the range is in the working copy. */
   readonly uncommitted?: boolean | undefined;
+  /** `comment` for the author's own note, which no PDF carries; absent for a review finding. */
+  readonly type?: 'comment' | undefined;
 }
 
 /**
@@ -186,6 +188,7 @@ export function appendScreenComment(
     ...(comment.number ? [`      number:   ${q(comment.number)}`] : []),
     `    body:   ${q(comment.body)}`,
     '    status: open',
+    ...(comment.type === 'comment' ? ['    type:   comment'] : []),
   );
   if (comment.author) lines.push(`    author: ${q(comment.author)}`);
   lines.push(`    date:   ${q(comment.date)}`, '    source:', '      via:        editor', `      precision:  ${comment.precision}`);
