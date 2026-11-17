@@ -80,6 +80,36 @@ const status = await page.textContent('#status');
 check('読めない文になったら、理由を言い、前の絵は残す',
   /2 行目/.test(status) && await page.locator('svg.dp-diagram').count() === 1, status);
 
+// --- 表示倍率（Windows の 125% / 150%、VS Code の拡大）でずれない -----------------
+// 座標はどれも CSS ピクセル（clientX と getBoundingClientRect）で計るので、物理ピクセルの
+// 倍率が変わっても同じ動きは同じピンになる。図の中の拡大を重ねても同じ。
+{
+  const movedAt = async (dpr) => {
+    const view = await browser.newPage({ viewport: { width: 1100, height: 700 }, deviceScaleFactor: dpr });
+    await view.goto(pathToFileURL(pagePath).href);
+    await view.evaluate(text => window.postMessage({ kind: 'open', source: text, libraries: {}, locale: 'ja' }, '*'), source);
+    await view.waitForTimeout(400);
+    await view.locator('.dp-canvas-view').hover({ position: { x: 20, y: 20 } });
+    for (let i = 0; i < 2; i += 1) await view.click('.dp-zoom-in', { force: true });
+    await view.waitForTimeout(200);
+    const box = await view.locator('[data-node="api"] rect').first().boundingBox();
+    // 角から 3px 内側を押す。当たり判定が倍率でずれれば拾えない。
+    await view.mouse.move(box.x + 3, box.y + 3);
+    await view.mouse.down();
+    await view.mouse.move(box.x + 63, box.y + 33, { steps: 6 });
+    await view.mouse.up();
+    await view.waitForTimeout(300);
+    const edit = (await view.evaluate(() => window.sent)).filter(m => m.kind === 'edit').at(-1);
+    await view.close();
+    return edit?.text;
+  };
+  const plain = await movedAt(1);
+  const scaled = await movedAt(1.5);
+  const doubled = await movedAt(2);
+  check('表示倍率が 150% でも、同じドラッグは同じピンになる', plain !== undefined && scaled === plain, `${plain} / ${scaled}`);
+  check('　200% でも同じ', doubled === plain, `${plain} / ${doubled}`);
+}
+
 // --- VS Code の配色に従う --------------------------------------------------------
 {
   const dark = await browser.newPage({ viewport: { width: 1100, height: 700 } });
