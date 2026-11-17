@@ -3,7 +3,10 @@
 // the base package, and the canvas's parts are in the diagram package.
 
 export const EDITOR_STYLE = `
-.dp-editor { display: flex; flex-direction: column; height: 100%; min-height: 0; background: #f4f5f7; }
+/* The editor is as wide as the place it is given, whatever is in it: the tab
+   bar of a long document scrolls on its own rather than widening the editor,
+   which would push the page — and the buttons at its edges — out of view. */
+.dp-editor { display: flex; flex-direction: column; height: 100%; min-height: 0; min-width: 0; contain: inline-size; background: #f4f5f7; }
 .dp-editor-pane { flex: 1; overflow: auto; padding: 2.5em 0; }
 .dp-editor-pane > .dp-page {
   background: #fff; max-width: 48em; margin: 0 auto 2em;
@@ -395,6 +398,8 @@ mark.dp-review-mark.dp-review-lit { background: rgba(255, 196, 0, .62); }
   font-family: system-ui, sans-serif; font-size: 13px;
 }
 .dp-tab {
+  /* A tab keeps its width; when they do not all fit, the bar scrolls. */
+  flex: 0 0 auto;
   display: flex; align-items: center; gap: 0.4em;
   border: none; background: transparent; cursor: pointer;
   padding: 0.55em 0.9em; color: #3a4048; white-space: nowrap;
@@ -447,7 +452,11 @@ mark.dp-review-mark.dp-review-lit { background: rgba(255, 196, 0, .62); }
 
 .dp-tabbar-spacer { flex: 1; }
 .dp-tabbar-toggle {
-  border: none; background: transparent; cursor: pointer;
+  /* Held at the right end while the tabs scroll under it: a bar too narrow
+     for every tab must not hide the switch between one sheet and all. */
+  position: sticky; right: 0; flex: 0 0 auto;
+  box-shadow: -6px 0 6px -4px rgba(0, 0, 0, .15);
+  border: none; background: #e9ebef; cursor: pointer;
   color: #5a6270; padding: 0.55em 0.9em; white-space: nowrap;
 }
 .dp-tabbar-toggle[aria-pressed="true"] { color: #1f5fa8; font-weight: 600; }
