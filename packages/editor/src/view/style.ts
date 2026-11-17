@@ -7,7 +7,16 @@ export const EDITOR_STYLE = `
 .dp-editor-pane { flex: 1; overflow: auto; padding: 2.5em 0; }
 .dp-editor-pane > .dp-page {
   background: #fff; max-width: 48em; margin: 0 auto 2em;
-  padding: 3em 3.5em; box-shadow: 0 1px 4px rgba(0,0,0,.12);
+  /* The left margin is wider: heading numbers hang in it, and the ＋ that adds
+     between blocks sits in it. The width of the text is the same. */
+  padding: 3em 3.5em 3em 5.5em; box-shadow: 0 1px 4px rgba(0,0,0,.12);
+}
+/* Heading numbers hang in the margin, so the structure reads down the left
+   edge and nothing below a heading is indented — the text keeps its width.
+   The screen's own: what is printed is laid out by the theme. */
+.dp-editor-pane .dp-page :is(h2, h3, h4) { position: relative; }
+.dp-editor-pane .dp-page :is(h2, h3, h4) > .dp-number:first-child {
+  position: absolute; right: 100%; margin-right: 0.6em; white-space: nowrap;
 }
 .dp-editor-pane .dp-sheet[hidden] { display: none; }
 
@@ -50,8 +59,47 @@ export const EDITOR_STYLE = `
   font-family: var(--font-heading, sans-serif); font-size: 0.85em;
   color: #a7aeb8; position: relative;
 }
-/* Between blocks it is a thin strip; it opens up under the pointer. */
-.dp-append:hover { min-height: 1.8em; }
+/* The end of a sheet opens up under the pointer. */
+.dp-append:not(.dp-append-gap):hover { min-height: 1.8em; }
+/* Between two blocks it takes no room: the page is spaced as it is for
+   reading. A ＋ in the margin shows while the pointer is on the block above. */
+.dp-append.dp-append-gap:not(.dp-editing) {
+  display: block; height: 0; min-height: 0; padding: 0; font-size: inherit; cursor: default;
+}
+.dp-append-zone {
+  position: absolute; left: -5.2em; width: 2.6em; top: -14px; height: 28px; z-index: 3;
+  display: flex; align-items: center; justify-content: center;
+}
+.dp-append-plus {
+  width: 22px; height: 22px; padding: 0; border-radius: 50%; cursor: pointer;
+  border: 1px solid #c9ced6; background: #fff; color: #5a6270;
+  font: 16px/20px system-ui, sans-serif; text-align: center;
+  /* It stays a moment after the pointer leaves, long enough to reach it. */
+  opacity: 0; transition: opacity .12s .35s;
+}
+[data-span]:hover + .dp-append-gap .dp-append-plus,
+.dp-append-gap:hover .dp-append-plus,
+.dp-append-gap.dp-append-over .dp-append-plus { opacity: 1; transition-delay: 0s; }
+.dp-append-plus:hover, .dp-append-plus:focus-visible {
+  border-color: #1f5fa8; color: #1f5fa8; background: #eef3fa; outline: none;
+}
+/* A finger has no hover: the ＋ stays shown, quietly. */
+@media (hover: none) {
+  .dp-append-plus { opacity: .6; transition: none; }
+}
+/* A narrow screen cannot spare the margin: numbers stay in the heading and
+   the ＋ moves into what margin there is. */
+@media (max-width: 640px) {
+  .dp-editor-pane > .dp-page { padding: 1.5em 1.2em 1.5em 2.6em; }
+  .dp-editor-pane .dp-page :is(h2, h3, h4) > .dp-number:first-child { position: static; margin-right: 0.4em; }
+  .dp-append-zone { left: -2.5em; width: 2.4em; }
+}
+/* Where the addition goes, while the ＋ is pointed at or a picture is held over it. */
+.dp-append-gap:has(.dp-append-zone:hover)::after,
+.dp-append-gap.dp-append-over::after {
+  content: ''; position: absolute; left: 0; right: 0; top: -1px;
+  border-top: 2px solid #1f5fa8; opacity: .55; pointer-events: none;
+}
 .dp-sheet > .dp-append:last-child { min-height: 1.8em; padding: 0.5em 0; }
 .dp-append-hint { flex: 0 0 auto; }
 /* The hint's room is kept even while it is hidden: if it only took space on
@@ -389,7 +437,7 @@ mark.dp-review-mark.dp-review-lit { background: rgba(255, 196, 0, .62); }
   background: #1f5fa8; cursor: ew-resize;
 }
 /* 画像を落とす先。どの隙間に入るかを、落とす前に見せる。 */
-.dp-append-over { min-height: 1.8em; background: rgba(31, 95, 168, .10); outline: 1px dashed #1f5fa8; }
+.dp-append-over:not(.dp-append-gap) { min-height: 1.8em; background: rgba(31, 95, 168, .10); outline: 1px dashed #1f5fa8; }
 
 .dp-tabbar-spacer { flex: 1; }
 .dp-tabbar-toggle {

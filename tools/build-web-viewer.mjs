@@ -92,6 +92,14 @@ const page = `<!doctype html>
   .dpw-notes summary { cursor: pointer; color: #7a5300; }
   .dpw-notes ul { margin: 6px 0 0; padding-left: 1.4em; max-height: 12em; overflow: auto; }
   #dpw-doc, .dpw-doc { max-width: 48em; margin: 2em auto 4em; padding: 0 16px; }
+  /* Heading numbers hang in the margin where there is one, so the structure
+     reads down the left edge without indenting what is below a heading. */
+  @media (min-width: 900px) {
+    .dpw-doc :is(h2, h3, h4) { position: relative; }
+    .dpw-doc :is(h2, h3, h4) > .dp-number:first-child {
+      position: absolute; right: 100%; margin-right: 0.6em; white-space: nowrap;
+    }
+  }
   .dpw-form h1, .dpw-folder h1 { font-size: 20px; margin: 0 0 .6em; }
   .dpw-folder h2 { font-size: 15px; margin: 1.4em 0 .4em; }
   .dpw-folder ul { padding-left: 1.2em; }

@@ -41,7 +41,8 @@ check('空の入力は何も書かない', (await page.textContent('#status')).i
 await page.click('.dp-tab[data-index="1"]');
 await page.waitForTimeout(200);
 const before = (await source()).length;
-await page.click('.dp-sheet:not([hidden]) .dp-append');
+// シートの末尾の欄（ブロックの間の欄は高さを持たず、＋のメニューから足す）
+await page.click('.dp-sheet:not([hidden]) .dp-append:not(.dp-append-gap)');
 await page.waitForTimeout(150);
 await page.keyboard.press('Escape');
 await page.waitForTimeout(200);
