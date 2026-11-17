@@ -228,17 +228,17 @@ npx --no-install docpresenter export --root sample --font "C:\Windows\Fonts\YuGo
 npm install
 npm test                        # 単体テスト
 npx tsc --build                 # 型検査とビルド
-npm run build:cli               # コマンド docpresenter / dgm を束ねる（下の export に要る）
+npm run build:cli               # コマンド docpresenter / dgm を束ねる（下の docpresenter に要る）
 
 node tools/build-editor-demo.mjs   # 設計書の編集画面   → out/editor.html（PDF のボタン付き）
 node tools/build-canvas-demo.mjs   # 作図だけのページ   → out/canvas-app.html
 npx --no-install docpresenter export --root sample   # サンプルを書き出す → sample/out/build/docs/*.{html,pdf,pptx}
                                   #   長い表はページをまたぎ、`{page="landscape"}` の表は横向きのページになる
 npx --no-install docpresenter export --root sample --diff-from HEAD~3   # 前の版からの変更に印を付ける
-node tools/check.mjs --in sample   # 書き出さずに全部確かめる（エラーがあれば終了コード 1、--strict なら警告でも）
-node tools/format-dgm.mjs --in sample   # 整形が要る図を挙げる（--write で書き換え、--check なら終了コード 1）
-node tools/pptx-back.mjs sample/out/build/docs/auth-overview.pptx --in sample   # 直された図を読み戻す（--write で書き込む）
-node tools/pdf-review.mjs <pdf> --in sample   # PDF の注釈を指摘として取り込む（--write で書き込む）
+npx --no-install docpresenter check --root sample    # 書き出さずに全部確かめる（エラーがあれば終了コード 1、--strict なら警告でも）
+npx --no-install docpresenter format --root sample   # 整形が要る図を挙げる（--write で書き換え、--check なら終了コード 1）
+npx --no-install docpresenter import sample/out/build/docs/auth-overview.pptx --root sample   # 直された図を読み戻す（--write で書き込む）
+npx --no-install docpresenter import <pdf> --root sample   # PDF の注釈を指摘として取り込む（--write で書き込む）
 
 node tools/build-vscode.mjs        # VS Code 拡張（2 つ）     → packages/app-vscode/media/ と packages/app-vscode-diagram/media/
 node tools/build-web-viewer.mjs    # Web の閲覧ページ         → out/web/（GitHub Pages に置ける）
