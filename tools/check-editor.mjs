@@ -53,12 +53,13 @@ check('＋で空のシートが増える',
   added.join(' | '));
 
 // 改名
-await page.dblclick(`.dp-tab[data-index="${added.length - 1}"]`);
+// タブの番号は 1 から数える。最後のタブが、いま増えた空のシート。
+await page.dblclick(`.dp-tab[data-index="${added.length}"]`);
 await page.fill('.dp-tab-rename', '付録');
 await page.keyboard.press('Enter');
 await page.waitForTimeout(200);
-check('見出しの無いシートは改名できないと言う',
-  await page.getAttribute('#status', 'data-kind') === 'refused', await status());
+check('見出しの無いシートは、改名すると先頭に見出しが書かれる',
+  (await source()).includes('## 付録') && (await tabs()).at(-1).endsWith('付録'), await status());
 
 await page.click('.dp-tab[data-index="2"]');
 await page.dblclick('.dp-tab[data-index="2"]');

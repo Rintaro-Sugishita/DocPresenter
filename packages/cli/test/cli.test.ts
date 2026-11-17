@@ -35,11 +35,29 @@ function written(): string[] {
   return found.sort();
 }
 
+/**
+ * What the command ships beside itself (tools/build-cli.mjs puts it in
+ * media/), laid out in a package of its own so the tests need no build.
+ */
+function shippedPackage(): string {
+  const pkg = join(dir, '.pkg');
+  const repo = new URL('../../../', import.meta.url);
+  const copy = (from: string, to: string) => {
+    mkdirSync(dirname(join(pkg, to)), { recursive: true });
+    writeFileSync(join(pkg, to), readFileSync(new URL(from, repo)));
+  };
+  copy('packages/app-vscode/templates/guide.md', 'media/init/guide.md');
+  for (const spec of ['dgm.md', 'table.md', 'inline-text.md']) copy(`spec/${spec}`, `media/init/spec/${spec}`);
+  copy('themes/default/theme.css', 'media/theme.css');
+  return pathToFileURL(join(pkg, 'dist', 'bin.js')).href;
+}
+
 async function run(...argv: string[]): Promise<{ code: number; said: string }> {
   const said: string[] = [];
   vi.spyOn(console, 'log').mockImplementation(line => { said.push(String(line)); });
   vi.spyOn(console, 'error').mockImplementation(line => { said.push(String(line)); });
-  const code = await runDocpresenter([...argv, '--root', dir, '--lang', 'ja'], import.meta.url);
+  // From a package that carries the shipped theme, as an installed command does.
+  const code = await runDocpresenter([...argv, '--root', dir, '--lang', 'ja'], shippedPackage());
   vi.restoreAllMocks();
   return { code, said: said.join('\n') };
 }
@@ -134,23 +152,6 @@ describe('import', () => {
 });
 
 describe('init と new', () => {
-  /**
-   * What `init` ships beside the command (tools/build-cli.mjs puts it in
-   * media/), laid out in a package of its own so the test needs no build.
-   */
-  function shippedPackage(): string {
-    const pkg = join(dir, '.pkg');
-    const repo = new URL('../../../', import.meta.url);
-    const copy = (from: string, to: string) => {
-      mkdirSync(dirname(join(pkg, to)), { recursive: true });
-      writeFileSync(join(pkg, to), readFileSync(new URL(from, repo)));
-    };
-    copy('packages/app-vscode/templates/guide.md', 'media/init/guide.md');
-    for (const spec of ['dgm.md', 'table.md', 'inline-text.md']) copy(`spec/${spec}`, `media/init/spec/${spec}`);
-    copy('themes/default/theme.css', 'media/theme.css');
-    return pathToFileURL(join(pkg, 'dist', 'bin.js')).href;
-  }
-
   async function runFrom(from: string, ...argv: string[]): Promise<{ code: number; said: string }> {
     const said: string[] = [];
     vi.spyOn(console, 'log').mockImplementation(line => { said.push(String(line)); });
