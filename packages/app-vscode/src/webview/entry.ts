@@ -6,7 +6,8 @@
 // `WorkspaceEdit`. Nothing here knows what a `vscode` is — the import list
 // says so — which is the same contract the web shell is built against.
 
-import { isLocale, toLf } from '@docpresenter/base';
+import { followColourScheme, isLocale, toLf, useDarkStyle } from '@docpresenter/base';
+import { PAGE_STYLE } from '../page-style.js';
 import { VSCODE_MESSAGES } from '../messages.js';
 import { isWorkbookPath, splitWorkbookPath, withWorkbooks } from '@docpresenter/xlsx';
 import { joinPath, parseDocument, renderDocument, resolveDocument } from '@docpresenter/markdown';
@@ -27,6 +28,10 @@ declare function acquireVsCodeApi(): {
 };
 
 const vscode = acquireVsCodeApi();
+// Light or dark as VS Code's colour theme is. The page's own frame goes dark
+// with it; the document follows once its theme arrives.
+followColourScheme(document, 'vscode');
+useDarkStyle(document, 'page', PAGE_STYLE);
 const send = (message: FromView): void => { vscode.postMessage(message); };
 
 let documentPath = '';
@@ -243,6 +248,9 @@ window.addEventListener('message', (event: MessageEvent<ToView>) => {
     // The workspace's own theme in place of the shipped one, or back to it.
     restoreTheme?.();
     restoreTheme = message.css === undefined ? undefined : useTheme(message.css);
+    // The dark screen's colours, made from whichever theme is on screen.
+    const shown = message.css ?? message.shipped;
+    if (shown !== undefined) useDarkStyle(document, 'theme', shown);
     return;
   }
   if (message.kind === 'reviews') {

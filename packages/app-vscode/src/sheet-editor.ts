@@ -161,7 +161,18 @@ export class SheetEditorProvider implements vscode.CustomTextEditorProvider {
       for (const path of themePaths(name)) {
         try { css = new TextDecoder().decode(await vscode.workspace.fs.readFile(vscode.Uri.joinPath(root, ...path.split('/')))); break; } catch { /* 次の置き場所へ */ }
       }
-      post(css === undefined ? { kind: 'theme' } : { kind: 'theme', css });
+      if (css !== undefined) {
+        post({ kind: 'theme', css });
+        return;
+      }
+      // The shipped theme is on the page already; its text goes too, so the
+      // screen can make its dark colours from it.
+      let shipped: string | undefined;
+      try {
+        shipped = new TextDecoder().decode(await vscode.workspace.fs.readFile(
+          vscode.Uri.joinPath(this.context.extensionUri, 'media', 'theme.css')));
+      } catch { /* 暗い画面の色が本文に付かないだけ */ }
+      post(shipped === undefined ? { kind: 'theme' } : { kind: 'theme', shipped });
     };
 
     /** The review comments on this document, to the screen. */

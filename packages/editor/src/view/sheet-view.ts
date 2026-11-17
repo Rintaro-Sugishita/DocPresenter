@@ -28,7 +28,7 @@ import { createOverlayEditor } from '@docpresenter/diagram';
 import { createGrid, type CellChoices, type Grid, type GridPosition } from './grid.js';
 import { attachZoom, createMenu, type MenuItem } from '@docpresenter/base';
 import { EDITOR_STYLE } from './style.js';
-import { BASE_STYLE } from '@docpresenter/base';
+import { BASE_STYLE, useDarkStyle } from '@docpresenter/base';
 import { DIAGRAM_STYLE } from '@docpresenter/diagram';
 import { createToolbar } from '@docpresenter/base';
 import { mountPicture, type Align, type PictureControls } from './picture.js';
@@ -1854,4 +1854,6 @@ function injectStyle(document: Document): void {
   // the drawing editor on its own needs only the first two.
   style.textContent = [BASE_STYLE, DIAGRAM_STYLE, EDITOR_STYLE].join('\n');
   document.head.append(style);
+  // Its dark counterpart, inert until the host turns the screen dark.
+  useDarkStyle(document, 'editor', style.textContent);
 }

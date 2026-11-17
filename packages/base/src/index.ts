@@ -16,3 +16,4 @@ export * from './view/zoom.js';
 export * from './file-name.js';
 export * from './grid-line.js';
 export * from './view/long-press.js';
+export * from './view/dark.js';

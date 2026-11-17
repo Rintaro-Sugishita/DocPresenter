@@ -4,7 +4,7 @@
 // and the subsetter are most of what is left of the page's weight once Mermaid
 // is split off, and most readers only read (viewer.ts imports this lazily).
 
-import type { Locale } from '@docpresenter/base';
+import { PRINT_CLASS, type Locale } from '@docpresenter/base';
 import { BUILD_MESSAGES, reviewSourceOf, type Workspace } from '@docpresenter/build';
 import { createSubsetter, measure, writePdf, type Subsetter } from '@docpresenter/pdf';
 import { localFonts } from './fonts.js';
@@ -52,6 +52,8 @@ export async function makePdf(request: PdfRequest): Promise<PdfResult> {
 
   const stage = doc.createElement('div');
   stage.style.cssText = 'position:absolute; left:-20000px; top:0; width:800px;';
+  // The page as it will be printed: light, whatever the screen is.
+  stage.classList.add(PRINT_CLASS);
   try {
     // Laid out in the faces that will be embedded, so the lines break where they will on paper.
     stage.style.setProperty('--font-body', `"${fonts.families.body}"`);

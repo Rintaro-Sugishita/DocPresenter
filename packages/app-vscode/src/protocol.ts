@@ -70,7 +70,11 @@ export type ToView =
    * the extension ships — sent on opening and whenever it is saved. Absent
    * when the workspace has none.
    */
-  | { readonly kind: 'theme'; readonly css?: string }
+  | {
+    readonly kind: 'theme'; readonly css?: string;
+    /** The shipped theme's text, which the screen's dark colours are made from when `css` is absent. */
+    readonly shipped?: string;
+  }
   /**
    * Lay this page out and measure it for a PDF. Only a browser can, and the
    * WebView is the one the extension has; the host writes the PDF from the
