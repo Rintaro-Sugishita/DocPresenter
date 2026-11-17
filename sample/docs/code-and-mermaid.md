@@ -40,8 +40,8 @@ UPDATE member
 `#` で始まる行も、コードブロックの中では見出しにならない。
 
 ```bash
-# 設計書をビルドする
-node tools/build.mjs --in sample
+# 設計書を書き出す
+npx docpresenter export --root sample
 ```
 
 `---` も、コードブロックの中ではシートの区切りにならない。

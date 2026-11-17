@@ -219,8 +219,8 @@ Chromium のどれか）と日本語フォントを使う——組版はブラ�
 HTML と PPTX だけを書く**（黙って PDF を落とさない）。別の場所にあるなら名前で渡す。
 
 ```
-node tools/build.mjs --in sample --chromium "C:\Program Files\Google\Chrome\Application\chrome.exe"
-node tools/build.mjs --in sample --font "C:\Windows\Fonts\YuGothR.ttc"
+npx --no-install docpresenter export --root sample --chromium "C:\Program Files\Google\Chrome\Application\chrome.exe"
+npx --no-install docpresenter export --root sample --font "C:\Windows\Fonts\YuGothR.ttc"
 # 環境変数 DOCPRESENTER_CHROMIUM / DOCPRESENTER_FONT でも同じ
 ```
 
@@ -228,15 +228,16 @@ node tools/build.mjs --in sample --font "C:\Windows\Fonts\YuGothR.ttc"
 npm install
 npm test                        # 単体テスト
 npx tsc --build                 # 型検査とビルド
+npm run build:cli               # コマンド docpresenter / dgm を束ねる（下の export に要る）
 
 node tools/build-editor-demo.mjs   # 設計書の編集画面   → out/editor.html（PDF のボタン付き）
 node tools/build-canvas-demo.mjs   # 作図だけのページ   → out/canvas-app.html
-node tools/build.mjs --in sample   # サンプルをビルド     → out/build/docs/*.{html,pdf,pptx}
+npx --no-install docpresenter export --root sample   # サンプルを書き出す → sample/out/build/docs/*.{html,pdf,pptx}
                                   #   長い表はページをまたぎ、`{page="landscape"}` の表は横向きのページになる
-node tools/build.mjs --in sample --diff-from HEAD~3   # 前の版からの変更に印を付ける
+npx --no-install docpresenter export --root sample --diff-from HEAD~3   # 前の版からの変更に印を付ける
 node tools/check.mjs --in sample   # 書き出さずに全部確かめる（エラーがあれば終了コード 1、--strict なら警告でも）
 node tools/format-dgm.mjs --in sample   # 整形が要る図を挙げる（--write で書き換え、--check なら終了コード 1）
-node tools/pptx-back.mjs out/build/docs/auth-overview.pptx --in sample   # 直された図を読み戻す（--write で書き込む）
+node tools/pptx-back.mjs sample/out/build/docs/auth-overview.pptx --in sample   # 直された図を読み戻す（--write で書き込む）
 node tools/pdf-review.mjs <pdf> --in sample   # PDF の注釈を指摘として取り込む（--write で書き込む）
 
 node tools/build-vscode.mjs        # VS Code 拡張（2 つ）     → packages/app-vscode/media/ と packages/app-vscode-diagram/media/
@@ -257,7 +258,7 @@ npm run build:cli
 npx --no-install docpresenter export --root sample                  # output: のとおり → sample/out/build/docs/…
 npx --no-install docpresenter export sample/docs --root sample --to pdf,png --out out/x --flat
 npx --no-install docpresenter check --root sample --strict
-npx --no-install docpresenter import out/build/docs/order-slides.pptx --root sample   # --write で書き込む
+npx --no-install docpresenter import sample/out/build/docs/order-slides.pptx --root sample   # --write で書き込む
 npx --no-install dgm export sample/shared --root sample --to svg,png --background transparent
 npx --no-install dgm format --root sample --check
 npx --no-install dgm items --root sample --check                    # 画面の項目一覧が画面と揃っているか
@@ -274,7 +275,7 @@ UI は日本語と英語。[決め方は決定事項 §9.4](design/decisions.md)
 - **VS Code** — VS Code の表示言語に従う（日本語以外は英語）。
 - **Web 版**（`out/editor.html`・`out/canvas-app.html`）— 初めて開いたときに一度だけ尋ね、この端末に覚える。
   設定パネルの「表示言語 / Language」で変えられる。`?lang=en` を付けるとその回だけ英語で開く。
-- **CLI** — `node tools/build.mjs --lang en`。無ければこの機械の言語設定から決める。
+- **CLI** — `docpresenter export --lang en`（`dgm` も同じ）。無ければこの機械の言語設定から決める。
 
 表紙の見出し・目次・「図 1 / Figure 1」など**成果物に入る文言も、ビルドした人の言語になる**。
 CI で成果物の言語を揃えたいときは `--lang` で固定する。

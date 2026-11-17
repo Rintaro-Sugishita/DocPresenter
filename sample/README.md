@@ -56,9 +56,9 @@ sample/
 | 4 状態の一覧 | `order-states.table`（結合表） | 結合セル（`^`）が PowerPoint の結合された表になる。列の幅は `.table` の `width` どおり。表は読み戻さない——PowerPoint で直すと、どの表が変わったかを警告に出す |
 | 5 改訂履歴 | `revision.md` の Markdown の表 | 本文の中の Markdown の表も、PowerPoint の表になる |
 
-1. 書き出す: `node tools/build.mjs --in sample`（VS Code なら文書を開いて「書き出し: PPTX」）
-2. `out/build/docs/order-slides.pptx` を PowerPoint で開き、図形を動かす・文字を直す・大きさを変える。保存する
-3. 読み戻す: `node tools/pptx-back.mjs out/build/docs/order-slides.pptx --in sample`
+1. 書き出す: `npx --no-install docpresenter export --root sample`（VS Code なら文書を開いて「書き出し: PPTX」）
+2. `sample/out/build/docs/order-slides.pptx` を PowerPoint で開き、図形を動かす・文字を直す・大きさを変える。保存する
+3. 読み戻す: `npx --no-install docpresenter import sample/out/build/docs/order-slides.pptx --root sample`
    （VS Code なら `.pptx` を右クリック →「PPTX の修正を図に読み戻す…」）。何が変わるかが出るので、
    よければ `--write` を付けて書き込む
 

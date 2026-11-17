@@ -415,7 +415,7 @@ written into the source files.
   - Tables: removed rows stay where they were; a changed cell keeps its old words struck through before the new ones. Removed columns are named under the table.
   - Diagrams: a removed shape or arrow has no place left in the drawing, so it is named under it ("Removed from the drawing:").
   - PPTX does not show what was taken out (the question is not asked).
-- From the command line: `docpresenter build docs/design.md --diff-from v1.2`; add `--show-removed strike` to show what was taken out.
+- From the command line: `docpresenter export docs/design.md --diff-from v1.2`; add `--show-removed strike` to show what was taken out.
 
 ## Reading diagrams changed in PowerPoint back
 
