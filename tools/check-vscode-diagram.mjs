@@ -80,4 +80,26 @@ const status = await page.textContent('#status');
 check('読めない文になったら、理由を言い、前の絵は残す',
   /2 行目/.test(status) && await page.locator('svg.dp-diagram').count() === 1, status);
 
+// --- VS Code の配色に従う --------------------------------------------------------
+{
+  const dark = await browser.newPage({ viewport: { width: 1100, height: 700 } });
+  dark.on('pageerror', e => check('画面でエラーが起きない（暗い配色）', false, e.message));
+  await dark.goto(pathToFileURL(pagePath).href);
+  await dark.evaluate(() => { document.body.className = 'vscode-dark'; });
+  await dark.waitForTimeout(100);
+  await dark.evaluate(([text, theme]) => window.postMessage({ kind: 'open', source: text, libraries: {}, locale: 'ja', theme }, '*'),
+    [source, readFileSync(`${media}/theme.css`, 'utf8')]);
+  await dark.waitForTimeout(400);
+  const luminance = rgb => { const [r, g, b] = rgb.match(/\d+/g).map(Number); return (r + g + b) / 3; };
+  const paper = await dark.$eval('#canvas', el => getComputedStyle(el).backgroundColor);
+  const label = await dark.locator('svg.dp-diagram .dp-label').first().evaluate(el => getComputedStyle(el).fill);
+  check('VS Code が暗い配色なら、紙も暗くなる', luminance(paper) < 80, paper);
+  check('　図の文字は明るくなる', luminance(label) > 160, label);
+  await dark.evaluate(() => { document.body.className = 'vscode-light'; });
+  await dark.waitForTimeout(100);
+  const light = await dark.$eval('#canvas', el => getComputedStyle(el).backgroundColor);
+  check('明るい配色に戻せば紙も白に戻る', light === 'rgb(255, 255, 255)', light);
+  await dark.close();
+}
+
 await browser.close();

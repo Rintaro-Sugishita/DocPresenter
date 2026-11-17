@@ -33,7 +33,9 @@ export class CanvasEditorProvider implements vscode.CustomTextEditorProvider {
         const there = await readText(vscode.Uri.joinPath(document.uri, '..', itemTable));
         if (there !== undefined) libraries[itemTable] = there;
       }
-      post({ kind, source, libraries, itemTable, locale: hostLocale() });
+      // The theme's text goes once, for the canvas to make its dark colours from.
+      const theme = kind === 'open' ? await readText(vscode.Uri.joinPath(media, 'theme.css')) : undefined;
+      post({ kind, source, libraries, itemTable, locale: hostLocale(), ...(theme === undefined ? {} : { theme }) });
     };
 
     /**

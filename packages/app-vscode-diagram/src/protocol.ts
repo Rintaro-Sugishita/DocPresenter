@@ -16,6 +16,8 @@ export type ToCanvas =
      */
     readonly itemTable: string;
     readonly locale: 'ja' | 'en';
+    /** The shipped theme's text, which the dark screen's colours are made from. Sent with `open`. */
+    readonly theme?: string;
   };
 
 /** Canvas → host. */

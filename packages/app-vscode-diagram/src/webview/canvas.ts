@@ -2,7 +2,9 @@
 // canvas of @docpresenter/diagram and sends each gesture back as a byte range;
 // the host writes it, and the text is the only state there is.
 
-import { applyEdit, BASE_STYLE, describeError, localizeEdit, type Locale } from '@docpresenter/base';
+import {
+  applyEdit, BASE_STYLE, describeError, followColourScheme, localizeEdit, useDarkStyle, type Locale,
+} from '@docpresenter/base';
 import { createCanvas, DIAGRAM_STYLE, parseDiagram, withParts } from '@docpresenter/diagram';
 import type { FromCanvas, ToCanvas } from '../protocol.js';
 import { takesFocus } from './focus.js';
@@ -16,13 +18,16 @@ const status = document.getElementById('status')!;
 const style = document.createElement('style');
 style.textContent = [
   BASE_STYLE, DIAGRAM_STYLE,
-  // The drawing is drawn on paper whatever VS Code's colours are: it is the
-  // picture a document will print.
+  // The drawing is drawn on paper: it is the picture a document will print.
+  // On a dark VS Code the paper goes dark too, made from these same rules.
   'body { margin: 0; padding: 16px; background: #f3f4f6; color: #1c1f24; }',
   '#canvas { background: #fff; padding: 12px; border-radius: 4px; display: inline-block; min-width: 320px; }',
   '#status { font: 12px system-ui, sans-serif; color: #b3261e; margin-bottom: 8px; min-height: 1em; }',
 ].join('\n');
 document.head.append(style);
+// Light or dark as VS Code's colour theme is; the theme's own rules follow on `open`.
+followColourScheme(document, 'vscode');
+useDarkStyle(document, 'canvas', style.textContent);
 
 let source = '';
 let libraries: Readonly<Record<string, string>> = {};
@@ -102,6 +107,7 @@ window.addEventListener('message', (event: MessageEvent<ToCanvas>) => {
   libraries = message.libraries;
   itemTable = message.itemTable;
   locale = message.locale;
+  if (message.theme !== undefined) useDarkStyle(document, 'theme', message.theme);
   draw(message.kind === 'open');
 });
 
