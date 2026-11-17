@@ -101,7 +101,18 @@ export function drawingOf(diagram: DiagramFile, options: DrawingOptions = {}): D
     }
     const preset = PRESETS[node.shape];
 
-    if (style?.get('icon') !== undefined) {
+    const table = laid.tables.find(one => one.container === id);
+    if (table) {
+      // A table that holds its cells is its frame and its rules: the cells are
+      // shapes of their own and come as such. The rules are lines of the slide,
+      // so they can be moved with the rest.
+      for (const y of table.rows) {
+        lines.push({ points: [{ x: box.x, y }, { x: box.x + box.width, y }], arrow: false, startArrow: false, dashed: false, line: '#aeb4bd' });
+      }
+      for (const x of table.columns) {
+        lines.push({ points: [{ x, y: box.y }, { x, y: box.y + box.height }], arrow: false, startArrow: false, dashed: false, line: '#d3d7dd' });
+      }
+    } else if (style?.get('icon') !== undefined) {
       // A part is a picture, not a shape (design/diagram-model.md §10.2). It
       // is said out loud rather than drawn as an empty box.
       options.diagnostics?.push(t('pptx.part', { id }));

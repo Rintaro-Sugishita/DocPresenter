@@ -28,6 +28,9 @@ import {
 } from '../edits.js';
 import { followLabel, itemShapes, linkItemTable, newItemTable, setItemCell, syncItemTable } from '../items.js';
 import {
+  addTableColumn, addTableRow, isEmptyTable, makeTable, removeTableColumn, removeTableRow, tableOf,
+} from '../table.js';
+import {
   addField, addLabel, fieldOf, fieldShapes, formOf, isLabelForm, setLabelColumn, setLabelSide, type AddedField,
 } from '../fields.js';
 import { toggleInline, type InlineMark } from '@docpresenter/base';
@@ -1793,6 +1796,7 @@ export function createCanvas(options: CanvasOptions): Canvas {
     }
     items.push(...fieldItems(id));
     items.push(...flowItems(id));
+    items.push(...gridTableItems(id));
     if (file.itemTable !== undefined && options.itemSource !== undefined) {
       items.push({ label: t('diagram.canvas.itemList'), separated: true, items: itemListItems(id) });
     }
@@ -1815,6 +1819,43 @@ export function createCanvas(options: CanvasOptions): Canvas {
       });
     }
     return items;
+  }
+
+  /**
+   * A table's own: giving an empty one cells, and rows and columns for one
+   * that has them — at the row and column of the cell that is picked.
+   */
+  function gridTableItems(id: string): MenuItem[] {
+    if (isEmptyTable(file, id)) {
+      const columns = [1, 2, 3].map(number => t('diagram.table.column', { n: number }));
+      return [{
+        label: t('diagram.canvas.makeTable'), separated: true,
+        run: () => options.apply(() => makeTable(file, source, id, columns), [`${id}H1`]),
+      }];
+    }
+    const cell = tableOf(file, id);
+    if (!cell) return [];
+    const { table, row, col } = cell;
+    const width = Math.max(1, ...(file.containers.get(table)?.cells.map(cells => cells.length) ?? [1]));
+    const rows = file.containers.get(table)?.cells.length ?? 1;
+    return [{
+      label: t('diagram.canvas.table'), separated: true,
+      items: [
+        { label: t('diagram.canvas.tableRowBelow'), run: () => options.apply(() => addTableRow(file, source, table, row), [id]) },
+        {
+          label: t('diagram.canvas.tableColumnRight'),
+          run: () => options.apply(() => addTableColumn(file, source, table, col, t('diagram.table.column', { n: width + 1 })), [id]),
+        },
+        {
+          label: t('diagram.canvas.tableDropRow'), separated: true, disabled: row === undefined || rows <= 1,
+          run: () => options.apply(() => removeTableRow(file, source, table, row!), [table]),
+        },
+        {
+          label: t('diagram.canvas.tableDropColumn'), disabled: col === undefined || width <= 1,
+          run: () => options.apply(() => removeTableColumn(file, source, table, col!), [table]),
+        },
+      ],
+    }];
   }
 
   /**

@@ -4,7 +4,7 @@
 // automatic layout that moved a shape someone had placed by hand would make
 // the pin meaningless.
 
-import { arrangeContainers, containerOf, type Hole } from './arrange.js';
+import { arrangeContainers, containerOf, type Hole, type TableRules } from './arrange.js';
 import { lineText, parseLabel, parseRuns, type TextLine } from './inline.js';
 import {
   DEFAULT_SIZE, type DiagramFile, type Edge, type FlowDirection, type Node, type Point,
@@ -80,6 +80,8 @@ export interface LaidOutDiagram {
    * place that holds nothing.
    */
   readonly holes: readonly Hole[];
+  /** Where the rules of each table go, in the drawing's own coordinates. */
+  readonly tables: readonly TableRules[];
   /**
    * What a screen's item table adds to it: a number on each item and a mark
    * after the caption of each required one. Not shapes — nothing in the file
@@ -186,8 +188,9 @@ export function layOutDiagram(diagram: DiagramFile, locale: Locale = DEFAULT_LOC
   // What the containers hold, in the room the containers have. Before parking,
   // because a shape a container placed is not a shape with nowhere to be.
   const holes: Hole[] = [];
+  const tables: TableRules[] = [];
   const hidden = arrangeContainers(
-    diagram, id => sizes.get(id) ?? { width: 0, height: 0, lines: [] }, boxes, diagnostics, holes,
+    diagram, id => sizes.get(id) ?? { width: 0, height: 0, lines: [] }, boxes, diagnostics, holes, tables,
   );
   // A tab page nobody is shown, and anything cut off by a scrolling area, is
   // deliberately not drawn — so it is not a shape with nowhere to be.
@@ -217,7 +220,7 @@ export function layOutDiagram(diagram: DiagramFile, locale: Locale = DEFAULT_LOC
 
   const routes = route(diagram, boxes, auto.courses);
   const notes = diagnostics.map(one => ({ id: one.id, message: say(locale, one), span: placeOf(diagram, one) }));
-  return normalize(boxes, routes, diagram, notes, holes, marks);
+  return normalize(boxes, routes, diagram, notes, holes, marks, tables);
 }
 
 /**
@@ -1441,7 +1444,7 @@ function placeOf(diagram: DiagramFile, phrase: Phrase): ByteSpan | undefined {
 function normalize(
   boxes: Map<string, Box>, routes: readonly EdgeRoute[],
   diagram: DiagramFile, notes: readonly DiagramNote[], holes: readonly Hole[],
-  marks: readonly ItemMark[] = [],
+  marks: readonly ItemMark[] = [], tables: readonly TableRules[] = [],
 ): LaidOutDiagram {
   // Detouring connections and their labels run outside the shapes, so they
   // move the origin and stretch the canvas too.
@@ -1507,5 +1510,10 @@ function normalize(
       ...hole, box: { ...hole.box, ...move({ x: hole.box.x, y: hole.box.y }) },
     })),
     marks: marks.map(mark => ({ ...mark, ...move(mark) })),
+    tables: tables.map(table => ({
+      ...table,
+      columns: table.columns.map(x => x - minX + PAD),
+      rows: table.rows.map(y => y - minY + PAD),
+    })),
   };
 }

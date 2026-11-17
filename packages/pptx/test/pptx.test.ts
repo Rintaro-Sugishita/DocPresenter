@@ -5,7 +5,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { unzipSync, strFromU8 } from 'fflate';
-import { parseDiagram } from '@docpresenter/diagram';
+import { parseDiagram, withParts } from '@docpresenter/diagram';
 import { drawingOf, escapeXml, hex, writePptx, type Deck } from '../src/index.js';
 
 const NL = String.fromCharCode(10);
@@ -208,5 +208,19 @@ describe('描かない線', () => {
   it('~~~ はコネクタにならない', () => {
     const drawn = drawingOf(diagram('flow {', '  a [A]', '  b [B]', '  c [C]', '  a ~~~ b', '  b --> c', '}'));
     expect(drawn.connectors).toHaveLength(1);
+  });
+});
+
+describe('中身を持つ表', () => {
+  it('表の罫線はスライドの線になり、部品の警告は出ない', () => {
+    const text = [
+      'use "default"', '', 'free {', '  t grid:', '  a label:"氏名"', '  b label:"所属"', '  c body:"山田"', '  d checkbox:', '}', '',
+      'layout {', '  t @ (0, 0) 300x80', '  grid t (cols: 1fr, 1fr; gap: 4 12; pad: 6) {', '    a ; b', '    c ; d', '  }', '}', '',
+    ].join('\n');
+    const diagnostics: string[] = [];
+    const drawing = drawingOf(withParts(parseDiagram(text), () => undefined), { diagnostics });
+    const rules = drawing.connectors.filter(line => !line.arrow && line.points.length === 2 && line.start === undefined);
+    expect(rules.length).toBeGreaterThanOrEqual(2);
+    expect(diagnostics.join(' ')).not.toContain(' t');
   });
 });
