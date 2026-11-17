@@ -29,6 +29,7 @@ export const DIAGRAM_STYLE = `
   border: 1px solid #d3d7dd; background: #f7f8fa; color: #3a4048; cursor: pointer;
   padding: 0.15em 0.25em; border-radius: 3px;
 }
+.dp-canvas-icon[hidden] { display: none; }
 .dp-canvas-icon:hover { background: #eceef1; }
 .dp-canvas-icon:disabled { opacity: 0.35; cursor: default; }
 /* The look of the picked line. Same row, same buttons; what is on now is

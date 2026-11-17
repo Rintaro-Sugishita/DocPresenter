@@ -85,8 +85,10 @@ await page.waitForTimeout(150);
 check('文字を編集すると書式バーが浮く', await page.isVisible('.dp-canvas-format'));
 const barAt = await page.locator('.dp-canvas-format').boundingBox();
 const textAt = await page.locator('.dp-canvas-text').boundingBox();
-check('バーは編集中の図形のそば', Math.abs(barAt.y + barAt.height - textAt.y) < 12,
-  `バー ${Math.round(barAt.y + barAt.height)} / 文字 ${Math.round(textAt.y)}`);
+// 上に出す。図形が描画の上端に寄っていて上に場所が無ければ、下に出す。
+check('バーは編集中の図形のそば',
+  Math.abs(barAt.y + barAt.height - textAt.y) < 12 || Math.abs(barAt.y - (textAt.y + textAt.height)) < 12,
+  `バー ${Math.round(barAt.y)}〜${Math.round(barAt.y + barAt.height)} / 文字 ${Math.round(textAt.y)}〜${Math.round(textAt.y + textAt.height)}`);
 
 await page.fill('.dp-canvas-text', '判定する');
 await page.$eval('.dp-canvas-text', el => el.setSelectionRange(0, 2));
@@ -203,25 +205,13 @@ await openSheet(4);
 // 線は「近さ」で拾う。描かれている線の中ほどを押す。
 const pressLine = async (from, to) => {
   const at = await page.$eval('.dp-canvas-stage svg', (svg, key) => {
-    const g = svg.querySelector(`[data-edge="${key}"] polyline`);
-    const points = g.getAttribute('points').split(' ').map(p => p.split(',').map(Number));
-    // 折れている線もあるので、線の長さの真ん中を取る。
-    const lengths = points.slice(1).map((p, i) => Math.hypot(p[0] - points[i][0], p[1] - points[i][1]));
-    const half = lengths.reduce((a, b) => a + b, 0) / 2;
-    let walked = 0;
-    let found = points[0];
-    for (let i = 0; i < lengths.length; i++) {
-      if (walked + lengths[i] >= half) {
-        const t = (half - walked) / (lengths[i] || 1);
-        found = [points[i][0] + (points[i + 1][0] - points[i][0]) * t,
-          points[i][1] + (points[i + 1][1] - points[i][1]) * t];
-        break;
-      }
-      walked += lengths[i];
-    }
+    // 流れ図の線は角を丸めた path、自由配置の線は polyline。どちらも線の長さの真ん中を取る。
+    const line = svg.querySelector(`[data-edge="${key}"] :is(polyline, .dp-edge-line)`);
+    const found = line.getPointAtLength(line.getTotalLength() / 2);
     const box = svg.getBoundingClientRect();
-    const scale = box.width / svg.viewBox.baseVal.width;
-    return { x: box.left + found[0] * scale, y: box.top + found[1] * scale };
+    const view = svg.viewBox.baseVal;
+    const scale = box.width / view.width;
+    return { x: box.left + (found.x - view.x) * scale, y: box.top + (found.y - view.y) * scale };
   }, `${from}->${to}`);
   await page.mouse.click(at.x, at.y);
   await page.waitForTimeout(250);
