@@ -108,6 +108,12 @@ import {
 } from '@docpresenter/editor';
 import { drawMermaid } from '@docpresenter/editor/mermaid';
 import { askLocale, languageSelect, SHELL_MESSAGES, startingLocale } from '../tools/web-shell/locale.mjs';
+import { followColourScheme, PRINT_CLASS, useDarkStyle } from '@docpresenter/base';
+
+// 画面はシステムの明暗に従う。暗い色はテーマとこのページの枠の CSS から作る。
+followColourScheme(document, 'system');
+useDarkStyle(document, 'theme', ${JSON.stringify(readFileSync('themes/default/theme.css', 'utf8'))});
+useDarkStyle(document, 'page', [...document.querySelectorAll('head > style:not([id^="dp-dark"])')].map(node => node.textContent).join('\\n'));
 
 const FILES = ${JSON.stringify(files)};
 const IMAGES = ${JSON.stringify(images)};
@@ -359,6 +365,7 @@ pdfButton.addEventListener('click', async () => {
   // 画面の外に、印刷される姿のまま組ませる。編集画面には触らない。
   const stage = document.createElement('div');
   stage.style.cssText = 'position:absolute; left:-20000px; top:0; width:800px;';
+  stage.classList.add(PRINT_CLASS);
   try {
     const source = view.source;
     // 書き出しは CLI と同じ支度をする。取り込んだ文書を畳んでおかないと、採番も

@@ -6,7 +6,7 @@
 
 import { drawMermaid, flattenMermaid, mermaidPicture } from '@docpresenter/editor/mermaid';
 import { measure } from '@docpresenter/pdf';
-import type { Locale } from '@docpresenter/base';
+import { PRINT_CLASS, type Locale } from '@docpresenter/base';
 import type { FromView, ToView } from '../protocol.js';
 
 /** Answers a request if it is one of these. Returns whether it was. */
@@ -42,6 +42,8 @@ async function measurePage(
   const restore = style === undefined ? undefined : useTheme(style);
   const stage = document.createElement('div');
   stage.style.cssText = 'position:absolute; left:-20000px; top:0; width:800px;';
+  // The page as it will be printed: light, whatever the screen is.
+  stage.classList.add(PRINT_CLASS);
   stage.innerHTML = body;
   document.body.append(stage);
   try {

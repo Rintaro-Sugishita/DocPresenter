@@ -8,7 +8,7 @@
 // shared link means the same thing tomorrow. A folder on this computer cannot
 // travel in a link; it is moved about in the page itself.
 
-import { attachZoom, describeError, ZOOM_STYLE, type Locale } from '@docpresenter/base';
+import { attachZoom, describeError, followColourScheme, useDarkStyle, ZOOM_STYLE, type Locale } from '@docpresenter/base';
 import { hasMermaid, takeIn, type BuildDiagnostic, type Workspace } from '@docpresenter/build';
 import { addressOf, ViewerError, type Addressed, type Fetch, type Host, type Location } from './hosts/index.js';
 import { WEB_MESSAGES, type WebMessage } from './messages.js';
@@ -86,9 +86,15 @@ export function startViewer(env: ViewerEnvironment): void {
   const theme = doc.createElement('style');
   theme.dataset['dpTheme'] = '';
   doc.head.prepend(theme);
+  // The page's own frame is styled in the page; its sheet is read before
+  // ours is added, for the dark screen to be made from.
+  const frame = [...doc.head.querySelectorAll('style')].map(node => node.textContent ?? '').join('\n');
   const chrome = doc.createElement('style');
   chrome.textContent = ZOOM_STYLE;
   doc.head.append(chrome);
+  // Light or dark as the system is. The document goes dark with its theme.
+  followColourScheme(doc, 'system');
+  useDarkStyle(doc, 'frame', frame + '\n' + ZOOM_STYLE);
   doc.body.append(bar, status, notes, main);
 
   const say = (text: string, kind: 'ok' | 'busy' | 'refused' = 'ok'): void => {
@@ -564,6 +570,7 @@ export function startViewer(env: ViewerEnvironment): void {
     top.splice(4, 0, pdf);
     bar.replaceChildren(...top);
     theme.textContent = composed.style;
+    useDarkStyle(doc, 'theme', composed.style);
     main.innerHTML = composed.body;
     addZooms(main, locale);
     void drawn(main, composed.body).catch(fail);
