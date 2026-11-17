@@ -9,6 +9,17 @@ const check = (name, ok, detail = '') => {
   console.log(`${ok ? '○' : '✗'} ${name}${detail ? ' — ' + detail : ''}`);
   if (!ok) process.exitCode = 1;
 };
+/**
+ * ブロックの間に足す。間の欄は高さを持たないので、上のブロックに重ねて
+ * 余白に出る ＋ を押し、メニューから選ぶ。
+ */
+const addBetween = async (gap, label) => {
+  const block = page.locator('.dp-sheet:not([hidden]) .dp-append-gap').nth(gap).locator('xpath=preceding-sibling::*[1]');
+  await block.hover();
+  await page.click(`.dp-sheet:not([hidden]) .dp-append-gap >> nth=${gap} >> .dp-append-plus`);
+  await page.waitForSelector('.dp-menu button');
+  await page.click(`.dp-menu button:text("${label}")`);
+};
 const sheetFigures = () => page.$$eval('.dp-sheet:not([hidden]) .dp-figure', f => f.length);
 
 await page.click('.dp-tab[data-index="1"]');
@@ -17,9 +28,27 @@ check('ブロックごとに追加できる場所がある',
   (await page.$$('.dp-sheet:not([hidden]) .dp-append')).length >= 3,
   `${(await page.$$('.dp-sheet:not([hidden]) .dp-append')).length} 箇所`);
 
+// ブロックの間の欄は場所を取らず、＋は上のブロックに重ねたときだけ出る
+check('ブロックの間の欄は高さを持たない',
+  (await page.$$eval('.dp-sheet:not([hidden]) .dp-append-gap', gs => gs.map(g => g.getBoundingClientRect().height)))
+    .every(h => h === 0));
+const plusOpacity = () => page.$eval('.dp-sheet:not([hidden]) .dp-append-gap .dp-append-plus',
+  el => getComputedStyle(el).opacity);
+await page.mouse.move(5, 5);
+await page.waitForTimeout(600);
+check('＋はふだん見えない', await plusOpacity() === '0');
+await page.locator('.dp-sheet:not([hidden]) .dp-append-gap').first().locator('xpath=preceding-sibling::*[1]').hover();
+await page.waitForTimeout(250);
+check('上のブロックに重ねると＋が出る', await plusOpacity() === '1');
+check('＋は本文ではなく用紙の左の余白に出る', await (async () => {
+  const plus = await page.$eval('.dp-sheet:not([hidden]) .dp-append-gap .dp-append-plus', el => el.getBoundingClientRect().right);
+  const text = await page.$eval('.dp-sheet:not([hidden]) .dp-prose, .dp-sheet:not([hidden]) h1', el => el.getBoundingClientRect().left);
+  return plus < text;
+})());
+
 // 最初のブロックの直後に入れる（末尾ではない位置）
 const before = await sheetFigures();
-await page.click('.dp-sheet:not([hidden]) .dp-append:first-of-type .dp-append-add:text("表")');
+await addBetween(0, '表');
 await page.waitForTimeout(500);
 check('表が 1 つ増える', (await sheetFigures()) === before + 1, `${before} → ${await sheetFigures()}`);
 check('本文に @import が書かれる',
@@ -45,7 +74,7 @@ const renderedRow = await page.$eval('.dp-figure[data-path*="table-1.table"] tbo
 check('描画された空の行にも高さがある', renderedRow >= 18, `${Math.round(renderedRow)}px`);
 
 // 図
-await page.click('.dp-sheet:not([hidden]) .dp-append-add:text("図")');
+await page.click('.dp-sheet:not([hidden]) .dp-append:not(.dp-append-gap) .dp-append-add:text("図")');
 await page.waitForTimeout(500);
 check('図も増える',
   await page.isVisible('.dp-sheet:not([hidden]) .dp-figure[data-path*=".dgm"] svg'));
@@ -67,7 +96,7 @@ await page.waitForTimeout(300);
 check('「＋ 参照」がある',
   await page.isVisible('.dp-sheet:not([hidden]) .dp-append-add:text("参照")'));
 
-await page.click('.dp-sheet:not([hidden]) .dp-append:first-of-type .dp-append-add:text("参照")');
+await addBetween(0, '参照…');
 await page.waitForSelector('.dp-menu button');
 const listed = await page.$$eval('.dp-menu button', bs => bs.map(b => b.textContent));
 check('すでにある図表が並ぶ', listed.length >= 5, `${listed.length} 件: ${listed.slice(0, 3).join(' / ')}`);

@@ -379,7 +379,7 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
   function onDragOver(event: DragEvent): void {
     if (readOnly || !carriesPicture(event)) return;
     event.preventDefault();
-    const target = (event.target as HTMLElement | null)?.closest<HTMLElement>('.dp-append');
+    const target = dropTarget(event);
     for (const node of pane.querySelectorAll('.dp-append-over')) node.classList.remove('dp-append-over');
     target?.classList.add('dp-append-over');
   }
@@ -393,12 +393,27 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
     if (readOnly || !carriesPicture(event)) return;
     event.preventDefault();
     for (const node of pane.querySelectorAll('.dp-append-over')) node.classList.remove('dp-append-over');
-    const at = spanOf((event.target as HTMLElement | null)?.closest<HTMLElement>('.dp-append')
-      ?? lastTarget())?.end;
+    const at = spanOf(dropTarget(event) ?? lastTarget())?.end;
     const address = addressOf(event.dataTransfer);
     if (address !== undefined) { place(address, at); return; }
     const file = [...(event.dataTransfer?.files ?? [])].find(one => one.type.startsWith('image/'));
     if (file) void bring(file, at);
+  }
+
+  /**
+   * Where a drop lands: the place under the pointer, or — since the places
+   * between blocks take no room — the one after the block under it.
+   */
+  function dropTarget(event: DragEvent): HTMLElement | undefined {
+    const under = event.target as HTMLElement | null;
+    const place = under?.closest<HTMLElement>('.dp-append');
+    if (place) return place;
+    let block = under?.closest<HTMLElement>('[data-span]');
+    while (block && !block.parentElement?.classList.contains('dp-sheet')) {
+      block = block.parentElement?.closest<HTMLElement>('[data-span]') ?? null;
+    }
+    const next = block?.nextElementSibling;
+    return next instanceof HTMLElement && next.classList.contains('dp-append') ? next : undefined;
   }
 
   /** Whether a drag is carrying something this editor would take. */
@@ -1162,6 +1177,8 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
     if (readOnly) return;
     // The switch on a Mermaid block is a button, not a way into the text.
     if ((event.target as HTMLElement | null)?.closest('.dp-mermaid-switch, .dp-code-copy, .dp-figure-tools, .dp-zoom-bar')) return;
+    // The margin beside a ＋ is only there to keep it under the pointer.
+    if ((event.target as HTMLElement | null)?.closest('.dp-append-zone')) return;
     // A right press on a figure is for its menu. Opening the caption or the
     // drawing under it first would replace the element the menu belongs to.
     if (event.button === 2) {
@@ -1290,21 +1307,52 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
     section.classList.toggle('dp-sheet-empty', blocks.length === 0);
 
     if (blocks.length === 0) {
-      section.append(insertTarget(section.dataset['span'] ?? '', true));
+      section.append(insertTarget(section.dataset['span'] ?? '', 'empty'));
       return;
     }
-    for (const block of blocks) {
-      block.after(insertTarget(block.dataset['span'] ?? '', false));
-    }
+    blocks.forEach((block, i) => {
+      block.after(insertTarget(block.dataset['span'] ?? '', i === blocks.length - 1 ? 'end' : 'gap'));
+    });
   }
 
-  function insertTarget(span: string, empty: boolean): HTMLElement {
-    const append = element('div', 'dp-append');
+  /**
+   * Where something can be added. An empty sheet and the end of a sheet say
+   * so and show their buttons: they are where writing begins. Between two
+   * blocks the place takes no room at all — the page reads as it does in the
+   * reading mode — and offers a ＋ in the margin while the pointer is on the
+   * block above it, which opens a menu of what to add.
+   */
+  function insertTarget(span: string, kind: 'empty' | 'end' | 'gap'): HTMLElement {
+    const append = element('div', kind === 'gap' ? 'dp-append dp-append-gap' : 'dp-append');
     // Whatever is added starts where the block before it ends.
     append.dataset['span'] = span;
 
+    if (kind === 'gap') {
+      // The zone in the margin keeps the ＋ under the pointer on its way from
+      // the block to the button; the line shows where the addition goes.
+      const zone = element('span', 'dp-append-zone');
+      const plus = owner.createElement('button');
+      plus.type = 'button';
+      plus.className = 'dp-append-plus';
+      plus.textContent = '+';
+      plus.title = t('editor.append.plusTitle');
+      plus.setAttribute('aria-label', t('editor.append.plusTitle'));
+      plus.addEventListener('mousedown', event => {
+        event.preventDefault();
+        event.stopPropagation();
+        const box = plus.getBoundingClientRect();
+        // Whatever is open is written back first. That redraws the page, so
+        // the place is found again by where it is in the text.
+        const here = settle(append);
+        if (here) menu.open(box.right + 4, box.top, addMenu(here, box));
+      });
+      zone.append(plus);
+      append.append(zone);
+      return append;
+    }
+
     const hint = element('span', 'dp-append-hint');
-    hint.textContent = empty ? t('editor.append.hint') : '';
+    hint.textContent = kind === 'empty' ? t('editor.append.hint') : '';
     // Said by the stylesheet on hover when the sheet is not empty.
     hint.dataset['hint'] = t('editor.append.hint');
     append.append(hint);
@@ -1334,6 +1382,47 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
       button(t('editor.append.refer'), t('editor.append.referTitle'), event => chooseResource(append, event));
     }
     return append;
+  }
+
+  /**
+   * Closes whatever editor is open, as a press elsewhere on the page would,
+   * and returns the place to add at as it is on the page afterwards — or
+   * nothing when the edit moved it.
+   */
+  function settle(append: HTMLElement): HTMLElement | undefined {
+    if (!editing && canvas === undefined && grid === undefined) return append;
+    const span = append.dataset['span'];
+    if (canvas !== undefined) {
+      canvas = undefined;
+      draw();
+    } else if (grid !== undefined) {
+      const open = mounted;
+      grid = undefined;
+      open?.flush();
+      draw();
+    } else {
+      endEdit(true);
+    }
+    if (append.isConnected) return append;
+    return resolve({ span, path: undefined, append: true, caption: false, figure: false });
+  }
+
+  /** What the ＋ between two blocks offers: the same things the end of a sheet does, and text. */
+  function addMenu(append: HTMLElement, box: DOMRect): MenuItem[] {
+    const items: MenuItem[] = [{ label: t('editor.append.menuText'), run: () => beginAppend(append) }];
+    if (options.createResource) {
+      items.push(
+        { label: t('editor.append.menuTable'), run: () => addResource(append, 'table') },
+        { label: t('editor.append.menuDiagram'), run: () => addResource(append, 'diagram') },
+      );
+    }
+    if (options.listResources) {
+      items.push({
+        label: t('editor.append.menuRefer'),
+        run: () => chooseResource(append, { clientX: box.right + 4, clientY: box.top } as MouseEvent),
+      });
+    }
+    return items;
   }
 
   /**
