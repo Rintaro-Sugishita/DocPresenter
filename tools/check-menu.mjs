@@ -23,7 +23,8 @@ await openGrid();
 // ツールバーが軽くなっている
 check('行・列のボタンはツールバーから消えた',
   (await page.$$eval('.dp-grid-bar:not(.dp-grid-style) button', bs => bs.map(b => b.textContent)))
-    .join(' ') === '左 中 右 ソース整形 ソース',
+    // ⋯ は右クリックと同じメニューを開く入口（指で使う人のため）。行・列の操作はその中にある。
+    .join(' ') === '左 中 右 ソース整形 ソース ⋯',
   (await page.$$eval('.dp-grid-bar:not(.dp-grid-style) button', bs => bs.map(b => b.textContent).join(' '))));
 
 // マウスで文字を選択できる
