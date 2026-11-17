@@ -409,7 +409,7 @@ SVG への書き出しはそちらの機能である。詳しくは
   - 表：消した行を元の位置に、書き換えたセルは元の文字を取り消し線で今の文字の前に残す。消した列は表の下に名前で出す。
   - 図：消した図形と矢印は置き場所が無いので、図の下に「図から削除：」として名前で出す。
   - PPTX には消したものを出さない（この選択は聞かない）。
-- CLI では `docpresenter build docs/設計書.md --diff-from v1.2` で同じことができる。消したところも見せるなら `--show-removed strike` を足す。
+- CLI では `docpresenter export docs/設計書.md --diff-from v1.2` で同じことができる。消したところも見せるなら `--show-removed strike` を足す。
 
 ## PowerPoint で修正した図を反映する
 
