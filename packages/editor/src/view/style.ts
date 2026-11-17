@@ -164,6 +164,9 @@ export const EDITOR_STYLE = `
 /* The zoom bar would sit where these buttons are, over them; on a figure in
    the editor it goes to the bottom corner instead. */
 .dp-figure > .dp-figure-body > .dp-zoom-bar { top: auto; bottom: 4px; }
+/* While a drawing or a table is open, its own bar runs along the top, where
+   these buttons would sit over its buttons: they move just above the figure. */
+.dp-figure:has(.dp-canvas, .dp-canvas-host, .dp-grid) > .dp-figure-tools { top: auto; bottom: 100%; margin-bottom: 4px; }
 .dp-figure-names, .dp-figure-delete {
   font: 11px system-ui, sans-serif; color: #3a4048; cursor: pointer;
   background: #fff; border: 1px solid #c9ced6; border-radius: 3px; padding: 2px 8px;

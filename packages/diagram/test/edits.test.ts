@@ -5,7 +5,7 @@ import {
   addNode, bendEdge, canUnpin, connectNodes, DiagramEditError, disconnectNodes, groupMembers,
   dropInto, groupNodes, layOutDiagram, moveCallout, pinNode, pinNodes, reconnect, removeNode,
   putIntoContainer, removeNodes, setContainerCells, setItems, setNodeShape, setNodeStyle,
-  setNodePart, setNodeText, unpinNode, withParts,
+  setNodePart, setNodeText, setStackFlow, unpinNode, withParts,
 } from '../src/index.js';
 import type { Item } from '../src/model.js';
 
@@ -884,5 +884,27 @@ describe('入れ物に入れる', () => {
     const twice = applyEdit(once, addNode(parseDiagram(once), once,
       { shape: 'rect', text: '', part: 'label', into: { container: 'frame' } }));
     expect(twice).toContain('a ; part1\n    part2 ; .');
+  });
+});
+
+describe('stack の向きを変える', () => {
+  const STACKED = ['free {', '  frame [ ]', '  a [A]', '  b [B]', '}', 'layout {',
+    '  frame @ (0, 0) 300x400', '  stack frame (down; gap: 10) {', '    a', '    b', '  }', '}', ''].join('\n');
+  it('down と right をその場で入れ替える', () => {
+    const across = applyEdit(STACKED, setStackFlow(parseDiagram(STACKED), STACKED, 'frame', 'right'));
+    expect(across).toContain('stack frame (right; gap: 10) {');
+    const back = applyEdit(across, setStackFlow(parseDiagram(across), across, 'frame', 'down'));
+    expect(back).toBe(STACKED);
+  });
+  it('向きの書いていない stack には right を前に足す', () => {
+    const plain = STACKED.replace('(down; gap: 10)', '(gap: 10)');
+    expect(applyEdit(plain, setStackFlow(parseDiagram(plain), plain, 'frame', 'right')))
+      .toContain('stack frame (right; gap: 10) {');
+    const bare = STACKED.replace(' (down; gap: 10)', '');
+    expect(applyEdit(bare, setStackFlow(parseDiagram(bare), bare, 'frame', 'right')))
+      .toContain('stack frame (right) {');
+  });
+  it('同じ向きにはしない', () => {
+    expect(() => setStackFlow(parseDiagram(STACKED), STACKED, 'frame', 'down')).toThrow(DiagramEditError);
   });
 });

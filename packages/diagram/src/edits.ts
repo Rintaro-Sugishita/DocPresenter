@@ -611,6 +611,36 @@ function containerText(
 }
 
 /**
+ * Turns a stack down or across. The setting is rewritten where it is written:
+ * `down` and `right` swap in place, and a stack that says neither (down, by
+ * default) gains `right` at the front of its settings.
+ */
+export function setStackFlow(file: DiagramFile, source: string, id: string, flow: 'down' | 'right'): Edit {
+  const container = file.containers.get(id);
+  if (!container || container.kind !== 'stack') throw new DiagramEditError(dgm('diagram.edit.missingContainer', { id }));
+  if (container.flow === flow) throw new DiagramEditError(dgm('diagram.edit.sameFlow'));
+  const text = sliceBytes(source, container.span.start, container.span.end);
+  const open = text.indexOf('{');
+  const head = text.slice(0, open);
+  const settings = /\(([^)]*)\)/.exec(head);
+  let written: string;
+  if (!settings) {
+    written = flow === 'right' ? `${head.trimEnd()} (right) ${text.slice(open)}` : text;
+  } else {
+    const parts = settings[1]!.split(';').map(part => part.trim()).filter(part => part !== '');
+    const at = parts.findIndex(part => part === 'down' || part === 'right');
+    if (at >= 0) parts[at] = flow;
+    else if (flow === 'right') parts.unshift('right');
+    const inside = parts.join('; ');
+    const newHead = inside === ''
+      ? head.slice(0, settings.index).trimEnd() + ' '
+      : head.slice(0, settings.index) + `(${inside})` + head.slice(settings.index + settings[0].length);
+    written = newHead + text.slice(open);
+  }
+  return { span: container.span, text: written, ...described(dgm('diagram.did.flow')) };
+}
+
+/**
  * Rewrites what a shape says. The shape and the id are left alone — and a
  * group is written as a group, not turned into a box with a list of names for
  * a label.

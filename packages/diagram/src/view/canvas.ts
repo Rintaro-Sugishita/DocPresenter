@@ -22,7 +22,7 @@ import {
 import { DIAGRAM_MESSAGES, dgm } from '../messages.js';
 import {
   addNode, bendEdge, canUnpin, editBetween, withLibrary, connectNodes, disconnectNodes, groupMembers, groupNodes,
-  nextShapeId, pinNode, pinNodes, reconnect, removeNodes, setContainerCells, setItems,
+  nextShapeId, pinNode, pinNodes, reconnect, removeNodes, setContainerCells, setItems, setStackFlow,
   putIntoContainer, setNodePart, setNodeShape, setNodeStyle, setNodeText, unpinNode,
   DiagramEditError,
 } from '../edits.js';
@@ -1364,6 +1364,30 @@ export function createCanvas(options: CanvasOptions): Canvas {
    * list is the same either way, and in a tree it carries on the branch the
    * reader was just looking at rather than starting a new one.
    */
+  /**
+   * A row under the picked one, with what is nested under that one kept with
+   * it — or, with no row pressed, a row at the bottom: a listing with no rows
+   * at all has nothing to press, which is how one gets its first.
+   */
+  function addRowHere(): void {
+    if (row === undefined) { addRow(); return; }
+    changeRows((items, at) => {
+      const after = branch(items, at);
+      items.splice(after, 0, {
+        text: t('diagram.new.item'), depth: items[at]?.depth ?? 0, closed: false, picked: false,
+      });
+      return { items, at: after };
+    });
+  }
+
+  /** The picked row goes, and what is nested under it with it. */
+  function dropRowHere(): void {
+    changeRows((items, at) => {
+      items.splice(at, branch(items, at) - at);
+      return { items, at: Math.max(0, at - 1) };
+    });
+  }
+
   function addRow(): void {
     const now = listingNow();
     if (!now) return;
@@ -1727,6 +1751,16 @@ export function createCanvas(options: CanvasOptions): Canvas {
         run: () => (onRow === undefined ? beginText(id) : beginRow(id, onRow)),
         disabled: node?.shape === 'line' || (held !== undefined && onRow === undefined),
       },
+      // The rows, said in words here as well as on the small buttons of the
+      // bar: a row is what a list is for, and a picture alone is easy to miss.
+      ...(held ? [
+        {
+          label: onRow !== undefined ? t('diagram.canvas.addRowBelow')
+            : held.items.length === 0 ? t('diagram.canvas.addFirstRow') : t('diagram.canvas.addLastRow'),
+          run: addRowHere,
+        },
+        { label: t('diagram.canvas.dropRow'), run: dropRowHere, disabled: onRow === undefined },
+      ] : []),
       {
         label: connecting === undefined ? t('diagram.canvas.connect') : t('diagram.canvas.connectPick'),
         // A group can be either end: the line runs from its frame.
@@ -1758,6 +1792,7 @@ export function createCanvas(options: CanvasOptions): Canvas {
       });
     }
     items.push(...fieldItems(id));
+    items.push(...flowItems(id));
     if (file.itemTable !== undefined && options.itemSource !== undefined) {
       items.push({ label: t('diagram.canvas.itemList'), separated: true, items: itemListItems(id) });
     }
@@ -1780,6 +1815,27 @@ export function createCanvas(options: CanvasOptions): Canvas {
       });
     }
     return items;
+  }
+
+  /**
+   * Which way a stack runs, turned from the menu: on the stack itself, or on
+   * anything it holds. The container that does the arranging is named, since
+   * a shape can sit in a stack inside another.
+   */
+  function flowItems(id: string): MenuItem[] {
+    const ids = [file.containers.get(id)?.id, containerOf(file).get(id)].filter((one): one is string => one !== undefined);
+    const out: MenuItem[] = [];
+    for (const [index, name] of [...new Set(ids)].entries()) {
+      const container = file.containers.get(name);
+      if (container?.kind !== 'stack') continue;
+      const across = container.flow === 'right';
+      out.push({
+        label: t(across ? 'diagram.canvas.flowDown' : 'diagram.canvas.flowRight', { id: name }),
+        separated: index === 0 || out.length === 0,
+        run: () => options.apply(() => setStackFlow(file, source, name, across ? 'down' : 'right'), [id]),
+      });
+    }
+    return out;
   }
 
   /**
@@ -2184,8 +2240,10 @@ export function createCanvas(options: CanvasOptions): Canvas {
       const adds = button.dataset.rowAdd === 'add';
       // Everything but adding needs a row to act on. Adding is what is left
       // when there is none — otherwise an empty list has no way back.
-      button.disabled = (button.dataset.rowOnly === 'tree' && inRow?.icon !== 'ui/tree')
-        || (row === undefined && !adds);
+      // A list or a menu has no depths and no branches: those buttons are not
+      // shown for it at all, rather than shown and dead.
+      button.hidden = button.dataset.rowOnly === 'tree' && inRow?.icon !== 'ui/tree';
+      button.disabled = row === undefined && !adds;
       if (adds) {
         button.title = row !== undefined ? t('diagram.canvas.addRowBelow')
           : (inRow?.items.length ?? 0) === 0 ? t('diagram.canvas.addFirstRow') : t('diagram.canvas.addLastRow');
@@ -2353,22 +2411,8 @@ export function createCanvas(options: CanvasOptions): Canvas {
     // the row alone would leave its children hanging off whatever came before
     // — a different tree than the one anybody asked for, and sometimes one
     // with a gap in its depths that cannot be drawn at all.
-    onRow(rowIcon('add'), t('diagram.canvas.addRowBelow'), () => {
-      // With no row pressed there is nothing to be under — and a listing with
-      // no rows at all has nothing to press, which is how one gets its first.
-      if (row === undefined) { addRow(); return; }
-      changeRows((items, at) => {
-        const after = branch(items, at);
-        items.splice(after, 0, {
-          text: t('diagram.new.item'), depth: items[at]?.depth ?? 0, closed: false, picked: false,
-        });
-        return { items, at: after };
-      });
-    }, undefined, 'add');
-    onRow(rowIcon('drop'), t('diagram.canvas.dropRow'), () => changeRows((items, at) => {
-      items.splice(at, branch(items, at) - at);
-      return { items, at: Math.max(0, at - 1) };
-    }));
+    onRow(rowIcon('add'), t('diagram.canvas.addRowBelow'), addRowHere, undefined, 'add');
+    onRow(rowIcon('drop'), t('diagram.canvas.dropRow'), dropRowHere);
     onRow(rowIcon('in'), t('diagram.canvas.deeper'), () => changeRows((items, at) => {
       // A row can only be as deep as one step past the row above it: a gap in
       // the depths is a tree nobody can draw.
