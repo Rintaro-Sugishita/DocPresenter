@@ -28,4 +28,5 @@ export * from './complete.js';
 export * from './items.js';
 export * from './fields.js';
 export * from './table.js';
+export * from './stack-up.js';
 export * from './node-anchor.js';
