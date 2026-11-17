@@ -54,7 +54,11 @@ export const EDITOR_STYLE = `
 .dp-append:hover { min-height: 1.8em; }
 .dp-sheet > .dp-append:last-child { min-height: 1.8em; padding: 0.5em 0; }
 .dp-append-hint { flex: 0 0 auto; }
-.dp-append:hover .dp-append-hint:empty::before { content: attr(data-hint); }
+/* The hint's room is kept even while it is hidden: if it only took space on
+   hover, the buttons would jump aside under the pointer and the press meant
+   for them would land on the hint, opening the text instead. */
+.dp-append-hint:empty::before { content: attr(data-hint); visibility: hidden; }
+.dp-append:hover .dp-append-hint:empty::before { visibility: visible; }
 .dp-sheet-empty .dp-append { color: #8b929c; min-height: 3em; }
 /* The buttons are quiet until the pointer is near; the sheet is for reading. */
 .dp-append-add {
