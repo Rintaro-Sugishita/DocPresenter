@@ -196,7 +196,12 @@ function renderImport(
   return `<figure class="dp-figure${markClass(markOf(options.marks, block.doc, block.span))}"`
     + ` data-kind="${element?.kind ?? 'other'}"`
     + ` data-path="${escapeAttr(path)}"${page}${align}${id}${spanAttr(block)}>`
-    + `\n<div class="dp-figure-body"${sized(attributes)}>${body}</div>\n${caption}\n</figure>`;
+    // A table's title goes above it and a figure's below, as Japanese
+    // design documents (and most style guides) set them: a table is read from
+    // its title down, a picture is looked at first and named after.
+    + (element?.kind === 'table'
+      ? `\n${caption}\n<div class="dp-figure-body"${sized(attributes)}>${body}</div>\n</figure>`
+      : `\n<div class="dp-figure-body"${sized(attributes)}>${body}</div>\n${caption}\n</figure>`);
 }
 
 /** An `http(s)` address, as opposed to a path in the workspace. */

@@ -567,8 +567,12 @@ function fragmentsOf(
     if (rows.length > 1) {
       const first = rows[0]!;
       const last = rows[rows.length - 1]!;
+      // A title above the table is a piece of its own, kept with the first
+      // row: folded into the header it would repeat on every page with it.
+      const above = first.top - rect.y > 0.5 && element.querySelector(':scope > .dp-caption') !== null;
       return [
-        { ...first, top: Math.min(first.top, rect.y) },
+        ...(above ? [{ top: rect.y, bottom: first.top, repeat: false, keepWithNext: true, block }] : []),
+        above ? first : { ...first, top: Math.min(first.top, rect.y) },
         ...rows.slice(1, -1),
         { ...last, bottom: Math.max(last.bottom, rect.y + rect.height) },
       ];

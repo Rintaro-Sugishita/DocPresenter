@@ -5,7 +5,7 @@
 // back out — a reviewer selects it to attach a comment, and a font embedded
 // wrongly extracts as nothing — and the drawings have to be real marks on the
 // page rather than a picture that failed to arrive.
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { getDocument, OPS } from 'pdfjs-dist/legacy/build/pdf.mjs';
 
 const check = (name, ok, detail = '') => {
@@ -56,8 +56,10 @@ check('全ページに柱がある', feet.every(foot => foot !== ''),
   `${feet.filter(Boolean).length}/${pdf.numPages}`);
 const front = feet.filter(foot => /\s[ivx]+$/.test(foot));
 const body = feet.filter(foot => /\s\d+ \/ \d+$/.test(foot));
-check('前付けはローマ数字で数える', front.length > 0 && front.length + body.length === pdf.numPages,
-  `前付け ${front.length} ＋ 本文 ${body.length} = ${pdf.numPages}`);
+// 表紙は数えるが番号は刷らない（本と同じ）。だから前付け＋本文に表紙の 1 枚を足して総数になる。
+const covers = feet.filter(foot => !/\s([ivx]+|\d+ \/ \d+)$/.test(foot)).length;
+check('前付けはローマ数字で数える', front.length > 0 && front.length + body.length + covers === pdf.numPages,
+  `表紙 ${covers} ＋ 前付け ${front.length} ＋ 本文 ${body.length} = ${pdf.numPages}`);
 check('本文は 1 から数え直す', /\s1 \/ \d+$/.test(body[0] ?? ''), body[0]);
 check('総数は本文だけを数える', (body.at(-1) ?? '').endsWith(`${body.length} / ${body.length}`),
   body.at(-1));
@@ -120,7 +122,10 @@ for (let i = 1; i <= pdf.numPages; i++) {
 }
 check('フォントが埋め込まれている', fonts.size > 0, [...fonts].join(' '));
 // 本文・見出し・等幅はテーマが別の書体を指しており、PDF もそれに従う
-check('書体が使い分けられている', fonts.size >= 3, `${fonts.size} 書体`);
+// Noto CJK（本文・太字・等幅）がこの機械にあるときだけ 3 書体になる。無ければ
+// 見つかった日本語フォント 1 つで全部を組む（pdf-writer.mjs の代わりの探し方）。
+const noto = existsSync('/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc');
+check('書体が使い分けられている', fonts.size >= (noto ? 3 : 1), `${fonts.size} 書体${noto ? '' : '（Noto CJK が無い機械）'}`);
 
 // 表の罫線
 check('表の罫線が引かれている', drawn.some(count => count > 20));

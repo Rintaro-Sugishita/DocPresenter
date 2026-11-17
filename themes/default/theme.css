@@ -243,6 +243,8 @@ pre > code { background: none; padding: 0; font-size: 1em; }
 .dp-figure[data-align="left"] > .dp-figure-body { margin-right: auto; }
 .dp-caption { font-family: var(--font-heading); font-size: 0.9em; color: #3a4048; margin-top: 0.6em; }
 .dp-caption .dp-number { color: #1c1f24; font-weight: 600; }
+/* A table's title is above it, so its space is below. */
+.dp-figure[data-kind="table"] > .dp-caption { margin: 0 0 0.6em; }
 .dp-missing { color: #b3261e; font-family: var(--font-heading); }
 .dp-unrendered {
   font-family: var(--font-mono); font-size: 0.8em; line-height: 1.6;
