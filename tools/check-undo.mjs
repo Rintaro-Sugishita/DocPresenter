@@ -183,7 +183,7 @@ await page.click('.dp-tab[data-index="3"]');
 await page.waitForTimeout(300);
 await page.locator(`.dp-sheet:not([hidden]) .dp-figure[data-path$="screen-items.table"] .dp-figure-body`).click();
 await page.waitForSelector('.dp-grid-table');
-await page.click('.dp-grid-table [data-row="0"][data-column="2"]');
+await page.click('.dp-grid-table [data-row="0"][data-column="3"]');
 await press('Delete');
 await take();
 check('セルを消す', !files[ITEMS].includes('ログイン ID'));

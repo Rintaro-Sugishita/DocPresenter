@@ -156,7 +156,7 @@ check('dgm §3 L2', '外の図形も入れ物に落とせる',
 const cameIn = applyEdit(OUTSIDE,
   putIntoContainer(outside, OUTSIDE, 'frame', came.cells, 'loose'));
 check('dgm §3 L2', '入れたらピンは消える（並びが置くので）',
-  cameIn.includes('{ a ; loose ; b }') && !/loose\s+@/.test(cameIn));
+  /\{\s*a\s+loose\s+b\s*\}/.test(cameIn) && !/loose\s+@/.test(cameIn));
 check('dgm §3 L2', '入れるのは 1 つのバイト範囲',
   putIntoContainer(outside, OUTSIDE, 'frame', came.cells, 'loose').span.end > 0);
 
@@ -179,8 +179,9 @@ check('dgm §3 L2', '格子は埋まったセルには入れない（押し出�
 // 足すものは選んだものの次に入る。入れ物が置くので座標は書かれない。
 const grown = applyEdit(OUTSIDE, addNode(outside, OUTSIDE,
   { shape: 'rect', text: '', part: 'textbox', into: { container: 'frame', after: 'a' } }));
-check('dgm §3 L2', '足した部品は選んだものの次に入る', grown.includes('{ a ; part1 ; b }'),
-  (/\{ a[^}]*\}/.exec(grown) ?? [''])[0]);
+check('dgm §3 L2', '足した部品は選んだものの次に入る', /\{\s*a\s+part1\s+b\s*\}/.test(grown),
+  (/\{\s*a[^}]*\}/.exec(grown) ?? [''])[0]);
+check('dgm §3 L2', '2 つ以上の stack は 1 行に 1 つずつ書く', /\{\n\s+a\n\s+part1\n\s+b\n\s*\}/.test(grown));
 check('dgm §3 L2', '入れ物に足しても座標は増えない',
   (grown.match(/@ \(/g) ?? []).length === (OUTSIDE.match(/@ \(/g) ?? []).length);
 

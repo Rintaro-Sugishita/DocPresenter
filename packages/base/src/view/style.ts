@@ -52,7 +52,7 @@ export const BASE_STYLE = ZOOM_STYLE + `
   font-family: system-ui, sans-serif; font-size: 13px;
   /* 候補が増えても画面からはみ出さない。はみ出した先は誰にも押せない。
      画面いっぱいまで伸ばすとメニューに見えなくなるので、そこで止めて送る。 */
-  max-height: min(70vh, 34em); overflow-y: auto; overscroll-behavior: contain;
+  max-height: min(85vh, 34em); overflow-y: auto; overscroll-behavior: contain;
 }
 /* 区分は「開く行」にする。見出しを並べるだけでは、結局その下の全部を送って
    見ることになる。開いた先は親の行の横に出て、親より高くまで使える——親は

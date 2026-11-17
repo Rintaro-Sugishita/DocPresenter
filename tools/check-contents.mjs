@@ -14,7 +14,7 @@ const check = (name, ok, detail = '') => {
   if (!ok) process.exitCode = 1;
 };
 
-execFileSync('node', ['tools/build.mjs', '--in', 'sample'], { encoding: 'utf8' });
+execFileSync('node', ['tools/build.mjs', '--lang', 'ja', '--in', 'sample'], { encoding: 'utf8' });
 const pdf = await getDocument({
   data: new Uint8Array(readFileSync('out/build/docs/auth-design.pdf')), useSystemFonts: false,
 }).promise;

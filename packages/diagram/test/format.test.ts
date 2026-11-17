@@ -233,6 +233,16 @@ describe('formatDiagram', () => {
     ));
   });
 
+  it('writes a stack of two or more a name to a line', () => {
+    const typed = lines(
+      'free {', '  form [ ]', '  a [A]', '  b [B]', '  c [C]', '}',
+      'layout {', '  form @ (0, 0) 400x200', '  stack form (right) { a ; b ; c }', '}',
+    );
+    const text = formatDiagram(typed).text;
+    expect(text).toContain(lines('  stack form (right) {', '    a', '    b', '    c', '  }'));
+    expect(picture(text, () => undefined)).toBe(picture(typed, () => undefined));
+  });
+
   it('keeps parts and callouts in the order they were written', () => {
     const parts = lines('parts {', '  b [ ] {line:#000} 10x10', '  a ( )   20x20', '}');
     expect(formatDiagram(parts).text).toBe(lines(

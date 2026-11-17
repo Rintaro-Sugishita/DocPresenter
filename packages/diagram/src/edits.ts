@@ -375,7 +375,7 @@ export function addNode(file: DiagramFile, source: string, shape: NewShape): Edi
       span: container.span,
       text: containerText(container,
         sliceBytes(source, container.span.start, container.span.end),
-        joined(container, id, shape.into.after)),
+        joined(container, id, shape.into.after), file.layoutBlock?.indent),
     });
   } else if (shape.at) {
     const line = formatPlacement(id, shape.at, undefined, idWidth(file));
@@ -497,7 +497,7 @@ function removalOf(file: DiagramFile, source: string, ids: readonly string[]): C
     changes.push({
       span: container.span,
       text: containerText(
-        container, sliceBytes(source, container.span.start, container.span.end), left),
+        container, sliceBytes(source, container.span.start, container.span.end), left, file.layoutBlock?.indent),
     });
   }
   return changes;
@@ -517,7 +517,7 @@ export function setContainerCells(
   const container = file.containers.get(id);
   if (!container) throw new DiagramEditError(dgm('diagram.edit.missingContainer', { id }));
   const text = sliceBytes(source, container.span.start, container.span.end);
-  const written = containerText(container, text, cells);
+  const written = containerText(container, text, cells, file.layoutBlock?.indent);
   if (written === text) throw new DiagramEditError(dgm('diagram.edit.sameOrder'));
   return { span: container.span, text: written, ...described(dgm('diagram.did.reorder')) };
 }
@@ -567,7 +567,7 @@ export function putIntoContainer(
   if (containerOf(file).get(id) === name) throw new DiagramEditError(dgm('diagram.edit.alreadyIn', { id, name }));
   const text = sliceBytes(source, container.span.start, container.span.end);
   const changes: Change[] = [
-    { span: container.span, text: containerText(container, text, cells) },
+    { span: container.span, text: containerText(container, text, cells, file.layoutBlock?.indent) },
   ];
   const pin = file.layout.get(id);
   if (pin) {
@@ -592,18 +592,22 @@ export function putIntoContainer(
  * a block stays a block at its own indent: this is a move, not a reformatting.
  */
 function containerText(
-  container: Container, text: string, cells: readonly (readonly string[])[],
+  container: Container, text: string, cells: readonly (readonly string[])[], indent = '  ',
 ): string {
   const open = text.indexOf('{');
   const head = text.slice(0, open + 1);
   const rows = cells
     .map(row => row.filter(cell => container.kind === 'grid' || cell !== EMPTY_CELL))
     .filter(row => row.length > 0 && row.some(cell => cell !== EMPTY_CELL));
+  // A stack or a set of tabs of two or more is a list, one name to a line:
+  // a name added or moved is then one line of a diff, and merges as one.
+  const list = container.kind !== 'grid' && rows.flat().length >= 2;
 
-  if (!text.includes('\n')) return `${head} ${rows.map(row => row.join(' ; ')).join(' ; ')} }`;
-  const indent = /\n(\s*)\S/.exec(text)?.[1] ?? '  ';
-  const close = /\n(\s*)\}$/.exec(text)?.[1] ?? '';
-  return `${head}\n${rows.map(row => indent + row.join(' ; ')).join('\n')}\n${close}}`;
+  if (!text.includes('\n') && !list) return `${head} ${rows.map(row => row.join(' ; ')).join(' ; ')} }`;
+  const close = /\n(\s*)\}$/.exec(text)?.[1] ?? indent;
+  const inner = /\n(\s*)\S/.exec(text)?.[1] ?? `${close}  `;
+  const lines = list ? rows.flat() : rows.map(row => row.join(' ; '));
+  return `${head}\n${lines.map(line => inner + line).join('\n')}\n${close}}`;
 }
 
 /**

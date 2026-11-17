@@ -49,7 +49,7 @@ edit('shared/system-architecture.dgm',
 edit('shared/system-architecture.dgm',
   '  api     @ (460, 120) 140x60', '  api     @ (480, 140) 140x60');
 
-execFileSync('node', ['tools/build.mjs', '--in', 'sample', '--diff-from', BEFORE],
+execFileSync('node', ['tools/build.mjs', '--lang', 'ja', '--in', 'sample', '--diff-from', BEFORE],
   { encoding: 'utf8' });
 
 const browser = await chromium.launch({ executablePath: findChromium(process.argv.includes('--chromium') ? process.argv[process.argv.indexOf('--chromium') + 1] : undefined) });
@@ -116,7 +116,7 @@ check('PPTX では変わっていない図形はそのまま', fillOf('web') ===
 check('頼まなければ、消えたものは出ない', (await page.$$('.dp-diff-removed:not(.dp-diff-key)')).length === 0);
 
 // 消えたものを取り消し線で見せる
-execFileSync('node', ['tools/build.mjs', '--in', 'sample', '--diff-from', BEFORE, '--show-removed', 'strike'],
+execFileSync('node', ['tools/build.mjs', '--lang', 'ja', '--in', 'sample', '--diff-from', BEFORE, '--show-removed', 'strike'],
   { encoding: 'utf8' });
 await page.goto(pathToFileURL(process.cwd() + '/out/build/docs/auth-design.html').href);
 await page.waitForTimeout(300);
@@ -149,7 +149,7 @@ for (let n = 1; n <= struckPdf.numPages; n++) {
 check('PDF にも消えた段落が出る', struckText.includes('解除の窓口'));
 
 // 比べる相手が無いときは、印も凡例も出ない
-execFileSync('node', ['tools/build.mjs', '--in', 'sample'], { encoding: 'utf8' });
+execFileSync('node', ['tools/build.mjs', '--lang', 'ja', '--in', 'sample'], { encoding: 'utf8' });
 await page.goto('file://' + process.cwd() + '/out/build/docs/auth-design.html');
 await page.waitForTimeout(200);
 check('比較しないビルドには印が出ない', (await page.$$('.dp-diff-changed')).length === 0);

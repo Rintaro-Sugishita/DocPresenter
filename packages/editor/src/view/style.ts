@@ -161,6 +161,9 @@ export const EDITOR_STYLE = `
   opacity: 0; transition: opacity 0.12s;
 }
 .dp-figure:hover > .dp-figure-tools, .dp-figure-tools:focus-within { opacity: 1; }
+/* The zoom bar would sit where these buttons are, over them; on a figure in
+   the editor it goes to the bottom corner instead. */
+.dp-figure > .dp-figure-body > .dp-zoom-bar { top: auto; bottom: 4px; }
 .dp-figure-names, .dp-figure-delete {
   font: 11px system-ui, sans-serif; color: #3a4048; cursor: pointer;
   background: #fff; border: 1px solid #c9ced6; border-radius: 3px; padding: 2px 8px;

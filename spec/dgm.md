@@ -552,8 +552,9 @@ separated by a blank line.
 `id @ (x, y) WxH  z:N`, the numbers right-aligned in their columns. A container's
 settings are written only where they differ from the default, in the order
 `right`, `cols`, `gap`, `pad`, `scroll`, `show`; a grid is written a row to a
-line with its cells lined up and separated by ` ; `, a stack or a set of tabs on
-one line.
+line with its cells lined up and separated by ` ; `; a stack or a set of tabs
+holding two or more is written a name to a line (one name stays on the head's
+line), so that a name added or moved is one line of a diff.
 
 **The style section.** `theme`, then the rules, `id { fill: …, line: …, color: …,
 align: …, icon: … }` — other properties after these, by name — then the lines
