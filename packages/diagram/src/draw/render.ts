@@ -150,10 +150,13 @@ function renderNode(
       : label(box, diagram.style.get(node.id)?.get('align'), node.shape, place === 'under');
   const colours = styleColours(diagram, node.id);
   const style = colours === '' ? '' : ` style="${escapeAttr(colours)}"`;
-  // Words with no frame are nothing but their letters, and an empty one — a
-  // table cell not written in yet — is nothing at all. Either has to be
-  // pressable all over its box, so an unseen plate covers it.
-  const plate = node.shape === 'text' && !icon
+  // Words with no frame and no words — a table cell not written in yet — are
+  // nothing at all, so nothing could be pressed. An unseen plate covers the
+  // box. Words that are there are pressed on their letters, as before: a plate
+  // under them would catch presses meant for a line drawn across their box.
+  // A container's frame is the other kind of empty words; it stays see-through,
+  // since what it holds and anything drawn across it are what is pressed.
+  const plate = node.shape === 'text' && !icon && node.text.trim() === '' && !diagram.containers.has(node.id)
     ? `<rect class="dp-hit" x="${n(box.x)}" y="${n(box.y)}" width="${n(box.width)}" height="${n(box.height)}"`
       // Said in style, not attributes: a theme's rule for a shape's outline
       // would otherwise draw it.

@@ -417,6 +417,11 @@ result adds corners, and an author who wants the corner gone deletes the line
 happens when a Mermaid flowchart is imported into draw.io and every edge arrives
 carrying a dozen waypoints that have to be removed one at a time.
 
+A container (`stack` / `grid` / `tabs`) pinned with a place and no size is as
+big as what it holds: `stack1 @ (40, 60)`. The size is the one thing a container
+can work out for itself, and writing it would only be a number to get wrong when
+a member grows.
+
 ### 4.4 A shape with no pin
 
 | Section | What a renderer MUST do |

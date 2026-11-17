@@ -219,6 +219,14 @@ export function arrangeContainers(
         box = { ...box, height: intrinsic(container.id).height };
         boxes.set(container.id, box);
       }
+      // Pinned with a place and no size, a container is as big as what it
+      // holds: the size is the one thing it can work out for itself.
+      const pin = diagram.layout.get(container.id);
+      if (pin && pin.width === undefined && pin.height === undefined) {
+        const size = intrinsic(container.id);
+        box = { ...box, width: size.width, height: size.height };
+        boxes.set(container.id, box);
+      }
       place(container, box, byId.get(container.id)?.shape, diagram,
         intrinsic, sizeOf, boxes, hide, holes, table ? tables : undefined);
       // What does not fit is drawn anyway — hiding it would hide the mistake —

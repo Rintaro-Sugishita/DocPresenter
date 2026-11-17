@@ -30,6 +30,7 @@ import { followLabel, itemShapes, linkItemTable, newItemTable, setItemCell, sync
 import {
   addTableColumn, addTableRow, isEmptyTable, makeTable, removeTableColumn, removeTableRow, tableOf,
 } from '../table.js';
+import { stackNodes } from '../stack-up.js';
 import {
   addField, addLabel, fieldOf, fieldShapes, formOf, isLabelForm, setLabelColumn, setLabelSide, type AddedField,
 } from '../fields.js';
@@ -1742,6 +1743,16 @@ export function createCanvas(options: CanvasOptions): Canvas {
         label: t('diagram.canvas.groupCount', { count: ids.length }),
         run: () => options.apply(() => groupNodes(file, source, ids, t('diagram.new.group')), ids),
       });
+      // Into a new stack, in the order they are on screen. Where they are is
+      // given in the file's own numbers, which is what a pin holds.
+      const inFile = new Map([...laid.boxes].map(([key, box]) =>
+        [key, { ...box, x: box.x - laid.origin.x, y: box.y - laid.origin.y }]));
+      for (const flow of ['down', 'right'] as const) {
+        items.push({
+          label: t(flow === 'down' ? 'diagram.canvas.stackDown' : 'diagram.canvas.stackRight', { count: ids.length }),
+          run: () => options.apply(() => stackNodes(file, source, ids, flow, inFile), ids),
+        });
+      }
     }
     // A shape that holds rows has no label of its own: what the menu offers is
     // the row that is picked, and only once one is.
