@@ -8,7 +8,7 @@ import { chromium } from 'playwright-core';
 // 検査するものは自分で建てる。out/build は他の検査も使う置き場で、そこに最後に
 // 書いたのが誰かによって「どの作業場を建てたか」が変わる——取り込み元のパスは
 // 作業場からの相対なので、それだけで答えが変わってしまう。
-execFileSync('node', ['tools/build.mjs', '--in', 'sample'], { encoding: 'utf8' });
+execFileSync('node', ['tools/build.mjs', '--lang', 'ja', '--in', 'sample'], { encoding: 'utf8' });
 
 const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' });
 const page = await browser.newPage({ viewport: { width: 1100, height: 900 } });
@@ -24,7 +24,8 @@ const check = (name, ok, detail = '') => {
 const outside = [];
 page.on('request', request => {
   const url = request.url();
-  if (!url.startsWith('file://') && !url.startsWith('data:')) outside.push(url);
+  // blob: is made inside the page (Mermaid draws through one); it is not the network.
+  if (!/^(file|data|blob):/.test(url)) outside.push(url);
 });
 
 await page.goto('file://' + process.cwd() + '/out/build/docs/auth-design.html');

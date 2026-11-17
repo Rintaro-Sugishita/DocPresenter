@@ -178,8 +178,8 @@ export function addField(file: DiagramFile, source: string, shape: NewField): Ad
   if (field !== undefined) {
     lines.push(`${field} ""`);
     layout.push(beside
-      ? `stack ${field} (right; gap: ${ROW_GAP}; pad: 0) { ${names.item} ; ${names.label} }`
-      : `stack ${field} (down; gap: ${TOP_GAP}; pad: 0) { ${names.label} ; ${names.item} }`);
+      ? stackLines(`stack ${field} (right; gap: ${ROW_GAP}; pad: 0)`, [names.item, names.label])
+      : stackLines(`stack ${field} (down; gap: ${TOP_GAP}; pad: 0)`, [names.label, names.item]));
   }
   lines.push(captionLine(file, names.label, shape.label));
   lines.push(`${names.item} ${shape.part}:`);
@@ -261,8 +261,8 @@ export function addLabel(file: DiagramFile, source: string, id: string, text: st
     const field = names.field;
     lines.unshift(`${field} ""`);
     layout.push(labelsBeside(file, id)
-      ? `stack ${field} (right; gap: ${ROW_GAP}; pad: 0) { ${id} ; ${names.label} }`
-      : `stack ${field} (down; gap: ${TOP_GAP}; pad: 0) { ${names.label} ; ${id} }`);
+      ? stackLines(`stack ${field} (right; gap: ${ROW_GAP}; pad: 0)`, [id, names.label])
+      : stackLines(`stack ${field} (down; gap: ${TOP_GAP}; pad: 0)`, [names.label, id]));
     if (holder) {
       const cells = holder.cells.map(cells => cells.map(cell => (cell === id ? field : cell)));
       changes.push({ span: holder.span, text: writeContainer(file, holder, sliceBytes(source, holder.span.start, holder.span.end), cells) });
@@ -392,7 +392,7 @@ export function setLabelSide(file: DiagramFile, source: string, id: string, side
     });
     for (const one of fields) {
       lines.push(`${one.name} ""`);
-      layout.push(`stack ${one.name} (down; gap: ${TOP_GAP}; pad: 0) { ${one.held.join(' ; ')} }`);
+      layout.push(stackLines(`stack ${one.name} (down; gap: ${TOP_GAP}; pad: 0)`, one.held));
     }
     const head = `stack ${form.id} (down; gap: ${form.gap.y}; pad: ${form.pad})`;
     changes.push({ span: form.span, text: blockText(head, text, [down], { grid: false, indent: file.layoutBlock?.indent ?? '  ' }) });
@@ -517,14 +517,22 @@ function captionLine(file: DiagramFile, id: string, text: string): string {
 /** Lines for the layout section, in it or in a new one at the end. */
 function layoutLines(file: DiagramFile, source: string, lines: readonly string[]): Change[] {
   if (lines.length === 0) return [];
+  // A line may be a block of several (a stack written a name to a line); each
+  // of its lines takes the layout's indent.
+  const rows = lines.flatMap(line => line.split('\n'));
   if (file.layoutBlock) {
     return [{
       span: { start: file.layoutBlock.insertAt, end: file.layoutBlock.insertAt },
-      text: lines.map(line => `\n${file.layoutBlock!.indent}${line}`).join(''),
+      text: rows.map(line => `\n${file.layoutBlock!.indent}${line}`).join(''),
     }];
   }
   const end = byteLength(source.replace(/\s+$/, ''));
-  return [{ span: { start: end, end: byteLength(source) }, text: `\n\nlayout {\n${lines.map(line => `  ${line}`).join('\n')}\n}\n` }];
+  return [{ span: { start: end, end: byteLength(source) }, text: `\n\nlayout {\n${rows.map(line => `  ${line}`).join('\n')}\n}\n` }];
+}
+
+/** A new stack, a name to a line when it holds two or more (indented under its head). */
+function stackLines(head: string, held: readonly string[]): string {
+  return held.length < 2 ? `${head} { ${held.join(' ; ')} }` : `${head} {\n${held.map(one => `  ${one}`).join('\n')}\n}`;
 }
 
 /** A stack's members as its cells. */
@@ -578,7 +586,10 @@ function blockText(
   head: string, was: string, rows: readonly (readonly string[])[], how: { grid: boolean; indent: string },
 ): string {
   const list = how.grid ? rows : [rows.flat()];
-  if (!was.includes('\n') && list.length === 1) return `${head} { ${list[0]!.join(' ; ')} }`;
+  // A stack of two or more is written a name to a line, whatever it was: a
+  // name added or moved is then one line of a diff, and merges as one.
+  const block = was.includes('\n') || list.length > 1 || (!how.grid && list[0]!.length >= 2);
+  if (!block) return `${head} { ${list[0]!.join(' ; ')} }`;
   const close = /\n(\s*)\}$/.exec(was)?.[1] ?? how.indent;
   const inner = /\n(\s*)\S/.exec(was)?.[1] ?? `${close}  `;
   const lines = how.grid ? list.map(row => row.join(' ; ')) : list[0]!;

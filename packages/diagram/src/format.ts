@@ -826,7 +826,7 @@ function bendName(key: string): string {
 /**
  * A container, its settings written only where they differ from the default.
  * A grid is written a row to a line with its cells lined up, which is the
- * shape it draws; a stack or a set of tabs is one line.
+ * shape it draws; a stack or a set of tabs of two or more, a name to a line.
  */
 function containerLines(piece: Piece<Container>, lines: readonly Line[]): string[] {
   const container = piece.value;
@@ -838,13 +838,22 @@ function containerLines(piece: Piece<Container>, lines: readonly Line[]): string
     // Comments among the rows stay where they were written, rows and all.
     const out = [head];
     for (const text of inner) {
-      out.push(INDENT.repeat(2) + (text.startsWith('#') ? text
-        : text.split(';').map(cell => cell.trim()).filter(cell => cell !== '').join(' ; ')));
+      if (text.startsWith('#')) { out.push(INDENT.repeat(2) + text); continue; }
+      const cells = text.split(';').map(cell => cell.trim()).filter(cell => cell !== '');
+      // A stack's names go a name to a line here too; a grid's row stays a row.
+      if (container.kind === 'grid') out.push(INDENT.repeat(2) + cells.join(' ; '));
+      else out.push(...cells.map(cell => INDENT.repeat(2) + cell));
     }
     out.push(`${INDENT}}`);
     return out;
   }
-  if (container.kind !== 'grid') return [`${head} ${container.cells.flat().join(' ; ')} }`];
+  if (container.kind !== 'grid') {
+    // A stack or a set of tabs is a list: a name to a line once there are
+    // two, so a name added or moved is one line of a diff and merges as one.
+    const names = container.cells.flat();
+    if (names.length < 2) return [`${head} ${names.join(' ; ')} }`];
+    return [head, ...names.map(name => INDENT.repeat(2) + name), `${INDENT}}`];
+  }
 
   const widths: number[] = [];
   for (const row of container.cells) {

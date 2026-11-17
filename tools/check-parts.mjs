@@ -40,7 +40,7 @@ check('座標を持つのは枠だけ',
   pinned.map(([path, ids]) => `${path.split('/').pop()}:${ids.join(',')}`).join(' '));
 
 // --- 紙の側 -----------------------------------------------------------------
-execFileSync('node', ['tools/build.mjs', '--in', 'sample'], { encoding: 'utf8' });
+execFileSync('node', ['tools/build.mjs', '--lang', 'ja', '--in', 'sample'], { encoding: 'utf8' });
 const page = readFileSync('out/build/docs/auth-design.html', 'utf8');
 const figure = path => {
   const at = page.indexOf(`data-path="${path}"`);
@@ -404,13 +404,14 @@ const rowsOfPanel = (level) => view.evaluate(back => {
 const chooseFrom = async (opener, path, part) => {
   await opener();
   await view.waitForSelector('.dp-menu button');
+  // 完全一致で探す（「入力」が「入力欄だけ削除」に当たらないように）
   for (const step of path) {
-    await view.hover(`.dp-menu button:text("${step}")`);
+    await view.hover(`.dp-menu button:text-is("${step}")`);
     await view.waitForTimeout(450);
   }
   const parts = await rowsOfPanel(0);
   const groups = await rowsOfPanel(1);
-  await view.click(`.dp-menu button:text("${part}")`);
+  await view.click(`.dp-menu button:text-is("${part}")`);
   await view.waitForTimeout(450);
   return { groups, parts };
 };
@@ -440,9 +441,10 @@ await chooseFrom(
   () => view.click('.dp-sheet:not([hidden]) .dp-canvas-bar button:text("＋ 部品")'),
   ['入力'], 'checkbox');
 const grown = await searchSource();
+// 入力の部品はラベルと組（…Field）で足され、選んだ組の次に入る。並びは 1 行に 1 つ。
 check('足した部品は、選んだものの次に入る',
-  /\{ deptLabel ; dept ; part1 \}/.test(grown),
-  (/stack deptField[^}]*\}/.exec(grown) ?? [''])[0]);
+  /stack filters[^{]*\{\s*deptField\s+checkbox1Field\s/.test(grown),
+  (/stack filters[^}]*\}/.exec(grown) ?? [''])[0].replace(/\s+/g, ' '));
 check('入れ物に足しても座標は増えない',
   (grown.match(/@ \(/g) ?? []).length === 3,
   `座標を持つ行 ${(grown.match(/@ \(/g) ?? []).length} 本`);
@@ -462,8 +464,8 @@ check('入れたと報せる', (await view.textContent('#status')).includes('入
   await view.textContent('#status'));
 const putIn = await searchSource();
 check('入れ物に入れると、名前が並びに入る',
-  /\{ deptField ; roleField ; noteArrow ; ageField ; lockRow \}/.test(putIn),
-  (/stack filters[^}]*\}/.exec(putIn) ?? [''])[0]);
+  /\{\s*deptField\s+checkbox1Field\s+roleField\s+noteArrow\s+ageField\s+lockRow\s*\}/.test(putIn),
+  (/stack filters[^}]*\}/.exec(putIn) ?? [''])[0].replace(/\s+/g, ' '));
 check('入れたらピンの行は消える', !/^\s*noteArrow\s+@/m.test(putIn),
   `座標を持つ行 ${(putIn.match(/@ \(/g) ?? []).length} 本`);
 
@@ -504,7 +506,7 @@ check('押せば最初の 1 行が書かれる', listRows(await searchSource()).
 // 見るには結局同じだけ送ることになる。だから区分は「開く行」にした。見たいのは
 // 上の段が送らずに読めること、開いた先も画面に収まること、そしてどの絵もどこかの
 // 区分から出せること——どれかが欠けると、押せない絵が生まれる。
-const { stencilParts } = await import('@docpresenter/diagram');
+const { stencilParts, withLibrary, DEFAULT_LIBRARY } = await import('@docpresenter/diagram');
 
 const openMenu = async (view) => {
   await view.goto('file://' + process.cwd() + '/out/editor.html?lang=ja');
@@ -551,15 +553,22 @@ check('上の段は送らずに全部読める',
 // 区分を開く。開いた先は親の横に出て、そこだけで完結している。
 let found = 0;
 const kindRow = name => `.dp-menu:not(.dp-menu-sub) button:text("${name}")`;
+// 「ラベル無しで足す」は区分をもう一度並べた入れ子で、絵そのものは持たない。
+const BARE = 'ラベル無しで足す';
 for (const name of kinds.labels) {
   await canvas.hover(kindRow(name));
   await canvas.waitForSelector('.dp-menu-sub');
   // 開いているものから別の区分へ移るときは、ひと呼吸置いてから入れ替わる。
   await canvas.waitForTimeout(350);
   const sub = await measure(canvas, 1);
-  found += sub.labels.length;
-  check(`${name}を開くと、その区分の絵が出る`, sub.labels.length >= 8 && sub.opens === 0,
-    `${sub.labels.length} 件: ${sub.labels.slice(0, 3).join(' ')}…`);
+  if (name === BARE) {
+    check(`${name}を開くと、区分がもう一度並ぶ`, sub.labels.length >= 2 && sub.opens === sub.labels.length,
+      `${sub.labels.length} 件: ${sub.labels.slice(0, 3).join(' ')}…`);
+  } else {
+    found += sub.labels.length;
+    check(`${name}を開くと、その区分の絵が出る`, sub.labels.length >= 1 && sub.opens === 0,
+      `${sub.labels.length} 件: ${sub.labels.slice(0, 3).join(' ')}…`);
+  }
   check(`${name}は親の横に出る`, sub.beside === true);
   check(`${name}も画面に収まる`,
     !sub.scrolls && sub.top >= 0 && sub.bottom <= sub.view,
@@ -567,8 +576,10 @@ for (const name of kinds.labels) {
   // ほかの区分に移ったら、前の区分は閉じている
   check(`開くのは一度に一区分だけ`, sub.panels === 1, `${sub.panels} 枚`);
 }
-check('同梱の絵はどれかの区分から出せる', found === stencilParts().length,
-  `${found} / ${stencilParts().length} 件`);
+// 同梱の画面部品（use "default" で入るもの）と、アイコンの絵の全部。
+const shippedParts = withParts(parseDiagram(withLibrary('free {\n}\n', DEFAULT_LIBRARY)), () => undefined).library.size;
+check('同梱の部品と絵はどれかの区分から出せる', found === shippedParts + stencilParts().length,
+  `${found} / ${shippedParts} ＋ ${stencilParts().length} 件`);
 
 // 小窓へは斜めに手が動くので、途中で隣の行を通る。通った瞬間に入れ替わると
 // 開いた一覧が目の前で消えるので、ひと呼吸だけ待つ。

@@ -6,6 +6,11 @@ import {
 } from '../src/index.js';
 
 // A login form, labels on top: the way the sample screen is drawn.
+
+/** A stack as the editor writes it: a name to a line, under the layout's indent. */
+const stack = (head: string, ...names: string[]): string =>
+  `stack ${head} {\n${names.map(name => `    ${name}`).join('\n')}\n  }`;
+
 const TOP = [
   'use "default"',
   '',
@@ -57,8 +62,8 @@ describe('a field: an input and its label', () => {
     const file = read(TOP);
     const added = addField(file, TOP, { part: 'textbox', label: 'パスワード', near: 'idBox' });
     const { text, file: next } = after(TOP, added.edit);
-    expect(text).toContain('stack frame (down; gap: 20; pad: 30) { title ; idField ; textbox1Field ; keepRow ; submit }');
-    expect(text).toContain('stack textbox1Field (down; gap: 2; pad: 0) { textbox1Label ; textbox1 }');
+    expect(text).toContain(stack('frame (down; gap: 20; pad: 30)', 'title', 'idField', 'textbox1Field', 'keepRow', 'submit'));
+    expect(text).toContain(stack('textbox1Field (down; gap: 2; pad: 0)', 'textbox1Label', 'textbox1'));
     expect(text).toContain('textbox1Label label:"パスワード"');
     expect(itemName(next, 'textbox1')).toBe('パスワード');
   });
@@ -66,7 +71,7 @@ describe('a field: an input and its label', () => {
   it('adds a check box with its words after it', () => {
     const added = addField(read(TOP), TOP, { part: 'checkbox', label: '同意する', near: 'keepBox' });
     const { text, file } = after(TOP, added.edit);
-    expect(text).toContain('stack checkbox1Field (right; gap: 8; pad: 0) { checkbox1 ; checkbox1Label }');
+    expect(text).toContain(stack('checkbox1Field (right; gap: 8; pad: 0)', 'checkbox1', 'checkbox1Label'));
     expect(itemName(file, 'checkbox1')).toBe('同意する');
   });
 
@@ -82,8 +87,8 @@ describe('a field: an input and its label', () => {
       .replace('  submit   primary:"ログイン"', '  mail     textbox:\n  submit   primary:"ログイン"');
     const added = addLabel(read(source), source, 'mail', 'メール');
     const { text, file } = after(source, added.edit);
-    expect(text).toContain('{ title ; idField ; mailField ; keepRow ; submit }');
-    expect(text).toContain('stack mailField (down; gap: 2; pad: 0) { mailLabel ; mail }');
+    expect(text).toContain(stack('frame (down; gap: 20; pad: 30)', 'title', 'idField', 'mailField', 'keepRow', 'submit'));
+    expect(text).toContain(stack('mailField (down; gap: 2; pad: 0)', 'mailLabel', 'mail'));
     expect(itemName(file, 'mail')).toBe('メール');
     expect(() => addLabel(read(TOP), TOP, 'idBox', 'x')).toThrow();
   });
@@ -126,7 +131,7 @@ describe('labels on the left', () => {
     const back = setLabelSide(read(text), text, 'idBox', 'top');
     const { text: again, file } = after(text, back);
     expect(again).toContain('stack frame (down; gap: 20; pad: 30) {');
-    expect(again).toContain('stack idField (down; gap: 2; pad: 0) { idLabel ; idBox }');
+    expect(again).toContain(stack('idField (down; gap: 2; pad: 0)', 'idLabel', 'idBox'));
     expect(fieldOf(file, 'idBox')?.kind).toBe('top');
   });
 
@@ -167,7 +172,7 @@ describe('a hint under an input', () => {
     const left = applyEdit(source, setLabelSide(read(source), source, 'idBox', 'left'));
     expect(left).toContain('    idLabel ; idBox\n    . ; idHint\n');
     const back = applyEdit(left, setLabelSide(read(left), left, 'idBox', 'top'));
-    expect(back).toContain('stack idField (down; gap: 2; pad: 0) { idLabel ; idBox ; idHint }');
+    expect(back).toContain(stack('idField (down; gap: 2; pad: 0)', 'idLabel', 'idBox', 'idHint'));
     expect(back).toMatch(/stack frame \(down; gap: 20; pad: 30\) \{\n\s+title\n\s+idField\n\s+keepRow\n\s+submit\n\s+\}/);
   });
 });

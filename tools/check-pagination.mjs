@@ -36,7 +36,7 @@ async function pagesOf(path) {
 }
 
 // --- 横向きの指定があるとき -------------------------------------------------
-execFileSync('node', ['tools/build.mjs', '--in', 'sample'], { encoding: 'utf8' });
+execFileSync('node', ['tools/build.mjs', '--lang', 'ja', '--in', 'sample'], { encoding: 'utf8' });
 const pages = await pagesOf('out/build/docs/auth-design.pdf');
 
 check('表の行が 30 行ある標本である', CODES.length === 30, `${CODES.length} 行`);
@@ -82,9 +82,9 @@ const document_ = `${COPY}/docs/auth-design.md`;
 writeFileSync(document_, readFileSync(document_, 'utf8')
   .replace(' page="landscape"', '')
   .replace('output: [html, pdf]', 'output: [pdf]'));
-execFileSync('node', ['tools/build.mjs', '--in', COPY, '--out', 'out/pagination-out'],
+execFileSync('node', ['tools/build.mjs', '--lang', 'ja', '--in', COPY, '--out', 'out/pagination-out'],
   { encoding: 'utf8' });
-const plain = await pagesOf('out/pagination-out/auth-design.pdf');
+const plain = await pagesOf('out/pagination-out/docs/auth-design.pdf');
 
 check('縦向きのままでも表は分割される',
   plain.filter(page => CODES.some(code => page.text.includes(code))).length >= 2,

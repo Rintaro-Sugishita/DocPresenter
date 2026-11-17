@@ -558,7 +558,8 @@ describe('入れ物からの削除', () => {
   it('stack は並びなので、名前ごと抜ける', () => {
     const stacked = HELD.replace(/  grid frame[\s\S]*?\n  \}/, '  stack frame (down) { a ; b ; c }');
     const written = run(stacked, f => removeNodes(f, stacked, ['b']));
-    expect(written).toContain('stack frame (down) { a ; c }');
+    // 2 つ以上の並びは 1 行に 1 つ（差分とマージが 1 行で済む）
+    expect(written).toContain('stack frame (down) {\n    a\n    c\n  }');
   });
 
   it('入れ物そのものを消せば、並べ方の行も消える', () => {
@@ -676,11 +677,11 @@ describe('入れ物の中での並べ替え', () => {
     expect(edit.description).toBe('並びを変える');
   });
 
-  it('1 行で書かれた入れ物は 1 行のまま', () => {
+  it('1 行で書かれた stack は、並べ替えると 1 行に 1 つずつになる', () => {
     const inline = HELD.replace(/  stack frame[\s\S]*?\n  \}/, '  stack frame (down) { a ; b ; c }');
     const written = applyEdit(inline,
       setContainerCells(parseDiagram(inline), inline, 'frame', [['b'], ['a'], ['c']]));
-    expect(written).toContain('stack frame (down) { b ; a ; c }');
+    expect(written).toContain('stack frame (down) {\n    b\n    a\n    c\n  }');
   });
 
   it('同じ並びを書こうとしたら断る', () => {
@@ -855,7 +856,7 @@ describe('入れ物に入れる', () => {
     const edit = putIntoContainer(file, HOLDS, 'frame', [['a'], ['loose'], ['b']], 'loose');
     const written = applyEdit(HOLDS, edit);
     expect(edit.description).toBe('入れ物に入れる');
-    expect(written).toContain('{ a ; loose ; b }');
+    expect(written).toContain('{\n    a\n    loose\n    b\n  }');
     expect(written).not.toContain('loose @');
     expect(written).toContain('  frame @ (0, 0) 300x400');
   });
@@ -868,7 +869,7 @@ describe('入れ物に入れる', () => {
   it('足すものは、選んだものの次に入る', () => {
     const written = applyEdit(HOLDS, addNode(parseDiagram(HOLDS), HOLDS,
       { shape: 'rect', text: '', part: 'textbox', into: { container: 'frame', after: 'a' } }));
-    expect(written).toContain('{ a ; part1 ; b }');
+    expect(written).toContain('{\n    a\n    part1\n    b\n  }');
     expect(written).toContain('  part1 textbox:');
     // 入れ物が置くので、座標は 1 つも増えない
     expect((written.match(/@ \(/g) ?? []).length).toBe(2);
