@@ -657,6 +657,33 @@ already has, whose licence is between the author and its owner.
 An `icon` a renderer cannot resolve MUST be shown as a visible mark and reported
 as a diagnostic — never drawn as nothing.
 
+### 7.5 A table that holds its cells
+
+A shape drawn with the table picture (`ui/grid`) that is also the frame of a
+`grid` container is a **table**. Its cells are the grid's cells, and what is in
+them is shapes like any other — words, a check box, a link, a button:
+
+```
+results   grid:
+nameHead  label:"氏名"
+pickHead  label:"選択"
+name1     body:"山田 太郎"
+pick1     checkbox:
+
+grid results (cols: 1fr, 2fr; gap: 4 12; pad: 6) {
+  pickHead ; nameHead
+  pick1    ; name1
+}
+```
+
+- The rules between rows and columns run down the middle of the gaps; the first
+  row is the header and is shaded. A renderer draws them from where the cells
+  are, not from fixed artwork.
+- A table is **as tall as its rows**: when what it holds needs more room than its
+  pin gives, the table grows rather than reporting that it overflows.
+- A table picture that is not a container is drawn as before: a picture saying
+  "a table goes here".
+
 ## 8. Rendering (informative)
 
 None of this section is required of an implementation. It is here so that two

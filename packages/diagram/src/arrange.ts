@@ -35,6 +35,27 @@ export interface Hole {
   readonly box: Box;
 }
 
+/**
+ * Where a table's rules go: a grid whose frame is drawn as a table (the
+ * `ui/grid` picture). The lines between its columns and rows run down the
+ * middle of the gaps, so they are worked out where the cells are.
+ */
+export interface TableRules {
+  readonly container: string;
+  /** The x of each line between two columns, left to right. */
+  readonly columns: readonly number[];
+  /** The y of each line between two rows, top to bottom. */
+  readonly rows: readonly number[];
+}
+
+/** The picture a shape is drawn as when it is a table that holds its cells. */
+export const TABLE_PICTURE = 'ui/grid';
+
+/** Whether a container is a table: a grid drawn with the table picture. */
+export function isTable(diagram: DiagramFile, id: string): boolean {
+  return diagram.containers.get(id)?.kind === 'grid' && diagram.style.get(id)?.get('icon') === TABLE_PICTURE;
+}
+
 /** The room a group's own label takes at the top of its box. */
 const GROUP_HEADER = 18;
 /** The row of headings across the top of a tab control. */
@@ -108,7 +129,7 @@ export function members(container: Container): readonly string[] {
  */
 export function arrangeContainers(
   diagram: DiagramFile, sizeOf: (id: string) => Size,
-  boxes: Map<string, Box>, diagnostics: Phrase[], holes?: Hole[],
+  boxes: Map<string, Box>, diagnostics: Phrase[], holes?: Hole[], tables?: TableRules[],
 ): ReadonlySet<string> {
   const hidden = new Set<string>();
   if (diagram.containers.size === 0) return hidden;
@@ -187,12 +208,19 @@ export function arrangeContainers(
     again = false;
     for (const container of diagram.containers.values()) {
       if (done.has(container.id) || hidden.has(container.id)) continue;
-      const box = boxes.get(container.id);
+      let box = boxes.get(container.id);
       if (!box) continue;
       done.add(container.id);
       again = true;
+      // A table is as tall as its rows: a row added makes it longer, the way
+      // a table on a screen does, rather than squeezing the rows it has.
+      const table = isTable(diagram, container.id);
+      if (table && intrinsic(container.id).height > box.height) {
+        box = { ...box, height: intrinsic(container.id).height };
+        boxes.set(container.id, box);
+      }
       place(container, box, byId.get(container.id)?.shape, diagram,
-        intrinsic, sizeOf, boxes, hide, holes);
+        intrinsic, sizeOf, boxes, hide, holes, table ? tables : undefined);
       // What does not fit is drawn anyway — hiding it would hide the mistake —
       // but a frame too small for its own contents is said out loud. An area
       // that scrolls is not too small: being cut off is what it says.
@@ -300,7 +328,7 @@ function rowHeights(container: Container, intrinsic: (id: string) => Size): numb
 function place(
   container: Container, box: Box, shape: string | undefined, diagram: DiagramFile,
   intrinsic: (id: string) => Size, sizeOf: (id: string) => Size, boxes: Map<string, Box>,
-  hide: (id: string) => void, holes?: Hole[],
+  hide: (id: string) => void, holes?: Hole[], tables?: TableRules[],
 ): void {
   // One page under the headings; the rest are not drawn.
   if (container.kind === 'tabs') {
@@ -330,6 +358,13 @@ function place(
   const heights = rowHeights(container, intrinsic);
   const at = (sizes: readonly number[], index: number, gap: number): number =>
     sizes.slice(0, index).reduce((total, one) => total + one + gap, 0);
+
+  // A table's rules, down the middle of the gaps between its cells.
+  tables?.push({
+    container: container.id,
+    columns: widths.slice(1).map((_, c) => left + at(widths, c + 1, container.gap.x) - container.gap.x / 2),
+    rows: heights.slice(1).map((_, r) => top + at(heights, r + 1, container.gap.y) - container.gap.y / 2),
+  });
 
   const placed = new Set<string>();
   container.cells.forEach((cells, r) => cells.forEach((cell, c) => {

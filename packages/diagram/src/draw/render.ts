@@ -13,6 +13,7 @@ import type { DiagramFile, Item, Node, Point, ShapeKind } from '../model.js';
 import { DEFAULT_LOCALE, escapeAttr, escapeHtml, type Locale } from '@docpresenter/base';
 import { isIconPath, stencilArt, textPlace } from './stencil.js';
 import { isListing, listingArt } from './listing.js';
+import { TABLE_PICTURE, type TableRules } from '../arrange.js';
 import { members, shownPage, tabPages, SCROLL_BAR, TAB_STRIP } from '../arrange.js';
 import {
   arrowHead as arrowCorners, border, cylinderRadius, labelLayout, n, roundedPath, shapeOutlines,
@@ -45,6 +46,7 @@ export function renderDiagram(
 ): string {
   const laid = layOutDiagram(diagram, locale);
   const byId = new Map(diagram.nodes.map(n => [n.id, n]));
+  const tables = new Map(laid.tables.map(table => [table.container, table]));
 
   const behind: string[] = [];
   const front: string[] = [];
@@ -52,7 +54,7 @@ export function renderDiagram(
     const node = byId.get(id);
     const box = laid.boxes.get(id);
     if (!node || !box) continue;
-    (box.z < 0 ? behind : front).push(renderNode(node, box, diagram, url, marks));
+    (box.z < 0 ? behind : front).push(renderNode(node, box, diagram, url, marks, tables.get(id)));
   }
 
   // Connections are drawn in two passes: every line and plate first, then every
@@ -123,7 +125,7 @@ export function diagramDiagnostics(diagram: DiagramFile, locale: Locale = DEFAUL
 
 function renderNode(
   node: Node, box: Box, diagram: DiagramFile, url?: (path: string) => string,
-  marks?: DiagramMarks,
+  marks?: DiagramMarks, table?: TableRules,
 ): string {
   const icon = diagram.style.get(node.id)?.get('icon');
   const classes = [
@@ -138,7 +140,7 @@ function renderNode(
   // is the picture's own business: under it for a thing with a name, inside it
   // for a control that holds a value, nowhere for a scrollbar.
   const shape = icon
-    ? picture(icon, box, url, node.items)
+    ? (table && icon === TABLE_PICTURE ? tableArt(box, table) : picture(icon, box, url, node.items))
     : shapeElement(node.shape, box, lineLook(diagram.style.get(node.id)));
   const place = textPlace(icon);
   const text = node.shape === 'group'
@@ -148,8 +150,17 @@ function renderNode(
       : label(box, diagram.style.get(node.id)?.get('align'), node.shape, place === 'under');
   const colours = styleColours(diagram, node.id);
   const style = colours === '' ? '' : ` style="${escapeAttr(colours)}"`;
+  // Words with no frame are nothing but their letters, and an empty one — a
+  // table cell not written in yet — is nothing at all. Either has to be
+  // pressable all over its box, so an unseen plate covers it.
+  const plate = node.shape === 'text' && !icon
+    ? `<rect class="dp-hit" x="${n(box.x)}" y="${n(box.y)}" width="${n(box.width)}" height="${n(box.height)}"`
+      // Said in style, not attributes: a theme's rule for a shape's outline
+      // would otherwise draw it.
+      + ` style="fill: none; stroke: none" pointer-events="all"/>`
+    : '';
   return `<g class="${escapeAttr(classes.join(' '))}" data-node="${escapeAttr(node.id)}"${style}>`
-    + `${shape}${furniture(node, box, diagram)}${text}</g>`;
+    + `${plate}${shape}${furniture(node, box, diagram)}${text}</g>`;
 }
 
 /**
@@ -235,6 +246,29 @@ function lineLook(rule: ReadonlyMap<string, string> | undefined): LineLook {
     arrow: arrow === 'start' || arrow === 'end' || arrow === 'both' ? arrow : PLAIN_LINE.arrow,
     slope: rule?.get('slope') === 'up' ? 'up' : PLAIN_LINE.slope,
   };
+}
+
+/**
+ * A table that holds its cells: its frame, the header row shaded, and the
+ * rules between the rows and columns where the cells say they are. The cells
+ * themselves are shapes, drawn on it like anything else in a container.
+ */
+function tableArt(box: Box, table: TableRules): string {
+  const right = box.x + box.width;
+  const bottom = box.y + box.height;
+  const head = table.rows[0];
+  const shade = head === undefined ? ''
+    : `<rect class="dp-table-head" x="${n(box.x)}" y="${n(box.y)}" width="${n(box.width)}"`
+      + ` height="${n(head - box.y)}" fill="#eef0f3" stroke="none"/>`;
+  const rows = table.rows.map((y, i) => `<path d="M${n(box.x)} ${n(y)} H${n(right)}"`
+    + ` stroke="${i === 0 ? '#aeb4bd' : '#d3d7dd'}" stroke-width="${i === 0 ? 1.3 : 1}"/>`).join('');
+  const columns = table.columns.map(x => `<path d="M${n(x)} ${n(box.y)} V${n(bottom)}"`
+    + ` stroke="#d3d7dd" stroke-width="1"/>`).join('');
+  return `<g class="dp-part-art dp-table-art">`
+    + `<rect x="${n(box.x)}" y="${n(box.y)}" width="${n(box.width)}" height="${n(box.height)}"`
+    + ` fill="#ffffff" stroke="none"/>${shade}${rows}${columns}`
+    + `<rect x="${n(box.x)}" y="${n(box.y)}" width="${n(box.width)}" height="${n(box.height)}"`
+    + ` fill="none" stroke="#aeb4bd" stroke-width="1.3"/></g>`;
 }
 
 /** The room a part's picture takes at the top of its box. */
