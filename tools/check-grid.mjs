@@ -107,4 +107,28 @@ await page.keyboard.press('Escape');
 await page.waitForTimeout(200);
 await openGrid();
 await page.screenshot({ path: 'out/grid.png' });
+
+// 狭い画面でも、表の編集のボタンは全部見えて押せる。エディタが長いタブバーに
+// 押し広げられると、用紙ごと横にはみ出して端のボタンが画面の外に出る。
+for (const width of [520, 360]) {
+  const narrow = await browser.newPage({ viewport: { width, height: 800 } });
+  await narrow.goto('file://' + process.cwd() + '/out/editor.html?lang=ja');
+  await narrow.waitForTimeout(500);
+  await narrow.click('.dp-tab:has-text("用語")');
+  await narrow.waitForTimeout(250);
+  const figure = narrow.locator('.dp-sheet:not([hidden]) .dp-figure').first();
+  await figure.locator('.dp-figure-body').click();
+  await narrow.waitForSelector('.dp-grid-table');
+  await figure.hover({ position: { x: 5, y: 5 } });
+  await narrow.waitForTimeout(200);
+  const unseen = await narrow.evaluate(() => [...document.querySelectorAll(
+    '.dp-sheet:not([hidden]) .dp-grid-bar :is(button, select), .dp-sheet:not([hidden]) .dp-figure:has(.dp-grid) .dp-figure-tools button, .dp-tabbar-toggle')]
+    .filter(node => {
+      const box = node.getBoundingClientRect();
+      const hit = document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2);
+      return !(box.width > 0 && box.left >= 0 && box.right <= innerWidth && (hit === node || node.contains(hit)));
+    }).map(node => (node.textContent || node.title).trim()));
+  check(`幅 ${width}px でも表の編集のボタンが全部見えて押せる`, unseen.length === 0, unseen.join(' / '));
+  await narrow.close();
+}
 await browser.close();
