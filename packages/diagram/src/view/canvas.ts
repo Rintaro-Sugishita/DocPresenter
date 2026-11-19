@@ -7,7 +7,7 @@
 // of the three-layer model: the mouse is for the exceptions.
 
 import { layOutDiagram, type Box } from '../layout.js';
-import { containerOf, dropInto } from '../arrange.js';
+import { containerOf, dropInto, rowRoles } from '../arrange.js';
 import type { DiagramFile, Item, ShapeKind } from '../model.js';
 import { renderDiagram } from '../draw/render.js';
 import { roundedPath } from '../draw/geometry.js';
@@ -26,9 +26,12 @@ import {
   putIntoContainer, setNodePart, setNodeShape, setNodeStyle, setNodeText, unpinNode,
   DiagramEditError,
 } from '../edits.js';
-import { followLabel, itemShapes, linkItemTable, newItemTable, setItemCell, syncItemTable } from '../items.js';
 import {
-  addTableColumn, addTableRow, isEmptyTable, makeTable, removeTableColumn, removeTableRow, tableOf,
+  followLabel, itemOfShape, itemShapes, linkItemTable, newItemTable, renameItemId, setItemCell, syncItemTable,
+} from '../items.js';
+import {
+  addTableColumn, addTableRow, isEmptyTable, makeTable, removeTableColumn, removeTableRow, renameColumn,
+  setColumnPart, setRowRole, setScroll, tableOf, type RowRole,
 } from '../table.js';
 import { stackNodes } from '../stack-up.js';
 import {
@@ -1481,21 +1484,23 @@ export function createCanvas(options: CanvasOptions): Canvas {
    * writes one line of the table and nothing of the drawing: the table is
    * where required and alignment are written, so it is where they change.
    */
-  function itemListItems(id: string): MenuItem[] {
+  function itemListItems(shape: string): MenuItem[] {
     const table = options.itemSource!;
+    // A cell of a table's column is that column's item.
+    const id = itemOfShape(file, shape);
     const link = file.itemLinks?.links.get(id);
     const out: MenuItem[] = [];
     if (link) {
       out.push({
         label: link.required ? t('diagram.canvas.itemOptional') : t('diagram.canvas.itemRequired'),
-        run: () => options.apply(() => setItemCell(file, table, id, 'required', !link.required), [id]),
+        run: () => options.apply(() => setItemCell(file, table, id, 'required', !link.required), [shape]),
       });
       const sides = ['left', 'center', 'right', undefined] as const;
       out.push({
         label: t('diagram.canvas.itemAlign'),
         items: sides.map((side): MenuItem => ({
           label: t(side === undefined ? 'diagram.canvas.itemAlignPart' : `diagram.canvas.itemAlign.${side}`),
-          run: () => options.apply(() => setItemCell(file, table, id, 'align', side), [id]),
+          run: () => options.apply(() => setItemCell(file, table, id, 'align', side), [shape]),
         })),
       });
     }
@@ -1797,9 +1802,21 @@ export function createCanvas(options: CanvasOptions): Canvas {
       });
     }
     if (file.library.size > 0 && node?.shape !== 'group') {
+      // A cell of a table's body is one of a column: changing it changes the
+      // column, and changing just the one cell is offered beside it.
+      const column = bodyColumnOf(id);
+      if (column) {
+        items.push({
+          label: t('diagram.canvas.columnPart'),
+          separated: true,
+          items: libraryItems(
+            name => options.apply(() => setColumnPart(file, source, column.table, column.col, name), [id])),
+        });
+      }
       items.push({
-        label: file.partOf.has(id) ? t('diagram.canvas.changePart') : t('diagram.canvas.makePart'),
-        separated: true,
+        label: column ? t('diagram.canvas.cellPart')
+          : file.partOf.has(id) ? t('diagram.canvas.changePart') : t('diagram.canvas.makePart'),
+        separated: column === undefined,
         items: libraryItems(
           name => options.apply(() => setNodePart(file, source, id, name), [id]),
           file.partOf.get(id)),
@@ -1808,6 +1825,7 @@ export function createCanvas(options: CanvasOptions): Canvas {
     items.push(...fieldItems(id));
     items.push(...flowItems(id));
     items.push(...gridTableItems(id));
+    items.push(...scrollItems(id));
     if (file.itemTable !== undefined && options.itemSource !== undefined) {
       items.push({ label: t('diagram.canvas.itemList'), separated: true, items: itemListItems(id) });
     }
@@ -1857,6 +1875,18 @@ export function createCanvas(options: CanvasOptions): Canvas {
           label: t('diagram.canvas.tableColumnRight'),
           run: () => options.apply(() => addTableColumn(file, source, table, col, t('diagram.table.column', { n: width + 1 })), [id]),
         },
+        ...(row === undefined ? [] : [{
+          label: t('diagram.canvas.rowRole'), separated: true,
+          items: (['head', 'body', 'foot'] as const).map((role): MenuItem => ({
+            label: t(`diagram.canvas.rowRole.${role}`),
+            disabled: rowRole(table, row) === role,
+            run: () => options.apply(() => setRowRole(file, source, table, row, role), [id]),
+          })),
+        }]),
+        ...(col === undefined ? [] : [{
+          label: t('diagram.canvas.renameColumn'),
+          run: () => beginColumnName(table, col, id),
+        }]),
         {
           label: t('diagram.canvas.tableDropRow'), separated: true, disabled: row === undefined || rows <= 1,
           run: () => options.apply(() => removeTableRow(file, source, table, row!), [table]),
@@ -1867,6 +1897,88 @@ export function createCanvas(options: CanvasOptions): Canvas {
         },
       ],
     }];
+  }
+
+  /** What a row of a table is: a heading, a row of the body, or a footer. */
+  function rowRole(table: string, row: number): RowRole {
+    const grid = file.containers.get(table);
+    if (!grid) return 'body';
+    const { head, foot } = rowRoles(grid);
+    return row < head ? 'head' : row >= grid.cells.length - foot ? 'foot' : 'body';
+  }
+
+  /** The table and column of a cell of a table's body; undefined for any other shape. */
+  function bodyColumnOf(id: string): { table: string; col: number } | undefined {
+    const cell = tableOf(file, id);
+    if (!cell || cell.row === undefined || cell.col === undefined || cell.row < 0) return undefined;
+    return rowRole(cell.table, cell.row) === 'body' ? { table: cell.table, col: cell.col } : undefined;
+  }
+
+  /**
+   * How an area scrolls, for the container picked or the one the picked
+   * shape is in. Any container can: a list, a table, a panel of a form.
+   */
+  function scrollItems(id: string): MenuItem[] {
+    const ids = [file.containers.get(id)?.id, containerOf(file).get(id)].filter((one): one is string => one !== undefined);
+    return [...new Set(ids)].map((name, index): MenuItem => ({
+      label: t('diagram.canvas.scroll', { id: name }),
+      separated: index === 0,
+      items: (['none', 'down', 'right', 'both'] as const).map((scroll): MenuItem => ({
+        label: t(`diagram.canvas.scroll.${scroll}`),
+        disabled: file.containers.get(name)?.scroll === scroll,
+        run: () => options.apply(() => setScroll(file, source, name, scroll), [id]),
+      })),
+    }));
+  }
+
+  /**
+   * Opens a box over a column's heading for its name — the name the item
+   * table knows the column by, which is changed there with it.
+   */
+  function beginColumnName(table: string, col: number, near: string): void {
+    const grid = file.containers.get(table);
+    const box = boxOf(grid?.cells[0]?.[col] ?? near) ?? boxOf(near);
+    if (!grid || !box) return;
+    const was = grid.names[col];
+    const rect = drawing.getBoundingClientRect();
+    const stageAt = stage.getBoundingClientRect();
+    const factor = scale();
+    const input = owner.createElement('input');
+    input.className = 'dp-canvas-text';
+    input.value = was ?? '';
+    input.placeholder = String(col + 1);
+    input.spellcheck = false;
+    input.style.left = `${rect.left - stageAt.left + box.x * factor}px`;
+    input.style.top = `${rect.top - stageAt.top + box.y * factor}px`;
+    input.style.width = `${Math.max(80, box.width * factor)}px`;
+    input.style.height = `${box.height * factor}px`;
+    stage.append(input);
+    input.focus();
+    input.select();
+
+    let done = false;
+    const finish = (keep: boolean): void => {
+      if (done) return;
+      done = true;
+      const name = input.value.trim();
+      input.remove();
+      stage.focus({ preventScroll: true });
+      if (!keep || name === '' || name === was) return;
+      options.apply(() => {
+        const edit = renameColumn(file, source, table, col, name);
+        const itemTable = options.itemSource;
+        const also = itemTable === undefined ? undefined
+          : renameItemId(file, itemTable, `${table}.${was ?? String(col + 1)}`, `${table}.${name}`);
+        return also ? { ...edit, also } : edit;
+      }, [near]);
+    };
+    input.addEventListener('blur', () => finish(true));
+    input.addEventListener('keydown', event => {
+      event.stopPropagation();
+      if (event.isComposing) return;
+      if (event.key === 'Enter') { event.preventDefault(); finish(true); }
+      if (event.key === 'Escape') { event.preventDefault(); finish(false); }
+    });
   }
 
   /**

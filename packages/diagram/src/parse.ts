@@ -599,12 +599,15 @@ function readContainer(
   const id = found[2]!;
   let flow: 'down' | 'right' = 'down';
   let cols: string[] = [];
+  let names: (string | undefined)[] = [];
   let gap = { x: DEFAULT_GAP, y: DEFAULT_GAP };
   // A tab control is a frame around pages, not a padded box: its pages bring
   // their own padding, the way they do in every toolkit.
   let pad = kind === 'tabs' ? 0 : DEFAULT_PAD;
-  let scroll: 'none' | 'down' | 'right' = 'none';
+  let scroll: Container['scroll'] = 'none';
   let show: string | undefined;
+  let head = kind === 'grid' ? DEFAULT_HEAD : 0;
+  let foot = 0;
 
   for (const setting of (found[3] ?? '').split(';')) {
     const written = setting.trim();
@@ -618,11 +621,20 @@ function readContainer(
     // is a drawing that silently disagrees with its own file.
     if (!kv) throw new DiagramParseError(dgm('diagram.parse.unreadableContainerSetting', { text: written }), line);
     const value = kv[2]!.trim();
-    if (kv[1] === 'cols') cols = value.split(',').map(one => one.trim()).filter(one => one !== '');
+    if (kv[1] === 'cols') {
+      const columns = value.split(',').map(one => one.trim()).filter(one => one !== '')
+        .map(one => readColumn(one, written, line));
+      cols = columns.map(one => one.width);
+      names = columns.map(one => one.name);
+    }
     else if (kv[1] === 'pad') pad = Number(value);
     else if (kv[1] === 'show') show = value;
+    else if (kv[1] === 'head' || kv[1] === 'foot') {
+      if (!/^\d+$/.test(value)) throw new DiagramParseError(dgm('diagram.parse.rowCount', { text: written }), line);
+      if (kv[1] === 'head') head = Number(value); else foot = Number(value);
+    }
     else if (kv[1] === 'scroll') {
-      if (value !== 'down' && value !== 'right') {
+      if (value !== 'down' && value !== 'right' && value !== 'both') {
         throw new DiagramParseError(dgm('diagram.parse.scrollDirection', { value }), line);
       }
       scroll = value;
@@ -644,7 +656,7 @@ function readContainer(
   if (kind === 'stack') {
     const members = cells.flat();
     return {
-      id, kind, flow, gap, pad, scroll, show,
+      id, kind, flow, gap, pad, scroll, show, names: [], head: 0, foot: 0,
       cols: flow === 'down' ? ['1fr'] : members.map(() => 'auto'),
       cells: flow === 'down' ? members.map(one => [one]) : [members],
     };
@@ -653,9 +665,29 @@ function readContainer(
   // side by side in the strip and one at a time underneath it.
   if (kind === 'tabs') {
     const pages = cells.flat();
-    return { id, kind, flow, gap, pad, scroll, show, cols: ['1fr'], cells: [pages] };
+    return { id, kind, flow, gap, pad, scroll, show, names: [], head: 0, foot: 0, cols: ['1fr'], cells: [pages] };
   }
-  return { id, kind, flow, gap, pad, scroll, show, cols, cells };
+  return { id, kind, flow, gap, pad, scroll, show, cols, names, head, foot, cells };
+}
+
+/** A grid has one heading row unless it says otherwise. */
+const DEFAULT_HEAD = 1;
+/** What a column's width is written as: units, a share, or as wide as it needs. */
+const COLUMN_WIDTH = /^(\d+(\.\d+)?|\d*(\.\d+)?fr|auto)$/;
+const COLUMN_NAME = new RegExp(`^[${ID_CHARS}]+$`);
+
+/**
+ * One entry of `cols:` — a width, a name and a width (`pick 40`), or a name
+ * alone, which takes a share of the room as an unnamed `1fr` would.
+ */
+function readColumn(text: string, setting: string, line: number): { name: string | undefined; width: string } {
+  const words = text.split(/\s+/);
+  if (words.length === 1 && COLUMN_WIDTH.test(words[0]!)) return { name: undefined, width: words[0]! };
+  const [name, width = '1fr'] = words;
+  if (words.length > 2 || !COLUMN_NAME.test(name!) || COLUMN_WIDTH.test(name!) || !COLUMN_WIDTH.test(width)) {
+    throw new DiagramParseError(dgm('diagram.parse.unreadableColumn', { text, setting }), line);
+  }
+  return { name, width };
 }
 
 function parseStyle(

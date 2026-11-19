@@ -3,7 +3,7 @@ import { applyEdit } from '@docpresenter/base';
 import {
   DiagramEditError, followLabel, formatDiagram, itemName, itemShapes, itemTableName, layOutDiagram, linkItemTable,
   itemCellChoices, itemTypes, newItemTable, parseDiagram, readItemTable, readingOrder, renderDiagram, setItemCell,
-  starterScreen, syncItemTable, withParts,
+  starterScreen, syncItemTable, withParts, renameItemId, itemOfShape,
 } from '../src/index.js';
 
 // The login screen of the sample, cut down to what the item list is about.
@@ -118,7 +118,7 @@ describe('the item table a screen names', () => {
   it('numbers the items in the screen\'s order and marks the required ones', () => {
     const links = screen().itemLinks!.links;
     expect([...links.values()].map(link => [link.id, link.number, link.required])).toEqual([
-      ['idBox', 1, true], ['pwBox', 2, true], ['keepBox', 3, false], ['submit', 4, false],
+      ['idBox', '1', true], ['pwBox', '2', true], ['keepBox', '3', false], ['submit', '4', false],
     ]);
     expect(links.get('idBox')?.label).toBe('idLabel');
   });
@@ -380,5 +380,105 @@ describe('an item\'s name following its label', () => {
     // 保持 was written apart from the screen's 保持する: it is left as it is.
     expect(followLabel(screen(), TABLE, 'keepBox', '保持する', '状態を保持する')).toBeUndefined();
     expect(followLabel(screen(), TABLE, 'idBox', 'ログイン ID', 'ログイン ID')).toBeUndefined();
+  });
+});
+
+// A list screen: a table whose columns are the items, with a total under it.
+describe('a table on the screen lists its items by column', () => {
+  const LIST = [
+    'use "default"',
+    'items "items.table"',
+    '',
+    'free {',
+    '  title    title:"会員一覧"',
+    '  results  grid:',
+    '  pickHead label:"選択"',
+    '  nameHead label:"氏名"',
+    '  pick1    checkbox:',
+    '  name1    body:"山田 太郎"',
+    '  pick2    checkbox:',
+    '  name2    body:"鈴木 花子"',
+    '  sumLabel label:"件数"',
+    '  sumValue body:"2 件"',
+    '  search   primary:"検索"',
+    '}',
+    '',
+    'layout {',
+    '  title   @ (20, 10) 200x30',
+    '  results @ (20, 50) 360x160',
+    '  search  @ (20, 240) 100x32',
+    '  grid results (cols: pick 40, name 1fr; foot: 1; gap: 4 12; pad: 6) {',
+    '    pickHead ; nameHead',
+    '    pick1    ; name1',
+    '    pick2    ; name2',
+    '    sumLabel ; sumValue',
+    '  }',
+    '}',
+    '',
+  ].join('\n');
+  const ITEMS = [
+    '| 分類 | No | ID           | 項目名 | 必須 | 寄せ |',
+    '|------|---:|--------------|--------|:----:|:----:|',
+    '| 表示 |  # | results      | 一覧   |  —   |      |',
+    '| 入力 |  # | results.pick | 選択   |  ○   |      |',
+    '| 表示 |  # | results.name | 氏名   |  —   |  右  |',
+    '| 表示 |  # | sumValue     | 件数   |  —   |      |',
+    '| 操作 |  # | search       | 検索   |  —   |      |',
+    '',
+  ].join('\n');
+  const list = (table: string | undefined = ITEMS, source = LIST) =>
+    withParts(parseDiagram(source), path => (path === 'items.table' ? table : undefined));
+
+  it('makes a column one item, and numbers what is in the table under it', () => {
+    const links = list().itemLinks!.links;
+    expect([...links.values()].map(link => [link.id, link.number])).toEqual([
+      ['results', '1'], ['results.pick', '1-1'], ['results.name', '1-2'], ['sumValue', '1-3'], ['search', '2'],
+    ]);
+    expect(links.get('results.pick')).toMatchObject({ at: 'pickHead', label: 'pickHead', parent: 'results', required: true });
+    expect(links.get('sumValue')?.label).toBe('sumLabel');
+    expect(list().itemLinks!.notes).toEqual([]);
+  });
+
+  it('draws a column\'s number on its heading, and its alignment on every cell', () => {
+    const laid = layOutDiagram(list());
+    const mark = laid.marks.find(one => one.kind === 'number' && one.id === 'results.pick')!;
+    const head = laid.boxes.get('pickHead')!;
+    expect(mark.text).toBe('1-1');
+    expect(mark.width).toBeGreaterThan(18);
+    expect(mark.y).toBeCloseTo(head.y - 9, 0);
+    expect(list().style.get('name1')?.get('align')).toBe('right');
+    expect(list().style.get('name2')?.get('align')).toBe('right');
+    expect(laid.marks.some(one => one.kind === 'required' && one.id === 'results.pick')).toBe(true);
+  });
+
+  it('says a row naming one cell of a column should name the column', () => {
+    const old = ITEMS.replace('results.pick', 'pick1       ');
+    const said = list(old).itemLinks!.notes.map(note => note.id);
+    expect(said).toContain('diagram.items.cellOfColumn');
+    expect(said).toContain('diagram.items.unlisted');
+  });
+
+  it('lists the columns in a new item table, named by their headings', () => {
+    const made = newItemTable(list(undefined));
+    const ids = readItemTable(made)!.rows.map(row => [row.cells[2], row.cells[3], row.cells[0]]);
+    expect(ids).toEqual([
+      ['results', '', '表示'], ['results.pick', '選択', '入力'], ['results.name', '氏名', '表示'],
+      ['search', '検索', '操作'],
+    ]);
+    // Words in a footer are not an item unless the table lists them (as above).
+  });
+
+  it('adds a column the table lacks where the screen has it', () => {
+    const without = ITEMS.split('\n').filter(line => !line.includes('results.name')).join('\n');
+    const edit = syncItemTable(list(without), without)!;
+    const rows = readItemTable(applyEdit(without, edit))!.rows.map(row => row.cells[2]);
+    expect(rows).toEqual(['results', 'results.pick', 'results.name', 'sumValue', 'search']);
+  });
+
+  it('renames a column\'s row with the column', () => {
+    const edit = renameItemId(list(), ITEMS, 'results.pick', 'results.choose')!;
+    expect(applyEdit(ITEMS, edit)).toContain('| results.choose |');
+    expect(itemOfShape(list(), 'pick2')).toBe('results.pick');
+    expect(itemOfShape(list(), 'search')).toBe('search');
   });
 });

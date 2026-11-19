@@ -46,6 +46,27 @@ export interface TableRules {
   readonly columns: readonly number[];
   /** The y of each line between two rows, top to bottom. */
   readonly rows: readonly number[];
+  /** How many rows at the top are headings, and at the bottom a footer. */
+  readonly head: number;
+  readonly foot: number;
+}
+
+/**
+ * How many rows of a grid are headings and how many a footer, as far as it
+ * has rows: a grid of two rows that says `head: 1; foot: 2` has one of each.
+ */
+export function rowRoles(container: Container): { head: number; foot: number } {
+  const count = container.cells.length;
+  const head = Math.min(container.head, count);
+  return { head, foot: Math.min(container.foot, count - head) };
+}
+
+/** Whether an area scrolls down the page, across it, either way. */
+export function scrollsDown(container: Container): boolean {
+  return container.scroll === 'down' || container.scroll === 'both';
+}
+export function scrollsAcross(container: Container): boolean {
+  return container.scroll === 'right' || container.scroll === 'both';
 }
 
 /** The picture a shape is drawn as when it is a table that holds its cells. */
@@ -179,13 +200,13 @@ export function arrangeContainers(
     } : {
       // An area that scrolls is as big as it was given, not as big as what is
       // in it: being longer than its room is the thing it is saying.
-      width: container.scroll === 'right' ? sizeOf(id).width
+      width: scrollsAcross(container) ? sizeOf(id).width
         : sum(widths) + container.gap.x * Math.max(0, widths.length - 1) + container.pad * 2
-          + (container.scroll === 'down' ? SCROLL_BAR : 0),
-      height: container.scroll === 'down' ? sizeOf(id).height
+          + (scrollsDown(container) ? SCROLL_BAR : 0),
+      height: scrollsDown(container) ? sizeOf(id).height
         : sum(heights) + container.gap.y * Math.max(0, heights.length - 1)
           + container.pad * 2 + header(byId.get(id)?.shape)
-          + (container.scroll === 'right' ? SCROLL_BAR : 0),
+          + (scrollsAcross(container) ? SCROLL_BAR : 0),
       lines: sizeOf(id).lines,
     };
     wanted.set(id, size);
@@ -213,9 +234,10 @@ export function arrangeContainers(
       done.add(container.id);
       again = true;
       // A table is as tall as its rows: a row added makes it longer, the way
-      // a table on a screen does, rather than squeezing the rows it has.
+      // a table on a screen does, rather than squeezing the rows it has —
+      // unless it scrolls down, which is how a table says it is cut off.
       const table = isTable(diagram, container.id);
-      if (table && intrinsic(container.id).height > box.height) {
+      if (table && !scrollsDown(container) && intrinsic(container.id).height > box.height) {
         box = { ...box, height: intrinsic(container.id).height };
         boxes.set(container.id, box);
       }
@@ -233,7 +255,7 @@ export function arrangeContainers(
       // but a frame too small for its own contents is said out loud. An area
       // that scrolls is not too small: being cut off is what it says.
       const needs = intrinsic(container.id);
-      if (container.scroll === 'none' && needs.height > box.height + 1) {
+      if (!scrollsDown(container) && needs.height > box.height + 1) {
         diagnostics.push(dgm('diagram.arrange.overflow', {
           id: container.id, height: Math.round(box.height), needs: Math.round(needs.height),
         }));
@@ -356,8 +378,8 @@ function place(
   const left = box.x + container.pad;
   const top = box.y + container.pad + header(shape);
   // A bar down the edge takes room from what it is beside.
-  const bar = { x: container.scroll === 'down' ? SCROLL_BAR : 0,
-    y: container.scroll === 'right' ? SCROLL_BAR : 0 };
+  const bar = { x: scrollsDown(container) ? SCROLL_BAR : 0,
+    y: scrollsAcross(container) ? SCROLL_BAR : 0 };
   const fold = {
     x: box.x + box.width - container.pad - bar.x,
     y: box.y + box.height - container.pad - bar.y,
@@ -366,13 +388,38 @@ function place(
   const heights = rowHeights(container, intrinsic);
   const at = (sizes: readonly number[], index: number, gap: number): number =>
     sizes.slice(0, index).reduce((total, one) => total + one + gap, 0);
+  const tops = heights.map((_, r) => top + at(heights, r, container.gap.y));
 
-  // A table's rules, down the middle of the gaps between its cells.
-  tables?.push({
-    container: container.id,
-    columns: widths.slice(1).map((_, c) => left + at(widths, c + 1, container.gap.x) - container.gap.x / 2),
-    rows: heights.slice(1).map((_, r) => top + at(heights, r + 1, container.gap.y) - container.gap.y / 2),
-  });
+  // A table that scrolls down keeps its headings at the top and its footer at
+  // the bottom, and only its body runs past the fold — whole rows, since half
+  // a row under a total would be a row drawn through it.
+  const cut = new Set<number>();
+  if (tables && scrollsDown(container)) {
+    const { head, foot } = rowRoles(container);
+    const count = heights.length;
+    if (foot > 0) {
+      const tall = sum(heights.slice(count - foot)) + container.gap.y * (foot - 1);
+      const pinned = fold.y - tall;
+      if (tops[count - foot]! > pinned) {
+        let y = pinned;
+        for (let r = count - foot; r < count; r++) { tops[r] = y; y += heights[r]! + container.gap.y; }
+      }
+      fold.y = Math.min(fold.y, tops[count - foot]! - container.gap.y);
+    }
+    for (let r = head; r < count - foot; r++) if (tops[r]! + heights[r]! > fold.y + 0.5) cut.add(r);
+  }
+
+  // A table's rules, down the middle of the gaps between its cells — between
+  // the rows that are drawn.
+  if (tables) {
+    const shown = heights.map((_, r) => r).filter(r => !cut.has(r));
+    tables.push({
+      container: container.id,
+      columns: widths.slice(1).map((_, c) => left + at(widths, c + 1, container.gap.x) - container.gap.x / 2),
+      rows: shown.slice(1).map(r => tops[r]! - container.gap.y / 2),
+      ...rowRoles(container),
+    });
+  }
 
   const placed = new Set<string>();
   container.cells.forEach((cells, r) => cells.forEach((cell, c) => {
@@ -384,7 +431,7 @@ function place(
         container: container.id, row: r, col: c,
         box: {
           x: left + at(widths, c, container.gap.x),
-          y: top + at(heights, r, container.gap.y),
+          y: tops[r]!,
           width: widths[c] ?? 0, height: heights[r] ?? 0, z: box.z, lines: [],
         },
       });
@@ -406,12 +453,15 @@ function place(
     const height = diagram.containers.has(cell) ? rowHeight : Math.min(size.height, rowHeight);
     const spot = {
       x: left + at(widths, where.col, container.gap.x),
-      y: top + at(heights, where.row, container.gap.y) + (rowHeight - height) / 2,
+      y: tops[where.row]! + (rowHeight - height) / 2,
     };
     // Past the fold of an area that scrolls: there, but not on screen. The
     // bar beside it is what says there is more.
-    if ((container.scroll === 'down' && spot.y >= fold.y)
-      || (container.scroll === 'right' && spot.x >= fold.x)) {
+    // A table has worked out which of its rows are cut off: its footer is
+    // under the fold and still drawn.
+    const below = tables && scrollsDown(container) ? cut.has(where.row) : scrollsDown(container) && spot.y >= fold.y;
+    if (below
+      || (scrollsAcross(container) && spot.x >= fold.x)) {
       hide(cell);
       return;
     }

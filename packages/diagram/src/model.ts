@@ -174,8 +174,18 @@ export interface ItemLink {
   readonly id: string;
   /** Which body row of the table, from 0. */
   readonly row: number;
-  /** Its number, counted in the screen's reading order. Absent for a row with no `#`. */
-  readonly number: number | undefined;
+  /**
+   * Its number, counted in the screen's reading order — `3`, or `3-1` for a
+   * column or a footer cell of the table numbered 3. Absent for a row with no `#`.
+   */
+  readonly number: string | undefined;
+  /**
+   * The shape its marks are drawn on. The item itself for a shape; for a
+   * column of a table, the column's heading (or its first cell).
+   */
+  readonly at: string;
+  /** The table it is a column or a cell of, when it is one. */
+  readonly parent: string | undefined;
   readonly required: boolean;
   /** The caption the item is named by on the screen, which "required" is drawn after. */
   readonly label: string | undefined;
@@ -241,7 +251,7 @@ export interface Container {
    * design document is to say "this is cut off and there is more", so what
    * does not fit is left undrawn and a bar is drawn down the edge.
    */
-  readonly scroll: 'none' | 'down' | 'right';
+  readonly scroll: 'none' | 'down' | 'right' | 'both';
   /** `tabs` only: which page this drawing shows. The first, unless it says. */
   readonly show: string | undefined;
   /**
@@ -250,6 +260,20 @@ export interface Container {
    * share each, which is what a form of labels and fields wants.
    */
   readonly cols: readonly string[];
+  /**
+   * `grid` only: the name of each column, beside its width (`cols: pick 40`).
+   * A table's column is one item of the screen, whatever its rows hold, and
+   * this is what the item table calls it (`results.pick`). Undefined for a
+   * column given no name.
+   */
+  readonly names: readonly (string | undefined)[];
+  /**
+   * `grid` only: how many rows at the top are headings and how many at the
+   * bottom are a footer (a total, a summary). The rows between are the body,
+   * which a table repeats. One heading row and no footer, unless it says.
+   */
+  readonly head: number;
+  readonly foot: number;
   /** Between the rows and between the columns. */
   readonly gap: { readonly x: number; readonly y: number };
   /** Between the container's edge and what it holds. */

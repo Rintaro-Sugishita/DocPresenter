@@ -556,7 +556,9 @@ separated by a blank line.
 **The layout section.** Containers, then pins, then bends. A pin is
 `id @ (x, y) WxH  z:N`, the numbers right-aligned in their columns. A container's
 settings are written only where they differ from the default, in the order
-`right`, `cols`, `gap`, `pad`, `scroll`, `show`; a grid is written a row to a
+`right`, `cols`, `head`, `foot`, `gap`, `pad`, `scroll`, `show`; a column of
+`cols` is written `name width` when it has a name, and `scroll` alone when it
+runs the container's own way (down, for a grid); a grid is written a row to a
 line with its cells lined up and separated by ` ; `; a stack or a set of tabs
 holding two or more is written a name to a line (one name stays on the head's
 line), so that a name added or moved is one line of a diff.
@@ -670,24 +672,74 @@ them is shapes like any other — words, a check box, a link, a button:
 
 ```
 results   grid:
-nameHead  label:"氏名"
 pickHead  label:"選択"
-name1     body:"山田 太郎"
+nameHead  label:"氏名"
 pick1     checkbox:
+name1     body:"山田 太郎"
+pick2     checkbox:
+name2     body:"鈴木 花子"
+sumLabel  label:"件数"
+sumValue  body:"2 件"
 
-grid results (cols: 1fr, 2fr; gap: 4 12; pad: 6) {
+grid results (cols: pick 40, name 1fr; foot: 1; gap: 4 12; pad: 6) {
   pickHead ; nameHead
   pick1    ; name1
+  pick2    ; name2
+  sumLabel ; sumValue
 }
 ```
 
-- The rules between rows and columns run down the middle of the gaps; the first
-  row is the header and is shaded. A renderer draws them from where the cells
-  are, not from fixed artwork.
+**Rows.** The first `head` rows are headings and the last `foot` rows a footer
+(a total, a summary); the rows between are the **body**, the rows a table
+repeats. `head` is 1 and `foot` 0 unless written; both are whole numbers, and
+a grid with fewer rows than they add up to has as many headings as it has rows
+and then as many footer rows as are left. They mean something only for a
+table; a reader MUST accept them on any grid.
+
+**Columns.** An entry of `cols` is a width (`40`, `1fr`, `auto`), a name and a
+width (`pick 40`), or a name alone, which takes a share as `1fr` does. A name is
+written in the characters of an id (§2). Two columns of one grid SHOULD NOT have
+the same name.
+
+- The rules between rows and columns run down the middle of the gaps. The
+  headings are shaded, and the rule under them and the one over the footer are
+  drawn darker; the footer is shaded lightly. A renderer draws them from where
+  the cells are, not from fixed artwork.
 - A table is **as tall as its rows**: when what it holds needs more room than its
-  pin gives, the table grows rather than reporting that it overflows.
+  pin gives, the table grows rather than reporting that it overflows — unless it
+  scrolls down (§7.6).
 - A table picture that is not a container is drawn as before: a picture saying
   "a table goes here".
+
+**Items.** On a screen with an item table (`items "…"`), the body of a table
+is listed **by column**, not by cell: each column is one item, whatever its
+rows hold, named `table.column` — the table's id, a dot, and the column's name,
+or its number from 1 when it has none (`results.pick`, `results.2`). The words
+in the column's last heading row name it and are where "required" is drawn
+after; its number goes over the middle of that heading. A cell of the body is
+not an item on its own, and a row of the item table naming one is reported.
+The table's alignment for a column is applied to every cell of its body.
+
+What sits in a heading or a footer row and is an item is listed as itself — a
+total shown under the rows, a "select all" box in a heading — and named by the
+words in the cell before it on its row, as in a form. A column and a shape in a
+heading or footer are **numbered under the table**: when the table itself is
+item 3, they are `3-1`, `3-2`, … in reading order (the columns left to right,
+then the footer). When the table has no number, they count on from the screen's
+numbers as any item does.
+
+### 7.6 An area that scrolls
+
+`scroll` on a container — `scroll: down`, `scroll: right` or `scroll: both`, or
+`scroll` alone for the container's own way — says the area is cut off and goes
+on. It is as big as its pin or its part makes it, not as big as what it holds;
+what is past the fold is not drawn, a bar is drawn along each edge it scrolls
+on, and it is never reported as overflowing.
+
+A table that scrolls down keeps its headings at the top and its footer at the
+bottom, as a table on a real screen does: only body rows are cut off, a whole
+row at a time, and the bar down its side runs from under the headings to over
+the footer.
 
 ## 8. Rendering (informative)
 

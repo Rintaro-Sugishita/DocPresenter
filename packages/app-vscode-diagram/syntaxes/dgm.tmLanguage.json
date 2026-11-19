@@ -284,11 +284,11 @@
           "2": { "name": "punctuation.separator.key-value.dgm" },
           "3": { "name": "variable.other.dgm" }
         } },
-        { "match": "\\b(cols|gap|pad|show|scroll)\\s*(:)", "captures": {
+        { "match": "\\b(cols|head|foot|gap|pad|show|scroll)\\s*(:)", "captures": {
           "1": { "name": "support.type.property-name.dgm" },
           "2": { "name": "punctuation.separator.key-value.dgm" }
         } },
-        { "match": "\\b(down|right|scroll)\\b", "name": "support.constant.dgm" },
+        { "match": "\\b(down|right|both|scroll)\\b", "name": "support.constant.dgm" },
         { "match": "\\b\\d+(?:\\.\\d+)?(fr)?\\b", "name": "constant.numeric.dgm" },
         { "match": "\\bauto\\b", "name": "support.constant.dgm" },
         { "match": "[;,]", "name": "punctuation.separator.dgm" }
