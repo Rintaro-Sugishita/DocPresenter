@@ -14,7 +14,7 @@ import { DEFAULT_LOCALE, escapeAttr, escapeHtml, type Locale } from '@docpresent
 import { isIconPath, stencilArt, textPlace } from './stencil.js';
 import { isListing, listingArt } from './listing.js';
 import { TABLE_PICTURE, type TableRules } from '../arrange.js';
-import { members, shownPage, tabPages, SCROLL_BAR, TAB_STRIP } from '../arrange.js';
+import { members, scrollsAcross, scrollsDown, shownPage, tabPages, SCROLL_BAR, TAB_STRIP } from '../arrange.js';
 import {
   arrowHead as arrowCorners, border, cylinderRadius, labelLayout, n, roundedPath, shapeOutlines,
   LINE_HEIGHT, PLAIN_LINE, type LineLook, type Outline, type ShapePart,
@@ -102,7 +102,10 @@ function renderMark(mark: ItemMark): string {
     + ` fill="${escapeAttr(fill)}" font-size="${size}"${weight}>${escapeHtml(mark.text)}</text>`;
   if (mark.kind === 'number') {
     return `<g class="dp-item-number"${item}>`
-      + `<circle cx="${n(cx)}" cy="${n(cy)}" r="${n(mark.width / 2)}" fill="#ffffff" stroke="#b3261e" stroke-width="1.5"/>`
+      + (mark.width > mark.height
+        ? `<rect x="${n(mark.x)}" y="${n(mark.y)}" width="${n(mark.width)}" height="${n(mark.height)}"`
+          + ` rx="${n(mark.height / 2)}" fill="#ffffff" stroke="#b3261e" stroke-width="1.5"/>`
+        : `<circle cx="${n(cx)}" cy="${n(cy)}" r="${n(mark.width / 2)}" fill="#ffffff" stroke="#b3261e" stroke-width="1.5"/>`)
       + `${words('#b3261e', 11)}</g>`;
   }
   // "Required" looks the way the library's `required` part says.
@@ -163,7 +166,7 @@ function renderNode(
       + ` style="fill: none; stroke: none" pointer-events="all"/>`
     : '';
   return `<g class="${escapeAttr(classes.join(' '))}" data-node="${escapeAttr(node.id)}"${style}>`
-    + `${plate}${shape}${furniture(node, box, diagram)}${text}</g>`;
+    + `${plate}${shape}${furniture(node, box, diagram, table)}${text}</g>`;
 }
 
 /**
@@ -175,7 +178,7 @@ function renderNode(
  * on. They sit in a group of their own so the theme can style them apart from
  * the outline they are drawn on.
  */
-function furniture(node: Node, box: Box, diagram: DiagramFile): string {
+function furniture(node: Node, box: Box, diagram: DiagramFile, table?: TableRules): string {
   const container = diagram.containers.get(node.id);
   if (!container) return '';
   const byId = new Map(diagram.nodes.map(one => [one.id, one]));
@@ -201,19 +204,44 @@ function furniture(node: Node, box: Box, diagram: DiagramFile): string {
   if (container.scroll === 'none') return '';
   // The thumb says "there is more", not how much: the drawing knows what is
   // cut off, and a bar drawn to scale would be a measurement nobody wrote.
-  const down = container.scroll === 'down';
-  const track = down
-    ? { x: box.x + box.width - SCROLL_BAR, y: box.y, width: SCROLL_BAR, height: box.height }
-    : { x: box.x, y: box.y + box.height - SCROLL_BAR, width: box.width, height: SCROLL_BAR };
-  const thumb = down
-    ? { x: track.x + 2.5, y: track.y + 3, width: SCROLL_BAR - 5, height: track.height * 0.5 }
-    : { x: track.x + 3, y: track.y + 2.5, width: track.width * 0.5, height: SCROLL_BAR - 5 };
-  return '<g class="dp-scroll">'
-    + `<rect class="dp-scroll-track" x="${n(track.x)}" y="${n(track.y)}"`
+  // A table's headings stay where they are while its rows scroll, so the bar
+  // down the side starts under them; a footer stays under the rows, so the
+  // bar ends over it.
+  const down = scrollsDown(container);
+  const across = scrollsAcross(container);
+  const headings = table !== undefined && table.head > 0 ? table.rows[table.head - 1] : undefined;
+  const footer = table !== undefined && table.foot > 0 ? table.rows[table.rows.length - table.foot] : undefined;
+  const topOf = headings ?? box.y;
+  const bottomOf = footer ?? box.y + box.height - (across ? SCROLL_BAR : 0);
+  const bars: string[] = [];
+  if (down) {
+    const track = {
+      x: box.x + box.width - SCROLL_BAR, y: topOf,
+      width: SCROLL_BAR, height: Math.max(0, bottomOf - topOf),
+    };
+    const thumb = { x: track.x + 2.5, y: track.y + 3, width: SCROLL_BAR - 5, height: track.height * 0.5 };
+    bars.push(scrollBar(track, thumb));
+  }
+  if (across) {
+    const track = {
+      x: box.x, y: box.y + box.height - SCROLL_BAR,
+      width: box.width - (down ? SCROLL_BAR : 0), height: SCROLL_BAR,
+    };
+    const thumb = { x: track.x + 3, y: track.y + 2.5, width: track.width * 0.5, height: SCROLL_BAR - 5 };
+    bars.push(scrollBar(track, thumb));
+  }
+  return `<g class="dp-scroll">${bars.join('')}</g>`;
+}
+
+/** One bar: its track and the thumb on it. */
+function scrollBar(
+  track: { x: number; y: number; width: number; height: number },
+  thumb: { x: number; y: number; width: number; height: number },
+): string {
+  return `<rect class="dp-scroll-track" x="${n(track.x)}" y="${n(track.y)}"`
     + ` width="${n(track.width)}" height="${n(track.height)}"/>`
     + `<rect class="dp-scroll-thumb" x="${n(thumb.x)}" y="${n(thumb.y)}"`
-    + ` width="${n(thumb.width)}" height="${n(thumb.height)}" rx="${(SCROLL_BAR - 5) / 2}"/>`
-    + '</g>';
+    + ` width="${n(thumb.width)}" height="${n(thumb.height)}" rx="${(SCROLL_BAR - 5) / 2}"/>`;
 }
 
 /** The headings of a tab control are set smaller than a label, like a tab. */
@@ -252,24 +280,33 @@ function lineLook(rule: ReadonlyMap<string, string> | undefined): LineLook {
 }
 
 /**
- * A table that holds its cells: its frame, the header row shaded, and the
- * rules between the rows and columns where the cells say they are. The cells
- * themselves are shapes, drawn on it like anything else in a container.
+ * A table that holds its cells: its frame, the heading rows shaded, and the
+ * rules between the rows and columns where the cells say they are. The rule
+ * under the headings and the one over a footer are drawn darker, and a footer
+ * is shaded lightly, so a total reads as apart from the rows it sums. The
+ * cells themselves are shapes, drawn on it like anything else in a container.
  */
 function tableArt(box: Box, table: TableRules): string {
   const right = box.x + box.width;
   const bottom = box.y + box.height;
-  const head = table.rows[0];
-  const shade = head === undefined ? ''
+  const headEnd = table.head > 0 ? table.rows[table.head - 1] : undefined;
+  const footStart = table.foot > 0 ? table.rows[table.rows.length - table.foot] : undefined;
+  const shade = headEnd === undefined ? ''
     : `<rect class="dp-table-head" x="${n(box.x)}" y="${n(box.y)}" width="${n(box.width)}"`
-      + ` height="${n(head - box.y)}" fill="#eef0f3" stroke="none"/>`;
-  const rows = table.rows.map((y, i) => `<path d="M${n(box.x)} ${n(y)} H${n(right)}"`
-    + ` stroke="${i === 0 ? '#aeb4bd' : '#d3d7dd'}" stroke-width="${i === 0 ? 1.3 : 1}"/>`).join('');
+      + ` height="${n(headEnd - box.y)}" fill="#eef0f3" stroke="none"/>`;
+  const footShade = footStart === undefined ? ''
+    : `<rect class="dp-table-foot" x="${n(box.x)}" y="${n(footStart)}" width="${n(box.width)}"`
+      + ` height="${n(bottom - footStart)}" fill="#f6f7f9" stroke="none"/>`;
+  const rows = table.rows.map((y, i) => {
+    const strong = i === table.head - 1 || i === table.rows.length - table.foot;
+    return `<path d="M${n(box.x)} ${n(y)} H${n(right)}"`
+      + ` stroke="${strong ? '#aeb4bd' : '#d3d7dd'}" stroke-width="${strong ? 1.3 : 1}"/>`;
+  }).join('');
   const columns = table.columns.map(x => `<path d="M${n(x)} ${n(box.y)} V${n(bottom)}"`
     + ` stroke="#d3d7dd" stroke-width="1"/>`).join('');
   return `<g class="dp-part-art dp-table-art">`
     + `<rect x="${n(box.x)}" y="${n(box.y)}" width="${n(box.width)}" height="${n(box.height)}"`
-    + ` fill="#ffffff" stroke="none"/>${shade}${rows}${columns}`
+    + ` fill="#ffffff" stroke="none"/>${shade}${footShade}${rows}${columns}`
     + `<rect x="${n(box.x)}" y="${n(box.y)}" width="${n(box.width)}" height="${n(box.height)}"`
     + ` fill="none" stroke="#aeb4bd" stroke-width="1.3"/></g>`;
 }

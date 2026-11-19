@@ -87,7 +87,7 @@ describe('作図ファイルの補完', () => {
 
   it('入れ物の設定と中身を補う', () => {
     const file = DRAWING.replace('  |\n', '') + '\n\nlayout {\n  |\n}';
-    expect(labels(file.replace('  |', '  grid g (|'))).toEqual(['cols', 'gap', 'pad', 'scroll']);
+    expect(labels(file.replace('  |', '  grid g (|'))).toEqual(['cols', 'head', 'foot', 'gap', 'pad', 'scroll']);
     expect(labels(file.replace('  |', '  tabs t (show: |'))).toContain('form');
     expect(labels(file.replace('  |', '  stack s (down) { start; |'))).toEqual(['form', 'check', 'db']);
     // 何行にも分けた入れ物の中でも出す。入っているものは出さない

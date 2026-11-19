@@ -135,7 +135,7 @@ layout {
 
 **入りきらない中身は、描いたうえで注記する。** 隠せば間違いも隠れる。
 
-入れ物は `stack` / `grid` / `tabs` の 3 つ。`scroll` は種類ではなく設定で、
+入れ物は `stack` / `grid` / `tabs` の 3 つ。`scroll`（`down` / `right` / `both`）は種類ではなく設定で、
 どれにも付く。詳しくは[画面設計 §3.7](screen-design.md)。
 
 ### L3 スタイル層（任意）

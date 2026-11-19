@@ -490,8 +490,9 @@ function containerSettings({ column, known, say }: At, kind: string, written: st
   if (value) {
     const from = column - value[2]!.length;
     if (value[1] === 'show') return ids(known, from, say, () => true);
-    return (['down', 'right'] as const).map(name => ({
-      label: name, kind: 'value', insert: name, detail: say(`diagram.complete.${name}`), from,
+    return (['down', 'right', 'both'] as const).map(name => ({
+      label: name, kind: 'value', insert: name,
+      detail: say(name === 'both' ? 'diagram.complete.scrollBoth' : `diagram.complete.${name}`), from,
     }));
   }
   const typed = /(?:^|;)\s*(\w*)$/.exec(written);
@@ -502,7 +503,11 @@ function containerSettings({ column, known, say }: At, kind: string, written: st
       { label: 'down', insert: 'down', detail: 'diagram.complete.down' as const },
       { label: 'right', insert: 'right', detail: 'diagram.complete.right' as const },
     ] : []),
-    ...(kind === 'grid' ? [{ label: 'cols', insert: 'cols: ${1:1fr, 1fr}', detail: 'diagram.complete.cols' as const }] : []),
+    ...(kind === 'grid' ? [
+      { label: 'cols', insert: 'cols: ${1:1fr, 1fr}', detail: 'diagram.complete.cols' as const },
+      { label: 'head', insert: 'head: ${1:1}', detail: 'diagram.complete.head' as const },
+      { label: 'foot', insert: 'foot: ${1:1}', detail: 'diagram.complete.foot' as const },
+    ] : []),
     { label: 'gap', insert: 'gap: ${1:12}', detail: 'diagram.complete.gap' },
     { label: 'pad', insert: 'pad: ${1:16}', detail: 'diagram.complete.pad' },
     ...(kind === 'tabs' ? [{ label: 'show', insert: 'show: ', detail: 'diagram.complete.show' as const }] : []),

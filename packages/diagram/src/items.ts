@@ -8,6 +8,12 @@
 // shape's id is what joins a row to a shape; a number is computed from both and
 // written in neither.
 //
+// A table drawn on the screen is the one place where an item is not a shape:
+// its rows repeat, so a column is the item — a check box in every row is one
+// item, "選択", not one per row. Its heading names it and the table numbers
+// it under itself (3-1, 3-2). A footer row (a total) holds shapes that are
+// items of their own, numbered under the table the same way.
+//
 // Like the parts, the table is read by the host and applied before anything
 // else sees the drawing, so the renderer, the canvas and the PPTX writer only
 // meet ordinary styles and a list of marks to draw.
@@ -16,7 +22,7 @@ import {
   byteLength, displayWidth, escapeCell, replaceField, splitFields, splitGridRow,
   DEFAULT_LOCALE, described, type ByteSpan, type Edit, type Locale, type Phrase,
 } from '@docpresenter/base';
-import { containerOf, members } from './arrange.js';
+import { EMPTY_CELL, containerOf, isTable, members, rowRoles } from './arrange.js';
 import { DIAGRAM_MESSAGES, dgm } from './messages.js';
 import type { DiagramFile, ItemLink, ItemLinks } from './model.js';
 import { DiagramEditError } from './edits.js';
@@ -173,6 +179,139 @@ export function itemShapes(diagram: DiagramFile): ReadonlyMap<string, string> {
   return found;
 }
 
+/** A column of a table on the screen: one item, whatever its rows hold. */
+export interface TableColumn {
+  /** What the item table calls it: the table's id, a dot, the column's name. */
+  readonly id: string;
+  readonly table: string;
+  readonly col: number;
+  /** As `cols:` names it, or its number from 1 when it is given no name. */
+  readonly name: string;
+  /** The words in the last heading row that name it, when they are words. */
+  readonly heading: string | undefined;
+  /** The cells of its body rows, top to bottom. */
+  readonly cells: readonly string[];
+}
+
+/** What a column whose cells are not items holds: values shown, not entered. */
+const SHOWN = '表示';
+
+/** The id the item table gives a column of a table. */
+export function columnId(table: string, name: string): string {
+  return `${table}.${name}`;
+}
+
+/** The columns of a table, as items. None for a shape that is not a table. */
+export function tableColumns(diagram: DiagramFile, table: string, items = itemShapes(diagram)): readonly TableColumn[] {
+  const grid = diagram.containers.get(table);
+  if (!grid || !isTable(diagram, table)) return [];
+  const { head, foot } = rowRoles(grid);
+  const byId = new Map(diagram.nodes.map(node => [node.id, node]));
+  const width = Math.max(0, ...grid.cells.map(row => row.length));
+  // A name written in two columns (a merged cell) belongs to neither.
+  const across = (cell: string): boolean => grid.cells.some(row => row.filter(one => one === cell).length > 1);
+  const caption = (cell: string | undefined): cell is string => {
+    const node = cell === undefined || cell === EMPTY_CELL ? undefined : byId.get(cell);
+    return node !== undefined && node.shape === 'text' && node.text.trim() !== ''
+      && !items.has(node.id) && !diagram.containers.has(node.id) && !across(node.id);
+  };
+  const body = grid.cells.slice(head, grid.cells.length - foot);
+  const out: TableColumn[] = [];
+  for (let col = 0; col < width; col++) {
+    const name = grid.names[col] ?? String(col + 1);
+    const top = head > 0 ? grid.cells[head - 1]![col] : undefined;
+    const cells = [...new Set(body.map(row => row[col])
+      .filter((cell): cell is string => cell !== undefined && cell !== EMPTY_CELL && !across(cell)))];
+    out.push({ id: columnId(table, name), table, col, name, heading: caption(top) ? top : undefined, cells });
+  }
+  return out;
+}
+
+/**
+ * One item of a screen: a shape, or a column of a table.
+ *
+ * `at` is where its number goes, `label` the caption "required" goes after,
+ * `shapes` what the item table's alignment is applied to.
+ */
+export interface ScreenItem {
+  readonly id: string;
+  readonly kind: string;
+  readonly at: string;
+  readonly label: string | undefined;
+  readonly parent: string | undefined;
+  readonly shapes: readonly string[];
+}
+
+/** The screen in the order a reader meets it, with its tables read by column. */
+interface ScreenOrder {
+  /** Shapes and columns, each once. A column comes straight after its table. */
+  readonly order: readonly string[];
+  readonly columns: ReadonlyMap<string, TableColumn>;
+  /** For a cell of a column (a body cell, a heading's words): the column. */
+  readonly cellOf: ReadonlyMap<string, string>;
+  /** For a column, and a shape in a table's heading or footer: the table. */
+  readonly parentOf: ReadonlyMap<string, string>;
+}
+
+function screenOrder(diagram: DiagramFile, items = itemShapes(diagram)): ScreenOrder {
+  const columns = new Map<string, TableColumn>();
+  const cellOf = new Map<string, string>();
+  const parentOf = new Map<string, string>();
+  const byTable = new Map<string, readonly TableColumn[]>();
+  for (const container of diagram.containers.values()) {
+    const found = tableColumns(diagram, container.id, items);
+    if (found.length === 0) continue;
+    byTable.set(container.id, found);
+    for (const column of found) {
+      columns.set(column.id, column);
+      parentOf.set(column.id, column.table);
+      for (const cell of column.cells) cellOf.set(cell, column.id);
+      if (column.heading !== undefined) cellOf.set(column.heading, column.id);
+    }
+    for (const member of members(container)) if (!cellOf.has(member)) parentOf.set(member, container.id);
+  }
+  const order: string[] = [];
+  for (const id of readingOrder(diagram)) {
+    if (cellOf.has(id)) continue;
+    order.push(id);
+    for (const column of byTable.get(id) ?? []) order.push(column.id);
+  }
+  return { order, columns, cellOf, parentOf };
+}
+
+/** The items of a screen in its reading order: its shapes that are items, and its tables' columns. */
+export function screenItems(diagram: DiagramFile): readonly ScreenItem[] {
+  const kinds = itemShapes(diagram);
+  const screen = screenOrder(diagram, kinds);
+  const out: ScreenItem[] = [];
+  for (const id of screen.order) {
+    const column = screen.columns.get(id);
+    if (column) {
+      const kind = column.cells.map(cell => kinds.get(cell)).find(one => one !== undefined) ?? SHOWN;
+      out.push({
+        id, kind, at: column.heading ?? column.cells[0] ?? column.table, label: column.heading,
+        parent: column.table, shapes: column.cells,
+      });
+    } else if (kinds.has(id)) {
+      out.push({
+        id, kind: kinds.get(id)!, at: id, label: labelOf(diagram, id, kinds),
+        parent: screen.parentOf.get(id), shapes: [id],
+      });
+    }
+  }
+  return out;
+}
+
+/** The item a shape is part of: the column for a cell of a table, the shape itself otherwise. */
+export function itemOfShape(diagram: DiagramFile, id: string): string {
+  return screenOrder(diagram).cellOf.get(id) ?? id;
+}
+
+/** The shape an item is drawn as: the first cell of a column, the shape itself otherwise. */
+function shapeOfItem(diagram: DiagramFile, id: string): string {
+  return screenOrder(diagram).columns.get(id)?.cells[0] ?? id;
+}
+
 /**
  * The words that name an item on the screen: the text beside it, or its own.
  *
@@ -230,6 +369,9 @@ const LABELLED_PICTURES = new Set(['ui/check', 'ui/check-on', 'ui/radio', 'ui/ra
 export function itemName(diagram: DiagramFile, id: string, items?: ReadonlyMap<string, string>): string {
   const kinds = items ?? itemShapes(diagram);
   const byId = new Map(diagram.nodes.map(node => [node.id, node]));
+  // A column is called what its heading says, or what `cols:` names it.
+  const column = screenOrder(diagram, kinds).columns.get(id);
+  if (column) return column.heading === undefined ? column.name : byId.get(column.heading)?.text.trim() ?? column.name;
   const label = labelOf(diagram, id, kinds);
   if (label !== undefined) return byId.get(label)?.text.trim() ?? '';
   const kind = kinds.get(id)?.trim().toLowerCase() ?? '';
@@ -262,12 +404,20 @@ export function withItems(diagram: DiagramFile, read: Reader): DiagramFile {
     return done(new Map());
   }
 
-  const byId = new Map(diagram.nodes.map(node => [node.id, node]));
+  const kinds = itemShapes(diagram);
+  const screen = screenOrder(diagram, kinds);
+  const known = new Set([...diagram.nodes.map(node => node.id), ...screen.columns.keys()]);
   const rows = new Map<string, { row: number; required: boolean; align: string | undefined; numbered: boolean }>();
   table.rows.forEach((row, index) => {
     const id = row.cells[columns.id!]!.trim();
     if (NOTHING.has(id)) return;
-    if (!byId.has(id)) { notes.push(dgm('diagram.items.missingShape', { item: id, path })); return; }
+    // A cell of a table's column is not an item: the column is.
+    const column = screen.cellOf.get(id);
+    if (column !== undefined) {
+      notes.push(dgm('diagram.items.cellOfColumn', { id, table: screen.columns.get(column)!.table, column, path }));
+      return;
+    }
+    if (!known.has(id)) { notes.push(dgm('diagram.items.missingShape', { item: id, path })); return; }
     if (rows.has(id)) { notes.push(dgm('diagram.items.duplicate', { id, path })); return; }
     const required = columns.required === undefined ? false : requiredOf(row.cells[columns.required]!);
     if (required === undefined) {
@@ -279,33 +429,49 @@ export function withItems(diagram: DiagramFile, read: Reader): DiagramFile {
     rows.set(id, { row: index, required: required ?? false, align: align ?? undefined, numbered });
   });
 
-  const order = readingOrder(diagram);
-  const kinds = itemShapes(diagram);
+  const items = new Map(screenItems(diagram).map(item => [item.id, item]));
   const links = new Map<string, ItemLink>();
   let count = 0;
-  for (const id of order) {
+  // What is in a table is numbered under it: 3-1, 3-2 — when the table has a
+  // number of its own to be under.
+  const children = new Map<string, number>();
+  for (const id of screen.order) {
     const row = rows.get(id);
+    const item = items.get(id);
     if (row === undefined) {
-      if (kinds.has(id)) notes.push(dgm('diagram.items.unlisted', { id, path }));
+      if (item) notes.push(dgm('diagram.items.unlisted', { id, path }));
       continue;
     }
+    const parent = screen.parentOf.get(id);
+    const above = parent === undefined ? undefined : links.get(parent)?.number;
+    let number: string | undefined;
+    if (row.numbered) {
+      if (above !== undefined) {
+        const next = (children.get(parent!) ?? 0) + 1;
+        children.set(parent!, next);
+        number = `${above}-${next}`;
+      } else number = String(++count);
+    }
     links.set(id, {
-      id, row: row.row, required: row.required,
-      number: row.numbered ? ++count : undefined,
-      label: labelOf(diagram, id, kinds),
+      id, row: row.row, required: row.required, number,
+      label: item?.label ?? labelOf(diagram, id, kinds),
+      at: item?.at ?? id, parent,
     });
   }
 
   // The table's rows in the screen's order, or the numbers on the two would
   // be different numbers for the same item.
-  const screen = order.filter(id => rows.has(id));
+  const ordered = screen.order.filter(id => rows.has(id));
   const listed = [...rows.keys()].sort((a, b) => rows.get(a)!.row - rows.get(b)!.row);
-  if (screen.some((id, index) => listed[index] !== id)) notes.push(dgm('diagram.items.order', { path }));
+  if (ordered.some((id, index) => listed[index] !== id)) notes.push(dgm('diagram.items.order', { path }));
 
+  // A column's alignment is its cells'.
   const style = new Map(diagram.style);
   for (const [id, row] of rows) {
     if (row.align === undefined) continue;
-    style.set(id, new Map([...(style.get(id) ?? new Map<string, string>()), ['align', row.align]]));
+    for (const shape of items.get(id)?.shapes ?? [id]) {
+      style.set(shape, new Map([...(style.get(shape) ?? new Map<string, string>()), ['align', row.align]]));
+    }
   }
   return done(links, style);
 }
@@ -356,11 +522,14 @@ export function syncItemTable(diagram: DiagramFile, source: string): Edit | unde
   const columns = itemColumns(table.headers);
   if (columns.id === undefined) throw new DiagramEditError(dgm('diagram.items.noIdColumn', { path: written.path }));
 
-  const byId = new Set(diagram.nodes.map(node => node.id));
-  const kinds = itemShapes(diagram);
+  const screen = screenOrder(diagram);
+  const items = new Map(screenItems(diagram).map(item => [item.id, item]));
+  // A row naming a cell of a column is kept, but it is not where anything goes:
+  // it stays under the row before it, as a row naming nothing on the screen does.
+  const known = new Set([...diagram.nodes.map(node => node.id).filter(id => !screen.cellOf.has(id)), ...screen.columns.keys()]);
   const idOf = (row: ItemTableRow): string | undefined => {
     const id = row.cells[columns.id!]!.trim();
-    return byId.has(id) ? id : undefined;
+    return known.has(id) ? id : undefined;
   };
 
   // Each row on the screen leads the rows after it that are not: those go
@@ -373,13 +542,13 @@ export function syncItemTable(diagram: DiagramFile, source: string): Edit | unde
     if (id !== undefined && !groups.has(id)) { current = [row]; groups.set(id, current); } else current.push(row);
   }
 
-  const wanted = readingOrder(diagram).filter(id => groups.has(id) || kinds.has(id));
+  const wanted = screen.order.filter(id => groups.has(id) || items.has(id));
   const widths = splitFields(table.delimiter.text).map(field => Math.max(3, displayWidth(field) - 2));
   const out: { row: ItemTableRow | undefined; fresh: string[] | undefined }[] = lead.map(row => ({ row, fresh: undefined }));
   for (const id of wanted) {
     const group = groups.get(id);
     if (group) { for (const row of group) out.push({ row, fresh: undefined }); continue; }
-    out.push({ row: undefined, fresh: freshRow(diagram, table.headers, columns, id, kinds) });
+    out.push({ row: undefined, fresh: freshRow(diagram, table.headers, columns, items.get(id)!) });
   }
 
   // A `^` means "the same as above", which is true only while the row above
@@ -419,13 +588,13 @@ export function syncItemTable(diagram: DiagramFile, source: string): Edit | unde
 /** What a new row says: the id, a number, its kind and its name. The rest is the author's. */
 function freshRow(
   diagram: DiagramFile, headers: readonly string[], columns: Partial<Record<ItemColumn, number>>,
-  id: string, kinds: ReadonlyMap<string, string>,
+  item: ScreenItem,
 ): string[] {
   const cells = headers.map(() => '');
-  if (columns.id !== undefined) cells[columns.id] = id;
+  if (columns.id !== undefined) cells[columns.id] = item.id;
   if (columns.number !== undefined) cells[columns.number] = AUTO_NUMBER;
-  if (columns.name !== undefined) cells[columns.name] = itemName(diagram, id, kinds);
-  if (columns.category !== undefined) cells[columns.category] = kinds.get(id) ?? '';
+  if (columns.name !== undefined) cells[columns.name] = itemName(diagram, item.id);
+  if (columns.category !== undefined) cells[columns.category] = item.kind;
   return cells;
 }
 
@@ -460,9 +629,7 @@ export function newItemTable(diagram: DiagramFile, locale: Locale = DEFAULT_LOCA
   const shape = NEW_TABLE[locale];
   const headers = shape.map(one => one.header);
   const columns = itemColumns(headers);
-  const kinds = itemShapes(diagram);
-  const rows = readingOrder(diagram).filter(id => kinds.has(id))
-    .map(id => freshRow(diagram, headers, columns, id, kinds));
+  const rows = screenItems(diagram).map(item => freshRow(diagram, headers, columns, item));
   // The same kind as the row above is written `^`, the way the sample is.
   const shown = rows.map((cells, index) => cells.map((cell, c) =>
     c === columns.category && index > 0 && cell !== '' && rows[index - 1]![c] === cell ? MERGE_UP : cell));
@@ -735,8 +902,10 @@ export function itemTypes(source: string): readonly string[] {
 /** The type a row's item suggests, from the part it was drawn as. */
 function guessType(id: string, screen: DiagramFile | undefined): { type: string; part: string } | undefined {
   if (screen === undefined || id.trim() === '') return undefined;
-  const part = screen.partOf.get(id.trim());
-  const icon = screen.style.get(id.trim())?.get('icon') ?? '';
+  // A column suggests what its cells are.
+  const shape = shapeOfItem(screen, id.trim());
+  const part = screen.partOf.get(shape);
+  const icon = screen.style.get(shape)?.get('icon') ?? '';
   const type = (part === undefined ? undefined : PART_TYPES[part]) ?? PICTURE_TYPES[icon];
   return type === undefined ? undefined : { type, part: part ?? icon };
 }
@@ -759,5 +928,23 @@ export function followLabel(diagram: DiagramFile, source: string, id: string, wa
   return {
     span: row.span, text: replaceField(row.text, columns.name, escapeCell(now.trim())),
     ...described(dgm('diagram.did.renameItem')), path: written.path,
+  };
+}
+
+/**
+ * An item's id written anew in the table — a column renamed on the screen is
+ * the same item under a new name. Undefined when the table does not list it.
+ */
+export function renameItemId(diagram: DiagramFile, source: string, was: string, now: string): Edit | undefined {
+  const written = diagram.itemTable;
+  const table = written === undefined ? undefined : readItemTable(source);
+  if (written === undefined || table === undefined) return undefined;
+  const columns = itemColumns(table.headers);
+  if (columns.id === undefined) return undefined;
+  const row = table.rows.find(one => one.cells[columns.id!]!.trim() === was);
+  if (!row) return undefined;
+  return {
+    span: row.span, text: replaceField(row.text, columns.id, escapeCell(now)),
+    ...described(dgm('diagram.did.renameColumn')), path: written.path,
   };
 }

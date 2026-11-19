@@ -12,25 +12,38 @@
 //   results  grid:
 //   name     label:"氏名"
 //   ...
-//   grid results (cols: 1fr, 1fr; gap: 4 12; pad: 6) {
+//   grid results (cols: col1 1fr, col2 1fr; gap: 4 12; pad: 6) {
 //     check ; name
 //     c1    ; n1
 //   }
 //
-// The first row is the header. Every change here is a few lines added or
-// taken away and the grid's rows rewritten, worked out step by step and handed
-// back as one edit.
+// The first row is the header (`head:` says how many rows are), the last
+// `foot:` rows a footer, and the rows between the body. A table's rows repeat,
+// so the body is worked on by column: a column is named in `cols:` and is one
+// item of the screen, changing the part of one of its cells changes the
+// column, and a row added takes the parts of the row above. A cell can still
+// be made different on its own — a footer, or a row that really is unlike the
+// rest. Every change here is a few lines added or taken away and the grid's
+// rows rewritten, worked out step by step and handed back as one edit.
 
-import { applyEdit, byteLength, sliceBytes, type Edit, type Phrase } from '@docpresenter/base';
-import { EMPTY_CELL, TABLE_PICTURE, containerOf, isTable } from './arrange.js';
-import { DiagramEditError, editBetween, removeNodes, setContainerCells, splice } from './edits.js';
+import { applyEdit, byteLength, described, sliceBytes, type Edit, type Phrase } from '@docpresenter/base';
+import { EMPTY_CELL, TABLE_PICTURE, containerOf, isTable, rowRoles } from './arrange.js';
+import { DiagramEditError, editBetween, removeNodes, setContainerCells, setNodePart, splice } from './edits.js';
+import { containerSettings } from './format.js';
 import { dgm } from './messages.js';
-import type { DiagramFile } from './model.js';
+import type { Container, DiagramFile } from './model.js';
 import { parseDiagram } from './parse.js';
 
 /** The rules between a table's cells, and the room round what is in them. */
 const TABLE_GAP = { y: 4, x: 12 };
 const TABLE_PAD = 6;
+/** What a new column is called until someone names it: `col1`, `col2`. */
+const COLUMN = 'col';
+/** What a column may be called: what an id may be, without a dot. */
+const COLUMN_NAME = /^[A-Za-z0-9_\u3040-\u9fff]+$/;
+
+/** What a row of a table is: a heading, a row of the body, or a footer. */
+export type RowRole = 'head' | 'body' | 'foot';
 
 /** Where a shape is in a table: the table, and the row and column it sits in. */
 export interface TableCell {
@@ -73,7 +86,7 @@ export function makeTable(
     ...names.map((name, i) => cellLine(file, name, 'label', columns[i]!)),
     ...row.map(name => cellLine(file, name, 'body', '')),
   ];
-  const cols = columns.map(() => '1fr').join(', ');
+  const cols = columns.map((_, i) => `${COLUMN}${i + 1} 1fr`).join(', ');
   const block = [
     `grid ${id} (cols: ${cols}; gap: ${TABLE_GAP.y} ${TABLE_GAP.x}; pad: ${TABLE_PAD}) {`,
     `  ${names.join(' ; ')}`,
@@ -87,18 +100,27 @@ export function makeTable(
   return splice(source, changes, dgm('diagram.did.makeTable'));
 }
 
-/** A row of new cells under the given row (the last one when none is given). */
+/**
+ * A row of new cells under the given row (the last row of the body when none
+ * is given). A new row is a row of the body, whichever row was picked — under
+ * the headings, or above the footer — and its cells are the parts of the body
+ * row above it, empty: a column of check boxes gets another check box.
+ */
 export function addTableRow(
   file: DiagramFile, source: string, table: string, after: number | undefined,
 ): Edit {
   const grid = tableGrid(file, table);
+  const { head, foot } = rowRoles(grid);
   const width = Math.max(1, ...grid.cells.map(cells => cells.length));
   const row = freshIds(file, `${table}R`, width);
-  const at = after === undefined ? grid.cells.length : Math.min(grid.cells.length, after + 1);
-  // A new row under the header is a row of the table, not of headings.
+  const end = grid.cells.length - foot;
+  const at = Math.max(head, Math.min(end, after === undefined ? end : after + 1));
+  // The body row the new one copies: the one above it, or the first below it
+  // when it is the first row of the body.
+  const model = at > head ? grid.cells[at - 1] : at < end ? grid.cells[at] : undefined;
+  const lines = row.map((name, c) => cellLine(file, name, partOfCell(file, model?.[c]), ''));
   const cells = [...grid.cells.slice(0, at), row, ...grid.cells.slice(at)];
-  return withCells(file, source, table, row.map(name => cellLine(file, name, 'body', '')), cells,
-    dgm('diagram.did.tableRow'));
+  return withCells(file, source, table, lines, cells, dgm('diagram.did.tableRow'));
 }
 
 /** A column of new cells right of the given column (the last one when none is given). */
@@ -108,8 +130,9 @@ export function addTableColumn(
   const grid = tableGrid(file, table);
   const width = Math.max(1, ...grid.cells.map(cells => cells.length));
   const at = after === undefined ? width : Math.min(width, after + 1);
+  const { head } = rowRoles(grid);
   const ids = freshIds(file, `${table}C`, grid.cells.length);
-  const lines = ids.map((name, r) => cellLine(file, name, r === 0 ? 'label' : 'body', r === 0 ? title : ''));
+  const lines = ids.map((name, r) => cellLine(file, name, r < head ? 'label' : 'body', r === head - 1 ? title : ''));
   const cells = grid.cells.map((cells, r) => {
     const padded = [...cells, ...Array.from({ length: width - cells.length }, () => EMPTY_CELL)];
     padded.splice(at, 0, ids[r]!);
@@ -117,7 +140,16 @@ export function addTableColumn(
   });
   const said = dgm('diagram.did.tableColumn');
   const edit = withCells(file, source, table, lines, cells, said);
-  return columnsSpec(source, edit, table, cols => cols.splice(at, 0, '1fr'), said);
+  const taken = new Set(grid.names);
+  let number = width + 1;
+  while (taken.has(`${COLUMN}${number}`)) number++;
+  return thenSettings(source, edit, table, one => {
+    const cols = padded(one.cols, width, '1fr');
+    const names = padded<string | undefined>(one.names, width, undefined);
+    cols.splice(at, 0, '1fr');
+    names.splice(at, 0, `${COLUMN}${number}`);
+    return { ...one, cols, names };
+  }, said);
 }
 
 /** Takes away a row, and the shapes in it. The header row stays: a table needs one. */
@@ -131,7 +163,13 @@ export function removeTableRow(
   const going = grid.cells[row]!.filter(cell => cell !== EMPTY_CELL
     && !grid.cells.some((other, r) => r !== row && other.includes(cell)));
   const cells = grid.cells.filter((_, r) => r !== row);
-  return without(file, source, table, going, cells, dgm('diagram.did.tableRowGone'));
+  const said = dgm('diagram.did.tableRowGone');
+  const edit = without(file, source, table, going, cells, said);
+  // A heading or a footer taken away is one fewer of them.
+  const { head, foot } = rowRoles(grid);
+  if (row >= head && row < grid.cells.length - foot) return edit;
+  return thenSettings(source, edit, table, one => (row < head
+    ? { ...one, head: head - 1 } : { ...one, foot: foot - 1 }), said);
 }
 
 /** Takes away a column, and the shapes in it. The last column stays. */
@@ -146,21 +184,131 @@ export function removeTableColumn(
   const cells = grid.cells.map(cells => cells.filter((_, c) => c !== col));
   const said = dgm('diagram.did.tableColumnGone');
   const edit = without(file, source, table, going, cells, said);
-  return columnsSpec(source, edit, table, cols => cols.splice(col, 1), said);
+  if (grid.cols.length === 0 && grid.names.length === 0) return edit;
+  return thenSettings(source, edit, table, one => ({
+    ...one, cols: one.cols.filter((_, c) => c !== col), names: one.names.filter((_, c) => c !== col),
+  }), said);
+}
+
+/**
+ * Makes a row a heading, a row of the body or a footer. Headings are the rows
+ * at the top and a footer the rows at the bottom, so a row made a heading
+ * takes the rows above it along, and one made a footer the rows below it.
+ */
+export function setRowRole(
+  file: DiagramFile, source: string, table: string, row: number, role: RowRole,
+): Edit {
+  const grid = tableGrid(file, table);
+  const count = grid.cells.length;
+  if (row < 0 || row >= count) throw new DiagramEditError(dgm('diagram.edit.noChange'));
+  const { head, foot } = rowRoles(grid);
+  let next = { head, foot };
+  if (role === 'head') next = { head: row + 1, foot: Math.min(foot, count - row - 1) };
+  else if (role === 'foot') next = { head: Math.min(head, row), foot: count - row };
+  else next = { head: Math.min(head, row), foot: Math.min(foot, count - row - 1) };
+  if (next.head === grid.head && next.foot === grid.foot) throw new DiagramEditError(dgm('diagram.edit.noChange'));
+  return settingsEdit(source, grid, { ...grid, ...next }, dgm('diagram.did.rowRole'));
+}
+
+/**
+ * Changes the part of every body cell of a column — a column of words made a
+ * column of check boxes. The headings and the footer are not the column's
+ * rows and keep what they are; a cell is changed on its own with
+ * `setNodePart`.
+ */
+export function setColumnPart(
+  file: DiagramFile, source: string, table: string, col: number, part: string,
+): Edit {
+  const grid = tableGrid(file, table);
+  const { head, foot } = rowRoles(grid);
+  const cells = [...new Set(grid.cells.slice(head, grid.cells.length - foot)
+    .map(cells => cells[col])
+    .filter((cell): cell is string => cell !== undefined && cell !== EMPTY_CELL))]
+    .filter(cell => file.nodes.some(node => node.id === cell && node.shape !== 'group') && file.partOf.get(cell) !== part);
+  if (cells.length === 0) throw new DiagramEditError(dgm('diagram.edit.noChange'));
+  return splice(source, cells.map(cell => setNodePart(file, source, cell, part)), dgm('diagram.did.columnPart'));
+}
+
+/** Names a column: the name the item table knows it by (`results.pick`). */
+export function renameColumn(
+  file: DiagramFile, source: string, table: string, col: number, name: string,
+): Edit {
+  const grid = tableGrid(file, table);
+  const wanted = name.trim();
+  if (!COLUMN_NAME.test(wanted)) throw new DiagramEditError(dgm('diagram.table.badColumnName', { name: wanted }));
+  const width = Math.max(1, ...grid.cells.map(cells => cells.length));
+  if (col < 0 || col >= width) throw new DiagramEditError(dgm('diagram.edit.noChange'));
+  if (grid.names.some((one, c) => c !== col && one === wanted)) {
+    throw new DiagramEditError(dgm('diagram.table.columnTaken', { name: wanted }));
+  }
+  if (grid.names[col] === wanted) throw new DiagramEditError(dgm('diagram.edit.noChange'));
+  // Naming a column writes `cols:` out in full: a name has to stand beside a width.
+  const cols = padded(grid.cols, width, '1fr');
+  const names = padded<string | undefined>(grid.names, width, undefined);
+  names[col] = wanted;
+  return settingsEdit(source, grid, { ...grid, cols, names }, dgm('diagram.did.renameColumn'));
+}
+
+/** How any container scrolls: not at all, down, across, or both ways. */
+export function setScroll(
+  file: DiagramFile, source: string, id: string, scroll: Container['scroll'],
+): Edit {
+  const container = file.containers.get(id);
+  if (!container) throw new DiagramEditError(dgm('diagram.table.notContainer', { id }));
+  if (container.scroll === scroll) throw new DiagramEditError(dgm('diagram.edit.noChange'));
+  return settingsEdit(source, container, { ...container, scroll }, dgm('diagram.did.scroll'));
 }
 
 // --- 書き方 -------------------------------------------------------------------
 
-function tableGrid(file: DiagramFile, table: string): { cells: readonly (readonly string[])[] } {
+function tableGrid(file: DiagramFile, table: string): Container {
   const grid = file.containers.get(table);
   if (!grid || !isTable(file, table)) throw new DiagramEditError(dgm('diagram.table.notTable', { id: table }));
   return grid;
 }
 
 /** A cell's line: a part of the screen's library when it has one, words otherwise. */
-function cellLine(file: DiagramFile, id: string, part: 'label' | 'body', text: string): string {
+function cellLine(file: DiagramFile, id: string, part: string, text: string): string {
   const words = `"${text.replace(/"/g, '')}"`;
   return file.library.has(part) ? `${id} ${part}:${words}` : `${id} ${words}`;
+}
+
+/** The part a cell is written as, to give a new cell beside or under it; words when it names none. */
+function partOfCell(file: DiagramFile, cell: string | undefined): string {
+  const part = cell === undefined || cell === EMPTY_CELL ? undefined : file.partOf.get(cell);
+  return part ?? 'body';
+}
+
+/** A list made as long as the table is wide, the missing ones filled. */
+function padded<T>(list: readonly T[], width: number, fill: T): T[] {
+  return Array.from({ length: Math.max(width, list.length) }, (_, i) => (i < list.length ? list[i]! : fill));
+}
+
+/**
+ * A container's head line written again with other settings: everything
+ * before its opening brace, in the canonical order, so what the canvas
+ * writes is what the formatter would.
+ */
+function settingsEdit(source: string, was: Container, now: Container, description: Phrase): Edit {
+  const text = sliceBytes(source, was.span.start, was.span.end);
+  const brace = text.indexOf('{');
+  const settings = containerSettings(now);
+  return {
+    span: { start: was.span.start, end: was.span.start + byteLength(text.slice(0, brace)) },
+    text: `${now.kind} ${now.id}${settings === '' ? '' : ` (${settings})`} `,
+    ...described(description),
+  };
+}
+
+/** The edit, with the table's settings then changed as well — one edit. */
+function thenSettings(
+  source: string, edit: Edit, table: string, change: (container: Container) => Container, description: Phrase,
+): Edit {
+  const after = applyEdit(source, edit);
+  const grid = reread(after).containers.get(table);
+  if (!grid) return edit;
+  const whole = applyEdit(after, settingsEdit(after, grid, change(grid), description));
+  return editBetween(source, whole, description);
 }
 
 /** `count` ids starting with `base` that nothing in the drawing has yet. */
@@ -225,19 +373,4 @@ function without(
   const same = current !== undefined && JSON.stringify(current.cells) === JSON.stringify(cells);
   const after = same ? gone : applyEdit(gone, setContainerCells(now, gone, table, cells));
   return editBetween(source, after, description);
-}
-
-/** The edit, with the grid's `cols:` list changed the same way its columns were. */
-function columnsSpec(
-  source: string, edit: Edit, table: string, change: (cols: string[]) => void, description: Phrase,
-): Edit {
-  const after = applyEdit(source, edit);
-  const grid = reread(after).containers.get(table);
-  if (!grid || grid.cols.length === 0) return edit;
-  const cols = [...grid.cols];
-  change(cols);
-  const text = sliceBytes(after, grid.span.start, grid.span.end);
-  const rewritten = text.replace(/cols\s*:\s*[^;)]*/, `cols: ${cols.join(', ')}`);
-  const whole = sliceBytes(after, 0, grid.span.start) + rewritten + sliceBytes(after, grid.span.end, byteLength(after));
-  return editBetween(source, whole, description);
 }

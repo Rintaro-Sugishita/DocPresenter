@@ -870,10 +870,22 @@ function containerLines(piece: Piece<Container>, lines: readonly Line[]): string
 
 const DEFAULT_GAP = 12;
 
-function containerSettings(container: Container): string {
+/**
+ * What goes in a container's brackets, in the canonical order. Also what an
+ * edit writes when it changes one setting, so a container rewritten from the
+ * canvas reads the way the formatter would write it.
+ */
+export function containerSettings(container: Container): string {
   const out: string[] = [];
   if (container.kind === 'stack' && container.flow === 'right') out.push('right');
-  if (container.kind === 'grid' && container.cols.length > 0) out.push(`cols: ${container.cols.join(', ')}`);
+  if (container.kind === 'grid' && container.cols.length > 0) {
+    out.push(`cols: ${container.cols.map((width, i) => {
+      const name = container.names[i];
+      return name === undefined ? width : `${name} ${width}`;
+    }).join(', ')}`);
+  }
+  if (container.kind === 'grid' && container.head !== 1) out.push(`head: ${container.head}`);
+  if (container.kind === 'grid' && container.foot !== 0) out.push(`foot: ${container.foot}`);
   const { x, y } = container.gap;
   if (x !== DEFAULT_GAP || y !== DEFAULT_GAP) out.push(x === y ? `gap: ${y}` : `gap: ${y} ${x}`);
   const pad = container.kind === 'tabs' ? 0 : 16;
@@ -1008,6 +1020,7 @@ function modelOf(file: DiagramFile): string {
     bends: sorted([...file.bends].map(([key, bend]) => [key, bend.points.map(point => [point.x, point.y])])),
     containers: sorted([...file.containers.values()].map(container => [container.id, container.kind,
       container.flow, container.scroll, container.show ?? null, container.cols,
+      container.names.map(name => name ?? null), container.head, container.foot,
       [container.gap.x, container.gap.y], container.pad, container.cells])),
     style: sorted([...file.style].map(([id, rule]) => [id, entries(rule)])),
     callouts: file.callouts.map(c => [c.marker, c.x, c.y, c.targetX, c.targetY, c.text]),

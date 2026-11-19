@@ -235,20 +235,26 @@ function itemMarks(diagram: DiagramFile, boxes: ReadonlyMap<string, Box>): ItemM
   const marks: ItemMark[] = [];
   const marked = new Set<string>();
   for (const link of links.links.values()) {
-    const box = boxes.get(link.id);
+    // A column of a table is no one shape: its marks go on its heading.
+    const box = boxes.get(link.at);
     if (!box) continue;
     if (link.number !== undefined) {
       // On a check box the corner is most of the box, so a small item has its
       // number beside it instead.
       const small = box.width <= ITEM_NUMBER * 2 && box.height <= ITEM_NUMBER * 2;
+      // A child's number (`3-1`) is longer than a circle holds: it becomes a pill.
+      const wide = Math.max(ITEM_NUMBER, textWidth(link.number, 11) + 8);
+      // A column's number sits over the middle of its heading: the table's
+      // own number has the table's corner, which is the first heading's too.
+      const column = link.at !== link.id;
       marks.push({
-        kind: 'number', id: link.id, text: String(link.number),
-        x: small ? box.x - ITEM_NUMBER - 3 : box.x - ITEM_NUMBER / 2,
-        y: small ? box.y + box.height / 2 - ITEM_NUMBER / 2 : box.y - ITEM_NUMBER / 2,
-        width: ITEM_NUMBER, height: ITEM_NUMBER, style: new Map(),
+        kind: 'number', id: link.id, text: link.number,
+        x: column ? box.x + box.width / 2 - wide / 2 : small ? box.x - wide - 3 : box.x - ITEM_NUMBER / 2,
+        y: small && !column ? box.y + box.height / 2 - ITEM_NUMBER / 2 : box.y - ITEM_NUMBER / 2,
+        width: wide, height: ITEM_NUMBER, style: new Map(),
       });
     }
-    const target = link.label ?? link.id;
+    const target = link.label ?? link.at;
     const caption = boxes.get(target);
     if (!link.required || !caption || marked.has(target)) continue;
     marked.add(target);
