@@ -15,6 +15,16 @@ export function byteOffsetOf(text: string, charIndex: number): number {
 
 const decoder = new TextDecoder();
 
+/** Text as UTF-8 bytes, for packages that do not see the runtime's encoder. */
+export function utf8Bytes(text: string): Uint8Array {
+  return encoder.encode(text);
+}
+
+/** UTF-8 bytes as text. */
+export function utf8Text(bytes: Uint8Array): string {
+  return decoder.decode(bytes);
+}
+
 /** The text in a byte range. Ranges come from anchors, so they are byte-based. */
 export function sliceBytes(text: string, start: number, end: number): string {
   return decoder.decode(encoder.encode(text).slice(start, end));

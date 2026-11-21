@@ -15,7 +15,7 @@ import { documentNumberOf, firstNumber, numberSeries, suggestNumber } from '@doc
 import { DOC_MESSAGES } from './messages.js';
 
 /** The format specs shipped beside the guide, in `media/init/spec/`. */
-const SPECS = ['dgm.md', 'table.md', 'inline-text.md'];
+const SPECS = ['dgm.md', 'table.md', 'inline-text.md', 'table.schema.json'];
 
 /** Every document number in the workspace, with the document that has it. */
 export function numbersInUse(root: string): Map<string, string> {

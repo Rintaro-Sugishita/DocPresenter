@@ -11,7 +11,7 @@ import { nameMessage, pickNumber, withoutExtension } from './document-command.js
 import { outDirOf } from './workspace-files.js';
 
 /** The format specs the extension ships beside the guide, in `media/init/spec/`. */
-const SPECS = ['dgm.md', 'table.md', 'inline-text.md'];
+const SPECS = ['dgm.md', 'table.md', 'inline-text.md', 'table.schema.json'];
 
 export async function initWorkspace(context: vscode.ExtensionContext): Promise<void> {
   const folder = vscode.workspace.workspaceFolders?.[0];

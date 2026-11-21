@@ -1,0 +1,96 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Rintaro-Sugishita/DocPresenter/spec/table.schema.json",
+  "title": "DocPresenter table output",
+  "description": "A .table file written out for programs (spec/table.md §7.4): one table, or several in one file.",
+  "oneOf": [
+    { "$ref": "#/$defs/table" },
+    { "$ref": "#/$defs/tables" }
+  ],
+  "$defs": {
+    "tables": {
+      "type": "object",
+      "required": ["format", "tables"],
+      "additionalProperties": false,
+      "properties": {
+        "format": { "const": "docpresenter.tables/1" },
+        "tables": { "type": "array", "items": { "$ref": "#/$defs/table" } }
+      }
+    },
+    "table": {
+      "type": "object",
+      "required": ["format", "source", "range", "columns", "rows", "merges", "blocks", "ranges"],
+      "additionalProperties": false,
+      "properties": {
+        "format": { "const": "docpresenter.table/1" },
+        "source": { "type": "string", "description": "The table's path from the workspace root, with /." },
+        "range": { "type": ["string", "null"], "description": "The named range the rows were limited to; null for the whole table." },
+        "columns": { "type": "array", "items": { "$ref": "#/$defs/column" } },
+        "rows": { "type": "array", "items": { "$ref": "#/$defs/row" } },
+        "merges": { "type": "array", "items": { "$ref": "#/$defs/merge" } },
+        "blocks": {
+          "type": "object",
+          "description": "Block definitions ([@key]:) by key, lines joined with \\n.",
+          "additionalProperties": { "type": "string" }
+        },
+        "ranges": {
+          "type": "object",
+          "description": "Named ranges by name.",
+          "additionalProperties": { "$ref": "#/$defs/range" }
+        }
+      }
+    },
+    "column": {
+      "type": "object",
+      "required": ["name", "align"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string", "description": "The header cell's text." },
+        "align": { "enum": ["left", "center", "right", "default"] }
+      }
+    },
+    "row": {
+      "type": "object",
+      "required": ["key", "line", "values"],
+      "additionalProperties": false,
+      "properties": {
+        "key": { "type": ["string", "null"], "description": "The text of the row's leading cell as written; null when no cell starts on the row." },
+        "line": { "type": "integer", "minimum": 1, "description": "The 1-based line of the file the row is on." },
+        "values": {
+          "type": "array",
+          "description": "Exactly one value per column, in column order. A merged position holds the value of the cell covering it.",
+          "items": { "$ref": "#/$defs/value" }
+        }
+      }
+    },
+    "value": {
+      "type": "object",
+      "required": ["text", "number"],
+      "additionalProperties": false,
+      "properties": {
+        "text": { "type": "string", "description": "What the cell shows (or, when asked, what it says as written)." },
+        "number": { "type": ["number", "null"], "description": "The value when the text is plainly a number (§7.4.2); null otherwise." }
+      }
+    },
+    "merge": {
+      "type": "object",
+      "required": ["row", "column", "rowSpan", "colSpan"],
+      "additionalProperties": false,
+      "properties": {
+        "row": { "type": "integer", "minimum": 0 },
+        "column": { "type": "integer", "minimum": 0 },
+        "rowSpan": { "type": "integer", "minimum": 1 },
+        "colSpan": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "range": {
+      "type": "object",
+      "required": ["first", "last"],
+      "additionalProperties": false,
+      "properties": {
+        "first": { "type": "string" },
+        "last": { "type": "string" }
+      }
+    }
+  }
+}

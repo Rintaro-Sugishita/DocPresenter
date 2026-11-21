@@ -43,6 +43,8 @@
       { "command": "docpresenter.exportPptx", "title": "%command.exportPptx.title%", "category": "DocPresenter" },
       { "command": "docpresenter.exportChanges", "title": "%command.exportChanges.title%", "category": "DocPresenter" },
       { "command": "docpresenter.openInExcel", "title": "%command.openInExcel.title%", "category": "DocPresenter", "icon": "$(table)" },
+      { "command": "docpresenter.exportTables", "title": "%command.exportTables.title%", "category": "DocPresenter" },
+      { "command": "docpresenter.exportAllTables", "title": "%command.exportAllTables.title%", "category": "DocPresenter" },
       { "command": "docpresenter.readBackPptx", "title": "%command.readBackPptx.title%", "category": "DocPresenter" },
       { "command": "docpresenter.importPdfReview", "title": "%command.importPdfReview.title%", "category": "DocPresenter" },
       { "command": "docpresenter.markdown.bold", "title": "%command.markdown.bold.title%", "category": "DocPresenter", "enablement": "editorLangId == markdown" },
@@ -71,7 +73,8 @@
         { "command": "docpresenter.exportChanges", "when": "activeCustomEditorId == docpresenter.sheets", "group": "docpresenter@4" }
       ],
       "editor/context": [
-        { "command": "docpresenter.openToSide", "when": "resourceExtname == .md && !activeCustomEditorId", "group": "navigation@9" }
+        { "command": "docpresenter.openToSide", "when": "resourceExtname == .md && !activeCustomEditorId", "group": "navigation@9" },
+        { "command": "docpresenter.exportTables", "when": "resourceExtname == .table", "group": "docpresenter@1" }
       ],
       "explorer/context": [
         { "command": "docpresenter.newDocument", "when": "explorerResourceIsFolder", "group": "navigation@8" },
@@ -79,11 +82,14 @@
         { "command": "docpresenter.openEditor", "when": "resourceExtname == .md", "group": "navigation@9" },
         { "command": "docpresenter.readBackPptx", "when": "resourceExtname == .pptx", "group": "navigation@9" },
         { "command": "docpresenter.openInExcel", "when": "resourceExtname == .table", "group": "navigation@9" },
+        { "command": "docpresenter.exportTables", "when": "resourceExtname == .table || explorerResourceIsFolder", "group": "docpresenter@1" },
         { "command": "docpresenter.importPdfReview", "when": "resourceExtname == .pdf", "group": "navigation@9" }
       ],
       "commandPalette": [
         { "command": "docpresenter.init", "when": "workspaceFolderCount > 0" },
         { "command": "docpresenter.openInExcel", "when": "workspaceFolderCount > 0" },
+        { "command": "docpresenter.exportTables", "when": "workspaceFolderCount > 0" },
+        { "command": "docpresenter.exportAllTables", "when": "workspaceFolderCount > 0" },
         { "command": "docpresenter.check", "when": "workspaceFolderCount > 0" },
         { "command": "docpresenter.newDocument", "when": "workspaceFolderCount > 0" },
         { "command": "docpresenter.newDiagram", "when": "workspaceFolderCount > 0" },

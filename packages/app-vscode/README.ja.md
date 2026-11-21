@@ -194,6 +194,20 @@ style {
 文書の画面で右クリックすると、取り込み元のブックを開ける。ただし、レビュー指摘や変更箇所の印はブックの中を指せない。
 新しく作る表は `.table` にすること（差分でレビューできるのは `.table` だけ）。
 
+**プログラム向けに書き出す（JSON・CSV・TSV・xlsx）**
+
+表をスクリプトで処理したいときは、`.table` を読まずに、結合・自動の番号・ブロック・記法を解決済みの形で書き出せる。
+Python・Java・C#・TypeScript のどれからでも同じ JSON を読める。形は [仕様 §7.4](https://github.com/Rintaro-Sugishita/DocPresenter/blob/main/spec/table.md#74-machine-readable-output) と `spec/table.schema.json` にある。
+
+1. `.table` かフォルダを右クリックして **「表をプログラム向けに書き出す…」**、作業場全体なら **「ワークスペースの表をすべて書き出す」** を選ぶ。
+2. 形式を選ぶ（既定は JSON）。書き出し先は設定 `docpresenter.outDir`（既定 `out/build/`）で、フォルダ構成を保つ。
+
+- JSON のセルはどれも `{ "text": "1,000", "number": 1000 }` の形。`number` は「Excel で開く」で数値になるものだけに入り、それ以外は `null`。結合された位置には持ち主の値が入る。
+- xlsx は「Excel で開く」と同じブック、CSV・TSV は Excel で文字化けしない UTF-8（BOM 付き）。Excel を読む既存の道具にそのまま渡せる。
+- **変わっていない表は書き直さない。** 元の `.table` を消すと、その書き出しも消える（書き出した後に手で直したものは残す）。
+  そのための台帳 `.table-export.json` を書き出し先に置く。作業場のものなので Git には入れない（「作業場を初期化する」が `.gitignore` に足す）。
+- コマンドラインでも同じことができる：`docpresenter export docs --to json`。
+
 **クリップボードでのやり取り**
 
 表計算ソフトとの間で、セルをそのままコピー・貼り付けすることもできる。

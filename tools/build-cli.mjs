@@ -49,5 +49,5 @@ copyFileSync(createRequire(import.meta.url).resolve('harfbuzzjs/dist/harfbuzz-su
 // format specs it points to — the same files as the VS Code extension ships.
 mkdirSync(`${DOC}/init/spec`, { recursive: true });
 copyFileSync('packages/app-vscode/templates/guide.md', `${DOC}/init/guide.md`);
-for (const spec of ['dgm.md', 'table.md', 'inline-text.md']) copyFileSync(`spec/${spec}`, `${DOC}/init/spec/${spec}`);
+for (const spec of ['dgm.md', 'table.md', 'inline-text.md', 'table.schema.json']) copyFileSync(`spec/${spec}`, `${DOC}/init/spec/${spec}`);
 console.log(`${DOC}/docpresenter.mjs ＋ theme.css ＋ measure.js ＋ mermaid-page.js ＋ harfbuzz-subset.wasm ＋ init/ を生成`);

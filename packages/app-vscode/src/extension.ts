@@ -11,6 +11,7 @@ import { registerWorkspaceProblems } from './workspace-problems.js';
 import { registerMarkdownEditing } from './markdown-editing.js';
 import { registerImportLinks } from './import-links.js';
 import { registerExcel } from './excel-command.js';
+import { registerTableExport } from './table-export-command.js';
 import { exportAll, FORMAT_LABEL } from './export-command.js';
 import { initWorkspace } from './init-command.js';
 import { newDocument } from './document-command.js';
@@ -95,6 +96,8 @@ export function activate(context: vscode.ExtensionContext): void {
     registerImportLinks(),
     // A table edited in Excel, written back each time Excel saves it.
     registerExcel(context, output),
+    // Tables written out for programs, only what changed (design/table-model.md §10).
+    registerTableExport(output),
   );
 }
 

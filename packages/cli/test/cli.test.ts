@@ -47,7 +47,7 @@ function shippedPackage(): string {
     writeFileSync(join(pkg, to), readFileSync(new URL(from, repo)));
   };
   copy('packages/app-vscode/templates/guide.md', 'media/init/guide.md');
-  for (const spec of ['dgm.md', 'table.md', 'inline-text.md']) copy(`spec/${spec}`, `media/init/spec/${spec}`);
+  for (const spec of ['dgm.md', 'table.md', 'inline-text.md', 'table.schema.json']) copy(`spec/${spec}`, `media/init/spec/${spec}`);
   copy('themes/default/theme.css', 'media/theme.css');
   return pathToFileURL(join(pkg, 'dist', 'bin.js')).href;
 }
@@ -119,6 +119,53 @@ describe('export', () => {
   });
 });
 
+describe('export（表）', () => {
+  const TABLE = '| 項目 | 金額 |\n|------|-----:|\n| 設計 | 1,000 |\n| ^    | 50% |\n';
+
+  it('名指した表は --to なしで JSON。フォルダの表は --to に表の形式があるときだけ', async () => {
+    give({ 'docs/a.md': doc('html'), 'docs/a/items.table': TABLE, 'docs/b.table': TABLE });
+    expect((await run('export')).code).toBe(0);
+    expect(written()).toEqual(['out/build/docs/a.html']);
+
+    expect((await run('export', join(dir, 'docs/b.table'))).code).toBe(0);
+    const json = JSON.parse(readFileSync(join(dir, 'out/build/docs/b.json'), 'utf8'));
+    expect(json.rows[1].values).toEqual([{ text: '設計', number: null }, { text: '50%', number: 0.5 }]);
+
+    expect((await run('export', join(dir, 'docs'), '--to', 'csv,xlsx')).code).toBe(0);
+    expect(written()).toEqual([
+      'out/build/.table-export.json', 'out/build/docs/a.html', 'out/build/docs/a/items.csv', 'out/build/docs/a/items.xlsx',
+      'out/build/docs/b.csv', 'out/build/docs/b.json', 'out/build/docs/b.xlsx',
+    ]);
+  });
+
+  it('変わっていない表は飛ばし、消えた表の書き出しは消す', async () => {
+    give({ 'docs/a.table': TABLE, 'docs/b.table': TABLE });
+    await run('export', '--to', 'json');
+    const again = await run('export', '--to', 'json');
+    expect(again.said).toContain('書き出し 0 件、変わらないので飛ばしたもの 2 件');
+    rmSync(join(dir, 'docs/b.table'));
+    const pruned = await run('export', '--to', 'json');
+    expect(pruned.said).toContain('削除 1 件');
+    expect(written()).toEqual(['out/build/.table-export.json', 'out/build/docs/a.json']);
+  });
+
+  it('-o - で標準出力に書く。1 ファイルにならなければ使い方の誤り', async () => {
+    give({ 'docs/a.table': TABLE, 'docs/b.table': TABLE });
+    const out: string[] = [];
+    vi.spyOn(process.stdout, 'write').mockImplementation(chunk => { out.push(new TextDecoder('utf-8', { ignoreBOM: true }).decode(chunk as Uint8Array)); return true; });
+    expect((await run('export', join(dir, 'docs/a.table'), '--to', 'csv', '-o', '-')).code).toBe(0);
+    expect(out.join('')).toBe('\uFEFF項目,金額\r\n設計,"1,000"\r\n設計,50%\r\n');
+    expect((await run('export', join(dir, 'docs'), '--to', 'json', '-o', '-')).code).toBe(2);
+    expect(written()).toEqual([]);
+  });
+
+  it('表の選択肢を表なしで使うと誤り。表に文書の形式を頼むと誤り', async () => {
+    give({ 'docs/a.md': doc('html'), 'docs/a.table': TABLE });
+    expect((await run('export', join(dir, 'docs/a.md'), '--raw')).code).toBe(2);
+    expect((await run('export', join(dir, 'docs/a.table'), '--to', 'html')).code).toBe(2);
+  });
+});
+
 describe('check', () => {
   it('作業場全体を読み、指定したファイルの指摘だけを言う', async () => {
     give({
@@ -170,7 +217,7 @@ describe('init と new', () => {
       expect(existsSync(join(dir, path)), path).toBe(true);
     }
     expect(readFileSync(join(dir, 'docs/design.md'), 'utf8')).toMatch(/^document: DOC-001$/m);
-    expect(readFileSync(join(dir, '.gitignore'), 'utf8')).toBe('# DocPresenter の書き出し\nout/\n*.pdf\n*.pptx\n');
+    expect(readFileSync(join(dir, '.gitignore'), 'utf8')).toBe('# DocPresenter の書き出し\nout/\n*.pdf\n*.pptx\n.table-export.json\n');
 
     // 二度目は何も書かず、そのままと言う。文書がもうあるので、題名が無くても最初の文書は作らない。
     const again = await runFrom(from, 'init');

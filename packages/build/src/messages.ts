@@ -39,6 +39,10 @@ export const BUILD_MESSAGES = defineMessages({
   'build.writeback.edgeLabel': '{from} → {to} の線のラベルが「{was}」から「{now}」に変わっているが、線のラベルはまだ読み戻せない（図で直すこと）',
   'build.writeback.table': '{slide} 枚目の表（{path}）が PowerPoint で書き換えられているが、表は読み戻せない（{path} を直すこと）',
 
+  // --- writing tables out for programs (table-export.ts) ---------------------------
+  'build.tableExport.noRange': '名前付き範囲 {range} が無い',
+  'build.tableExport.collision': '{file} は {other} の書き出しと重なる',
+
   // --- in the document ---------------------------------------------------------------
   'build.cover.document': '文書番号',
   'build.cover.version': '版',
@@ -80,6 +84,8 @@ export const BUILD_MESSAGES = defineMessages({
   'build.writeback.edgeLabel': 'The label of the line {from} → {to} changed from "{was}" to "{now}", but line labels cannot be read back yet (change it in the diagram)',
   'build.writeback.table': 'The table on slide {slide} ({path}) was changed in PowerPoint, but tables cannot be read back (change {path})',
 
+  'build.tableExport.noRange': 'No named range {range}',
+  'build.tableExport.collision': '{file} is also where {other} is written',
   'build.cover.document': 'Document No.',
   'build.cover.version': 'Version',
   'build.cover.status': 'Status',

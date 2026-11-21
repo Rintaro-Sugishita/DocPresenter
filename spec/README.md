@@ -20,6 +20,7 @@ listed where they occur.
 | [`dgm.md`](dgm.md) | **`.dgm`** | A drawing: shapes, connections, hand-placed positions, style |
 | [`table.md`](table.md) | **`.table`** | A table: a grid with merged cells, styling, and named ranges |
 | [`inline-text.md`](inline-text.md) | — | The inline formatting both formats use inside a label or a cell |
+| [`table.schema.json`](table.schema.json) | — | The JSON a `.table` is written out as for programs ([`table.md` §7.4](table.md#74-machine-readable-output)) |
 
 The Markdown document layer — `@import`, sheet separators, heading labels,
 cross-references — is **not** specified here yet; see

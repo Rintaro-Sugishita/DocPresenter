@@ -346,6 +346,120 @@ and the format is unchanged by it: the file stays the source, and what a
 workbook can say beyond §2–§6 — formulas, borders, pictures, row heights — is
 not written back. A formula comes back as its value.
 
+### 7.4 Machine-readable output
+
+The grid is written for people and for diffs. A program that wants the
+table's contents should not have to re-implement §2–§5 to get them — merges,
+`#` numbers, `@key` blocks, `\|` and the inline notation are where a quick
+parser silently goes wrong. So a tool MAY write a table out in a form that has
+all of that already resolved. This section fixes what that form says, so that
+a script written in any language against one tool's output keeps working
+against another's.
+
+The output is **derived**: it is never edited and never read back, and the
+`.table` file stays the source.
+
+#### 7.4.1 JSON
+
+One table is one JSON object. The schema is
+[`table.schema.json`](table.schema.json) (JSON Schema 2020-12).
+
+```json
+{
+  "format": "docpresenter.table/1",
+  "source": "docs/auth-design/screen-items.table",
+  "range": null,
+  "columns": [
+    { "name": "分類", "align": "default" },
+    { "name": "No", "align": "right" }
+  ],
+  "rows": [
+    { "key": "入力", "line": 7,
+      "values": [ { "text": "入力", "number": null }, { "text": "1", "number": 1 } ] },
+    { "key": "#", "line": 8,
+      "values": [ { "text": "入力", "number": null }, { "text": "2", "number": 2 } ] }
+  ],
+  "merges": [ { "row": 0, "column": 0, "rowSpan": 2, "colSpan": 1 } ],
+  "blocks": { "1": "- Not case-sensitive\n- Spaces are removed first" },
+  "ranges": { "Input": { "first": "入力", "last": "操作" } }
+}
+```
+
+| Member | Holds |
+|---|---|
+| `format` | `"docpresenter.table/1"`. A change a reader of version 1 would misread gets a new number |
+| `source` | The table's path from the workspace root, with `/` |
+| `range` | The named range (§5) the rows were limited to, or `null` for the whole table |
+| `columns` | One object per column: `name`, the header cell's text (§7.4.2), and `align`, one of `left`, `center`, `right`, `default` (§2.2) |
+| `rows` | One object per body row, top to bottom |
+| `rows[].key` | The row's name (§3): the text of its leading cell **as written**, or `null` when no cell starts on the row |
+| `rows[].line` | The 1-based line of the file the row is on |
+| `rows[].values` | **Exactly one value per column**, in column order (§7.4.2) |
+| `merges` | One object per cell spanning more than one position: its first `row` and `column` (0-based, into `rows` and `columns`), `rowSpan` and `colSpan` |
+| `blocks` | Every block definition (§4) by key, its lines joined with `\n` |
+| `ranges` | Every named range (§5) by name, as `first` and `last` |
+
+Every member is always present; an empty list or map is written empty, not
+left out. The values are not keyed by header text because §3 does not make a
+header unique.
+
+Several tables MAY be written as one file:
+`{ "format": "docpresenter.tables/1", "tables": [ … ] }`, each element a table
+as above.
+
+#### 7.4.2 A value
+
+Every value has the same shape, `{ "text": string, "number": number | null }`,
+so that a statically typed reader needs one type for every cell of every
+column — a column of numbers usually has a `—` in it somewhere.
+
+- **`text`** is what the cell shows: the inline notation removed and its
+  escapes resolved (`` `varchar(64)` `` → `varchar(64)`, `**30 日**` → `30 日`),
+  a `#` cell as its number (§2.4), and a cell whose entire content is `@key`
+  as that block's content. A tool MAY offer the text as written instead; then
+  `#` and `@key` stay as they are written too, and only `\|` is resolved.
+- **A merged position holds the value of the cell covering it.** `rows` alone
+  is a complete grid; `merges` says which positions are one cell.
+- **`number`** is the cell's value as a number when its text is plainly one,
+  and `null` otherwise. It does not change when the text is offered as
+  written.
+
+"Plainly a number" is the rule a spreadsheet round trip needs, so that a
+number written out comes back as the same characters:
+
+1. The shown text matches
+   `^-?(0|[1-9][0-9]*|[1-9][0-9]{0,2}(,[0-9]{3})+)(\.[0-9]+)?%?$`.
+   `001`, `.5`, `+5`, `1,00`, full-width digits and a unit are not numbers.
+2. It has at most 15 significant digits, counting the fraction's trailing
+   zeros: a sixteenth would not survive a double.
+3. It is not a negative zero.
+4. Every run of the cell is drawn the same way (all bold, say): `**100**` is
+   100, `**1**00` is text. A block is never a number.
+
+The value has the grouping commas removed and, with `%`, is divided by 100:
+`1,000` is 1000, `1.50` is 1.5, `50%` is 0.5. A reader that needs `1.50`
+rather than 1.5 has it in `text`.
+
+#### 7.4.3 CSV and TSV
+
+For programs that already read a spreadsheet's export: the first line holds
+the column names, then one line per body row, each field the value's `text`.
+A merged position repeats the text of the cell covering it, as in JSON;
+nothing else of the table (alignment, merges, blocks, style) is carried.
+
+Fields are separated by `,` (CSV) or a tab (TSV) and quoted as RFC 4180 says,
+in both: a field holding the separator, `"`, CR or LF is wrapped in `"`, with
+each `"` inside it doubled. Lines end with CRLF. A writer SHOULD begin the
+file with a UTF-8 byte order mark, which is what makes a spreadsheet read the
+file as UTF-8 rather than the machine's own code page, and MAY offer to leave
+it out.
+
+#### 7.4.4 A workbook *(informative)*
+
+DocPresenter also writes a table as the same workbook it opens in a
+spreadsheet (§7.3): merged cells as merged cells, the numbers of §7.4.2 as
+numbers in a format that shows them as written, everything else as text.
+
 ## 8. Not in version 0.1
 
 Stated so that an implementer knows these are absent rather than undocumented: a
