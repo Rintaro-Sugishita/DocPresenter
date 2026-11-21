@@ -4,7 +4,15 @@
 import { defineMessages } from '@docpresenter/base';
 
 export const DOC_MESSAGES = defineMessages({
-  'doc.unsupported': '{path} は扱えません（.md と .dgm を指定してください）',
+  'doc.unsupported': '{path} は扱えません（.md・.dgm・.table を指定してください）',
+  'doc.table.removed': '削除 {file}（{source} が無くなった）',
+  'doc.table.wouldRemove': '{file} は {source} が無くなったので消せます（--no-prune のため残しています）',
+  'doc.table.edited': '{file} は {source} が無くなったが、書き出した後に書き換えられているので消しません',
+  'doc.table.summary': '表: 書き出し {written} 件、変わらないので飛ばしたもの {skipped} 件、削除 {removed} 件、失敗 {failed} 件',
+  'doc.table.notIgnored': '{ledger} は git の管理下にあり、.gitignore で除外されていません。書き出しの台帳は作業場のものなので、.gitignore に {name} を足してください',
+  'doc.table.stdoutOne': '-o - で標準出力に書けるのは 1 ファイルになるときだけです（表を 1 つ指定するか、--bundle を付けてください）',
+  'doc.table.stdoutTables': '-o - で標準出力に書けるのは表（.table）だけです',
+  'doc.table.optionsWithoutTable': '{option} は表（.table）を書き出すときだけ使えます',
   'doc.noOutput': '{path} には output: が無いので、--to で形式を指定してください',
   'doc.noFont': 'PDF に埋め込む日本語フォントが見つかりません。--font <ttf/ttc のパス> で指定してください（環境変数 DOCPRESENTER_FONT でも可）',
   'doc.fontMissing': '指定されたフォントが読めません: {path}',
@@ -56,9 +64,10 @@ export const DOC_MESSAGES = defineMessages({
   フォルダから拾う .md は output: を持つ文書だけです（部品の .md は書き出しません）。
 
 export:
-  -t, --to <形式>        .md は html・pdf・pptx、.dgm は svg・png（カンマ区切りか、繰り返し）。
-                         無ければ .md は frontmatter の output: のとおり、.dgm は svg
-  -o, --out <dir>        書き出し先。既定は作業場の out/build/（フォルダ構成を保つ）
+  -t, --to <形式>        .md は html・pdf・pptx、.dgm は svg・png、.table は json・csv・tsv・xlsx
+                         （カンマ区切りか、繰り返し）。無ければ .md は frontmatter の output: のとおり、
+                         .dgm は svg、.table は json。フォルダの中の .table は --to に表の形式があるときだけ
+  -o, --out <dir>        書き出し先。既定は作業場の out/build/（フォルダ構成を保つ）。- で標準出力（表 1 つのとき）
       --flat             フォルダ構成を保たず、書き出し先の直下に置く
       --chromium <path>  PDF と PNG を描くブラウザ（既定はこの機械の Chrome / Edge）
       --font <path>      PDF に埋め込むフォント（既定はこの機械の日本語フォント）
@@ -67,6 +76,12 @@ export:
       --diff-from <rev|dir>   その版からの変更に印を付ける
       --show-removed none|strike  消えた行の見せ方
       --no-review-notes  PDF に指摘と回答を載せない（納品用）
+      --range <名前>     表の名前付き範囲の行だけを書き出す
+      --raw              表のセルを記法を除かず、書かれたままの文字で出す
+      --bundle           表の JSON を 1 つのファイル（tables.json）にまとめる
+      --force            変わっていない表も書き出す（既定は台帳 .table-export.json で変わったものだけ）
+      --no-prune         無くなった表の書き出しを消さず、挙げるだけにする
+      --no-bom           表の CSV・TSV の先頭に BOM を付けない
 check:
       --strict           警告でも終了コード 1 にする
 format:                  .dgm を決まった形に整える
@@ -97,7 +112,15 @@ new diagram:
 
 終了コード: 0 成功、1 内容の問題、2 使い方の誤り`,
 }, {
-  'doc.unsupported': '{path} cannot be used here (name .md and .dgm files)',
+  'doc.unsupported': '{path} cannot be used here (name .md, .dgm and .table files)',
+  'doc.table.removed': 'Removed {file} ({source} is gone)',
+  'doc.table.wouldRemove': '{file} can go, since {source} is gone (kept because of --no-prune)',
+  'doc.table.edited': '{source} is gone, but {file} was changed after it was written, so it is kept',
+  'doc.table.summary': 'Tables: {written} written, {skipped} skipped as unchanged, {removed} removed, {failed} failed',
+  'doc.table.notIgnored': '{ledger} is in Git and not in .gitignore. The export ledger belongs to this working copy: add {name} to .gitignore',
+  'doc.table.stdoutOne': '-o - writes to standard output only when there is one file to write (name one table, or add --bundle)',
+  'doc.table.stdoutTables': '-o - writes only tables (.table) to standard output',
+  'doc.table.optionsWithoutTable': '{option} is only for writing tables (.table) out',
   'doc.noOutput': '{path} has no output:, so name the formats with --to',
   'doc.noFont': 'No Japanese font was found to embed in the PDF. Name one with --font <path to a ttf/ttc> (or DOCPRESENTER_FONT)',
   'doc.fontMissing': 'The font named cannot be read: {path}',
@@ -149,9 +172,11 @@ Usage:
   From a folder, only the .md files with an output: are exported (not the parts).
 
 export:
-  -t, --to <format>      html, pdf, pptx for .md; svg, png for .dgm (comma-separated, or repeated).
-                         Without it, .md as its output: says, .dgm as svg
-  -o, --out <dir>        Where to write. The workspace's out/build/ when absent (folders kept)
+  -t, --to <format>      html, pdf, pptx for .md; svg, png for .dgm; json, csv, tsv, xlsx for .table
+                         (comma-separated, or repeated). Without it, .md as its output: says, .dgm as svg,
+                         .table as json. A .table found in a folder only when --to names a table format
+  -o, --out <dir>        Where to write. The workspace's out/build/ when absent (folders kept).
+                         - for standard output (one table)
       --flat             Put every file straight in the folder, not in the sources' folders
       --chromium <path>  The browser PDFs and PNGs are drawn with (this machine's Chrome or Edge when absent)
       --font <path>      The font embedded in PDFs (this machine's Japanese font when absent)
@@ -160,6 +185,12 @@ export:
       --diff-from <rev|dir>   Mark what changed since that version
       --show-removed none|strike  How removed lines are shown
       --no-review-notes  Leave the review out of PDFs (a copy to deliver)
+      --range <name>     Only the rows of a table's named range
+      --raw              Tables' cells as written, notation and all
+      --bundle           Every table's JSON in one file (tables.json)
+      --force            Write unchanged tables too (by default only what changed, by the ledger .table-export.json)
+      --no-prune         List the outputs of tables that are gone instead of removing them
+      --no-bom           No byte order mark at the start of a table's CSV or TSV
 check:
       --strict           Exit with 1 on warnings too
 format:                  Put .dgm drawings into their canonical form

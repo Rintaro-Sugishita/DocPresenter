@@ -10,6 +10,7 @@
 // adds nothing.
 
 import { DEFAULT_LOCALE, type Locale } from '@docpresenter/base';
+import { TABLE_LEDGER } from './table-export.js';
 
 // Where a file name is checked lives with the rest of what every shell shares.
 export { nameProblem } from '@docpresenter/base';
@@ -218,12 +219,14 @@ export function planScaffold(
   }
   // The top folder the builds go in: `out/build` is kept out of Git as `out/`.
   // PDFs and decks are kept out wherever they are written; SVG and PNG are not,
-  // since a drawing exported as a picture is often meant to be committed.
+  // since a drawing exported as a picture is often meant to be committed. The
+  // ledger of tables written out belongs to this working copy, wherever --out
+  // puts it (design/table-model.md §10.3).
   const top = answers.outDir.replace(/^\.?\/+/, '').split('/')[0]!;
   const bare = (line: string): string => line.trim().replace(/^\/|\/$/g, '');
   const missing = (text: string): string[] => {
     const ignored = new Set(text.split(/\r?\n/).map(bare));
-    return [`${top}/`, '*.pdf', '*.pptx'].filter(pattern => !ignored.has(bare(pattern)));
+    return [`${top}/`, '*.pdf', '*.pptx', TABLE_LEDGER].filter(pattern => !ignored.has(bare(pattern)));
   };
   append('.gitignore', `${words.gitignore}\n${missing(existing('.gitignore') ?? '').join('\n')}\n`,
     text => missing(text).length === 0);

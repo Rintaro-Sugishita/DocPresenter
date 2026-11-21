@@ -195,6 +195,24 @@ Like a table, it is numbered, captioned and referenced (`@tbl-…`), and goes in
 formatting, fills and column widths. Right-click it on the document screen to open the workbook it comes from. Review
 comments and change marks cannot point inside a workbook: make new tables as `.table` files, which a diff can show.
 
+**Writing tables out for programs (JSON, CSV, TSV, xlsx)**
+
+When a script needs a table's contents, it does not have to read `.table`: the table can be written out with merges,
+automatic numbers, blocks and notation already resolved. Python, Java, C# and TypeScript read the same JSON; its shape is in
+[the spec, §7.4](https://github.com/Rintaro-Sugishita/DocPresenter/blob/main/spec/table.md#74-machine-readable-output) and `spec/table.schema.json`.
+
+1. Right-click a `.table` or a folder and choose **"Export Tables for Programs…"**, or **"Export All Tables for Programs"** for the workspace.
+2. Pick the formats (JSON by default). They go in the `docpresenter.outDir` setting's folder (`out/build/`), folders kept.
+
+- Every JSON cell is `{ "text": "1,000", "number": 1000 }`. `number` is filled only for what "Open in Excel" sends as a
+  number, and is `null` otherwise. A merged position holds its owner's value.
+- xlsx is the workbook "Open in Excel" writes; CSV and TSV are UTF-8 with a byte order mark, which Excel reads without
+  garbling. Tools that already read Excel can take them as they are.
+- **An unchanged table is not written again.** Deleting a `.table` removes what was written from it (unless it was
+  edited by hand since). The ledger for this, `.table-export.json`, sits in the output folder; it belongs to the
+  working copy and stays out of Git ("Set Up This Folder" adds it to `.gitignore`).
+- The command line does the same: `docpresenter export docs --to json`.
+
 **Through the clipboard**
 
 Cells also go back and forth with a spreadsheet by copy and paste.

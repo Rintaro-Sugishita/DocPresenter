@@ -52,7 +52,7 @@ copyFileSync('themes/default/theme.css', `${OUT}/theme.css`);
 // by, and the format specs it points to — the same files as spec/, not copies.
 mkdirSync(`${OUT}/init/spec`, { recursive: true });
 copyFileSync('packages/app-vscode/templates/guide.md', `${OUT}/init/guide.md`);
-for (const spec of ['dgm.md', 'table.md', 'inline-text.md']) copyFileSync(`spec/${spec}`, `${OUT}/init/spec/${spec}`);
+for (const spec of ['dgm.md', 'table.md', 'inline-text.md', 'table.schema.json']) copyFileSync(`spec/${spec}`, `${OUT}/init/spec/${spec}`);
 
 // The licences of everything the bundles carry, and of the subsetter. The
 // Mermaid page script is built from the same Mermaid the screen carries.

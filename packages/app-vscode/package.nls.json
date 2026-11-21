@@ -12,6 +12,8 @@
   "command.exportPdf.title": "DocPresenter: Export This Document as PDF",
   "command.exportPptx.title": "DocPresenter: Export This Document as PPTX",
   "command.openInExcel.title": "DocPresenter: Open Table in Excel (Saving Writes It Back)",
+  "command.exportTables.title": "DocPresenter: Export Tables for Programs…",
+  "command.exportAllTables.title": "DocPresenter: Export All Tables for Programs",
   "command.exportChanges.title": "DocPresenter: Export This Document with Changes Since an Earlier Version Marked…",
   "command.readBackPptx.title": "DocPresenter: Read PPTX Changes Back into the Diagrams…",
   "command.importPdfReview.title": "DocPresenter: Import PDF Annotations as Review Comments (one or more PDFs)…",

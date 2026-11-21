@@ -1,6 +1,7 @@
 // docpresenter: the document side's command line.
 //
 //   docpresenter export [<file|folder>...] [--to <format>,...] [--out <dir>] [--flat]
+//                       [--range <name>] [--raw] [--bundle] [--force] [--no-prune] [--no-bom]
 //   docpresenter check  [<file|folder>...] [--strict]
 //   docpresenter format [<file|folder>...] [--write] [--check]
 //   docpresenter import <file.pptx|file.pdf>... [--write] [--into <review file>]
@@ -10,13 +11,20 @@
 //
 // See design/build-model.md §6. The .dgm files it is pointed at go through the
 // drawing side's own commands (@docpresenter/dgm), so `docpresenter export a.dgm`
-// and `dgm export a.dgm` write the same file.
+// and `dgm export a.dgm` write the same file. The .table files are written out
+// for programs (JSON, CSV, TSV, xlsx) by the build's exportTables, the same
+// routine VS Code's commands use (design/table-model.md §10).
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { basename, dirname, join, resolve } from 'node:path';
+import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
+import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { basename, dirname, join, relative, resolve } from 'node:path';
 import {
-  build, checkWorkspace, readGraph, themeOf, writeBack, type BuildDiagnostic, type BuildOptions, type Workspace,
+  build, checkWorkspace, exportTables, isTable, isTableFormat, readGraph, readTableForExport, renderBundle, renderTable,
+  TABLE_FORMATS, TABLE_LEDGER, themeOf, writeBack, type BuildDiagnostic, type BuildOptions, type ExportFolder,
+  type TableFormat, type TableRenderOptions, type Workspace,
 } from '@docpresenter/build';
+import { describeError } from '@docpresenter/base';
 import {
   CliError, collectTargets, COMMON_FLAGS, COMMON_OPTIONS, COMMON_SHORT, contextOf, describeCliError,
   DRAWING_FORMATS, drawingJobs, drawingTheme, EXIT, exportDrawings, findingOf, findRoot, formatDrawings, isDrawing, newDrawing, newFile,
@@ -37,10 +45,10 @@ export const DOCUMENT_FORMATS = ['html', 'pdf', 'pptx'] as const;
 const isDocument = (path: string): boolean => /\.md$/i.test(path);
 
 export const DOC_SPEC: ArgSpec = {
-  flags: [...COMMON_FLAGS, 'flat', 'strict', 'write', 'check', 'no-review-notes'],
+  flags: [...COMMON_FLAGS, 'flat', 'strict', 'write', 'check', 'no-review-notes', 'raw', 'bundle', 'force', 'no-prune', 'no-bom'],
   options: [
     ...COMMON_OPTIONS, 'to', 'out', 'scale', 'background', 'chromium', 'font',
-    'diff-from', 'show-removed', 'into', 'title', 'name', 'number', 'series', 'kind',
+    'diff-from', 'show-removed', 'into', 'title', 'name', 'number', 'series', 'kind', 'range',
   ],
   short: { ...COMMON_SHORT, t: 'to', o: 'out' },
 };
@@ -85,11 +93,11 @@ export async function runDocpresenter(argv: readonly string[], from: string): Pr
   }
 }
 
-/** The documents and drawings named; anything else named directly is a mistake. */
+/** The documents, drawings and tables named; anything else named directly is a mistake. */
 function targetsOf(paths: readonly string[], root: string): Target[] {
-  const targets = collectTargets(paths, root, path => isDocument(path) || isDrawing(path));
+  const targets = collectTargets(paths, root, path => isDocument(path) || isDrawing(path) || isTable(path));
   for (const target of targets) {
-    if (!isDocument(target.path) && !isDrawing(target.path)) {
+    if (!isDocument(target.path) && !isDrawing(target.path) && !isTable(target.path)) {
       throw new CliError('usage', 'doc.unsupported', { path: target.path });
     }
   }
@@ -103,25 +111,49 @@ async function exportCommand(
 ): Promise<number> {
   const d = DOC_MESSAGES.in(ctx.locale);
   const asked = listOf(args, 'to');
-  refuseUnknownFormats(asked, [...DOCUMENT_FORMATS, ...DRAWING_FORMATS]);
+  refuseUnknownFormats(asked, [...DOCUMENT_FORMATS, ...DRAWING_FORMATS, ...TABLE_FORMATS]);
   const showRemoved = lastOf(args, 'show-removed');
   if (showRemoved !== undefined && showRemoved !== 'none' && showRemoved !== 'strike') {
     throw new CliError('usage', 'doc.badShowRemoved', { value: showRemoved });
   }
-  const plan = outputPlan(root, lastOf(args, 'out'), args.flags.has('flat'));
+  const toStdout = lastOf(args, 'out') === '-';
+  const plan = outputPlan(root, toStdout ? undefined : lastOf(args, 'out'), args.flags.has('flat'));
   const targets = targetsOf(paths, root);
+
+  // Tables, for programs. Named, always (JSON unless --to says otherwise);
+  // found in a folder, only when --to names a table format — building the
+  // documents should not write every table out as well.
+  const tableAsked = asked.filter(isTableFormat);
+  const tables = targets.filter(one => isTable(one.path) && (one.named || tableAsked.length > 0));
+  for (const table of tables) {
+    if (table.named && asked.length > 0 && tableAsked.length === 0) {
+      throw new CliError('usage', 'cli.formatMismatch', {
+        path: table.path, format: asked.join(', '), allowed: TABLE_FORMATS.join(', '),
+      });
+    }
+  }
+  if (tables.length === 0) {
+    for (const option of ['raw', 'bundle', 'force', 'no-prune', 'no-bom']) {
+      if (args.flags.has(option)) throw new CliError('usage', 'doc.table.optionsWithoutTable', { option: `--${option}` });
+    }
+    if (lastOf(args, 'range') !== undefined) throw new CliError('usage', 'doc.table.optionsWithoutTable', { option: '--range' });
+  }
+  const tableFormats: TableFormat[] = tableAsked.length > 0 ? tableAsked : ['json'];
+  if (toStdout) return tablesToStdout(ctx, args, targets, tables, tableFormats);
+
   const workspace = nodeWorkspace(root, (address, bytes) =>
     ctx.progress(d('doc.fetched', { address, size: Math.max(1, Math.round(bytes / 1024)) })));
 
   // Which documents, in which formats. From a folder only the roots — a part
   // such as a revision history is not a deliverable; one named is built even
   // without an `output:`, when --to says what to make of it.
-  const graph = readGraph(workspace, ctx.locale);
-  const roots = new Map(graph.roots.map(one => [one.path, one]));
+  // Reading the graph reads every file; a run that only writes tables out skips it.
+  const documentTargets = targets.filter(one => isDocument(one.path));
+  const roots = new Map(documentTargets.length === 0 ? [] : readGraph(workspace, ctx.locale).roots.map(one => [one.path, one]));
   const documentAsked = asked.filter(format => (DOCUMENT_FORMATS as readonly string[]).includes(format));
   const documentJobs: Job[] = [];
   const documents: string[] = [];
-  for (const target of targets.filter(one => isDocument(one.path))) {
+  for (const target of documentTargets) {
     const rootDocument = roots.get(target.path);
     if (!target.named && rootDocument === undefined) continue;
     if (target.named && asked.length > 0 && documentAsked.length === 0) {
@@ -140,7 +172,7 @@ async function exportCommand(
   const drawingAsked = asked.some(format => (DRAWING_FORMATS as readonly string[]).includes(format));
   const drawings = drawingJobs(targets.filter(one => one.named || drawingAsked), asked, plan);
   refuseCollisions([...documentJobs, ...drawings].map(job => ({ source: job.target.path, file: job.file })));
-  if (documentJobs.length === 0 && drawings.length === 0) { ctx.say(ctx.t('cli.nothing')); return EXIT.ok; }
+  if (documentJobs.length === 0 && drawings.length === 0 && tables.length === 0) { ctx.say(ctx.t('cli.nothing')); return EXIT.ok; }
 
   let failed = 0;
   const written: { source: string; format: string; file: string; bytes: number }[] = [];
@@ -157,9 +189,142 @@ async function exportCommand(
     written.push(...result.written);
     failed += result.failed;
   }
-  if (ctx.json) console.log(JSON.stringify({ written, failed }, null, 2));
+  let tableReport: Omit<TableRun, 'written' | 'failed'> | undefined;
+  if (tables.length > 0) {
+    const result = exportTableFiles(ctx, args, root, paths, tables, tableFormats, plan.folder, plan.flat);
+    written.push(...result.written);
+    failed += result.failed;
+    tableReport = { skipped: result.skipped, removed: result.removed, kept: result.kept };
+  }
+  if (ctx.json) console.log(JSON.stringify({ written, failed, ...(tableReport ?? {}) }, null, 2));
   else ctx.say(ctx.t('cli.exportSummary', { written: written.length, failed }));
   return failed > 0 ? EXIT.content : EXIT.ok;
+}
+
+// ---- tables, for programs ----------------------------------------------------
+
+interface TableRun {
+  written: { source: string; format: string; file: string; bytes: number }[];
+  skipped: { source: string; format: string; file: string }[];
+  removed: { source: string; file: string }[];
+  kept: { source: string; file: string; edited: boolean }[];
+  failed: number;
+}
+
+function tableRenderOptions(args: ParsedArgs): TableRenderOptions {
+  const range = lastOf(args, 'range');
+  return {
+    ...(args.flags.has('raw') ? { raw: true } : {}),
+    ...(range === undefined ? {} : { range }),
+    ...(args.flags.has('no-bom') ? { bom: false } : {}),
+  };
+}
+
+/**
+ * Writes the tables into the output folder through the ledger: what has not
+ * changed is skipped, and the outputs of tables that are gone are removed
+ * from inside what was named.
+ */
+function exportTableFiles(
+  ctx: Context, args: ParsedArgs, root: string, paths: readonly string[], tables: readonly Target[],
+  formats: readonly TableFormat[], folder: string, flat: boolean,
+): TableRun {
+  const d = DOC_MESSAGES.in(ctx.locale);
+  const scopes = (paths.length > 0 ? paths : [root]).map(given => relative(root, resolve(given)).split('\\').join('/'));
+  const inScope = (path: string) => scopes.some(scope => scope === '' || path === scope || path.startsWith(`${scope}/`));
+  const result = exportTables({
+    tables: tables.map(one => ({ path: one.path, text: readFileSync(one.file, 'utf8') })),
+    inScope,
+    exists: path => existsSync(join(root, path)),
+    folder: nodeExportFolder(folder),
+    hash: bytes => createHash('sha256').update(bytes).digest('hex'),
+    options: {
+      formats, ...tableRenderOptions(args),
+      ...(args.flags.has('bundle') ? { bundle: true } : {}),
+      ...(args.flags.has('force') ? { force: true } : {}),
+      ...(args.flags.has('no-prune') ? { prune: false } : {}),
+      ...(flat ? { flat: true } : {}),
+    },
+    locale: ctx.locale,
+  });
+  const source = (sources: readonly string[]) => sources.join(', ') || '—';
+  const run: TableRun = {
+    written: result.written.map(one => ({ source: source(one.sources), format: one.format, file: join(folder, one.file), bytes: one.bytes })),
+    skipped: result.skipped.map(one => ({ source: source(one.sources), format: one.format, file: join(folder, one.file) })),
+    removed: result.removed.map(one => ({ source: source(one.sources), file: join(folder, one.file) })),
+    kept: result.kept.map(one => ({ source: source(one.sources), file: join(folder, one.file), edited: one.edited })),
+    failed: result.failed.length,
+  };
+  for (const one of run.written) {
+    ctx.progress(ctx.t('cli.wrote', {
+      file: shown(root, one.file), source: one.source, format: one.format, size: Math.max(1, Math.round(one.bytes / 1024)),
+    }));
+  }
+  for (const one of run.removed) ctx.progress(d('doc.table.removed', { file: shown(root, one.file), source: one.source }));
+  for (const one of run.kept) {
+    ctx.say(d(one.edited ? 'doc.table.edited' : 'doc.table.wouldRemove', { file: shown(root, one.file), source: one.source }));
+  }
+  for (const one of result.failed) ctx.fail(ctx.t('cli.failed', { path: one.source, format: formats.join(', '), message: one.message }));
+  ctx.say(d('doc.table.summary', {
+    written: run.written.length, skipped: run.skipped.length, removed: run.removed.length, failed: run.failed,
+  }));
+  if (result.ledgerCreated) warnIfLedgerTracked(ctx, root, join(folder, TABLE_LEDGER));
+  return run;
+}
+
+/** The output folder on disk. A file is written beside itself and renamed over, so a reader never sees half of it. */
+function nodeExportFolder(folder: string): ExportFolder {
+  return {
+    read: path => { try { return new Uint8Array(readFileSync(join(folder, path))); } catch { return undefined; } },
+    write: (path, bytes) => {
+      const file = join(folder, path);
+      mkdirSync(dirname(file), { recursive: true });
+      const temporary = `${file}.${process.pid}.tmp`;
+      writeFileSync(temporary, bytes);
+      renameSync(temporary, file);
+    },
+    remove: path => rmSync(join(folder, path), { force: true }),
+  };
+}
+
+/**
+ * The ledger belongs to this working copy. Written where Git would pick it
+ * up — `--out` into the repository, a workspace set up before `init` added
+ * it to .gitignore — it is said once, when it is first made.
+ */
+function warnIfLedgerTracked(ctx: Context, root: string, ledger: string): void {
+  try {
+    execFileSync('git', ['check-ignore', '-q', ledger], { cwd: root, stdio: 'ignore' });
+  } catch (error) {
+    // 1: inside a repository and not ignored. Anything else: not a repository, or no git.
+    if ((error as { status?: number }).status !== 1) return;
+    try {
+      execFileSync('git', ['rev-parse', '--is-inside-work-tree'], { cwd: dirname(ledger), stdio: 'ignore' });
+    } catch {
+      return;
+    }
+    ctx.fail(DOC_MESSAGES.in(ctx.locale)('doc.table.notIgnored', { ledger: shown(root, ledger), name: TABLE_LEDGER }));
+  }
+}
+
+/** `-o -`: one table, or every table as one bundle, written to standard output. No ledger: nothing is kept. */
+function tablesToStdout(
+  ctx: Context, args: ParsedArgs, targets: readonly Target[], tables: readonly Target[], formats: readonly TableFormat[],
+): number {
+  if (targets.some(one => !isTable(one.path) && one.named) || tables.length === 0) {
+    throw new CliError('usage', 'doc.table.stdoutTables');
+  }
+  const bundle = args.flags.has('bundle') && formats.length === 1 && formats[0] === 'json';
+  if (formats.length !== 1 || (!bundle && tables.length !== 1)) throw new CliError('usage', 'doc.table.stdoutOne');
+  const options = tableRenderOptions(args);
+  try {
+    const read = tables.map(one => ({ table: readTableForExport(readFileSync(one.file, 'utf8')), source: one.path }));
+    process.stdout.write(bundle ? renderBundle(read, options) : renderTable(read[0]!.table, read[0]!.source, formats[0]!, options));
+    return EXIT.ok;
+  } catch (error) {
+    ctx.fail(ctx.t('cli.failed', { path: tables.map(one => one.path).join(', '), format: formats.join(', '), message: describeError(error, ctx.locale) }));
+    return EXIT.content;
+  }
 }
 
 async function exportDocuments(

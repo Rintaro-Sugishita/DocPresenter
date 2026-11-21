@@ -11,3 +11,4 @@ export * from './diff.js';
 export * from './build.js';
 export * from './check.js';
 export * from './scaffold.js';
+export * from './table-export.js';

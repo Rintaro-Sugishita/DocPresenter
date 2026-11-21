@@ -528,6 +528,44 @@ check('table §2.4', '# だけのセルは、その列の # の中で何番目�
 check('table §2.4', '# のセルの文字は # のまま（番号はファイルに書かれない）',
   counted.rows[2].cells[1].text === '#');
 
+// §7.4 machine-readable output: what a script reads, checked against the schema's own members.
+import { readTableForExport, renderTable, tableDelimited, tableJson } from '../packages/build/dist/index.js';
+import { readFileSync as readSchema } from 'node:fs';
+const schema = JSON.parse(readSchema('spec/table.schema.json', 'utf8'));
+/** Whether an object has exactly the members the schema's definition names. */
+const shaped = (value, def) => {
+  const want = schema.$defs[def].required;
+  return value !== null && typeof value === 'object'
+    && want.every(key => key in value) && Object.keys(value).every(key => want.includes(key));
+};
+const machine = tableJson(readTableForExport([
+  '| 分類 | 値 | 説明 |', '|------|---:|------|',
+  '| 入力 | 1,000 | @1 |', '| ^ | 50% | **1**00 |', '| 表示 | < | `001` |', '', '[@1]:', '- 一行目', '- 二行目', '',
+].join(NL)), 'docs/a.table');
+check('table §7.4.1', '表は schema の table の形（全メンバーが常にある）',
+  shaped(machine, 'table') && machine.format === 'docpresenter.table/1');
+check('table §7.4.1', '列・行・結合・値は schema の形',
+  machine.columns.every(one => shaped(one, 'column')) && machine.rows.every(one => shaped(one, 'row'))
+  && machine.merges.every(one => shaped(one, 'merge')) && machine.rows.flatMap(one => one.values).every(one => shaped(one, 'value')));
+check('table §7.4.1', 'どの行も列と同じ数の値を持つ',
+  machine.rows.every(row => row.values.length === machine.columns.length));
+check('table §7.4.2', '結合された位置は覆っているセルの値を持つ',
+  machine.rows[1].values[0].text === '入力' && machine.rows[2].values[1].text === '表示');
+check('table §7.4.2', '数値は Excel と同じ判定（1,000 → 1000、50% → 0.5、001 と一部だけの装飾は文字）',
+  machine.rows[0].values[1].number === 1000 && machine.rows[1].values[1].number === 0.5
+  && machine.rows[2].values[2].number === null && machine.rows[1].values[2].number === null,
+  JSON.stringify(machine.rows.map(row => row.values.map(one => one.number))));
+check('table §7.4.2', '@key はブロックの中身、記法は除く',
+  machine.rows[0].values[2].text === `- 一行目${NL}- 二行目` && machine.rows[1].values[2].text === '100'
+  && machine.rows[2].values[2].text === '001');
+check('table §7.4.3', 'CSV は RFC 4180 の引用・CRLF・BOM',
+  tableDelimited(readTableForExport(['| a | b |', '|---|---|', '| x, y | "q" |'].join(NL)), ',')
+    === '﻿a,b\r\n"x, y","""q"""\r\n');
+const tiny = () => readTableForExport(['| a |', '|---|', '| 1 |'].join(NL));
+check('table §7.4.1', '書き出した JSON は読み戻すと同じ',
+  JSON.stringify(JSON.parse(Buffer.from(renderTable(tiny(), 'a.table', 'json')).toString('utf8')))
+    === JSON.stringify(tableJson(tiny(), 'a.table')));
+
 // ───────────────────────── the samples still read ─────────────────────────
 import { readFileSync } from 'node:fs';
 for (const path of [
