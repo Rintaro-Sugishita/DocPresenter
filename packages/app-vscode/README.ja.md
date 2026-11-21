@@ -202,6 +202,14 @@ Python・Java・C#・TypeScript のどれからでも同じ JSON を読める。
 1. `.table` かフォルダを右クリックして **「表をプログラム向けに書き出す…」**、作業場全体なら **「ワークスペースの表をすべて書き出す」** を選ぶ。
 2. 形式を選ぶ（既定は JSON）。書き出し先は設定 `docpresenter.outDir`（既定 `out/build/`）で、フォルダ構成を保つ。
 
+書き出し方は設定で変えられる。チームで揃えたいときは `.vscode/settings.json` に書いておく。
+
+| 設定 | 既定 | 内容 |
+|---|---|---|
+| `docpresenter.tables.raw` | `false` | セルの文字を記法を除かずに、書かれたままで出す（`#` や `@1` もそのまま）。`number` は変わらない |
+| `docpresenter.tables.bom` | `true` | CSV・TSV の先頭に BOM を付ける（付けないと Excel で日本語が化ける） |
+| `docpresenter.tables.bundle` | `false` | JSON をすべての表で 1 つのファイル `tables.json` にまとめる |
+
 - JSON のセルはどれも `{ "text": "1,000", "number": 1000 }` の形。`number` は「Excel で開く」で数値になるものだけに入り、それ以外は `null`。結合された位置には持ち主の値が入る。
 - xlsx は「Excel で開く」と同じブック、CSV・TSV は Excel で文字化けしない UTF-8（BOM 付き）。Excel を読む既存の道具にそのまま渡せる。
 - **変わっていない表は書き直さない。** 元の `.table` を消すと、その書き出しも消える（書き出した後に手で直したものは残す）。

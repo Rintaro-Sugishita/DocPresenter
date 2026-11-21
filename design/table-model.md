@@ -553,6 +553,7 @@ GUI の `左 / 中 / 右` も**色と同じ「対象」に従う**。対象が�
 
 - CLI：`docpresenter export <ファイル|フォルダ>... --to json|csv|tsv|xlsx`。名指した `.table` は `--to` が無ければ JSON。フォルダの中の `.table` は、`--to` に表の形式があるときだけ書き出す（図の SVG・PNG と同じ扱い。文書を建てるたびに表まで書き出さない）。
 - VS Code：「表を書き出す…」（エディタとエクスプローラの右クリック、形式を選ぶ）と「ワークスペースの表をすべて書き出す」。どちらも CLI と同じ `@docpresenter/build` の `exportTables` を通る。
+- VS Code では、形式は実行のたびに選び、`--raw`・`--no-bom`・`--bundle` に当たるものは設定 `docpresenter.tables.raw`・`tables.bom`・`tables.bundle` で決める（チームで揃えるなら `.vscode/settings.json`）。出力先は文書の書き出しと同じ `docpresenter.outDir`。
 - `--range NAME` で名前付き範囲の行だけ（`screen-items.入力.json`）。`--bundle` で全部を 1 つの JSON（`tables.json`）に。既定にはしない。`-o -` で標準出力に（1 ファイルになるときだけ）。
 
 ### 10.3 変わったものだけ書き出す — 台帳

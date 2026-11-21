@@ -6,7 +6,9 @@
 // the formats and then run the build's exportTables, the routine the CLI's
 // `docpresenter export --to json` runs, so the two write the same files and
 // share one ledger: an unchanged table is skipped, and the outputs of tables
-// that are gone are removed.
+// that are gone are removed. Beyond the formats picked each time, what the
+// CLI says with --raw, --no-bom and --bundle is said here by settings
+// (`docpresenter.tables.*`), which a team can fix in .vscode/settings.json.
 
 import { execFile } from 'node:child_process';
 import { createHash } from 'node:crypto';
@@ -85,7 +87,7 @@ async function exportTablesFrom(output: vscode.OutputChannel, targets: readonly 
       exists: path => existsSync(join(root, path)),
       folder: nodeExportFolder(out),
       hash: bytes => createHash('sha256').update(bytes).digest('hex'),
-      options: { formats },
+      options: { formats, ...tableSettings() },
       locale: hostLocale(),
     });
   });
@@ -93,6 +95,16 @@ async function exportTablesFrom(output: vscode.OutputChannel, targets: readonly 
   if (result.ledgerCreated && await isTracked(root, join(out, TABLE_LEDGER))) {
     void vscode.window.showWarningMessage(`DocPresenter: ${t('vscode.tables.notIgnored', { ledger: join(outDirOf(), TABLE_LEDGER), name: TABLE_LEDGER })}`);
   }
+}
+
+/** The table settings, as the options the CLI's flags would give. Only what differs from the default is passed. */
+export function tableSettings(): { raw?: boolean; bom?: boolean; bundle?: boolean } {
+  const settings = vscode.workspace.getConfiguration('docpresenter');
+  return {
+    ...(settings.get<boolean>('tables.raw') === true ? { raw: true } : {}),
+    ...(settings.get<boolean>('tables.bom') === false ? { bom: false } : {}),
+    ...(settings.get<boolean>('tables.bundle') === true ? { bundle: true } : {}),
+  };
 }
 
 function report(output: vscode.OutputChannel, result: TableExportResult, out: string): void {

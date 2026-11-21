@@ -204,6 +204,14 @@ automatic numbers, blocks and notation already resolved. Python, Java, C# and Ty
 1. Right-click a `.table` or a folder and choose **"Export Tables for Programs…"**, or **"Export All Tables for Programs"** for the workspace.
 2. Pick the formats (JSON by default). They go in the `docpresenter.outDir` setting's folder (`out/build/`), folders kept.
 
+How they are written is set in the settings; a team that wants them the same for everyone puts them in `.vscode/settings.json`.
+
+| Setting | Default | What it does |
+|---|---|---|
+| `docpresenter.tables.raw` | `false` | The cells' text as written, notation and all (`#` and `@1` too). `number` does not change |
+| `docpresenter.tables.bom` | `true` | Begin CSV and TSV with a byte order mark (without it Excel garbles non-ASCII text) |
+| `docpresenter.tables.bundle` | `false` | Every table's JSON in one file, `tables.json` |
+
 - Every JSON cell is `{ "text": "1,000", "number": 1000 }`. `number` is filled only for what "Open in Excel" sends as a
   number, and is `null` otherwise. A merged position holds its owner's value.
 - xlsx is the workbook "Open in Excel" writes; CSV and TSV are UTF-8 with a byte order mark, which Excel reads without
