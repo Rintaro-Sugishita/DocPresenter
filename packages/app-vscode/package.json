@@ -2,7 +2,7 @@
   "name": "docpresenter",
   "displayName": "DocPresenter",
   "description": "%extension.description%",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "publisher": "rintaro-sugishita",
   "private": true,
   "license": "SEE LICENSE IN LICENSE.md",
