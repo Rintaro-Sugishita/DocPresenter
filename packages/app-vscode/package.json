@@ -121,6 +121,21 @@
           "default": "out/build",
           "description": "%config.outDir.description%"
         },
+        "docpresenter.tables.raw": {
+          "type": "boolean",
+          "default": false,
+          "description": "%config.tables.raw.description%"
+        },
+        "docpresenter.tables.bom": {
+          "type": "boolean",
+          "default": true,
+          "description": "%config.tables.bom.description%"
+        },
+        "docpresenter.tables.bundle": {
+          "type": "boolean",
+          "default": false,
+          "description": "%config.tables.bundle.description%"
+        },
         "docpresenter.markdownEditing": {
           "type": "boolean",
           "default": true,
