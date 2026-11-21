@@ -486,7 +486,7 @@ function renderEdge(
     // A flow turns its corners on a curve; a free drawing keeps the corners
     // its author put there.
     rounded
-      ? `<path class="dp-edge-line" d="${roundedPath(clipped)}"/>`
+      ? `<path class="dp-edge-line" d="${roundedPath(clipped, undefined, route.hops)}"/>`
       : `<polyline points="${clipped.map(p => `${n(p.x)},${n(p.y)}`).join(' ')}"/>`,
     ...(edge.arrow !== 'none'
       ? [arrowHead(clipped[clipped.length - 2]!, clipped[clipped.length - 1]!)] : []),
