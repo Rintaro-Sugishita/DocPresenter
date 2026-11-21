@@ -138,6 +138,24 @@ describe('フローの線', () => {
     expect(xml).not.toContain('<a:custGeom>');
   });
 
+  it('交差点の跨ぎは出さない（画面と PDF だけの印である）', () => {
+    // 線が交わる図。画面と PDF では、流れを横切るほうが小さな弧で跨ぐ。
+    // デッキの線は PowerPoint のプリセット図形（bentConnector3）であり、
+    // 弧を持てない。出すには custGeom にするしかなく、そうすると受け取った
+    // 側が図形と一緒に動かせる線でなくなる。弧より、そちらのほうが重い。
+    const crossing = drawingOf(diagram(
+      'flow TB {', '  a [a]', '  b [b]', '  c [c]', '  d [d]', '  e [e]', '  f [f]',
+      '  a --> b', '  a --> c', '  a --> d', '  a --> e', '  f --> e', '  f --> b', '}',
+    ));
+    const xml = strFromU8(unzipSync(writePptx({
+      title: '図', diagnostics: [],
+      slides: [{ title: undefined, blocks: [crossing] }],
+    }))['ppt/slides/slide1.xml']!);
+    expect(xml).toContain('prst="bentConnector3"');
+    expect(xml).not.toContain('<a:custGeom>');
+    expect(xml).not.toContain('<a:arcTo');
+  });
+
   it('下へ向かうカギ線は 4 分の 1 回して置く', () => {
     expect(slide()).toMatch(/<a:xfrm rot="5400000"( flipV="1")?>/);
   });

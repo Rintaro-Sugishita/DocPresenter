@@ -5,11 +5,18 @@
 // the pin meaningless.
 
 import { arrangeContainers, containerOf, type Hole, type TableRules } from './arrange.js';
+import { layoutEngine, type GraphEdge } from './engine.js';
+// Puts the engine that ships with the tool in the register. Something has to
+// import it for its registration to run, and `engine.js` cannot — the two
+// would then depend on each other — so the layout, which is what needs an
+// engine to exist at all, is where it is done.
+import './layered.js';
 import { lineText, parseLabel, parseRuns, type TextLine } from './inline.js';
 import {
   DEFAULT_SIZE, type DiagramFile, type Edge, type FlowDirection, type Node, type Point,
 } from './model.js';
 import { isListing } from './draw/listing.js';
+import { HOP_RADIUS } from './draw/geometry.js';
 import { textPlace } from './draw/stencil.js';
 import { textWidth, wrapRuns } from './text.js';
 import { DEFAULT_LOCALE, say, type ByteSpan, type Locale, type Phrase } from '@docpresenter/base';
@@ -51,6 +58,21 @@ export interface EdgeRoute {
   readonly points: readonly Point[];
   /** Where the label sits: half way along, or nudged aside to keep it legible. */
   readonly labelAt: Point | undefined;
+  /**
+   * Where this line steps over another, drawn as a small arc so that a reader
+   * at the crossing can see which of the two carries on through it.
+   *
+   * Only the line running across the flow steps over the one running along
+   * it, so the spine of the drawing is never broken and a crossing is always
+   * read the same way round.
+   *
+   * These are a drawing, not geometry: the line still goes straight through.
+   * The screen and the PDF draw them; a deck cannot, because its connections
+   * are PowerPoint's own bent-connector shapes and those have no such arc.
+   * Leaving them out there is deliberate — a drawn-out line that someone can
+   * no longer move with the shape would cost more than the arc is worth.
+   */
+  readonly hops: readonly Point[];
 }
 
 export interface LaidOutDiagram {
@@ -344,6 +366,11 @@ function route(
     return box;
   };
 
+  // Where every line leaves, enters and turns, decided for all of them
+  // together: one line cannot tell on its own whether it is about to be drawn
+  // on top of another.
+  const { places: placed, corridors } = channels(diagram, boxes, courses, frameOf, across, aside);
+
   const routes: EdgeRoute[] = [];
   for (const edge of diagram.edges) {
     const from = boxes.get(edge.from);
@@ -357,11 +384,11 @@ function route(
     // are not decided again on the next render.
     const bend = diagram.bends.get(`${edge.from}->${edge.to}`);
     if (bend && bend.points.length > 0) {
-      routes.push({ edge, points: [a, ...bend.points, b], labelAt: undefined });
+      routes.push({ edge, points: [a, ...bend.points, b], labelAt: undefined, hops: [] });
       continue;
     }
     if (edge.from === edge.to) {
-      routes.push({ edge, points: selfLoop(from, across, byId.get(edge.from)?.shape === 'group'), labelAt: undefined });
+      routes.push({ edge, points: selfLoop(from, across, byId.get(edge.from)?.shape === 'group'), labelAt: undefined, hops: [] });
       continue;
     }
 
@@ -383,7 +410,7 @@ function route(
         a = { x: a.x + normal.x * shift, y: a.y + normal.y * shift };
         b = { x: b.x + normal.x * shift, y: b.y + normal.y * shift };
       }
-      routes.push({ edge, points: [a, b], labelAt: undefined });
+      routes.push({ edge, points: [a, b], labelAt: undefined, hops: [] });
       continue;
     }
 
@@ -403,22 +430,36 @@ function route(
     const edgeOf = (name: keyof typeof lanes): number => bounds[side(name)];
     const fits = (points: readonly Point[]): boolean => clear(points.map(t));
     const done = (points: readonly Point[]): void => {
-      routes.push({ edge, points: points.map(t), labelAt: undefined });
+      routes.push({ edge, points: points.map(t), labelAt: undefined, hops: [] });
     };
     // Moved aside across the flow, ends and turn alike, so two connections
     // between the same shapes run side by side the whole way.
     const shift = clampShift(aside.get(edge) ?? 0, turnBox(from), turnBox(to), true);
-    const tail = { x: t(a).x + shift, y: t(a).y };
-    const head = { x: t(b).x + shift, y: t(b).y };
+    // And moved again to its own place on the side of each shape, so that
+    // the lines leaving one shape do not all leave the same point.
+    const port = placed.get(edge) ?? { tail: 0, head: 0, lane: undefined };
+    const inset = (offset: number, box: Box): number => {
+      const room = Math.max(0, turnBox(box).width / 2 - 6);
+      return Math.max(-room, Math.min(room, offset));
+    };
+    const tail = { x: t(a).x + inset(shift + port.tail, from), y: t(a).y };
+    const head = { x: t(b).x + inset(shift + port.head, to), y: t(b).y };
 
     const direct = elbow(tail, head, turnBox(frameOf(edge.from, edge.to)), turnBox(frameOf(edge.to, edge.from)));
     if (direct.length === 4) {
-      // The turn moves too, the way that keeps two side-by-side lines from
-      // crossing: the one on the outside of the corner turns further out.
-      // Worked out on the line's own course, so `a -> b` and `b -> a` agree.
-      const step = -shift * Math.sign(head.x - tail.x || 1) * Math.sign(head.y - tail.y || 1);
-      direct[1] = { ...direct[1]!, y: direct[1]!.y + step };
-      direct[2] = { ...direct[2]!, y: direct[2]!.y + step };
+      if (port.lane !== undefined) {
+        // Its own lane in the gap, worked out against every other line
+        // crossing the same gap.
+        direct[1] = { ...direct[1]!, y: port.lane };
+        direct[2] = { ...direct[2]!, y: port.lane };
+      } else {
+        // The turn moves too, the way that keeps two side-by-side lines from
+        // crossing: the one on the outside of the corner turns further out.
+        // Worked out on the line's own course, so `a -> b` and `b -> a` agree.
+        const step = -shift * Math.sign(head.x - tail.x || 1) * Math.sign(head.y - tail.y || 1);
+        direct[1] = { ...direct[1]!, y: direct[1]!.y + step };
+        direct[2] = { ...direct[2]!, y: direct[2]!.y + step };
+      }
     }
     if (fits(direct)) { done(direct); continue; }
 
@@ -442,11 +483,21 @@ function route(
     const y = end === 'bottom'
       ? edgeOf('bottom') + CHANNEL_GAP * lanes[side('bottom')]
       : edgeOf('top') - CHANNEL_GAP * lanes[side('top')];
-    const outer = gapsOf(tail, head, fromFrame, toFrame);
+    // The channel at the other end of the drawing, for a line that leaves the
+    // way the flow runs before going round.
+    const far = back ? 'bottom' : 'top';
+    const farY = far === 'bottom'
+      ? edgeOf('bottom') + CHANNEL_GAP * lanes[side('bottom')]
+      : edgeOf('top') - CHANNEL_GAP * lanes[side('top')];
+    // A detour turns clear of every lane the lines above already took.
+    const clearLane = (y: number, low: number, high: number): number =>
+      clearOf(y, turn ? corridors.across : corridors.along, low, high);
+    const outer = gapsOf(tail, head, fromFrame, toFrame, clearLane);
 
     // Between the shapes: leaving along the flow and turning in the gap
     // between rows, so the line does not cut across its neighbours.
-    const between: Way[] = gapRoutes(tail, head, fromFrame, toFrame, turned).map(points => ({ points, lanes: [] }));
+    const between: Way[] = gapRoutes(tail, head, fromFrame, toFrame, turned, clearLane)
+      .map(points => ({ points, lanes: [] }));
     // Outside: the channel beside the drawing, straight across or through the
     // gaps between rows.
     const outside: Way[] = [
@@ -457,10 +508,28 @@ function route(
     const around: Way[] = [
       { points: [tail, { x, y: tail.y }, { x, y }, { x: head.x, y }, head], lanes: [beside, end] },
       { points: [tail, { x: tail.x, y }, { x: head.x, y }, head], lanes: [end] },
+      // Out the way the flow runs, round the outside of everything, and in at
+      // the far end. A connection from the foot of a drawing back to its head
+      // has nowhere good to go through the middle: every row is in the way,
+      // and the ways above leave sideways at the height of the shape they
+      // start from, which on a crowded row is straight through its neighbour.
+      // Going round is longer, and crosses nothing.
+      {
+        points: tidy([tail, { x: tail.x, y: farY }, { x, y: farY },
+          { x, y }, { x: head.x, y }, head]),
+        lanes: [beside, end, far],
+      },
     ];
-    // A line going back keeps to its own side when it can, so the direction
-    // reads at a glance; a line going on takes the best way there is.
-    const tiers: Way[][] = back ? [outside, [...between, ...around]] : [[...between, ...outside, ...around]];
+    // A line going back keeps to the outside when it can, so the direction
+    // reads at a glance: the channel beside the drawing, or right round it.
+    // Which of those is weighed below, not decided here — a line from the foot
+    // of a drawing back to its head reaches the channel only by cutting
+    // through the row it starts on, and going round is then both clear and,
+    // once the crossings are counted, cheaper. A line going on takes the best
+    // way there is.
+    const tiers: Way[][] = back
+      ? [[...outside, ...around], between]
+      : [[...between, ...outside, ...around]];
 
     const ends = [frameOf(edge.from, edge.to), frameOf(edge.to, edge.from)];
     // Lines from or to the same shape may run together into it — they meet
@@ -511,7 +580,582 @@ function route(
     for (const one of chosen.lanes) lanes[side(one)]++;
     done(chosen.points);
   }
-  return placeLabels(routes);
+  return placeLabels(stepOver(routes, boxes, across));
+}
+
+/** Between two connections turning in the same gap between two rows. */
+const LANE_GAP = 16;
+/**
+ * How far apart two runs sharing a lane must end. Lines that merely touch
+ * there put three line-ends on one point, and a reader at that junction
+ * cannot tell which of them carries on through it.
+ */
+const LANE_CLEAR = 14;
+/** The room kept between the outermost lane and the rows on either side. */
+const LANE_MARGIN = 10;
+/** How much of a shape's width the connections leaving one side may spread over. */
+const PORT_SPREAD = 0.7;
+
+/**
+ * Where one connection leaves its shape, where it enters the next, and where
+ * it turns in between. All three are measured across the flow, in the drawing's
+ * own pixels, as an offset from where the line would otherwise run.
+ */
+interface Channel {
+  readonly tail: number;
+  readonly head: number;
+  /** Where it turns, along the flow; absent when it turns where it always did. */
+  readonly lane: number | undefined;
+}
+
+/**
+ * The places every line turns, and the heights those turns are at. A line
+ * that has to detour round a shape is not placed here — which way it goes is
+ * not known until the ways are weighed — but it still has to keep out of the
+ * lanes these lines took, so the heights are kept for it.
+ */
+interface Channels {
+  readonly places: ReadonlyMap<Edge, Channel>;
+  readonly corridors: { readonly along: readonly number[]; readonly across: readonly number[] };
+}
+
+/**
+ * Works out those three for every connection at once.
+ *
+ * None of them can be decided for one line on its own. Four lines leaving the
+ * same shape all leave its centre unless they are told about each other, and
+ * four lines crossing the same gap between rows all turn at the middle of it.
+ * Either on its own puts several lines on top of one another, and lines drawn
+ * on top of one another read as one line — which is the whole of what makes a
+ * busy flow unreadable, far more than any crossing does.
+ *
+ * So: the lines on one side of one shape are spread along that side, and the
+ * lines crossing one gap are given lanes within it. Lanes are shared wherever
+ * two lines cannot be confused — two whose runs do not overlap at all can turn
+ * at the same height — so a drawing uses as few lanes as it needs, and a
+ * drawing that needed none is left exactly as it was.
+ */
+function channels(
+  diagram: DiagramFile,
+  boxes: ReadonlyMap<string, Box>,
+  courses: ReadonlyMap<Edge, Course>,
+  frameOf: (id: string, other: string) => Box,
+  defaultAcross: boolean,
+  aside: ReadonlyMap<Edge, number>,
+): Channels {
+  const byId = new Map(diagram.nodes.map(n => [n.id, n]));
+  const flip = (box: Box): Box =>
+    ({ ...box, x: box.y, y: box.x, width: box.height, height: box.width });
+
+  /** One connection as this pass sees it, already turned so the flow runs down. */
+  interface Run {
+    readonly edge: Edge;
+    readonly turn: boolean;
+    readonly from: Box;
+    readonly to: Box;
+    /** Where the line starts and ends across the flow, before anything here. */
+    readonly at: { tail: number; head: number };
+    /** Which side of each shape it uses: the far side along the flow, or the near one. */
+    readonly down: boolean;
+    /** The middle of the gap it crosses, which is where it would turn. */
+    readonly middle: number;
+  }
+
+  const runs: Run[] = [];
+  for (const edge of diagram.edges) {
+    const from = boxes.get(edge.from);
+    const to = boxes.get(edge.to);
+    if (!from || !to) continue;
+    if (edge.from === edge.to) continue;
+    // A line whose corners the author wrote goes where they put it.
+    if ((diagram.bends.get(`${edge.from}->${edge.to}`)?.points.length ?? 0) > 0) continue;
+
+    const turn = (courses.get(edge) ?? { across: defaultAcross }).across;
+    let a = centre(from);
+    let b = centre(to);
+    if (byId.get(edge.from)?.shape === 'group') a = meet(from, b, turn);
+    if (byId.get(edge.to)?.shape === 'group') b = meet(to, a, turn);
+    const t = (p: Point): Point => (turn ? { x: p.y, y: p.x } : p);
+    const fromFrame = turn ? flip(frameOf(edge.from, edge.to)) : frameOf(edge.from, edge.to);
+    const toFrame = turn ? flip(frameOf(edge.to, edge.from)) : frameOf(edge.to, edge.from);
+
+    // Only the lines that run along the flow are placed here. One between two
+    // shapes side by side turns across the flow instead, and one between
+    // shapes that overlap has no gap to turn in at all.
+    const below = toFrame.y >= fromFrame.y + fromFrame.height;
+    const above = toFrame.y + toFrame.height <= fromFrame.y;
+    if (!below && !above) continue;
+
+    const middle = below
+      ? (fromFrame.y + fromFrame.height + toFrame.y) / 2
+      : (toFrame.y + toFrame.height + fromFrame.y) / 2;
+    runs.push({
+      edge, turn, from: turn ? flip(from) : from, to: turn ? flip(to) : to,
+      at: { tail: t(a).x, head: t(b).x }, down: below, middle,
+    });
+  }
+
+  const out = new Map<Edge, Channel>();
+  const corridors = { along: [] as number[], across: [] as number[] };
+  if (runs.length === 0) return { places: out, corridors };
+  for (const run of runs) out.set(run.edge, { tail: 0, head: 0, lane: undefined });
+
+  const offsets = new Map<Run, { tail: number; head: number }>(
+    runs.map(run => [run, { tail: 0, head: 0 }]),
+  );
+
+  // Which side of which shape each end leaves by, so that the lines on one
+  // side can be looked at together.
+  const sideKey = (run: Run, end: 'tail' | 'head'): string => {
+    const id = end === 'tail' ? run.edge.from : run.edge.to;
+    const far = run.down === (end === 'tail');
+    return `${id}\0${run.turn ? 'across' : 'along'}\0${far}`;
+  };
+  const sides = new Map<string, { run: Run; end: 'tail' | 'head' }[]>();
+  for (const run of runs) {
+    for (const end of ['tail', 'head'] as const) {
+      const key = sideKey(run, end);
+      const list = sides.get(key);
+      if (list) list.push({ run, end }); else sides.set(key, [{ run, end }]);
+    }
+  }
+
+  // The gaps between rows, and which lines cross each one.
+  const gaps = new Map<string, Run[]>();
+  for (const run of runs) {
+    const key = `${run.turn ? 'across' : 'along'}\0${Math.round(run.middle)}`;
+    const list = gaps.get(key);
+    if (list) list.push(run); else gaps.set(key, [run]);
+  }
+
+  // A pair between the same two shapes — `a --> b` written beside `b --> a` —
+  // is drawn as two lines a little apart, each turning to its own side of the
+  // gap so that they do not cross at the corner. The pair takes one lane
+  // between them and spreads inside it: the two belong together, and the lane
+  // has to know how much room they take or the next line along lands on top
+  // of one of them.
+  const asideOf = (run: Run): number => aside.get(run.edge) ?? 0;
+  const paired = (run: Run): boolean => asideOf(run) !== 0;
+  /** Whether the layout had to run this one against the flow. */
+  const goesBack = (run: Run): boolean => courses.get(run.edge)?.back === true;
+  /** Which of the pair's two sides of the lane this one turns on. */
+  const pairStep = (run: Run): number => {
+    const shift = asideOf(run);
+    if (shift === 0) return 0;
+    const sideways = Math.sign((run.at.head + offsets.get(run)!.head)
+      - (run.at.tail + offsets.get(run)!.tail) || 1);
+    return -shift * sideways * (run.down ? 1 : -1);
+  };
+  /** What a pair holds the two of them together: one line needs no room. */
+  const bandOf = (run: Run): number => Math.abs(pairStep(run));
+  const endAt = (run: Run, end: 'tail' | 'head'): number =>
+    (end === 'tail' ? run.at.tail : run.at.head) + offsets.get(run)![end];
+  const span = (run: Run): [number, number] => {
+    const tail = endAt(run, 'tail');
+    const head = endAt(run, 'head');
+    return tail <= head ? [tail, head] : [head, tail];
+  };
+
+  /**
+   * Whether two lines crossing one gap may turn at the same height. They may
+   * when their runs across the flow do not overlap and end well apart — and
+   * also when they only meet at a column both of them leave by. Two lines out
+   * of one shape fork from one stem there, which is how a tree is drawn: it
+   * reads as one line splitting, not as two lines confused.
+   */
+  const shares = (one: Run, other: Run): boolean => {
+    const [al, ah] = span(one);
+    const [bl, bh] = span(other);
+    const over = Math.min(ah, bh) - Math.max(al, bl);
+    if (over > 0) return false;
+    if (-over >= LANE_CLEAR) return true;
+    return Math.abs(endAt(one, 'tail') - endAt(other, 'tail')) < 1
+      || Math.abs(endAt(one, 'head') - endAt(other, 'head')) < 1;
+  };
+
+  /**
+   * Which lines have to turn below which. Two lines crossing one gap each
+   * reach it by a stub above their turn and leave by one below it, and a line
+   * whose turn runs over another's stub cuts it. So: if one line's run spans
+   * the column another arrives by, it has to turn below that other; if it
+   * spans the column the other leaves by, it has to turn above it.
+   *
+   * That is a constraint, not a preference, and it cannot be had from sorting
+   * on any one measure — the order that works for a fan out of one shape is
+   * the wrong way round for two lines coming together on one shape. So the
+   * demands are collected and the lines are stacked in an order that meets
+   * them.
+   */
+  const below = new Map<Run, Run[]>();
+
+  /**
+   * The lines of one gap, in the order they must turn in.
+   *
+   * Where the demands contradict each other the lines genuinely cross, and no
+   * order avoids it: the widest goes first and its own demands are dropped,
+   * which leaves one crossing instead of several.
+   */
+  const stack = (rows: readonly Run[]): Run[] => {
+    const reach = (run: Run): number => { const [low, high] = span(run); return high - low; };
+    const rank = (p: Run, q: Run): number =>
+      reach(q) - reach(p) || span(p)[0] - span(q)[0] || span(p)[1] - span(q)[1];
+    if (rows.length < 2) return [...rows].sort(rank);
+
+    const inside = (run: Run, x: number): boolean => {
+      const [low, high] = span(run);
+      return x > low + 0.5 && x < high - 0.5;
+    };
+    // The column a line comes in by, and the one it leaves by, either side of
+    // where it turns. A line running against the flow has them the other way.
+    const over = (run: Run): number => endAt(run, run.down ? 'tail' : 'head');
+    const under = (run: Run): number => endAt(run, run.down ? 'head' : 'tail');
+
+    const after = new Map<Run, Set<Run>>(rows.map(run => [run, new Set<Run>()]));
+    const waiting = new Map<Run, number>(rows.map(run => [run, 0]));
+    const demand = (first: Run, next: Run): void => {
+      if (first === next || after.get(first)!.has(next)) return;
+      after.get(first)!.add(next);
+      waiting.set(next, waiting.get(next)! + 1);
+    };
+    for (const one of rows) {
+      for (const other of rows) {
+        if (one === other) continue;
+        if (inside(other, over(one))) demand(one, other);
+        if (inside(other, under(one))) demand(other, one);
+      }
+    }
+
+    const left = new Set(rows);
+    const out: Run[] = [];
+    while (left.size > 0) {
+      const ready = [...left].filter(run => (waiting.get(run) ?? 0) === 0);
+      const pick = (ready.length > 0 ? ready : [...left]).sort(rank)[0]!;
+      left.delete(pick);
+      out.push(pick);
+      for (const next of after.get(pick)!) {
+        if (left.has(next)) waiting.set(next, waiting.get(next)! - 1);
+      }
+    }
+    for (const run of out) below.set(run, [...after.get(run)!]);
+    return out;
+  };
+
+  /** Which lane of its gap each turning line takes, and how many each gap needs. */
+  const sortOut = (): {
+    slot: Map<Run, number>;
+    width: Map<string, number>;
+    turning: Map<string, Run[]>;
+  } => {
+    const slot = new Map<Run, number>();
+    const width = new Map<string, number>();
+    const turning = new Map<string, Run[]>();
+    for (const [key, group] of gaps) {
+      const rows = stack(group.filter(run => {
+        const [low, high] = span(run);
+        return high - low > 1;
+      }));
+      turning.set(key, rows);
+      // The two of a pair are one entry here, so that they take one lane.
+      const unit = (run: Run): string =>
+        (paired(run) ? [run.edge.from, run.edge.to].sort().join('\0') : '');
+      const taken: Run[][] = [];
+      const already = new Map<string, number>();
+      // A line may not take a lane above one it has to stay below.
+      const under = new Map<Run, number>();
+      for (const run of rows) {
+        const key2 = unit(run);
+        const found = key2 === '' ? undefined : already.get(key2);
+        if (found !== undefined) { taken[found]!.push(run); slot.set(run, found); continue; }
+        const lowest = under.get(run) ?? 0;
+        let at = taken.findIndex((used, i) => i >= lowest && used.every(one => shares(one, run)));
+        if (at === -1) { at = Math.max(taken.length, lowest); while (taken.length <= at) taken.push([]); }
+        taken[at]!.push(run);
+        slot.set(run, at);
+        if (key2 !== '') already.set(key2, at);
+        for (const next of below.get(run) ?? []) {
+          under.set(next, Math.max(under.get(next) ?? 0, at + 1));
+        }
+      }
+      width.set(key, taken.length);
+    }
+    return { slot, width, turning };
+  };
+
+  // The lines on one side of one shape are spread along that side only where
+  // they have to be. Lines that all turn in one lane leave by one stem and
+  // fork, which is clear as it stands — and an end left on the middle of a
+  // side is an end PowerPoint can glue a connector to, which an end moved
+  // anywhere else is not. A drawing that was already clear is not rearranged
+  // to make room for a problem it does not have.
+  const crowded = new Set<string>();
+  const first = sortOut();
+  for (const [key, rows] of first.turning) {
+    if ((first.width.get(key) ?? 0) < 2) continue;
+    for (const run of rows) {
+      crowded.add(sideKey(run, 'tail'));
+      crowded.add(sideKey(run, 'head'));
+    }
+  }
+  // A side where a line leaves along the flow and another arrives against it
+  // is crowded however quiet its gap looks: the two meet at the middle of
+  // that side, one going out and one coming in, and an arrowhead on each end
+  // of one line is the hardest thing of all to read.
+  for (const [key, list] of sides) {
+    if (list.length > 1 && list.some(one => goesBack(one.run))) crowded.add(key);
+  }
+
+  for (const [key, list] of sides) {
+    if (!crowded.has(key)) continue;
+    const box = (one: { run: Run; end: 'tail' | 'head' }): Box =>
+      (one.end === 'tail' ? one.run.from : one.run.to);
+    const toward = (one: { run: Run; end: 'tail' | 'head' }): number =>
+      (one.end === 'tail' ? one.run.at.head : one.run.at.tail);
+    const other = (one: { run: Run; end: 'tail' | 'head' }): string =>
+      (one.end === 'tail' ? one.run.edge.to : one.run.edge.from);
+
+    // Every connection to the same shape shares one place on this side.
+    // Two of them — `a --> b` written beside `b --> a` — are already drawn
+    // side by side a label's width apart, and pulling them to opposite ends
+    // of the shape would stop them reading as the pair they are.
+    const slots = new Map<string, { run: Run; end: 'tail' | 'head' }[]>();
+    for (const one of list) {
+      const found = slots.get(other(one));
+      if (found) found.push(one); else slots.set(other(one), [one]);
+    }
+    if (slots.size < 2) continue;
+
+    const width = Math.min(...list.map(one => box(one).width));
+    const room = Math.max(0, width * PORT_SPREAD) / 2;
+    // In the order the other ends stand, so that lines fanning out of one
+    // shape do not cross each other on the way.
+    const sorted = [...slots.entries()].sort(([p, ps], [q, qs]) =>
+      toward(ps[0]!) - toward(qs[0]!) || p.localeCompare(q));
+
+    // A connection the layout had to run against the flow is drawn down the
+    // channel beside the whole drawing, so it leaves and enters on that side
+    // of the shape too — otherwise it crosses the shape's own outgoing line
+    // on its way in. It is set against that edge rather than given a place in
+    // the spread, so that the lines of the flow itself keep the room they had:
+    // a shape with one line down and one coming back still sends its own line
+    // straight out of the middle, where a connector in a deck can be glued to
+    // it. A pair written both ways round is not one of these — it belongs
+    // with the fan, not against the edge.
+    const away = (slot: { run: Run; end: 'tail' | 'head' }[]): boolean => slot.every(one => goesBack(one.run));
+    const aside2 = sorted.filter(([, group]) => away(group));
+    const fan = sorted.filter(([, group]) => !away(group));
+
+    aside2.forEach(([, group], i) => {
+      const place = Math.round(-room + i * LANE_CLEAR);
+      for (const one of group) offsets.get(one.run)![one.end] = Math.max(-room, Math.min(room, place));
+    });
+    const kept = Math.max(0, room - aside2.length * LANE_CLEAR);
+    fan.forEach(([, group], i) => {
+      const place = fan.length === 1 ? 0 : ((i / (fan.length - 1)) * 2 - 1) * kept;
+      for (const one of group) offsets.get(one.run)![one.end] = Math.round(place);
+    });
+  }
+
+  // The lanes again, now that the ends have moved.
+  const occupy = (run: Run, y: number): void => {
+    (run.turn ? corridors.across : corridors.along).push(y);
+  };
+  const { slot, width: howMany, turning } = sortOut();
+  for (const [key, group] of gaps) {
+    const rows = turning.get(key) ?? [];
+    if (rows.length === 0) continue;
+    const count = howMany.get(key) ?? 1;
+    if (count < 2) {
+      for (const run of rows) occupy(run, run.middle + pairStep(run));
+      continue;
+    }
+
+    // How much room each lane needs: none for a single line, and the width of
+    // the pair for a lane two of them share.
+    const halves: number[] = Array.from({ length: count }, () => 0);
+    for (const run of rows) {
+      const at = slot.get(run)!;
+      halves[at] = Math.max(halves[at]!, bandOf(run));
+    }
+    // Centred on the middle of the gap, so the lanes sit where the one line
+    // used to, and kept clear of the rows on either side.
+    const room = Math.max(0, Math.min(...rows.map(run => {
+      const near = run.down
+        ? Math.min(run.middle - (run.from.y + run.from.height), run.to.y - run.middle)
+        : Math.min(run.middle - (run.to.y + run.to.height), run.from.y - run.middle);
+      return near - LANE_MARGIN;
+    })));
+    const total = halves.reduce((sum, half) => sum + half * 2, 0) + LANE_GAP * (count - 1);
+    const squeeze = total > room * 2 && total > 0 ? (room * 2) / total : 1;
+    const centres: number[] = [];
+    let at = -total / 2;
+    for (const half of halves) {
+      centres.push((at + half) * squeeze);
+      at += half * 2 + LANE_GAP;
+    }
+    for (const run of rows) {
+      const place = Math.round(run.middle + centres[slot.get(run)!]! + pairStep(run));
+      out.set(run.edge, { ...out.get(run.edge)!, lane: place });
+      occupy(run, place);
+    }
+  }
+
+  // Spreading the lines along each side one shape at a time can still put two
+  // of them in the same column: a shape directly above another gives both the
+  // same room to spread into, so the line entering the lower one and the line
+  // leaving the upper one can land on the same offset by coincidence. Two
+  // lines running down one column read as one line however carefully their
+  // ends were placed, so the later of the two is moved aside.
+  for (let pass = 0; pass < 4; pass++) {
+    const stubs = runs.flatMap(run => {
+      const place = out.get(run.edge)!.lane ?? run.middle;
+      const one = offsets.get(run)!;
+      const at = (box: Box, end: 'tail' | 'head', x: number) => {
+        const near = run.down === (end === 'tail') ? box.y + box.height : box.y;
+        // Only as far as the gap beside the shape. Where a connection spans
+        // several rows its turn is worked out half way along the whole of it,
+        // which is nowhere near either end — and the line does not run down
+        // that column at all, because a span like that detours. Measuring the
+        // stub to there invents a line through the middle of the drawing and
+        // shoves everything that meets it aside.
+        const far = near + Math.sign(place - near || 1)
+          * Math.min(Math.abs(place - near), RANK_GAP);
+        return {
+          run, end, x,
+          low: Math.min(near, far), high: Math.max(near, far),
+          side: `${end === 'tail' ? run.edge.from : run.edge.to}\0${run.down === (end === 'tail')}`,
+        };
+      };
+      return [
+        at(run.from, 'tail', run.at.tail + one.tail),
+        at(run.to, 'head', run.at.head + one.head),
+      ];
+    });
+
+    let moved = false;
+    for (let i = 0; i < stubs.length; i++) {
+      for (let j = i + 1; j < stubs.length; j++) {
+        const p = stubs[i]!;
+        const q = stubs[j]!;
+        if (p.run.turn !== q.run.turn) continue;
+        // Two lines leaving the same side of the same shape were spread on
+        // purpose; they are as far apart as that side allows.
+        if (p.side === q.side) continue;
+        if (Math.abs(p.x - q.x) >= LANE_CLEAR) continue;
+        if (Math.min(p.high, q.high) - Math.max(p.low, q.low) <= ALONGSIDE) continue;
+
+        const box = q.end === 'tail' ? q.run.from : q.run.to;
+        const room = Math.max(0, box.width / 2 - 6);
+        const want = (p.x <= q.x ? 1 : -1) * LANE_CLEAR;
+        const was = offsets.get(q.run)![q.end];
+        const now = Math.max(-room, Math.min(room, was + want));
+        if (now === was) continue;
+        offsets.get(q.run)![q.end] = now;
+        moved = true;
+      }
+    }
+    if (!moved) break;
+  }
+
+  for (const run of runs) {
+    const one = offsets.get(run)!;
+    out.set(run.edge, { ...out.get(run.edge)!, tail: one.tail, head: one.head });
+  }
+  return { places: out, corridors };
+}
+
+/**
+ * `y` moved off any height a line already turns at, by the smaller of the two
+ * moves that clear it. A detour that turned where a placed line turns would
+ * run along it, and two lines running along each other read as one.
+ */
+function clearOf(y: number, used: readonly number[], low: number, high: number): number {
+  const blocked = (at: number): boolean => used.some(one => Math.abs(one - at) < LANE_GAP);
+  if (!blocked(y)) return y;
+  for (let step = 1; step <= used.length + 1; step++) {
+    for (const way of [-1, 1]) {
+      const at = y + way * step * LANE_GAP;
+      // Outside the gap it is no longer a lane but a line through a row.
+      if (at >= low && at <= high && !blocked(at)) return at;
+    }
+  }
+  return y;
+}
+
+/** How much room a step over another line needs on either side of it. */
+const HOP_ROOM = HOP_RADIUS + 3;
+
+/**
+ * Marks every place one connection crosses another, on the one of the two
+ * that will step over it.
+ *
+ * Which one steps is not a choice made crossing by crossing: **the line
+ * running across the flow steps over the line running along it**, always. The
+ * drawing's spine is then never broken, and a reader who has learnt the rule
+ * at one crossing can read every other crossing without looking twice. The
+ * other way round — stepping whichever line was drawn second — would put the
+ * breaks in different places on the same shape of drawing.
+ *
+ * Only square crossings are marked. A line drawn at an angle (a free drawing,
+ * or two shapes with no gap to turn in) is not stepped over: the arc would sit
+ * askew on it, and a crossing at an angle is not the one that confuses anyone.
+ */
+function stepOver(
+  routes: readonly EdgeRoute[], boxes: ReadonlyMap<string, Box>, across: boolean,
+): EdgeRoute[] {
+  const flat = (a: Point, b: Point): boolean => Math.abs(a.y - b.y) < 0.5 && Math.abs(a.x - b.x) > 0.5;
+  const upright = (a: Point, b: Point): boolean => Math.abs(a.x - b.x) < 0.5 && Math.abs(a.y - b.y) > 0.5;
+  // Across the flow is sideways in a drawing that runs down the page, and up
+  // and down in one that runs across it.
+  const crosses = (a: Point, b: Point): boolean => (across ? upright(a, b) : flat(a, b));
+  const alongs = (a: Point, b: Point): boolean => (across ? flat(a, b) : upright(a, b));
+
+  const shapes = [...boxes.values()];
+  const hidden = (at: Point): boolean => shapes.some(box =>
+    at.x > box.x - 1 && at.x < box.x + box.width + 1
+    && at.y > box.y - 1 && at.y < box.y + box.height + 1);
+
+  const found = routes.map(() => [] as Point[]);
+  for (let i = 0; i < routes.length; i++) {
+    const mine = routes[i]!.points;
+    for (let j = 0; j < routes.length; j++) {
+      if (i === j) continue;
+      const theirs = routes[j]!.points;
+      for (let p = 0; p + 1 < mine.length; p++) {
+        if (!crosses(mine[p]!, mine[p + 1]!)) continue;
+        for (let q = 0; q + 1 < theirs.length; q++) {
+          if (!alongs(theirs[q]!, theirs[q + 1]!)) continue;
+          const at = intersection(mine[p]!, mine[p + 1]!, theirs[q]!, theirs[q + 1]!);
+          // A crossing at the very end of either run is two lines meeting,
+          // not one passing the other; one inside a shape is not drawn at all.
+          if (!at || hidden(at)) continue;
+          if (near(at, mine[p]!) || near(at, mine[p + 1]!)) continue;
+          if (near(at, theirs[q]!) || near(at, theirs[q + 1]!)) continue;
+          found[i]!.push(at);
+        }
+      }
+    }
+  }
+
+  return routes.map((route, i) => {
+    const mine = found[i]!;
+    if (mine.length === 0) return route;
+    // In the order they are met along the line, and never so close together
+    // that two arcs would run into each other.
+    const sorted = [...mine].sort((a, b) => a.x - b.x || a.y - b.y);
+    const kept: Point[] = [];
+    for (const at of sorted) {
+      if (kept.some(one => Math.abs(one.x - at.x) < HOP_ROOM * 2 && Math.abs(one.y - at.y) < HOP_ROOM * 2)) {
+        continue;
+      }
+      kept.push(at);
+    }
+    return { ...route, hops: kept };
+  });
+}
+
+/** Whether a crossing sits on top of one of the run's own ends. */
+function near(at: Point, end: Point): boolean {
+  return Math.abs(at.x - end.x) < HOP_ROOM && Math.abs(at.y - end.y) < HOP_ROOM;
 }
 
 /** What a corner adds to a way, in pixels of length: a straighter way reads easier. */
@@ -609,13 +1253,31 @@ const GAP_TRIES = 16;
  * the row it leaves and the gap before the row it enters. Worked out on a flow
  * running down the page, as the routing is.
  */
-function gapsOf(tail: Point, head: Point, from: Box, to: Box): { leave: number; enter: number } {
+function gapsOf(
+  tail: Point, head: Point, from: Box, to: Box,
+  clear: (y: number, low: number, high: number) => number = y => y,
+): { leave: number; enter: number } {
   const half = RANK_GAP / 2;
-  if (head.y > tail.y + 1) return { leave: from.y + from.height + half, enter: to.y - half };
-  if (head.y < tail.y - 1) return { leave: from.y - half, enter: to.y + to.height + half };
+  // A turn moved out of a lane still has to stay in the gap it turns in:
+  // beyond that it is inside the next row, which is worse than any overlap.
+  const after = (edge: number): [number, number] => [edge + LANE_MARGIN, edge + RANK_GAP - LANE_MARGIN];
+  const before = (edge: number): [number, number] => [edge - RANK_GAP + LANE_MARGIN, edge - LANE_MARGIN];
+  if (head.y > tail.y + 1) {
+    return {
+      leave: clear(from.y + from.height + half, ...after(from.y + from.height)),
+      enter: clear(to.y - half, ...before(to.y)),
+    };
+  }
+  if (head.y < tail.y - 1) {
+    return {
+      leave: clear(from.y - half, ...before(from.y)),
+      enter: clear(to.y + to.height + half, ...after(to.y + to.height)),
+    };
+  }
   // Side by side in one row: under both of them.
-  const under = Math.max(from.y + from.height, to.y + to.height) + half;
-  return { leave: under, enter: under };
+  const under = Math.max(from.y + from.height, to.y + to.height);
+  const at = clear(under + half, ...after(under));
+  return { leave: at, enter: at };
 }
 
 /**
@@ -623,8 +1285,11 @@ function gapsOf(tail: Point, head: Point, from: Box, to: Box): { leave: number; 
  * the gap before the row it enters, or after the row it leaves; and failing
  * those, down a gap between two columns, nearest the middle first.
  */
-function gapRoutes(tail: Point, head: Point, from: Box, to: Box, boxes: readonly Box[]): Point[][] {
-  const { leave, enter } = gapsOf(tail, head, from, to);
+function gapRoutes(
+  tail: Point, head: Point, from: Box, to: Box, boxes: readonly Box[],
+  clear: (y: number, low: number, high: number) => number = y => y,
+): Point[][] {
+  const { leave, enter } = gapsOf(tail, head, from, to, clear);
   const out: Point[][] = [
     tidy([tail, { x: tail.x, y: enter }, { x: head.x, y: enter }, head]),
     tidy([tail, { x: tail.x, y: leave }, { x: head.x, y: leave }, head]),
@@ -1110,7 +1775,11 @@ function autoPositions(
   // A connection belongs to the innermost layout that holds both its ends,
   // and there it joins whatever stands for each end — the shape itself, or
   // the group the shape is inside.
-  interface Joined { readonly from: string; readonly to: string; readonly edge: Edge }
+  // `edge` is the connection as the file wrote it, which the caller needs to
+  // record the course on; `together` is the same object under the name the
+  // engine knows it by, which is how the several edges of one connection to a
+  // group are kept from being split between going forward and going back.
+  interface Joined extends GraphEdge { readonly edge: Edge; readonly together: Edge }
   const joins = new Map<string | undefined, Joined[]>();
   for (const edge of diagram.edges) {
     // `b --> a ~` is drawn but does not order the flow: it goes whichever way
@@ -1126,7 +1795,9 @@ function autoPositions(
         // A group joined to what it holds says nothing about the order.
         if (a.includes(to) || b.includes(from)) continue;
         const level = a.slice(1).find(one => b.includes(one));
-        const one = { from: a[a.indexOf(level) - 1]!, to: b[b.indexOf(level) - 1]!, edge };
+        const one: Joined = {
+          from: a[a.indexOf(level) - 1]!, to: b[b.indexOf(level) - 1]!, edge, together: edge,
+        };
         const list = joins.get(level);
         if (list) list.push(one); else joins.set(level, [one]);
       }
@@ -1157,7 +1828,7 @@ function autoPositions(
 
   const courses = new Map<Edge, Course>();
   const unitSizes = new Map<string, { width: number; height: number }>(sizes);
-  const placed = new Map<string | undefined, Map<string, { x: number; y: number }>>();
+  const placed = new Map<string | undefined, ReadonlyMap<string, Point>>();
 
   // Inner groups first: a group is as big as its own drawing, and the layout
   // around it needs that size. A group with nothing to lay out takes no room.
@@ -1171,8 +1842,14 @@ function autoPositions(
     const axis = axisOf(level === undefined ? diagram.direction : byId.get(level)!.direction);
     const inside = new Set(members);
     const joined = (joins.get(level) ?? []).filter(one => inside.has(one.from) && inside.has(one.to));
-    const laid = layered(members, joined, id => unitSizes.get(id)!, axis);
-    for (const one of joined) courses.set(one.edge, { across: axis.across, back: laid.back(one) });
+    const laid = layoutEngine().arrange({
+      ids: members,
+      edges: joined,
+      size: id => unitSizes.get(id)!,
+      axis,
+      gap: { node: NODE_GAP, rank: RANK_GAP },
+    });
+    for (const one of joined) courses.set(one.edge, { across: axis.across, back: laid.back.has(one) });
     placed.set(level, laid.positions);
     if (level !== undefined) {
       unitSizes.set(level, {
@@ -1195,185 +1872,6 @@ function autoPositions(
   };
   put(undefined, 0, 0);
   return { positions, courses };
-}
-
-/**
- * A layered layout: rank by longest path, order each rank by the average
- * position of its neighbours, then space the ranks out along the flow. It is
- * not TALA, but it is deterministic, which is what a diff needs.
- *
- * Worked out along the flow and across it, so one piece of code serves all
- * four directions; a reversed flow is the same layout read from the far end.
- */
-function layered<E extends { from: string; to: string; edge?: Edge }>(
-  ids: readonly string[],
-  edges: readonly E[],
-  sizeOf: (id: string) => { width: number; height: number },
-  axis: { across: boolean; reversed: boolean },
-): {
-  positions: Map<string, { x: number; y: number }>;
-  width: number;
-  height: number;
-  back: (edge: E) => boolean;
-} {
-  const forward = forwardEdges(ids, edges);
-
-  const rank = new Map<string, number>(ids.map(id => [id, 0]));
-  for (let pass = 0; pass < ids.length; pass++) {
-    let moved = false;
-    for (const edge of forward) {
-      const next = rank.get(edge.from)! + 1;
-      if (rank.get(edge.to)! < next) { rank.set(edge.to, next); moved = true; }
-    }
-    if (!moved) break;
-  }
-
-  const ranks: string[][] = [];
-  for (const id of ids) {
-    const r = rank.get(id)!;
-    (ranks[r] ??= []).push(id);
-  }
-  for (let i = 0; i < ranks.length; i++) ranks[i] ??= [];
-
-  orderRanks(ranks, forward);
-
-  // `along` is the way the flow runs, `side` the way a rank spreads.
-  const along = (id: string): number => (axis.across ? sizeOf(id).width : sizeOf(id).height);
-  const side = (id: string): number => (axis.across ? sizeOf(id).height : sizeOf(id).width);
-  const flat = new Map<string, { along: number; side: number }>();
-  let at = 0;
-  for (const row of ranks) {
-    const total = row.reduce((sum, id) => sum + side(id), 0) + NODE_GAP * Math.max(0, row.length - 1);
-    const deepest = row.reduce((h, id) => Math.max(h, along(id)), 0);
-    let across = -total / 2;
-    for (const id of row) {
-      flat.set(id, { along: Math.round(at + (deepest - along(id)) / 2), side: Math.round(across) });
-      across += side(id) + NODE_GAP;
-    }
-    at += deepest + RANK_GAP;
-  }
-  const length = Math.max(0, at - RANK_GAP);
-
-  const positions = new Map<string, { x: number; y: number }>();
-  for (const [id, one] of flat) {
-    const main = axis.reversed ? length - one.along - along(id) : one.along;
-    positions.set(id, axis.across ? { x: main, y: one.side } : { x: one.side, y: main });
-  }
-
-  // The computed coordinates start at the origin so that a pinned coordinate,
-  // which a human reads off the drawing, means the same thing in both layers.
-  const all = [...positions.values()];
-  const minX = Math.min(...all.map(p => p.x), 0);
-  const minY = Math.min(...all.map(p => p.y), 0);
-  let width = 0;
-  let height = 0;
-  for (const [id, p] of positions) {
-    const moved = { x: p.x - minX, y: p.y - minY };
-    positions.set(id, moved);
-    width = Math.max(width, moved.x + sizeOf(id).width);
-    height = Math.max(height, moved.y + sizeOf(id).height);
-  }
-
-  return { positions, width, height, back: edge => rank.get(edge.to)! < rank.get(edge.from)! };
-}
-
-/**
- * The edges the ranking follows: all of them but the ones that would close a
- * cycle. A connection to a group stands for several edges here, one to each
- * shape it holds, and they go one way together — taking some of `g1 --> g2`
- * and some of `g2 --> g1` would interleave the two groups. So a connection is
- * taken whole or set aside whole: first the ones the walk below finds going
- * forward, then the rest, each only if none of its edges closes a cycle.
- */
-function forwardEdges<E extends { from: string; to: string; edge?: Edge }>(
-  ids: readonly string[], edges: readonly E[],
-): E[] {
-  const closing = backEdges(ids, edges);
-  const whole = new Map<unknown, E[]>();
-  for (const edge of edges) {
-    const key = edge.edge ?? edge;
-    const list = whole.get(key);
-    if (list) list.push(edge); else whole.set(key, [edge]);
-  }
-  const sets = [...whole.values()];
-  const order = [
-    ...sets.filter(list => !list.some(e => closing.has(e))),
-    ...sets.filter(list => list.some(e => closing.has(e))),
-  ];
-
-  const next = new Map<string, string[]>();
-  const reaches = (from: string, to: string): boolean => {
-    const seen = new Set([from]);
-    const queue = [from];
-    while (queue.length > 0) {
-      const at = queue.shift()!;
-      if (at === to) return true;
-      for (const one of next.get(at) ?? []) if (!seen.has(one)) { seen.add(one); queue.push(one); }
-    }
-    return false;
-  };
-  const out: E[] = [];
-  for (const list of order) {
-    if (list.some(e => e.from === e.to || reaches(e.to, e.from))) continue;
-    for (const e of list) {
-      const after = next.get(e.from);
-      if (after) after.push(e.to); else next.set(e.from, [e.to]);
-      out.push(e);
-    }
-  }
-  return out;
-}
-
-/** The edges that close a cycle; ranking through them would never terminate. */
-function backEdges<E extends { from: string; to: string }>(
-  ids: readonly string[], edges: readonly E[],
-): Set<E> {
-  const out = new Map<string, E[]>();
-  for (const edge of edges) {
-    const list = out.get(edge.from);
-    if (list) list.push(edge); else out.set(edge.from, [edge]);
-  }
-
-  const found = new Set<E>();
-  const visiting = new Set<string>();
-  const done = new Set<string>();
-  const walk = (id: string): void => {
-    visiting.add(id);
-    for (const edge of out.get(id) ?? []) {
-      if (visiting.has(edge.to)) found.add(edge);
-      else if (!done.has(edge.to)) walk(edge.to);
-    }
-    visiting.delete(id);
-    done.add(id);
-  };
-  const targets = new Set(edges.map(e => e.to));
-  for (const id of ids) if (!targets.has(id) && !done.has(id)) walk(id);
-  for (const id of ids) if (!done.has(id)) walk(id);
-  return found;
-}
-
-/** Barycenter sweeps: a node sits above the average of what it points at. */
-function orderRanks(ranks: string[][], edges: readonly { from: string; to: string }[]): void {
-  const neighbours = (id: string, up: boolean): string[] =>
-    edges.filter(e => (up ? e.to : e.from) === id).map(e => (up ? e.from : e.to));
-
-  for (let sweep = 0; sweep < 4; sweep++) {
-    const up = sweep % 2 === 0;
-    const sequence = up ? ranks.map((_, i) => i) : ranks.map((_, i) => ranks.length - 1 - i);
-    for (const r of sequence) {
-      const fixed = up ? ranks[r - 1] : ranks[r + 1];
-      if (!fixed) continue;
-      const index = new Map(fixed.map((id, i) => [id, i]));
-      const row = ranks[r]!;
-      const original = new Map(row.map((id, i) => [id, i]));
-      const key = (id: string): number => {
-        const near = neighbours(id, up).map(n => index.get(n)).filter((i): i is number => i !== undefined);
-        if (near.length === 0) return original.get(id)!;
-        return near.reduce((x, y) => x + y, 0) / near.length;
-      };
-      row.sort((a, b) => key(a) - key(b));
-    }
-  }
 }
 
 function groupBox(
@@ -1468,6 +1966,7 @@ function normalize(
     edge: r.edge,
     points: r.points.map(move),
     labelAt: r.labelAt ? move(r.labelAt) : undefined,
+    hops: r.hops.map(move),
   }));
 
   const xs = [

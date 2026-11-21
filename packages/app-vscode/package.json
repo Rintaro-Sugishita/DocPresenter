@@ -64,9 +64,9 @@
     ],
     "menus": {
       "editor/title": [
-        { "command": "docpresenter.openToSide", "when": "resourceExtname == .md && !activeCustomEditorId", "group": "navigation" },
-        { "command": "docpresenter.openInExcel", "when": "resourceExtname == .table", "group": "navigation" },
-        { "command": "docpresenter.openEditor", "when": "resourceExtname == .md && !activeCustomEditorId", "group": "navigation" },
+        { "command": "docpresenter.openEditor", "when": "resourceExtname == .md && !activeCustomEditorId", "group": "navigation@1" },
+        { "command": "docpresenter.openToSide", "when": "resourceExtname == .md && !activeCustomEditorId", "group": "navigation@2" },
+        { "command": "docpresenter.openInExcel", "when": "resourceExtname == .table", "group": "navigation@1" },
         { "command": "docpresenter.exportHtml", "when": "activeCustomEditorId == docpresenter.sheets", "group": "docpresenter@1" },
         { "command": "docpresenter.exportPdf", "when": "activeCustomEditorId == docpresenter.sheets", "group": "docpresenter@2" },
         { "command": "docpresenter.exportPptx", "when": "activeCustomEditorId == docpresenter.sheets", "group": "docpresenter@3" },
@@ -78,7 +78,7 @@
       ],
       "explorer/context": [
         { "command": "docpresenter.newDocument", "when": "explorerResourceIsFolder", "group": "navigation@8" },
-        { "command": "docpresenter.newDiagram", "when": "explorerResourceIsFolder", "group": "navigation@8" },
+        { "command": "docpresenter.newDiagram", "when": "explorerResourceIsFolder", "group": "navigation@9" },
         { "command": "docpresenter.openEditor", "when": "resourceExtname == .md", "group": "navigation@9" },
         { "command": "docpresenter.readBackPptx", "when": "resourceExtname == .pptx", "group": "navigation@9" },
         { "command": "docpresenter.openInExcel", "when": "resourceExtname == .table", "group": "navigation@9" },

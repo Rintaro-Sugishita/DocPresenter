@@ -6,6 +6,17 @@
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "dependencies": {
-    "@docpresenter/base": "*"
+    "@docpresenter/base": "*",
+    "elkjs": "^0.9.3"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./elk": {
+      "types": "./dist/elk.d.ts",
+      "default": "./dist/elk.js"
+    }
   }
 }

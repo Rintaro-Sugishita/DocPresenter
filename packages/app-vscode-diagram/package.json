@@ -57,8 +57,8 @@
       ],
       "explorer/context": [
         { "command": "docpresenterDiagram.open", "when": "resourceExtname == .dgm", "group": "navigation@9" },
-        { "command": "docpresenterDiagram.format", "when": "resourceExtname == .dgm", "group": "navigation@9" },
-        { "command": "docpresenterDiagram.exportSvg", "when": "resourceExtname == .dgm", "group": "navigation@9" }
+        { "command": "docpresenterDiagram.exportSvg", "when": "resourceExtname == .dgm", "group": "navigation@10" },
+        { "command": "docpresenterDiagram.format", "when": "resourceExtname == .dgm", "group": "navigation@11" }
       ],
       "commandPalette": [
         { "command": "docpresenterDiagram.open", "when": "resourceExtname == .dgm" },

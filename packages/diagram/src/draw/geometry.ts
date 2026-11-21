@@ -267,14 +267,34 @@ export function arrowHead(start: Point, end: Point): readonly Point[] {
 export const CORNER_RADIUS = 8;
 
 /**
+ * How big a step over another line is drawn. Small enough not to read as a
+ * bend in the line, big enough to see at the size a page prints at.
+ */
+export const HOP_RADIUS = 5;
+
+/**
  * A connection through its corners, as SVG path data with each corner turned
  * on a short curve. Only the drawing is rounded: the corners are still the
  * points the route and the file hold. A corner on a short segment turns
  * tighter, so two turns never overlap and the ends stay where they were.
+ *
+ * `hops` are places the line crosses another and steps over it. Like the
+ * rounded corners these are drawing only — the line still goes straight
+ * through — and a hop with no room on the run it falls on is left out rather
+ * than drawn over a corner.
  */
-export function roundedPath(points: readonly Point[], radius = CORNER_RADIUS): string {
+export function roundedPath(
+  points: readonly Point[], radius = CORNER_RADIUS, hops: readonly Point[] = [],
+): string {
   if (points.length === 0) return '';
   const parts = [`M ${n(points[0]!.x)} ${n(points[0]!.y)}`];
+  let at = points[0]!;
+  /** Draws straight to `target`, stepping over whatever is crossed on the way. */
+  const runTo = (target: Point): void => {
+    for (const hop of hopsAlong(at, target, hops)) parts.push(hop);
+    parts.push(`L ${n(target.x)} ${n(target.y)}`);
+    at = target;
+  };
   for (let i = 1; i + 1 < points.length; i++) {
     const before = points[i - 1]!;
     const corner = points[i]!;
@@ -282,7 +302,7 @@ export function roundedPath(points: readonly Point[], radius = CORNER_RADIUS): s
     const inLength = Math.hypot(corner.x - before.x, corner.y - before.y);
     const outLength = Math.hypot(after.x - corner.x, after.y - corner.y);
     const r = Math.min(radius, inLength / 2, outLength / 2);
-    if (r <= 0) { parts.push(`L ${n(corner.x)} ${n(corner.y)}`); continue; }
+    if (r <= 0) { runTo(corner); continue; }
     const start = {
       x: corner.x - ((corner.x - before.x) / inLength) * r,
       y: corner.y - ((corner.y - before.y) / inLength) * r,
@@ -291,12 +311,54 @@ export function roundedPath(points: readonly Point[], radius = CORNER_RADIUS): s
       x: corner.x + ((after.x - corner.x) / outLength) * r,
       y: corner.y + ((after.y - corner.y) / outLength) * r,
     };
-    parts.push(`L ${n(start.x)} ${n(start.y)}`,
-      `Q ${n(corner.x)} ${n(corner.y)} ${n(end.x)} ${n(end.y)}`);
+    runTo(start);
+    parts.push(`Q ${n(corner.x)} ${n(corner.y)} ${n(end.x)} ${n(end.y)}`);
+    at = end;
   }
-  const last = points[points.length - 1]!;
-  parts.push(`L ${n(last.x)} ${n(last.y)}`);
+  runTo(points[points.length - 1]!);
   return parts.join(' ');
+}
+
+/**
+ * The path commands for every step over another line that falls on the
+ * straight run from `from` to `to`, in the order the run meets them.
+ *
+ * The arc always bulges the same way — towards the top of the page on a run
+ * across it, towards the left on a run down it — so that two lines crossing
+ * are read the same way round wherever they are in the drawing.
+ */
+function hopsAlong(from: Point, to: Point, hops: readonly Point[]): string[] {
+  if (hops.length === 0) return [];
+  const flat = Math.abs(from.y - to.y) < 0.5;
+  const upright = Math.abs(from.x - to.x) < 0.5;
+  if (flat === upright) return [];
+  const r = HOP_RADIUS;
+  const length = flat ? Math.abs(to.x - from.x) : Math.abs(to.y - from.y);
+  if (length < r * 2) return [];
+  const way = flat ? Math.sign(to.x - from.x) : Math.sign(to.y - from.y);
+  const place = (p: Point): number => (flat ? (p.x - from.x) * way : (p.y - from.y) * way);
+
+  const on = hops
+    .filter(hop => (flat ? Math.abs(hop.y - from.y) : Math.abs(hop.x - from.x)) < 0.5)
+    // Far enough from both ends of the run that the whole arc fits on it.
+    .filter(hop => place(hop) > r && place(hop) < length - r)
+    .sort((a, b) => place(a) - place(b));
+
+  const out: string[] = [];
+  for (const hop of on) {
+    const enter = flat
+      ? { x: hop.x - r * way, y: hop.y }
+      : { x: hop.x, y: hop.y - r * way };
+    const leave = flat
+      ? { x: hop.x + r * way, y: hop.y }
+      : { x: hop.x, y: hop.y + r * way };
+    // A run across the page bulges up; one down the page bulges left. Which
+    // way round the arc is swept depends on which way the run is going.
+    const sweep = flat ? (way > 0 ? 1 : 0) : (way > 0 ? 0 : 1);
+    out.push(`L ${n(enter.x)} ${n(enter.y)}`,
+      `A ${r} ${r} 0 0 ${sweep} ${n(leave.x)} ${n(leave.y)}`);
+  }
+  return out;
 }
 
 /** Coordinates are rounded: a diff of a rendered SVG should stay readable. */
