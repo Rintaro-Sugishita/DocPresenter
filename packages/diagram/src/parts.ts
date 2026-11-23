@@ -13,6 +13,7 @@
 import {
   DEFAULT_LIBRARY, DEFAULT_PARTS, ICON_LIBRARY, iconParts,
 } from './default-parts.js';
+import { withDisabled } from './states.js';
 import { DiagramParseError, notationOf, parseDiagram } from './parse.js';
 import { DIAGRAM_MESSAGES, dgm } from './messages.js';
 import { withItems } from './items.js';
@@ -81,7 +82,7 @@ export function partsOf(diagram: DiagramFile, read: PartReader): ReadonlyMap<str
  */
 export function withParts(diagram: DiagramFile, read: PartReader): DiagramFile {
   // The item table goes last: which shapes are items is a thing the parts say.
-  if (diagram.uses.length === 0 && diagram.parts.size === 0) return withItems(diagram, read);
+  if (diagram.uses.length === 0 && diagram.parts.size === 0) return withItems(withDisabled(diagram), read);
   const parts = partsOf(diagram, read);
 
   const nodes = diagram.nodes.map(node => {
@@ -127,7 +128,7 @@ export function withParts(diagram: DiagramFile, read: PartReader): DiagramFile {
     partSizes.set(id, { width: part.width, height: part.height });
   }
 
-  return withItems({ ...diagram, nodes, style, layout, partSizes, library: parts }, read);
+  return withItems(withDisabled({ ...diagram, nodes, style, layout, partSizes, library: parts }), read);
 }
 
 /**

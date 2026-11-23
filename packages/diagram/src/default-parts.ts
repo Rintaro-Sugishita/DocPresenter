@@ -55,6 +55,7 @@ export const DEFAULT_GROUPS: Readonly<Record<string, `diagram.parts.group.${stri
 export const DEFAULT_PARTS = `# 同梱の画面部品
 # 自分のシステムの見た目は、作業場の parts ファイルに書いて上書きする。
 # item: は画面の項目一覧に載る部品の分類。必須の印は required の絵で描く。
+# 使えない状態（enabled: false）の見た目は disabled に書く。部品の色の上に重ねる。
 # 入力欄のラベルを左に置く製品は、label に field: left と書く（書かなければ上）。
 
 parts {
@@ -72,6 +73,7 @@ parts {
   error      "" { color: #b3261e, align: left, item: 表示 }                   320x36
   link       "" { color: #1f5fa8, align: right, item: 操作 }                  320x16
   required   "" { color: #b3261e }                                             16x18
+  disabled   "" { fill: #f2f3f5, line: #c9cdd3, color: #9aa0a8 }              16x18
 
   # --- 入力 ---
   textbox    [ ] { fill: #fbfbfc, line: #aeb4bd, align: left, item: 入力 }    320x34

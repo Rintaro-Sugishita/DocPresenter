@@ -93,6 +93,10 @@ const PROPERTIES: readonly { name: string; detail: DiagramMessage }[] = [
   { name: 'arrow', detail: 'diagram.complete.lineArrow' },
   { name: 'slope', detail: 'diagram.complete.slope' },
   { name: 'weight', detail: 'diagram.complete.weight' },
+  { name: 'font', detail: 'diagram.complete.font' },
+  { name: 'font-size', detail: 'diagram.complete.fontSize' },
+  { name: 'enabled', detail: 'diagram.complete.enabled' },
+  { name: 'opacity', detail: 'diagram.complete.opacity' },
 ];
 
 /** The tokens the shipped theme gives a meaning to. Any other is passed on as written. */
@@ -102,6 +106,7 @@ const TOKENS: Readonly<Record<string, readonly string[]>> = {
   align: ['left', 'center', 'right'],
   arrow: ['none', 'start', 'end', 'both'],
   slope: ['down', 'up'],
+  enabled: ['false'],
 };
 const CLASSES = ['changed', 'pending', 'removed', 'disabled'];
 

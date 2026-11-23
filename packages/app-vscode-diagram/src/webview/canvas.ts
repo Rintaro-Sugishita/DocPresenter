@@ -3,7 +3,7 @@
 // the host writes it, and the text is the only state there is.
 
 import {
-  applyEdit, BASE_STYLE, describeError, followColourScheme, localizeEdit, useDarkStyle, type Locale,
+  applyEdit, BASE_STYLE, describeError, followColourScheme, localizeEdit, PRINT_CLASS, useDarkStyle, type Locale,
 } from '@docpresenter/base';
 import { createCanvas, DIAGRAM_STYLE, parseDiagram, withParts } from '@docpresenter/diagram';
 import type { FromCanvas, ToCanvas } from '../protocol.js';
@@ -28,6 +28,22 @@ document.head.append(style);
 // Light or dark as VS Code's colour theme is; the theme's own rules follow on `open`.
 followColourScheme(document, 'vscode');
 useDarkStyle(document, 'canvas', style.textContent);
+
+// The bar and the page follow the theme; the drawing does not. A screen is
+// drawn in its parts' own colours, which stay as the author chose them, and
+// turning only the rest round left white boxes, black boxes and a dark bar
+// across a white table on one picture. The drawing is the paper a document
+// prints, so it stays paper. Written after the dark rules, and not made dark.
+const paper = document.createElement('style');
+paper.textContent = [
+  `html .dp-canvas-view.${PRINT_CLASS} {`,
+  '  background: #fff; color: #1c1f24; color-scheme: light; border-radius: 3px;',
+  '}',
+  // VS Code paints the scroll bars of a WebView in its own theme's colours.
+  `.dp-canvas-view.${PRINT_CLASS} ::-webkit-scrollbar-corner { background: transparent; }`,
+  `.dp-canvas-view.${PRINT_CLASS} ::-webkit-scrollbar-thumb { background-color: rgba(100, 100, 100, 0.4); }`,
+  `.dp-canvas-view.${PRINT_CLASS} ::-webkit-scrollbar-thumb:hover { background-color: rgba(100, 100, 100, 0.7); }`,
+].join('\n');
 
 let source = '';
 let libraries: Readonly<Record<string, string>> = {};
@@ -98,6 +114,7 @@ function draw(first = false): void {
   // Asked before the old canvas leaves the page and takes the focus with it.
   const canvasFocused = stage.contains(document.activeElement);
   stage.replaceChildren(canvas.element);
+  canvas.element.querySelector('.dp-canvas-view')?.classList.add(PRINT_CLASS);
   if (takesFocus({ pageFocused: document.hasFocus(), canvasFocused, first })) canvas.focus();
 }
 
@@ -108,6 +125,8 @@ window.addEventListener('message', (event: MessageEvent<ToCanvas>) => {
   itemTable = message.itemTable;
   locale = message.locale;
   if (message.theme !== undefined) useDarkStyle(document, 'theme', message.theme);
+  // Last, so it is read after the dark rules it keeps off the drawing.
+  document.head.append(paper);
   draw(message.kind === 'open');
 });
 

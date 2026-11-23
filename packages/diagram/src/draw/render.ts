@@ -7,6 +7,8 @@
 import {
   EDGE_LABEL, edgeLabelBox, layOutDiagram, type Box, type EdgeRoute, type ItemMark,
 } from '../layout.js';
+import { fontOf, isDisabled } from '../states.js';
+import { lineHeightFor } from '../layout.js';
 import { lineText, type TextLine } from '../inline.js';
 import { textWidth } from '../text.js';
 import type { DiagramFile, Item, Node, Point, ShapeKind } from '../model.js';
@@ -137,6 +139,7 @@ function renderNode(
     ...(icon ? ['dp-part'] : []),
     ...(node.className ? [`dp-class-${node.className}`] : []),
     ...styleClasses(diagram, node.id),
+    ...(isDisabled(diagram.style.get(node.id)) ? ['dp-disabled'] : []),
     ...(marks?.nodes.get(node.id) ? [`dp-diff-${marks.nodes.get(node.id)!}`] : []),
   ];
   // A part is a picture, so no outline is drawn around it. Where its words go
@@ -150,7 +153,7 @@ function renderNode(
     ? groupLabel(box)
     : place === 'none' || node.shape === 'line' || tabPages(diagram).has(node.id)
       ? ''
-      : label(box, diagram.style.get(node.id)?.get('align'), node.shape, place === 'under');
+      : label(box, diagram.style.get(node.id)?.get('align'), node.shape, place === 'under', fontOf(diagram.style.get(node.id)));
   const colours = styleColours(diagram, node.id);
   const style = colours === '' ? '' : ` style="${escapeAttr(colours)}"`;
   // Words with no frame and no words — a table cell not written in yet — are
@@ -383,6 +386,11 @@ function styleColours(diagram: DiagramFile, id: string): string {
       parts.push(`--dp-weight:${value}`);
       continue;
     }
+    // How see-through a shape is: what a disabled control is faded with.
+    if (property === 'opacity' && /^(0(\.\d+)?|1(\.0+)?|\.\d+)$/.test(value)) {
+      parts.push(`opacity:${value}`);
+      continue;
+    }
     if (!COLOUR.test(value)) continue;
     if (property === 'fill') parts.push(`--dp-fill:${value}`);
     if (property === 'line') parts.push(`--dp-line:${value}`);
@@ -423,11 +431,19 @@ function element(outline: Outline, className: string): string {
 
 function label(
   box: Box, align: string | undefined, shape: ShapeKind, underPicture = false,
+  font: { size: number | undefined; family: string | undefined } = { size: undefined, family: undefined },
 ): string {
-  const at = labelLayout(box, align, shape, underPicture ? artSize(box) : 0);
+  const at = labelLayout(box, align, shape, underPicture ? artSize(box) : 0,
+    font.size === undefined ? undefined : lineHeightFor(font.size));
   const spans = box.lines.map((line, i) =>
     `<tspan x="${n(at.x)}" y="${n(at.top + i * at.lineHeight)}">${runs(line)}</tspan>`);
-  return `<text class="dp-label" text-anchor="${at.anchor}" dominant-baseline="central">`
+  // Said in style, not attributes: the theme's size for labels would win over an attribute.
+  const type = [
+    ...(font.size === undefined ? [] : [`font-size:${font.size}px`]),
+    ...(font.family === undefined ? [] : [`font-family:'${font.family}'`]),
+  ];
+  const style = type.length === 0 ? '' : ` style="${escapeAttr(type.join(';'))}"`;
+  return `<text class="dp-label" text-anchor="${at.anchor}" dominant-baseline="central"${style}>`
     + `${spans.join('')}</text>`;
 }
 

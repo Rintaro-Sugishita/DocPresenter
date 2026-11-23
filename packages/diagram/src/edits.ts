@@ -314,8 +314,27 @@ const BASE: Readonly<Record<ShapeKind, string>> = {
   line: 'rule',
 };
 
-/** Parts are named for what they are, not for the shape that carries them. */
+/**
+ * Parts are named for what they are, not for the shape that carries them: a
+ * check box put on a screen is `checkbox1`, a router `router1`. `part` is left
+ * for a name with nothing in it to go by.
+ */
 const PART_BASE = 'part';
+
+/**
+ * What a shape written as a part or a picture is called before anyone renames
+ * it: the part's name, or the picture's own name without its folder and
+ * extension, written in the characters of an id — `ui/check-on` is `checkOn`.
+ */
+export function partIdBase(name: string | undefined): string {
+  if (name === undefined) return PART_BASE;
+  const last = name.split('/').filter(Boolean).pop() ?? '';
+  const bare = last.replace(/\.(svg|png)$/i, '')
+    .replace(/[-\s.]+([A-Za-z0-9])/g, (_, next: string) => next.toUpperCase())
+    .replace(/[^A-Za-z0-9_぀-鿿]/g, '')
+    .replace(/\d+$/, '');
+  return bare === '' || /^\d/.test(bare) ? PART_BASE : bare;
+}
 
 export interface NewShape {
   readonly shape: ShapeKind;
@@ -350,7 +369,7 @@ export interface NewShape {
 export function addNode(file: DiagramFile, source: string, shape: NewShape): Edit {
   if (!file.body) throw new DiagramEditError(dgm('diagram.edit.noBody'));
   const named = shape.part !== undefined;
-  const id = nextShapeId(file, shape.icon === undefined && !named ? shape.shape : 'part');
+  const id = nextShapeId(file, shape.icon === undefined && !named ? shape.shape : 'part', shape.part ?? shape.icon);
   const [open, close] = BRACKETS[shape.shape];
   // A line has nowhere to keep words, so it is written with none — whatever
   // placeholder the caller hands every other shape.
@@ -916,8 +935,8 @@ function groupLine(group: Node, children: readonly string[]): string {
  * what it just added — the same file and the same kind always give the same
  * answer.
  */
-export function nextShapeId(file: DiagramFile, shape: ShapeKind | 'part'): string {
-  const base = shape === 'part' ? PART_BASE : BASE[shape];
+export function nextShapeId(file: DiagramFile, shape: ShapeKind | 'part', part?: string): string {
+  const base = shape === 'part' ? partIdBase(part) : BASE[shape];
   const taken = new Set(file.nodes.map(n => n.id));
   for (let n = 1; ; n++) {
     const id = `${base}${n}`;

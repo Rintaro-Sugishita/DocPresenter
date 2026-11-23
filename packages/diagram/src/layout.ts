@@ -5,6 +5,7 @@
 // the pin meaningless.
 
 import { arrangeContainers, containerOf, type Hole, type TableRules } from './arrange.js';
+import { fontOf } from './states.js';
 import { layoutEngine, type GraphEdge } from './engine.js';
 // Puts the engine that ships with the tool in the register. Something has to
 // import it for its registration to run, and `engine.js` cannot — the two
@@ -137,6 +138,10 @@ const GROUP_HEADER = 18; // room for the group's own label
 const CHANNEL_GAP = 28;  // between the shapes and a detouring connection
 const FONT = 14;
 const LINE_HEIGHT = 20;
+/** How far apart the lines of words of a size are: as the default is, scaled. */
+export function lineHeightFor(size: number): number {
+  return Math.round(LINE_HEIGHT * size / FONT);
+}
 const TEXT_PAD = 24;
 const MAX_NODE_WIDTH = 260;
 /** The room a cylinder's lid takes out of its box. */
@@ -1599,18 +1604,22 @@ function measure(
   const given = diagram.partSizes.get(node.id);
   const runs = parseLabel(node.text);
   const shown = lineText(runs);
+  // Words in a size of their own (`font-size: 18`) are measured at that size,
+  // and their lines are as far apart as that size needs.
+  const font = fontOf(diagram.style.get(node.id)).size ?? FONT;
+  const pitch = lineHeightFor(font);
   // A label broken by hand is as wide as its widest line, not as all of it.
   const natural = shown.includes('\n')
-    ? Math.max(...shown.split('\n').map(line => textWidth(line, FONT)))
-    : textWidth(node.text, FONT);
+    ? Math.max(...shown.split('\n').map(line => textWidth(line, font)))
+    : textWidth(node.text, font);
   // A diamond holds its words in the middle, where it is widest, so it wraps
   // them narrower than a box would and then grows round them.
-  if (node.shape === 'diamond' && !given) return diamond(runs, natural, pin?.width);
+  if (node.shape === 'diamond' && !given) return diamond(runs, natural, pin?.width, font);
   const inner = (pin?.width ?? given?.width) !== undefined
     ? (pin?.width ?? given!.width) - TEXT_PAD
     : Math.min(MAX_NODE_WIDTH, Math.max(DEFAULT_SIZE.width, natural + TEXT_PAD)) - TEXT_PAD;
-  const lines = wrapRuns(runs, inner, FONT);
-  const widest = lines.reduce((w, line) => Math.max(w, textWidth(lineText(line), FONT)), 0);
+  const lines = wrapRuns(runs, inner, font);
+  const widest = lines.reduce((w, line) => Math.max(w, textWidth(lineText(line), font)), 0);
   // A cylinder spends the top of its box on the lid, so the text needs the
   // room back; otherwise two lines run into the curve.
   const lid = node.shape === 'cylinder' ? CYLINDER_LID : 0;
@@ -1622,7 +1631,7 @@ function measure(
   if (given) {
     return {
       width: given.width,
-      height: lines.length > 1 ? Math.max(given.height, lines.length * LINE_HEIGHT) : given.height,
+      height: lines.length > 1 || pitch > LINE_HEIGHT ? Math.max(given.height, lines.length * pitch) : given.height,
       lines,
       // A caption is as wide as the library says, but a column of captions
       // sized `auto` is as wide as the longest of their words.
@@ -1631,7 +1640,7 @@ function measure(
   }
   return {
     width: Math.max(DEFAULT_SIZE.width, Math.ceil(widest) + TEXT_PAD),
-    height: Math.max(DEFAULT_SIZE.height, lines.length * LINE_HEIGHT + TEXT_PAD + lid + art),
+    height: Math.max(DEFAULT_SIZE.height, lines.length * pitch + TEXT_PAD + lid + art),
     lines,
   };
 }
@@ -1662,17 +1671,18 @@ const DIAMOND_SHARE = 0.65;
  * first line and below the last is part of the pitch, not of the words.
  */
 function diamond(
-  runs: ReturnType<typeof parseLabel>, natural: number, pinned: number | undefined,
+  runs: ReturnType<typeof parseLabel>, natural: number, pinned: number | undefined, font = FONT,
 ): { width: number; height: number; lines: readonly TextLine[] } {
+  const pitch = lineHeightFor(font);
   const wrap = pinned !== undefined
     ? Math.max(1, pinned / 2 - DIAMOND_INSET * 2)
-    : Math.min(DIAMOND_TEXT, Math.max(1, natural));
-  const lines = wrapRuns(runs, wrap, FONT, true);
-  const widest = lines.reduce((w, line) => Math.max(w, textWidth(lineText(line), FONT)), 0);
+    : Math.min(DIAMOND_TEXT * font / FONT, Math.max(1, natural));
+  const lines = wrapRuns(runs, wrap, font, true);
+  const widest = lines.reduce((w, line) => Math.max(w, textWidth(lineText(line), font)), 0);
   const tw = Math.ceil(widest) + DIAMOND_INSET * 2;
   // Less room above and below than at the sides: a glyph's box already has
   // some room inside it there.
-  const th = lines.length * LINE_HEIGHT - (LINE_HEIGHT - FONT) + DIAMOND_INSET;
+  const th = lines.length * pitch - (pitch - font) + DIAMOND_INSET;
   const width = pinned
     ?? (tw / DEFAULT_SIZE.width <= DIAMOND_SHARE ? DEFAULT_SIZE.width : Math.max(DEFAULT_SIZE.width, tw * 2));
   // A pinned width narrower than the words leaves no room to grow into; it is

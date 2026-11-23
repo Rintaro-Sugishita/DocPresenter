@@ -198,3 +198,22 @@ describe('a cell written #', () => {
     expect(selectRows(table, '後半')!.rows.map(row => shownText(row.cells[1]!))).toEqual(['—', '2']);
   });
 });
+
+describe('a cell written #-#', () => {
+  // A screen numbers the columns of a table under the table, and its item list
+  // has to number them the same way.
+  it('counts under the last # above it, and as a # when there is none', () => {
+    const table = parseTable([
+      '| ID      | No  |',
+      '|---------|----:|',
+      '| loose   | #-# |',
+      '| results |  #  |',
+      '| pick    | #-# |',
+      '| note    |  —  |',
+      '| name    | #-# |',
+      '| search  |  #  |',
+      '| other   | #-# |',
+    ].join('\n'));
+    expect(table.rows.map(row => shownText(row.cells[1]!))).toEqual(['1', '2', '2-1', '—', '2-2', '3', '3-1']);
+  });
+});

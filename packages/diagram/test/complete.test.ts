@@ -98,7 +98,7 @@ describe('作図ファイルの補完', () => {
     const file = DRAWING.replace('  |\n', '') + '\n\nstyle {\n  theme: default\n  db { fill: #eee }\n  |\n}';
     expect(labels(file)).toEqual(['start', 'form', 'check', 'back']);
     expect(labels(file.replace('  |', '  form { fill: shade, |'))).toEqual(
-      ['line', 'color', 'align', 'icon', 'arrow', 'slope', 'weight']);
+      ['line', 'color', 'align', 'icon', 'arrow', 'slope', 'weight', 'font', 'font-size', 'enabled', 'opacity']);
     expect(labels(file.replace('  |', '  form { line: |'))).toEqual(['dashed']);
     const icons = at(file.replace('  |', '  form { icon: net/r|'));
     expect(icons.map(one => one.label)).toContain('net/router');

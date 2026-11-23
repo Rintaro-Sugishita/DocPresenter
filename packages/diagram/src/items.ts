@@ -67,6 +67,14 @@ export type ItemColumn = keyof typeof HEADERS;
 
 /** A cell written `#`: a number computed from the row's place. */
 export const AUTO_NUMBER = '#';
+/**
+ * A cell written `#-#`: a number under the last `#` above it. What is in a
+ * table on the screen is numbered under the table (3-1, 3-2), and the item
+ * table has to say so too, or its own numbers count on past the table.
+ */
+export const AUTO_SUB_NUMBER = '#-#';
+/** Whether a cell is one of the two that are numbered by their place. */
+const isAuto = (cell: string): boolean => cell === AUTO_NUMBER || cell === AUTO_SUB_NUMBER;
 const MERGE_UP = '^';
 /** What a cell that says "nothing here" is written as. */
 const NOTHING = new Set(['', '—', '―', '-', '–', '−']);
@@ -253,6 +261,25 @@ interface ScreenOrder {
   readonly parentOf: ReadonlyMap<string, string>;
 }
 
+/**
+ * What a cell holds when the cell is an arrangement of its own — a check box
+ * and its words in a row, say: everything under it, at any depth.
+ */
+function heldUnder(diagram: DiagramFile, id: string): string[] {
+  const out: string[] = [];
+  const visit = (at: string, depth: number): void => {
+    const container = diagram.containers.get(at);
+    if (!container || depth > 32) return;
+    for (const member of members(container)) {
+      if (member === at || out.includes(member)) continue;
+      out.push(member);
+      visit(member, depth + 1);
+    }
+  };
+  visit(id, 0);
+  return out;
+}
+
 function screenOrder(diagram: DiagramFile, items = itemShapes(diagram)): ScreenOrder {
   const columns = new Map<string, TableColumn>();
   const cellOf = new Map<string, string>();
@@ -265,7 +292,12 @@ function screenOrder(diagram: DiagramFile, items = itemShapes(diagram)): ScreenO
     for (const column of found) {
       columns.set(column.id, column);
       parentOf.set(column.id, column.table);
-      for (const cell of column.cells) cellOf.set(cell, column.id);
+      // A cell of the column is the column, and so is what a cell holds: a
+      // row of a check box and its words is one cell of the column.
+      for (const cell of column.cells) {
+        cellOf.set(cell, column.id);
+        for (const inner of heldUnder(diagram, cell)) cellOf.set(inner, column.id);
+      }
       if (column.heading !== undefined) cellOf.set(column.heading, column.id);
     }
     for (const member of members(container)) if (!cellOf.has(member)) parentOf.set(member, container.id);
@@ -287,7 +319,8 @@ export function screenItems(diagram: DiagramFile): readonly ScreenItem[] {
   for (const id of screen.order) {
     const column = screen.columns.get(id);
     if (column) {
-      const kind = column.cells.map(cell => kinds.get(cell)).find(one => one !== undefined) ?? SHOWN;
+      const kind = column.cells.flatMap(cell => [cell, ...heldUnder(diagram, cell)])
+        .map(cell => kinds.get(cell)).find(one => one !== undefined) ?? SHOWN;
       out.push({
         id, kind, at: column.heading ?? column.cells[0] ?? column.table, label: column.heading,
         parent: column.table, shapes: column.cells,
@@ -407,7 +440,9 @@ export function withItems(diagram: DiagramFile, read: Reader): DiagramFile {
   const kinds = itemShapes(diagram);
   const screen = screenOrder(diagram, kinds);
   const known = new Set([...diagram.nodes.map(node => node.id), ...screen.columns.keys()]);
-  const rows = new Map<string, { row: number; required: boolean; align: string | undefined; numbered: boolean }>();
+  const rows = new Map<string, {
+    row: number; required: boolean; align: string | undefined; numbered: boolean; written: string | undefined;
+  }>();
   table.rows.forEach((row, index) => {
     const id = row.cells[columns.id!]!.trim();
     if (NOTHING.has(id)) return;
@@ -425,8 +460,9 @@ export function withItems(diagram: DiagramFile, read: Reader): DiagramFile {
     }
     const align = columns.align === undefined ? undefined : alignOf(row.cells[columns.align]!);
     if (align === null) notes.push(dgm('diagram.items.badAlign', { id, value: row.cells[columns.align!]! }));
-    const numbered = columns.number === undefined || row.cells[columns.number]!.trim() === AUTO_NUMBER;
-    rows.set(id, { row: index, required: required ?? false, align: align ?? undefined, numbered });
+    const written = columns.number === undefined ? undefined : row.cells[columns.number]!.trim();
+    const numbered = written === undefined || isAuto(written);
+    rows.set(id, { row: index, required: required ?? false, align: align ?? undefined, numbered, written });
   });
 
   const items = new Map(screenItems(diagram).map(item => [item.id, item]));
@@ -446,6 +482,12 @@ export function withItems(diagram: DiagramFile, read: Reader): DiagramFile {
     const above = parent === undefined ? undefined : links.get(parent)?.number;
     let number: string | undefined;
     if (row.numbered) {
+      // The table counts `#` on from the last one and `#-#` under it: written
+      // the other way round, the two would number the same item differently.
+      const wanted = above !== undefined ? AUTO_SUB_NUMBER : AUTO_NUMBER;
+      if (row.written !== undefined && row.written !== wanted) {
+        notes.push(dgm('diagram.items.subNumber', { id, wanted, path }));
+      }
       if (above !== undefined) {
         const next = (children.get(parent!) ?? 0) + 1;
         children.set(parent!, next);
@@ -544,11 +586,34 @@ export function syncItemTable(diagram: DiagramFile, source: string): Edit | unde
 
   const wanted = screen.order.filter(id => groups.has(id) || items.has(id));
   const widths = splitFields(table.delimiter.text).map(field => Math.max(3, displayWidth(field) - 2));
-  const out: { row: ItemTableRow | undefined; fresh: string[] | undefined }[] = lead.map(row => ({ row, fresh: undefined }));
+  // Whether an item's number goes under its table's: when the table is
+  // numbered by its place, or is about to be — a number written out by hand is
+  // not one the screen counts under.
+  const numberOf = (id: string): string | undefined => {
+    const row = groups.get(id)?.[0];
+    if (row === undefined) return items.has(id) ? AUTO_NUMBER : undefined;
+    return columns.number === undefined ? AUTO_NUMBER : row.cells[columns.number]!.trim();
+  };
+  const under = (id: string): boolean => {
+    const parent = screen.parentOf.get(id);
+    const number = parent === undefined ? undefined : numberOf(parent);
+    return number !== undefined && isAuto(number);
+  };
+  const out: { row: ItemTableRow | undefined; fresh: string[] | undefined; number?: string }[] =
+    lead.map(row => ({ row, fresh: undefined }));
   for (const id of wanted) {
     const group = groups.get(id);
-    if (group) { for (const row of group) out.push({ row, fresh: undefined }); continue; }
-    out.push({ row: undefined, fresh: freshRow(diagram, table.headers, columns, items.get(id)!) });
+    if (group) {
+      // An item numbered by its place is numbered as the screen numbers it.
+      const written = columns.number === undefined ? undefined : group[0]!.cells[columns.number]!.trim();
+      const number = written !== undefined && isAuto(written)
+        ? (under(id) ? AUTO_SUB_NUMBER : AUTO_NUMBER) : undefined;
+      group.forEach((row, index) => out.push({
+        row, fresh: undefined, ...(index === 0 && number !== undefined && number !== written ? { number } : {}),
+      }));
+      continue;
+    }
+    out.push({ row: undefined, fresh: freshRow(diagram, table.headers, columns, items.get(id)!, under(id)) });
   }
 
   // A `^` means "the same as above", which is true only while the row above
@@ -570,6 +635,7 @@ export function syncItemTable(diagram: DiagramFile, source: string): Edit | unde
     const row = one.row!;
     const was = table.rows.indexOf(row);
     let text = row.text;
+    if (one.number !== undefined) text = replaceField(text, columns.number!, one.number);
     if (before?.row !== table.rows[was - 1] || before?.fresh) {
       row.written.forEach((cell, c) => {
         if (cell === MERGE_UP && above?.[c] !== row.cells[c]) text = replaceField(text, c, row.cells[c]!);
@@ -588,11 +654,11 @@ export function syncItemTable(diagram: DiagramFile, source: string): Edit | unde
 /** What a new row says: the id, a number, its kind and its name. The rest is the author's. */
 function freshRow(
   diagram: DiagramFile, headers: readonly string[], columns: Partial<Record<ItemColumn, number>>,
-  item: ScreenItem,
+  item: ScreenItem, under = false,
 ): string[] {
   const cells = headers.map(() => '');
   if (columns.id !== undefined) cells[columns.id] = item.id;
-  if (columns.number !== undefined) cells[columns.number] = AUTO_NUMBER;
+  if (columns.number !== undefined) cells[columns.number] = under ? AUTO_SUB_NUMBER : AUTO_NUMBER;
   if (columns.name !== undefined) cells[columns.name] = itemName(diagram, item.id);
   if (columns.category !== undefined) cells[columns.category] = item.kind;
   return cells;
@@ -629,7 +695,10 @@ export function newItemTable(diagram: DiagramFile, locale: Locale = DEFAULT_LOCA
   const shape = NEW_TABLE[locale];
   const headers = shape.map(one => one.header);
   const columns = itemColumns(headers);
-  const rows = screenItems(diagram).map(item => freshRow(diagram, headers, columns, item));
+  const listed = screenItems(diagram);
+  const ids = new Set(listed.map(item => item.id));
+  const rows = listed.map(item => freshRow(diagram, headers, columns, item,
+    item.parent !== undefined && ids.has(item.parent)));
   // The same kind as the row above is written `^`, the way the sample is.
   const shown = rows.map((cells, index) => cells.map((cell, c) =>
     c === columns.category && index > 0 && cell !== '' && rows[index - 1]![c] === cell ? MERGE_UP : cell));

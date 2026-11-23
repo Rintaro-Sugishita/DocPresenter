@@ -4,5 +4,7 @@
   "command.open.title": "DocPresenter Diagram で開く",
   "command.openToSide.title": "DocPresenter Diagram を横に開く",
   "command.format.title": "図を整形する（並び順と空白をそろえる）",
-  "command.exportSvg.title": "図を SVG に書き出す…"
+  "command.exportSvg.title": "図を SVG に書き出す…",
+  "command.toMermaid.title": "図を Mermaid（flowchart）に変換する",
+  "command.fromMermaid.title": "Mermaid の flowchart を図（.dgm）に変換する"
 }

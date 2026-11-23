@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { applyEdit } from '@docpresenter/base';
 import { parseDiagram } from '@docpresenter/diagram';
 import {
-  addNode, bendEdge, canUnpin, connectNodes, DiagramEditError, disconnectNodes, groupMembers,
+  addNode, partIdBase, bendEdge, canUnpin, connectNodes, DiagramEditError, disconnectNodes, groupMembers,
   dropInto, groupNodes, layOutDiagram, moveCallout, pinNode, pinNodes, reconnect, removeNode,
   putIntoContainer, removeNodes, setContainerCells, setItems, setNodeShape, setNodeStyle,
   setNodePart, setNodeText, setStackFlow, unpinNode, withParts,
@@ -425,9 +425,9 @@ describe('部品を足す', () => {
       shape: 'text', text: 'ルータ', at: { x: 40, y: 120 }, icon: 'net/router',
     }));
     const file = parseDiagram(written);
-    expect(file.nodes.map(n => n.id)).toEqual(['a', 'part1']);
-    expect(file.layout.get('part1')).toMatchObject({ x: 40, y: 120 });
-    expect(file.style.get('part1')?.get('icon')).toBe('net/router');
+    expect(file.nodes.map(n => n.id)).toEqual(['a', 'router1']);
+    expect(file.layout.get('router1')).toMatchObject({ x: 40, y: 120 });
+    expect(file.style.get('router1')?.get('icon')).toBe('net/router');
   });
 
   it('セクションが無ければ、まとめて 1 回で作る', () => {
@@ -437,18 +437,24 @@ describe('部品を足す', () => {
     expect(written).toContain('layout {');
     expect(written).toContain('style {');
     const file = parseDiagram(written);
-    expect(file.layout.get('part1')).toMatchObject({ x: 10, y: 10 });
-    expect(file.style.get('part1')?.get('icon')).toBe('net/router');
+    expect(file.layout.get('router1')).toMatchObject({ x: 10, y: 10 });
+    expect(file.style.get('router1')?.get('icon')).toBe('net/router');
   });
 
-  it('部品の名前は part1, part2', () => {
+  it('部品の名前は、部品や絵の名前に番号を付けたもの', () => {
     const once = applyEdit(BARE, addNode(parseDiagram(BARE), BARE, {
       shape: 'text', text: '一', icon: 'net/router', at: { x: 0, y: 0 },
     }));
     const twice = applyEdit(once, addNode(parseDiagram(once), once, {
-      shape: 'text', text: '二', icon: 'net/switch', at: { x: 0, y: 40 },
+      shape: 'text', text: '二', icon: 'net/router', at: { x: 0, y: 40 },
     }));
-    expect(parseDiagram(twice).nodes.map(n => n.id)).toEqual(['a', 'part1', 'part2']);
+    expect(parseDiagram(twice).nodes.map(n => n.id)).toEqual(['a', 'router1', 'router2']);
+    expect(partIdBase('ui/check-on')).toBe('checkOn');
+    expect(partIdBase('./icons/lambda.svg')).toBe('lambda');
+    expect(partIdBase('checkbox')).toBe('checkbox');
+    expect(partIdBase('ui/scrollbar-v')).toBe('scrollbarV');
+    expect(partIdBase('2nd')).toBe('part');
+    expect(partIdBase(undefined)).toBe('part');
   });
 });
 
@@ -869,8 +875,8 @@ describe('入れ物に入れる', () => {
   it('足すものは、選んだものの次に入る', () => {
     const written = applyEdit(HOLDS, addNode(parseDiagram(HOLDS), HOLDS,
       { shape: 'rect', text: '', part: 'textbox', into: { container: 'frame', after: 'a' } }));
-    expect(written).toContain('{\n    a\n    part1\n    b\n  }');
-    expect(written).toContain('  part1 textbox:');
+    expect(written).toContain('{\n    a\n    textbox1\n    b\n  }');
+    expect(written).toContain('  textbox1 textbox:');
     // 入れ物が置くので、座標は 1 つも増えない
     expect((written.match(/@ \(/g) ?? []).length).toBe(2);
   });
@@ -880,10 +886,10 @@ describe('入れ物に入れる', () => {
       'grid frame (cols: 1fr, 1fr) {\n    a ; .\n  }');
     const once = applyEdit(grid, addNode(parseDiagram(grid), grid,
       { shape: 'rect', text: '', part: 'textbox', into: { container: 'frame' } }));
-    expect(once).toContain('a ; part1');
+    expect(once).toContain('a ; textbox1');
     const twice = applyEdit(once, addNode(parseDiagram(once), once,
       { shape: 'rect', text: '', part: 'label', into: { container: 'frame' } }));
-    expect(twice).toContain('a ; part1\n    part2 ; .');
+    expect(twice).toContain('a ; textbox1\n    label1 ; .');
   });
 });
 

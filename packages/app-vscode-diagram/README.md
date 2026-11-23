@@ -92,6 +92,19 @@ Command Palette, or right-click a `.dgm` in the Explorer) or VS Code's own **"Fo
 inside the file, and pictures a part points at by path are embedded, so it looks the same in a browser, an image
 viewer or an office program.
 
+## To and from Mermaid
+
+**"DocPresenter Diagram: Write This Diagram as Mermaid (flowchart)"** writes a `flow` or `free` drawing as a Mermaid
+`flowchart` and opens it, unsaved, beside the drawing. **"Convert Mermaid Flowchart to a Diagram (.dgm)"** does the
+reverse; in Markdown, select a ```` ```mermaid ```` block first to convert just that. Neither changes the file it
+reads. What the other notation has no word for — coordinates, pictures, click handlers — is left behind, and a message
+says what.
+
+## Unsaved drawings
+
+Set a new file's language mode to `dgm` and it opens on the canvas before it is saved (as do "Open to the Side", SVG
+export and formatting).
+
 ## The format
 
 The `.dgm` format is specified in [spec/dgm.md](https://github.com/Rintaro-Sugishita/DocPresenter/blob/HEAD/spec/dgm.md)

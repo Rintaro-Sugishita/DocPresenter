@@ -629,6 +629,10 @@ Recognised properties in version 0.1:
 | `color` | yes | yes | its label |
 | `align` | no | yes | where the label sits: `left`, `center`, `right` |
 | `icon` | no | — | a picture inside the shape (§7.4) |
+| `font` | no | — | the typeface of its label, one family name (`font: "Yu Gothic"`) |
+| `font-size` | no | — | the size of its label in units (`font-size: 18`); 6 to 96. The shape is measured at it |
+| `enabled` | no | yes | `enabled: false` draws a control that cannot be used: the `disabled` part's look (§7.7) |
+| `opacity` | no | — | how see-through the shape is, 0 to 1 |
 
 A property not listed here is passed through as a token. A reader MUST NOT reject
 it.
@@ -726,7 +730,10 @@ words in the cell before it on its row, as in a form. A column and a shape in a
 heading or footer are **numbered under the table**: when the table itself is
 item 3, they are `3-1`, `3-2`, … in reading order (the columns left to right,
 then the footer). When the table has no number, they count on from the screen's
-numbers as any item does.
+numbers as any item does. The item table writes the number of each of them `#-#`
+— a number under the last `#` above it ([`table.md`](table.md) §2.4) — so that it
+numbers them the same way; a reader SHOULD report one written `#`, or a `#-#` of
+an item that is not under a numbered table.
 
 ### 7.6 An area that scrolls
 
@@ -740,6 +747,21 @@ A table that scrolls down keeps its headings at the top and its footer at the
 bottom, as a table on a real screen does: only body rows are cut off, a whole
 row at a time, and the bar down its side runs from under the headings to over
 the footer.
+
+### 7.7 A control that cannot be used
+
+`enabled: false` (or `no`, `off`) on a shape says the control is there but
+cannot be used — a button greyed out until a form is filled in. It keeps its
+part: a disabled text box is still a text box. It is drawn with the `fill`,
+`line`, `color`, `opacity`, `weight`, `font` and `font-size` of the library's
+part named `disabled`, laid over the shape's own, so a product decides once
+what disabled looks like on its screens. With no such part a renderer greys it
+out. A shape drawn as a picture (§7.4) is faded too, unless that part gives an
+`opacity`.
+
+A check box or a radio button that is ticked is another picture of the same
+control (`ui/check-on`, `ui/radio-on`), so each row of a table can be ticked or
+not on its own.
 
 ## 8. Rendering (informative)
 

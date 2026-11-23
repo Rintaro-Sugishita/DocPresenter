@@ -12,6 +12,9 @@ export const DIAGRAM_EXTENSION_MESSAGES = defineMessages({
   'diagramExt.svg.saveLabel': 'SVG に書き出す',
   'diagramExt.svg.done': '{path} に書き出しました',
   'diagramExt.canvas.unreadable': 'この図は読めません。テキストで直すと描き直します: {message}',
+  'diagramExt.mermaid.failed': '変換できませんでした: {message}',
+  'diagramExt.mermaid.nothing': 'Mermaid の flowchart を開くか、選んでから実行してください',
+  'diagramExt.mermaid.notes': '変換しました。持っていけなかったもの: {notes}',
 }, {
   'diagramExt.notDiagram': 'Open a drawing (.dgm) first',
   'diagramExt.format.unreadable': '{path} could not be read, so it was not formatted: {message}',
@@ -21,6 +24,9 @@ export const DIAGRAM_EXTENSION_MESSAGES = defineMessages({
   'diagramExt.svg.saveLabel': 'Export as SVG',
   'diagramExt.svg.done': 'Exported {path}',
   'diagramExt.canvas.unreadable': 'This drawing cannot be read. Fix the text and it is drawn again: {message}',
+  'diagramExt.mermaid.failed': 'Could not convert: {message}',
+  'diagramExt.mermaid.nothing': 'Open or select a Mermaid flowchart first',
+  'diagramExt.mermaid.notes': 'Converted. What could not be carried across: {notes}',
 });
 
 export type DiagramExtensionMessage = (typeof DIAGRAM_EXTENSION_MESSAGES.ids)[number];

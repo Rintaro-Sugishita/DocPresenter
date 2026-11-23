@@ -34,6 +34,7 @@ import {
   setColumnPart, setRowRole, setScroll, tableOf, type RowRole,
 } from '../table.js';
 import { stackNodes } from '../stack-up.js';
+import { checkState, isDisabled, setEnabled, toggleCheck } from '../states.js';
 import {
   addField, addLabel, fieldOf, fieldShapes, formOf, isLabelForm, setLabelColumn, setLabelSide, type AddedField,
 } from '../fields.js';
@@ -1667,7 +1668,11 @@ export function createCanvas(options: CanvasOptions): Canvas {
 
   /** Adds a shape written as one of the library's parts — an input with its label, unless told not to. */
   function addPart(name: string, event?: MouseEvent, labelled = true, drawing = { file, source }): void {
-    if (labelled && drawing.file.mode === 'free' && isInputPart(name, drawing.file)) {
+    // A table's columns have their headings for labels: what is put in one is
+    // the part alone, in a cell, not a field with words of its own beside it.
+    const one = picked.length === 1 ? picked[0]! : undefined;
+    const inTable = one !== undefined && tableOf(drawing.file, one) !== undefined;
+    if (labelled && !inTable && drawing.file.mode === 'free' && isInputPart(name, drawing.file)) {
       addInput(name, event, drawing);
       return;
     }
@@ -1677,7 +1682,7 @@ export function createCanvas(options: CanvasOptions): Canvas {
       : undefined;
     options.apply(
       () => onFile(drawing, addNode(drawing.file, drawing.source, { shape: 'rect', text: '', at, part: name, into })),
-      [nextShapeId(drawing.file, 'part')],
+      [nextShapeId(drawing.file, 'part', name)],
     );
   }
 
@@ -1696,7 +1701,7 @@ export function createCanvas(options: CanvasOptions): Canvas {
     // typing over its text — lands on the shape just added.
     options.apply(
       () => addNode(file, source, { shape, text, at, icon, into }),
-      [nextShapeId(file, icon === undefined ? shape : 'part')],
+      [nextShapeId(file, icon === undefined ? shape : 'part', icon)],
     );
   }
 
@@ -1822,6 +1827,7 @@ export function createCanvas(options: CanvasOptions): Canvas {
           file.partOf.get(id)),
       });
     }
+    items.push(...stateItems(id));
     items.push(...fieldItems(id));
     items.push(...flowItems(id));
     items.push(...gridTableItems(id));
@@ -1908,6 +1914,32 @@ export function createCanvas(options: CanvasOptions): Canvas {
   }
 
   /** The table and column of a cell of a table's body; undefined for any other shape. */
+  /**
+   * What a control on a screen is showing: a check box ticked or not — this
+   * one shape, so a column of check boxes can tick some rows and not others —
+   * and whether it can be used at all.
+   */
+  function stateItems(id: string): MenuItem[] {
+    const node = file.nodes.find(one => one.id === id);
+    if (!node || node.shape === 'group' || file.mode !== 'free') return [];
+    const items: MenuItem[] = [];
+    const state = checkState(file, id);
+    if (state !== undefined) {
+      items.push({
+        label: t(state === 'on' ? 'diagram.canvas.uncheck' : 'diagram.canvas.check'),
+        separated: true,
+        run: () => options.apply(() => toggleCheck(file, source, id), [id]),
+      });
+    }
+    const disabled = isDisabled(file.style.get(id));
+    items.push({
+      label: t(disabled ? 'diagram.canvas.enable' : 'diagram.canvas.disable'),
+      separated: state === undefined,
+      run: () => options.apply(() => setEnabled(source, id, disabled), [id]),
+    });
+    return items;
+  }
+
   function bodyColumnOf(id: string): { table: string; col: number } | undefined {
     const cell = tableOf(file, id);
     if (!cell || cell.row === undefined || cell.col === undefined || cell.row < 0) return undefined;
