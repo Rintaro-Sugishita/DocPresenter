@@ -5,7 +5,7 @@
 // `shapes.ts` for why.
 
 import { zipSync, strToU8 } from 'fflate';
-import { EMU_PER_INCH, EMU_PER_PT, SLIDE, type Block, type Deck, type Slide } from './model.js';
+import { EMU_PER_INCH, EMU_PER_PT, SLIDE, type Block, type Deck, type Slide, type SlideSize } from './model.js';
 import {
   drawing, layOutTable, picture, resetIds, table, textBox, type Frame, type Placement,
 } from './shapes.js';
@@ -19,6 +19,8 @@ export interface PptxOptions {
   /** The theme's fonts, so the deck looks like the document it came from. */
   readonly headingFont?: string;
   readonly bodyFont?: string;
+  /** How big the slides are, in EMU: 16:9 unless the document's paper says 4:3. */
+  readonly size?: SlideSize;
 }
 
 const MARGIN = Math.round(EMU_PER_INCH * 0.55);
@@ -33,6 +35,7 @@ interface Media {
 
 export function writePptx(deck: Deck, options: PptxOptions = {}): Uint8Array {
   const media: Media = { names: [], bytes: [] };
+  const size = options.size ?? SLIDE;
 
   // Slides are written first because they are what gathers the pictures, but
   // the package is assembled below in the order a reader expects: the content
@@ -43,7 +46,7 @@ export function writePptx(deck: Deck, options: PptxOptions = {}): Uint8Array {
     resetIds();
     const used: { id: number; target: string }[] = [];
     const placements: Placement[] = [];
-    const body = slideBody(slide, index + 1, deck.slides.length, used, media, placements);
+    const body = slideBody(slide, index + 1, deck.slides.length, used, media, placements, size);
     rels.push(slideRels(used));
     return slideXml(body, placements.map(mark).join(' '));
   });
@@ -53,7 +56,7 @@ export function writePptx(deck: Deck, options: PptxOptions = {}): Uint8Array {
   files['_rels/.rels'] = strToU8(ROOT_RELS);
   files['docProps/core.xml'] = strToU8(CORE(deck.title));
   files['docProps/app.xml'] = strToU8(APP(slides.length));
-  files['ppt/presentation.xml'] = strToU8(PRESENTATION(slides.length));
+  files['ppt/presentation.xml'] = strToU8(PRESENTATION(slides.length, size));
   files['ppt/_rels/presentation.xml.rels'] = strToU8(PRESENTATION_RELS(slides.length));
   files['ppt/slideMasters/slideMaster1.xml'] = strToU8(SLIDE_MASTER);
   files['ppt/slideMasters/_rels/slideMaster1.xml.rels'] = strToU8(SLIDE_MASTER_RELS);
@@ -83,21 +86,21 @@ function mark(placement: Placement): string {
 
 function slideBody(
   slide: Slide, number: number, total: number,
-  used: { id: number; target: string }[], media: Media, placements: Placement[],
+  used: { id: number; target: string }[], media: Media, placements: Placement[], size: SlideSize = SLIDE,
 ): string {
   const parts: string[] = [];
   const hasTitle = slide.title !== undefined && slide.title !== '';
   const top = MARGIN + (hasTitle ? TITLE_HEIGHT : 0);
   const frame: Frame = {
     x: MARGIN, y: top,
-    width: SLIDE.width - MARGIN * 2,
-    height: SLIDE.height - top - MARGIN - FOOT_HEIGHT,
+    width: size.width - MARGIN * 2,
+    height: size.height - top - MARGIN - FOOT_HEIGHT,
   };
 
   if (hasTitle) {
     parts.push(textBox(
       { kind: 'text', paragraphs: [[plain(slide.title!)]] },
-      { x: MARGIN, y: MARGIN, width: SLIDE.width - MARGIN * 2, height: TITLE_HEIGHT },
+      { x: MARGIN, y: MARGIN, width: size.width - MARGIN * 2, height: TITLE_HEIGHT },
       24, '#1c1f24', 'l',
     ));
   }
@@ -106,7 +109,7 @@ function slideBody(
   // more, they share the height in the order they were written — text as much
   // as its lines need, and a picture, a drawing or a table the rest.
   const blocks = slide.blocks;
-  const heights = shares(blocks, frame.height);
+  const heights = shares(blocks, frame.height, frame.width);
   let y = frame.y;
   for (const [index, block] of blocks.entries()) {
     const height = heights[index]!;
@@ -118,7 +121,7 @@ function slideBody(
   const foot = slide.foot ? `${slide.foot}　${number} / ${total}` : `${number} / ${total}`;
   parts.push(textBox(
     { kind: 'text', paragraphs: [[plain(foot)]] },
-    { x: MARGIN, y: SLIDE.height - MARGIN - FOOT_HEIGHT, width: SLIDE.width - MARGIN * 2, height: FOOT_HEIGHT },
+    { x: MARGIN, y: size.height - MARGIN - FOOT_HEIGHT, width: size.width - MARGIN * 2, height: FOOT_HEIGHT },
     9, '#6b7280', 'l',
   ));
   return parts.join('');
@@ -142,8 +145,8 @@ const CONTENT_WIDTH = SLIDE.width - MARGIN * 2;
  * The height a block needs at its own size, in EMU: text for its lines, a
  * table for its rows. A picture or a drawing needs whatever it is given.
  */
-function needed(block: Block): number | undefined {
-  if (block.kind === 'table') return layOutTable(block, { width: CONTENT_WIDTH, height: Infinity }).height;
+function needed(block: Block, width = CONTENT_WIDTH): number | undefined {
+  if (block.kind === 'table') return layOutTable(block, { width, height: Infinity }).height;
   if (block.kind !== 'text') return undefined;
   const size = isCode(block) ? CODE_SIZE : PROSE_SIZE;
   return Math.round((block.paragraphs.length * size * 1.3 + 10) * EMU_PER_PT);
@@ -154,8 +157,8 @@ function needed(block: Block): number | undefined {
  * left goes to the pictures, drawings and tables in equal parts — but never so
  * little that a figure becomes a thumbnail, in which case the text gives way.
  */
-function shares(blocks: readonly Block[], height: number): number[] {
-  const wants = blocks.map(needed);
+function shares(blocks: readonly Block[], height: number, width = CONTENT_WIDTH): number[] {
+  const wants = blocks.map(block => needed(block, width));
   const figures = wants.filter(want => want === undefined).length;
   const text = wants.reduce<number>((sum, want) => sum + (want ?? 0), 0);
   const room = figures === 0 ? height : height * (1 - FIGURE_SHARE);

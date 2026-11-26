@@ -6,10 +6,11 @@
 // from the HTML's is worse than no PDF.
 
 import {
-  anchorFileOf, expandDocument, fencesOf, isAbout, isAddress, parseDocument, parseReviewFile, resolveDocument, viewOf,
+  anchorFileOf, displayMath, readSettings, SETTINGS_FILE, expandDocument, fencesOf, MATH_PICTURE, isAbout, isAddress, paperOf, parseDocument, parseReviewFile, resolveDocument, viewOf, withVariables,
   type DiffMarks, type DocumentFile, type ResolvedDocument,
 } from '@docpresenter/markdown';
-import { writePptx } from '@docpresenter/pptx';
+import { SLIDE_4_3, writePptx } from '@docpresenter/pptx';
+import { useItemSettings } from '@docpresenter/diagram';
 import { DEFAULT_LOCALE, describeError, locateAnchor, type Locale } from '@docpresenter/base';
 import { BUILD_MESSAGES, said } from './messages.js';
 import { deckOf } from './deck.js';
@@ -134,6 +135,8 @@ export async function build(
 ): Promise<BuildResult> {
   const workspace = asLf(given);
   const locale = options.locale ?? DEFAULT_LOCALE;
+  // The headings the repository's item tables are written with.
+  useItemSettings(readSettings(workspace.read(SETTINGS_FILE)));
   const graph = readGraph(workspace, locale);
   const diagnostics: BuildDiagnostic[] = [];
   const artifacts: Artifact[] = [];
@@ -195,7 +198,7 @@ function namedRoot(workspace: Workspace, path: string): Root | undefined {
   const source = workspace.read(path);
   if (source === undefined) return undefined;
   try {
-    const document = parseDocument(source);
+    const document = withVariables(parseDocument(source), { path });
     return { path, document, formats: document.frontmatter.output };
   } catch {
     return undefined;
@@ -269,6 +272,8 @@ export function mermaidSources(given: Workspace, document: DocumentFile): string
   const found = new Set<string>();
   for (const block of document.blocks) {
     if (block.kind === 'prose') {
+      // A formula on lines of its own goes on a slide as a picture, made the same way.
+      for (const formula of displayMath(block.text)) found.add(`${MATH_PICTURE}${formula.tex}`);
       for (const fence of fencesOf(block.text)) {
         if (fence.language === 'mermaid' && viewOf(fence.attributes.get('view')) !== 'code') {
           found.add(fence.content);
@@ -487,7 +492,9 @@ function pptx(input: WriteInput): Artifact {
     input.diagnostics.push({ severity: 'warning', path: root.path, message });
   }
   return {
-    path: `${input.out}.pptx`, bytes: writePptx(deck), root: root.path, format: 'pptx',
+    // A document on 4:3 paper is shown on 4:3 slides; every other one on 16:9.
+    path: `${input.out}.pptx`, bytes: writePptx(deck, paperOf(raw)?.name === 'slide-4:3' ? { size: SLIDE_4_3 } : {}),
+    root: root.path, format: 'pptx',
   };
 }
 

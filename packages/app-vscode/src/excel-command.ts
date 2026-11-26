@@ -17,6 +17,7 @@
 // deleted. One left behind (VS Code closed first) is swept up the next time.
 
 import * as vscode from 'vscode';
+import { openWithSystem } from './open-file.js';
 import { mkdirSync, readdirSync, readFileSync, rmSync, statSync, watch, writeFileSync, type FSWatcher } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { basename, join } from 'node:path';
@@ -182,7 +183,7 @@ const sessions = new Map<string, ExcelSession>();
  */
 export async function openInExcel(
   table: vscode.Uri, storage: vscode.Uri, output: Pick<vscode.OutputChannel, 'appendLine'>,
-  open: (file: vscode.Uri) => Thenable<boolean> = file => vscode.env.openExternal(file),
+  open: (file: vscode.Uri) => Thenable<boolean> = openWithSystem,
 ): Promise<ExcelSession | undefined> {
   const name = vscode.workspace.asRelativePath(table, false);
   let source: string;

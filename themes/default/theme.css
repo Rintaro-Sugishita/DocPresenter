@@ -241,7 +241,10 @@ pre > code { background: none; padding: 0; font-size: 1em; }
 .dp-figure[data-align="right"] { text-align: right; }
 .dp-figure[data-align="right"] > .dp-figure-body { margin-left: auto; }
 .dp-figure[data-align="left"] > .dp-figure-body { margin-right: auto; }
-.dp-caption { font-family: var(--font-heading); font-size: 0.9em; color: #3a4048; margin-top: 0.6em; }
+.dp-caption { font-family: var(--font-heading); font-size: 0.9em; color: #3a4048; margin-top: 0.6em; text-align: center; }
+/* 題名は中央が既定。図そのものを寄せたときだけ、題名も同じ側へ寄せる。 */
+.dp-figure[data-align="left"] > .dp-caption { text-align: left; }
+.dp-figure[data-align="right"] > .dp-caption { text-align: right; }
 .dp-caption .dp-number { color: #1c1f24; font-weight: 600; }
 /* A table's title is above it, so its space is below. */
 .dp-figure[data-kind="table"] > .dp-caption { margin: 0 0 0.6em; }

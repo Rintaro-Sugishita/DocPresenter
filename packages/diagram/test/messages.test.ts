@@ -37,7 +37,7 @@ describe('diagram messages', () => {
   it('says a parse error in either language, Japanese by default', () => {
     let caught: unknown;
     try { parseDiagram('flow {\n  ???\n}\n'); } catch (error) { caught = error; }
-    expect((caught as Error).message).toBe('解釈できない行: ???（2 行目）');
+    expect((caught as Error).message).toBe('解釈できない行があります: ???（2 行目）');
     expect(describeError(caught, 'en')).toBe('Cannot read this line: ??? (line 2)');
   });
 

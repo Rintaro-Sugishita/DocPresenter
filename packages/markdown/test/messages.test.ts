@@ -32,7 +32,7 @@ group('markdown messages', () => {
   it('says a parse error in either language', () => {
     let caught: unknown;
     try { parseTable('just text\n'); } catch (error) { caught = error; }
-    expect((caught as Error).message).toMatch(/表のグリッドが見つからない（\d+ 行目）/);
+    expect((caught as Error).message).toMatch(/表のグリッドが見つかりません（\d+ 行目）/);
     expect(describeError(caught, 'en')).toMatch(/No table grid found \(line \d+\)/);
   });
 });

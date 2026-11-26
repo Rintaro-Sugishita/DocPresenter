@@ -11,8 +11,9 @@
 // them is in protocol.ts.
 
 import * as vscode from 'vscode';
+import { openWithSystem } from './open-file.js';
 import { spanInFile } from '@docpresenter/base';
-import { retargetImports } from '@docpresenter/markdown';
+import { retargetImports, readSettings, SETTINGS_FILE } from '@docpresenter/markdown';
 import { unitsBefore } from './bytes.js';
 import { inWorkspace } from './paths.js';
 import type { FromView, ToView } from './protocol.js';
@@ -23,6 +24,7 @@ import { addNote, loadNotes, updateNote, watchReviews } from './review-host.js';
 import { documentNumberOf, parseDocument } from '@docpresenter/markdown';
 import { themePaths } from '@docpresenter/build';
 import { PAGE_STYLE } from './page-style.js';
+import { onTablesMade, splitTables, tableToExcel } from './md-table-command.js';
 
 /** Text the document could refer to, and pictures it could show. */
 const TEXT_FILES = '**/*.{dgm,table,mmd,ermlx,md}';
@@ -138,6 +140,14 @@ export class SheetEditorProvider implements vscode.CustomTextEditorProvider {
       for (const uri of await vscode.workspace.findFiles(WORKBOOK_FILES, IGNORED)) {
         try { workbooks[pathOf(uri)] = Buffer.from(await vscode.workspace.fs.readFile(uri)).toString('base64'); } catch { /* 無いものとして扱う */ }
       }
+      // The repository's settings: the headings its item tables are written with.
+      const root = vscode.workspace.getWorkspaceFolder(document.uri)?.uri;
+      let settings: unknown;
+      if (root !== undefined) {
+        try {
+          settings = readSettings(new TextDecoder().decode(await vscode.workspace.fs.readFile(vscode.Uri.joinPath(root, SETTINGS_FILE))));
+        } catch { settings = undefined; }
+      }
       post({
         kind: 'open',
         path: documentPath,
@@ -145,6 +155,7 @@ export class SheetEditorProvider implements vscode.CustomTextEditorProvider {
         files, images, workbooks,
         commitKey: commitKey(),
         locale: hostLocale(),
+        ...(settings === undefined ? {} : { settings }),
       });
       await sendReviews();
       await sendTheme();
@@ -325,11 +336,25 @@ export class SheetEditorProvider implements vscode.CustomTextEditorProvider {
           return;
         }
         if (message.kind === 'open-external') {
-          await vscode.env.openExternal(vscode.Uri.joinPath(root, ...message.path.split('/')));
+          await openWithSystem(vscode.Uri.joinPath(root, ...message.path.split('/')));
+          return;
+        }
+        if (message.kind === 'open-file') {
+          await vscode.window.showTextDocument(vscode.Uri.joinPath(root, ...message.path.split('/')),
+            { viewColumn: vscode.ViewColumn.Beside, preview: false });
           return;
         }
         if (message.kind === 'open-in-excel') {
           await vscode.commands.executeCommand('docpresenter.openInExcel', vscode.Uri.joinPath(root, ...message.path.split('/')));
+          return;
+        }
+        if (message.kind === 'split-table') {
+          await inTurn(() => splitTables(document.uri, message.line));
+          return;
+        }
+        if (message.kind === 'table-excel') {
+          const name = documentPath.replace(/^.*\//, '').replace(/\.md$/i, '');
+          await tableToExcel(this.context.globalStorageUri, message.text, name);
           return;
         }
         if (message.kind === 'export-changes') {
@@ -359,14 +384,18 @@ export class SheetEditorProvider implements vscode.CustomTextEditorProvider {
           return;
         }
         if (message.kind === 'create') {
-          const bytes = message.bytes
-            ? Uint8Array.from(message.bytes)
-            : new TextEncoder().encode(message.text ?? '');
-          await write(message.path, bytes);
-          if (message.bytes) {
-            const uri = vscode.Uri.joinPath(root, ...message.path.split('/'));
-            post({ kind: 'image', path: message.path, url: panel.webview.asWebviewUri(uri).toString() });
-          }
+          // In turn with the edits: the screen sends the new file and then
+          // an edit to it, and the edit must find the file written.
+          await inTurn(async () => {
+            const bytes = message.bytes
+              ? Uint8Array.from(message.bytes)
+              : new TextEncoder().encode(message.text ?? '');
+            await write(message.path, bytes);
+            if (message.bytes) {
+              const uri = vscode.Uri.joinPath(root, ...message.path.split('/'));
+              post({ kind: 'image', path: message.path, url: panel.webview.asWebviewUri(uri).toString() });
+            }
+          });
           return;
         }
         if (message.kind === 'error') {
@@ -412,7 +441,34 @@ export class SheetEditorProvider implements vscode.CustomTextEditorProvider {
       } catch { /* 保存の途中。次の知らせで読む */ }
     }));
 
+    // A file that appears — made, or the new name of one renamed in the
+    // Explorer — is handed over as it lands. The documents that imported the
+    // old name are rewritten to the new one, and without this the screen would
+    // look for the new name among the files it was opened with and say it is
+    // not there until it was opened again.
+    const arrivals = vscode.workspace.createFileSystemWatcher('**/*.{dgm,table,mmd,ermlx,png,jpg,jpeg,gif,svg,webp}');
+    const arrived = arrivals.onDidCreate(async uri => {
+      const path = pathOf(uri);
+      if (/(^|\/)(node_modules|\.git|out|dist)\//.test(path)) return;
+      try {
+        if (/\.(png|jpe?g|gif|svg|webp)$/i.test(path)) {
+          post({ kind: 'image', path, url: panel.webview.asWebviewUri(uri).toString() });
+          return;
+        }
+        post({ kind: 'file', path, text: new TextDecoder().decode(await vscode.workspace.fs.readFile(uri)) });
+      } catch { /* 書いている途中。変わったときにまた来る */ }
+    });
+
+    // Tables split out of a document, here or from the text editor: handed
+    // over before the document that imports them is rewritten.
+    const tablesMade = onTablesMade(tables => {
+      for (const table of tables) post({ kind: 'file', path: table.path, text: table.text });
+    });
+
     panel.onDidDispose(() => {
+      tablesMade.dispose();
+      arrived.dispose();
+      arrivals.dispose();
       reviews.dispose();
       for (const one of themeChanged) one.dispose();
       themeWatcher.dispose();

@@ -66,14 +66,14 @@ export const APP = (slides: number): string =>
 <Application>DocPresenter</Application><Slides>${slides}</Slides>
 </Properties>`;
 
-export const PRESENTATION = (slides: number): string =>
+export const PRESENTATION = (slides: number, size: { width: number; height: number } = SLIDE): string =>
   `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <p:presentation ${NS}>
 <p:sldMasterIdLst><p:sldMasterId id="2147483648" r:id="rId1"/></p:sldMasterIdLst>
 <p:sldIdLst>${range(slides)
     .map(i => `<p:sldId id="${256 + i}" r:id="rId${i + 2}"/>`).join('')}</p:sldIdLst>
-<p:sldSz cx="${SLIDE.width}" cy="${SLIDE.height}" type="screen16x9"/>
-<p:notesSz cx="${SLIDE.height}" cy="${SLIDE.width}"/>
+<p:sldSz cx="${size.width}" cy="${size.height}" type="${size.width * 3 === size.height * 4 ? 'screen4x3' : 'screen16x9'}"/>
+<p:notesSz cx="${size.height}" cy="${size.width}"/>
 </p:presentation>`;
 
 export const PRES_PROPS = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>

@@ -259,13 +259,20 @@ find the typo.
 ### 3.3 A group
 
 ```
-group id ["label"] [direction] { member; member; … }
+group id ["label"] [direction] {
+  member
+  member
+}
 ```
 
-Members are identifiers separated by `;`. The whole group is one line — this is
-the one construct that could reasonably have been nested, and is not, so that
-adding a member is a one-line diff and a group's own position in `layout` reads
-like any other shape's.
+The canonical form puts one member on a line under the group and the closing
+`}` on a line of its own: adding or removing a member is then a line of its
+own in a diff, and two branches that each add one merge without colliding on
+one long line. The members MAY also be written on the group's own line,
+separated by `;` (`group id "label" { a; b }`), which is what version 0.1
+wrote; a reader MUST accept both, and both MAY mix `;` and line breaks. A
+comment line among the members is allowed, though a formatter that has nowhere
+to keep it leaves the file as written.
 
 A group is drawn as a container behind its members and MAY be given a pin of its
 own; DocPresenter writes `z:-1` for groups so that members stay clickable.
@@ -302,8 +309,9 @@ A group with a direction is laid out **on its own**, in its own direction, and
 then takes part in the drawing around it as a single shape the size of its
 frame. Its members' connections to shapes outside are drawn as usual. This holds
 even when members connect outside — unlike Mermaid, which drops a subgraph's
-direction in that case. A group with no direction is a frame drawn round
-wherever its members were placed, as before.
+direction in that case. A group with no direction is laid out the same way, in
+the direction of whatever it sits in: its members are kept together, so no shape
+that is not a member is ever placed inside its frame.
 
 A directed group MAY list another group among its members: a directed one is
 laid out inside it as one shape, and a plain one has its own members laid out in
@@ -417,6 +425,21 @@ result adds corners, and an author who wants the corner gone deletes the line
 happens when a Mermaid flowchart is imported into draw.io and every edge arrives
 carrying a dozen waypoints that have to be removed one at a time.
 
+A size with no place is written without the `@`:
+
+```
+id WxH
+```
+
+It says how big a shape is and leaves where it goes to whatever arranges it.
+That is for a shape a container holds: a pin takes a shape out of its container
+(a pin wins), while `textarea1 320x90` makes a text box in a form taller and
+keeps it in the form. A width narrower than the room its cell gives — in a
+stack or a grid — is kept, the shape starting at the cell's left edge: one short
+field among long ones. It is never wider than the cell. A member with no size
+line fills its cell's width; the height is the shape's. A shape that also has a pin takes the pin's size, and a writer
+that pins a shape with a size line moves the size onto the pin.
+
 A container (`stack` / `grid` / `tabs`) pinned with a place and no size is as
 big as what it holds: `stack1 @ (40, 60)`. The size is the one thing a container
 can work out for itself, and writing it would only be a number to get wrong when
@@ -529,7 +552,7 @@ separated by a blank line.
 | header | `flow Title LR {` — the title, then the direction (§3.5) |
 | shape | `id [label]:::class`, the ids padded to one column. The brackets as tight as reading them back allows: `[ /a/ ]` keeps its spaces, or it would read as a parallelogram |
 | part | `id part:"label"`; a part holding rows writes them two spaces deeper per level, `-` or `+`, then `*` for the picked one |
-| group | `group id "label" LR { a; b }`, the columns lined up. The label is left out when it is the id, which is what a group without one shows |
+| group | `group id "label" LR {`, then one member to a line two spaces deeper, then `}`. The label is left out when it is the id, which is what a group without one shows |
 | connection | `from --> to "label"`, with a trailing `~` when it does not order the flow. One spelling per meaning: `-->` (also for `->`), `--`, `-.->`, `<-->` (also for `<->`), `<-.->`, `~~~` |
 
 **The order.** Taken from the drawing, never from the order the lines were typed:
@@ -620,6 +643,9 @@ passes it on as a name (DocPresenter emits the class `dp-<property>-<value>`).
 This split is the whole of the style model: `fill: #e3f2fd` is one drawing's
 decision, `fill: changed` is a decision the document makes once, in its theme.
 
+`fill: none` is neither: the shape is not filled at all, and what is behind it
+shows through — a frame drawn round a screen, for one.
+
 Recognised properties in version 0.1:
 
 | Property | Colour | Token | Meaning |
@@ -632,6 +658,7 @@ Recognised properties in version 0.1:
 | `font` | no | — | the typeface of its label, one family name (`font: "Yu Gothic"`) |
 | `font-size` | no | — | the size of its label in units (`font-size: 18`); 6 to 96. The shape is measured at it |
 | `enabled` | no | yes | `enabled: false` draws a control that cannot be used: the `disabled` part's look (§7.7) |
+| `visible` | no | yes | `visible: false` keeps the shape's room and draws nothing — not what it holds, not its connections (an empty row in a stack). An editor draws it faintly so it can be picked |
 | `opacity` | no | — | how see-through the shape is, 0 to 1 |
 
 A property not listed here is passed through as a token. A reader MUST NOT reject
@@ -653,7 +680,7 @@ lambda { icon: ./icons/lambda.svg }
 - **a built-in part name.** Version 0.1 defines ten, all drawn on a 24×24 grid:
   `net/cloud`, `net/internet`, `net/vpn`, `net/router`, `net/switch`,
   `net/firewall`, `net/server`, `net/storage`, `net/user`, `net/mobile`.
-- **a path** ending in `.svg` or `.png`, resolved relative to the `.dgm` file.
+- **a path** ending in `.svg`, `.png`, `.jpg`, `.gif` or `.webp`, resolved relative to the `.dgm` file.
 
 The distinction between §3.1 and this one is deliberate and worth stating,
 because it is the answer to "where do the AWS icons go". **Shapes are a
@@ -714,6 +741,12 @@ the same name.
   scrolls down (§7.6).
 - A table picture that is not a container is drawn as before: a picture saying
   "a table goes here".
+
+**What is an item.** A shape is an item when its style says what kind it is
+(`item: 入力`, usually from its part), or when it is written as the `label` part
+and names nothing — a label that is an input's caption is that input's name. A
+shape's own `item: no` (or `none`) keeps it off the item table, whatever its part
+says.
 
 **Items.** On a screen with an item table (`items "…"`), the body of a table
 is listed **by column**, not by cell: each column is one item, whatever its

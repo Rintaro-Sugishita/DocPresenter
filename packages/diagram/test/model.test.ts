@@ -128,12 +128,12 @@ describe('レイアウトの算出', () => {
     // 消してしまうと、ファイルにある図形が画面から消える。掴めなければ直せない。
     expect(laid.boxes.has('b')).toBe(true);
     expect(laid.boxes.get('b')!.y).toBeGreaterThan(laid.boxes.get('a')!.y);
-    expect(laid.diagnostics).toContain('配置がない: b');
+    expect(laid.diagnostics).toContain('配置がありません: b');
   });
 
   it('存在しない接続先を報告する', () => {
     const d = parseDiagram('flow {\n a [A]\n a --> z\n}');
-    expect(layOutDiagram(d).diagnostics).toContain('接続先が見つからない: z');
+    expect(layOutDiagram(d).diagnostics).toContain('接続先が見つかりません: z');
   });
 });
 
@@ -362,8 +362,8 @@ describe('単独の線', () => {
       + 'layout {\n  rule1 @ (0,0) 100x0\n  box1 @ (0,40)\n}\n'
       + 'style {\n  rule1 { arrow: ひだり, weight: 0 }\n  box1 { arrow: end }\n}\n'));
     expect(laid.diagnostics.join(' / ')).toContain('arrow に書けるのは');
-    expect(laid.diagnostics.join(' / ')).toContain('太さは正の数で書く');
-    expect(laid.diagnostics.join(' / ')).toContain('線だけが arrow を持つ: box1');
+    expect(laid.diagnostics.join(' / ')).toContain('太さは正の数で書いてください');
+    expect(laid.diagnostics.join(' / ')).toContain('arrow を持てるのは線だけです: box1');
   });
 });
 
@@ -371,7 +371,7 @@ describe('入れ物', () => {
   const box = (laid: ReturnType<typeof layOutDiagram>, id: string) => laid.boxes.get(id)!;
   const lay = (...lines: string[]) => layOutDiagram(parseDiagram(lines.join('\n')));
 
-  it('縦に積む：間隔は 1 回だけ書き、座標は計算される', () => {
+  it('縦に積みます：間隔は 1 回だけ書き、座標は計算される', () => {
     const laid = lay(
       'free {', '  frame [ ]', '  a [あ]', '  b [い]', '  c [う]', '}',
       'layout {',
@@ -386,7 +386,7 @@ describe('入れ物', () => {
     expect(first.x).toBe(box(laid, 'frame').x + 20);
   });
 
-  it('横に並べる：主軸は部品のままの大きさ', () => {
+  it('横に並べます：主軸は部品のままの大きさ', () => {
     const laid = lay(
       'free {', '  row [ ]', '  a [あ]', '  b [い]', '}',
       'layout {',
@@ -460,8 +460,8 @@ describe('入れ物', () => {
       '  stack どこにもない (down) { a }',
       '}');
     const said = laid.diagnostics.join(' / ');
-    expect(said).toContain('入れ物の中身が見つからない: いない');
-    expect(said).toContain('入れ物が見つからない: どこにもない');
+    expect(said).toContain('入れ物の中身が見つかりません: いない');
+    expect(said).toContain('入れ物が見つかりません: どこにもない');
   });
 
   it('枠に入りきらない中身は、描いたうえで言う', () => {
@@ -471,7 +471,7 @@ describe('入れ物', () => {
       '  frame @ (0, 0) 300x60',
       '  stack frame (down; gap: 10; pad: 10) { a ; b }',
       '}');
-    expect(laid.diagnostics.join(' / ')).toContain('入れ物に中身が入りきらない: frame');
+    expect(laid.diagnostics.join(' / ')).toContain('入れ物に中身が入りきりません: frame');
     expect(laid.boxes.has('b')).toBe(true);       // 隠さない
   });
 
@@ -481,7 +481,7 @@ describe('入れ物', () => {
       'layout {',
       '  stack frame (down) { a }',
       '}');
-    expect(laid.diagnostics.join(' / ')).toContain('入れ物の置き場所がない: frame');
+    expect(laid.diagnostics.join(' / ')).toContain('入れ物の置き場所がありません: frame');
   });
 
   it('tabs：見出しは全部、中身は 1 枚だけ', () => {
@@ -677,12 +677,12 @@ describe('画面部品', () => {
 
   it('無い部品は黙って箱にせず、そう言う', () => {
     expect(() => withParts(parseDiagram(screen('  keep checkbox:')), read))
-      .toThrow('部品が見つからない');
+      .toThrow('部品が見つかりません');
   });
 
   it('読めない部品ファイルもそう言う', () => {
     expect(() => withParts(parseDiagram(screen('  idBox textbox:')), () => undefined))
-      .toThrow('部品の定義が読めない');
+      .toThrow('部品の定義が読めません');
   });
 
   it('自分で宣言した部品が、取り込んだものに勝つ', () => {

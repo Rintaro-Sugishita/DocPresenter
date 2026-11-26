@@ -116,7 +116,7 @@ describe('線のラベル', () => {
     const back = writeBack(changed, files);
     expect(back.files.find(file => file.path === 'docs/flow.dgm')!.text).toBe(FLOW);
     expect(back.diagnostics.map(one => one.message)).toEqual([
-      'a → b の線のラベルが「在庫引き当て」から「引き当て済み」に変わっているが、線のラベルはまだ読み戻せない（図で直すこと）',
+      'a → b の線のラベルが「在庫引き当て」から「引き当て済み」に変わっていますが、線のラベルはまだ読み戻せません（図で直してください）',
     ]);
   });
 });
@@ -143,7 +143,7 @@ describe('表の書き換え', () => {
     const back = writeBack(zipSync(parts), files);
     expect(back.diagnostics).toEqual([expect.objectContaining({
       severity: 'warning', path: 'docs/terms.table',
-      message: '1 枚目の表（docs/terms.table）が PowerPoint で書き換えられているが、表は読み戻せない（docs/terms.table を直すこと）',
+      message: '1 枚目の表（docs/terms.table）が PowerPoint で書き換えられていますが、表は読み戻せません（docs/terms.table を直してください）',
     })]);
     expect(back.files).toEqual([]);
   });

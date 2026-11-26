@@ -26,6 +26,7 @@ import { EMPTY_CELL, containerOf, isTable, members, rowRoles } from './arrange.j
 import { DIAGRAM_MESSAGES, dgm } from './messages.js';
 import type { DiagramFile, ItemLink, ItemLinks } from './model.js';
 import { DiagramEditError } from './edits.js';
+import { isDisabled } from './states.js';
 
 /** Reads a file named by the drawing, as written in it. */
 type Reader = (path: string) => string | undefined;
@@ -91,8 +92,49 @@ const PICTURE_ITEMS: Readonly<Record<string, string>> = {
   'ui/select': '入力', 'ui/spinner': '入力', 'ui/slider': '入力',
   'ui/grid': '表示', 'ui/list': '表示', 'ui/tree': '表示', 'ui/menu': '操作',
 };
-/** A shape written as an item turns that off with this. */
-const NOT_AN_ITEM = 'none';
+/** What a shape's own style says to keep it off the item table: `item: no` (or `none`). */
+const NOT_AN_ITEM = new Set(['no', 'none']);
+
+/** Whether a shape's own style keeps it off the item table. */
+export function isLeftOut(diagram: DiagramFile, id: string): boolean {
+  return NOT_AN_ITEM.has(diagram.style.get(id)?.get('item')?.trim().toLowerCase() ?? '');
+}
+
+/** The kinds that take a value, which an input that cannot be used does not. */
+const INPUT_KINDS = new Set(['入力', 'input']);
+
+/** Whether a shape is a label: words written as the `label` part. */
+function isLabelPart(diagram: DiagramFile, id: string): boolean {
+  const node = diagram.nodes.find(one => one.id === id);
+  return node !== undefined && node.shape === 'text' && node.text.trim() !== '' && LABEL_PARTS.has(diagram.partOf.get(id) ?? '');
+}
+
+/**
+ * The label that names another one: the member before it in its stack, or
+ * the cell before it or over it in a grid — when `isLabel` says it is one.
+ */
+function labelBefore(diagram: DiagramFile, id: string, isLabel: (id: string) => boolean): string | undefined {
+  const holder = containerOf(diagram).get(id);
+  const container = holder === undefined ? undefined : diagram.containers.get(holder);
+  if (!container || container.kind === 'tabs') return undefined;
+  if (container.kind === 'grid') {
+    const r = container.cells.findIndex(cells => cells.includes(id));
+    const c = container.cells[r]!.indexOf(id);
+    const before = container.cells[r]![c - 1];
+    if (before !== undefined && before !== id && before !== EMPTY_CELL && isLabel(before)) return before;
+    const above = r > 0 ? container.cells[r - 1]![c] : undefined;
+    return above !== undefined && above !== EMPTY_CELL && isLabel(above) ? above : undefined;
+  }
+  const all = members(container);
+  const before = all[all.indexOf(id) - 1];
+  return before !== undefined && isLabel(before) ? before : undefined;
+}
+
+/** The parts that are items when they stand on their own: the label. */
+const LABEL_PARTS = new Set(['label']);
+/** What a label standing on its own is, as an item. */
+const LABEL_ITEM = '表示';
+const ITEMS = new WeakMap<DiagramFile, ReadonlyMap<string, string>>();
 
 /** The grid of a table file, or undefined when it has none. */
 export function readItemTable(source: string): ItemTable | undefined {
@@ -136,10 +178,62 @@ export function itemColumns(headers: readonly string[]): Partial<Record<ItemColu
   const found: Partial<Record<ItemColumn, number>> = {};
   for (const [kind, names] of Object.entries(HEADERS) as [ItemColumn, readonly string[]][]) {
     const index = headers.findIndex(header =>
-      names.some(name => name.toLowerCase() === header.trim().toLowerCase()));
+      names.some(name => name.toLowerCase() === header.trim().toLowerCase())
+      || ownHeaders.get(header.trim().toLowerCase()) === kind);
     if (index >= 0) found[kind] = index;
   }
   return found;
+}
+
+/** One column of a new item table: its heading, what it holds, how it is aligned. */
+export interface ItemTableColumn {
+  readonly header: string;
+  /** What the tool reads and writes there; none for a column the team fills in. */
+  readonly role?: ItemColumn | undefined;
+  readonly align?: 'left' | 'center' | 'right' | undefined;
+}
+
+/** The headings a repository gives the columns, beyond the ones every table is read with. */
+let ownHeaders = new Map<string, ItemColumn>();
+/** The columns a repository gives a new item table, or none for the shipped ones. */
+let ownColumns: readonly ItemTableColumn[] | undefined;
+
+/**
+ * The item table as a repository defines it, from its settings
+ * (`.docpresenter/settings.yml`), already read:
+ *
+ *   items:
+ *     columns:
+ *       - 分類: category
+ *       - No: number
+ *       - ID: id
+ *       - 論理名: name
+ *       - 桁数            # filled in by the team; the tool writes nothing there
+ *
+ * A heading given a role is read as that column in every item table, so a
+ * table written with the team's own words joins its screen. Called with
+ * nothing, the shipped columns come back.
+ */
+export function useItemSettings(settings: unknown): void {
+  const listed = (settings as { items?: { columns?: unknown } } | null | undefined)?.items?.columns;
+  ownHeaders = new Map();
+  ownColumns = undefined;
+  if (!Array.isArray(listed)) return;
+  const roles = new Set(Object.keys(HEADERS));
+  const columns: ItemTableColumn[] = [];
+  for (const one of listed) {
+    if (typeof one === 'string' && one.trim() !== '') { columns.push({ header: one.trim() }); continue; }
+    if (!one || typeof one !== 'object') continue;
+    for (const [header, value] of Object.entries(one as Record<string, unknown>)) {
+      const role = typeof value === 'string' && roles.has(value.trim()) ? value.trim() as ItemColumn : undefined;
+      columns.push({
+        header, role,
+        align: role === 'number' ? 'right' : role === 'required' || role === 'align' ? 'center' : undefined,
+      });
+      if (role !== undefined) ownHeaders.set(header.trim().toLowerCase(), role);
+    }
+  }
+  if (columns.length > 0) ownColumns = columns;
 }
 
 /**
@@ -175,6 +269,8 @@ export function readingOrder(diagram: DiagramFile): readonly string[] {
  * there. One shape opts out with `item: none` in its own style.
  */
 export function itemShapes(diagram: DiagramFile): ReadonlyMap<string, string> {
+  const cached = ITEMS.get(diagram);
+  if (cached) return cached;
   const found = new Map<string, string>();
   for (const node of diagram.nodes) {
     const rule = diagram.style.get(node.id);
@@ -182,8 +278,51 @@ export function itemShapes(diagram: DiagramFile): ReadonlyMap<string, string> {
     // (`{ icon: ui/check-on }`), and a check box is an item however it was put
     // there. The library's word wins where it says one.
     const kind = rule?.get('item') ?? PICTURE_ITEMS[rule?.get('icon') ?? ''];
-    if (kind !== undefined && kind !== NOT_AN_ITEM && kind.trim() !== '') found.set(node.id, kind.trim());
+    if (kind === undefined || NOT_AN_ITEM.has(kind.trim().toLowerCase()) || kind.trim() === '') continue;
+    // An input that cannot be used shows a value; it takes none.
+    const own = kind.trim();
+    found.set(node.id, INPUT_KINDS.has(own.toLowerCase()) && isDisabled(rule) ? SHOWN : own);
   }
+  // A label standing on its own — a message, a value shown — is an item too:
+  // it is on the screen, and a specification lists it. A label that names an
+  // input is that input's name, not an item of its own, and a table's
+  // headings and cells are its columns. One kept off says `item: no`, as any
+  // item can.
+  if (diagram.mode === 'free') {
+    const captions = new Set([...found.keys()].map(id => labelOf(diagram, id, found)).filter(one => one !== undefined));
+    const inTables = new Set<string>();
+    for (const container of diagram.containers.values()) {
+      if (!isTable(diagram, container.id)) continue;
+      for (const member of members(container)) { inTables.add(member); for (const inner of heldUnder(diagram, member)) inTables.add(inner); }
+    }
+    // In the order a reader meets them, so that of a label and the label
+    // after it — "氏名" over "山田 太郎" — the first is the second's name and
+    // the second is the item: a value shown, named like any input.
+    const labels = new Set<string>();
+    const named = new Set<string>();
+    for (const id of readingOrder(diagram)) {
+      const node = diagram.nodes.find(one => one.id === id)!;
+      if (found.has(node.id) || node.shape !== 'text' || node.text.trim() === '') continue;
+      if (diagram.containers.has(node.id) || captions.has(node.id) || inTables.has(node.id)) continue;
+      // The `label` part: a title or a hint is the screen's furniture, and is
+      // listed only when its own style asks (`item: 表示`).
+      if (!LABEL_PARTS.has(diagram.partOf.get(node.id) ?? '') || isLeftOut(diagram, node.id)) continue;
+      // The label just before it in its stack — or before it or over it in a
+      // grid — names it, when that is a label not already naming another.
+      const found_ = labelBefore(diagram, node.id, id => labels.has(id) || (!found.has(id) && isLabelPart(diagram, id)));
+      // A value already named by the label before it is not the next one's
+      // name: 氏名 / 山田 / 住所 / 東京 is two pairs, not a chain.
+      const name = found_ !== undefined && named.has(found_) ? undefined : found_;
+      if (name !== undefined) {
+        if (labels.has(name)) { found.delete(name); labels.delete(name); }
+        captions.add(name);
+        named.add(node.id);
+      }
+      found.set(node.id, LABEL_ITEM);
+      labels.add(node.id);
+    }
+  }
+  ITEMS.set(diagram, found);
   return found;
 }
 
@@ -374,9 +513,16 @@ export function labelOf(diagram: DiagramFile, id: string, items?: ReadonlyMap<st
     // A form of labels on the left is a grid with the caption in the cell
     // before the item, on the same row.
     if (container.kind === 'grid') {
-      const row = container.cells.find(cells => cells.includes(at));
-      const before = row?.[row.indexOf(at) - 1];
+      const r = container.cells.findIndex(cells => cells.includes(at));
+      const row = container.cells[r];
+      const c = row?.indexOf(at) ?? -1;
+      const before = row?.[c - 1];
       if (before !== at && isCaption(before)) return before;
+      // Or the cell over it in its column — a grid of fields with their
+      // labels above them — unless that cell names the whole row.
+      const above = r > 0 ? container.cells[r - 1]?.[c] : undefined;
+      if (above !== undefined && above !== at && isCaption(above)
+        && container.cells[r - 1]!.filter(cell => cell === above).length === 1) return above;
       break;
     }
     const all = members(container);
@@ -692,7 +838,7 @@ export function itemTableName(screen: string): string {
  */
 export function newItemTable(diagram: DiagramFile, locale: Locale = DEFAULT_LOCALE): string {
   const t = DIAGRAM_MESSAGES.in(locale);
-  const shape = NEW_TABLE[locale];
+  const shape = ownColumns ?? NEW_TABLE[locale];
   const headers = shape.map(one => one.header);
   const columns = itemColumns(headers);
   const listed = screenItems(diagram);

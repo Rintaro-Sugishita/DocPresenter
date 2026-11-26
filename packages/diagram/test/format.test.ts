@@ -78,7 +78,10 @@ describe('formatDiagram', () => {
       '  api     [ /a/ ]',
       '  db      [(会員 DB)]',
       '',
-      '  group back "社内" { api; db }',
+      '  group back "社内" {',
+      '    api',
+      '    db',
+      '  }',
       '',
       '  browser --> web "HTTPS"',
       '  web     --> api "gRPC"',
@@ -99,6 +102,20 @@ describe('formatDiagram', () => {
       '  api { fill: #e3f2fd, color: #0d47a1 }',
       '}',
     ));
+  });
+
+  it('グループの中身は 1 行に 1 つ。1 行に書いたものも、複数行に書いたものも同じ図', () => {
+    const one = 'flow {\n  a [A]\n  b [B]\n  c [C]\n  group g "G" { a; b }\n  a --> b\n}\n';
+    const many = 'flow {\n  a [A]\n  b [B]\n  c [C]\n  group g "G" {\n    a\n    b\n  }\n  a --> b\n}\n';
+    const noted = 'flow {\n  a [A]\n  group g "G" {\n    a\n    # 注記\n    b\n  }\n  b [B]\n}\n';
+    expect(parseDiagram(noted).nodes.find(n => n.id === 'g')!.children).toEqual(['a', 'b']);
+    // A comment among the members has nowhere to go in the canonical form, so
+    // the file is left as written rather than lose it.
+    expect(formatDiagram(noted).changed).toBe(false);
+    const formatted = formatDiagram(one).text;
+    expect(formatted).toContain('  group g "G" {\n    a\n    b\n  }\n');
+    expect(formatDiagram(many).text).toBe(formatted);
+    expect(formatDiagram(formatted).text).toBe(formatted);
   });
 
   it('gives two authors of the same drawing the same file', () => {

@@ -13,7 +13,7 @@ import {
   cellAt, cellSelectorFor, shownText, type Align, type Cell, type Selector, type StyleRule, type TableFile,
 } from '@docpresenter/markdown';
 import {
-  alignOf, cellClasses, cellRules, headerClasses, headerRules, inlineMarkdown,
+  alignOf, headerAlignOf, cellClasses, cellRules, headerClasses, headerRules, inlineMarkdown,
   inlineStyle, rowClasses,
 } from '@docpresenter/markdown';
 import { BASE_MESSAGES, DEFAULT_LOCALE, type Edit, type Locale } from '@docpresenter/base';
@@ -23,7 +23,7 @@ import { columnFloor, fitColumns } from '../column-widths.js';
 import {
   formatTable, insertColumn, insertRow, parseClipboardGrid, pasteGrid,
   mergeDown, mergeLoses, mergeRange, mergeRight, removeColumn, removeRow, setAlign,
-  clearRange, copyRange, setCell, setStyle, setWidth, styleAt, unmerge, wholeCells,
+  clearRange, copyRange, setCell, setStyle, setStyleAll, inSequence, setWidth, styleAt, unmerge, wholeCells,
   type CellRange, type StyleProperty,
 } from '../table.js';
 import { toggleInline, type InlineMark } from '@docpresenter/base';
@@ -40,6 +40,8 @@ export interface GridPosition {
 export interface GridOptions {
   readonly owner: Document;
   readonly table: TableFile;
+  /** The file the table was read from, for an edit that rewrites several rules at once. */
+  readonly source?: string | undefined;
   readonly at: GridPosition;
   /** Which of TARGETS the style controls act on. Kept by the host so that it
    *  survives the rebuild after every edit. */
@@ -63,6 +65,13 @@ export interface GridOptions {
    * mean — a screen's item table. Undefined for a cell that is just text.
    */
   readonly choices?: ((at: GridPosition) => CellChoices | undefined) | undefined;
+  /**
+   * Whether the grid takes the keyboard as it is built. Off for a grid shown
+   * beside something else (a screen's item table beside the screen): built
+   * again after every edit, it would take the keyboard from wherever the
+   * author was typing. It takes it when a cell is pressed.
+   */
+  readonly takeFocus?: boolean | undefined;
 }
 
 /** The words one cell is offered, and whether anything else belongs there. */
@@ -155,7 +164,7 @@ export function createGrid(options: GridOptions): Grid {
   root.addEventListener('cut', onCut);
   owner.addEventListener('mouseup', () => { dragging = false; });
   wireInput();
-  queueMicrotask(() => place(at));
+  queueMicrotask(() => place(at, false, options.takeFocus !== false));
   return {
     element: root,
     flush() { if (editing) commit(at); },
@@ -254,13 +263,14 @@ export function createGrid(options: GridOptions): Grid {
     // or a rule can be seen the moment it is applied.
     const rules = cell
       ? cellRules(table, cell, row)
-      : [...headerRules(table), ...columnRulesFor(column)];
-    const styles = cell ? cellClasses(table, cell, row) : headerClasses(table);
+      : [...columnRulesFor(column), ...headerRules(table, table.columns[column]?.header)];
+    const styles = cell ? cellClasses(table, cell, row) : headerClasses(table, table.columns[column]?.header);
     // The alignment a cell ends up with is decided by the renderer, from the
     // delimiter row and any rule that overrides it. Reading only the column
     // here would leave the grid unmoved by an alignment it had just been told
     // to apply.
-    const node = element(tag, ['dp-grid-cell', alignOf(table, column, rules), ...styles].join(' '));
+    const align = cell ? alignOf(table, column, rules) : headerAlignOf(table, table.columns[column]?.header);
+    const node = element(tag, ['dp-grid-cell', align, ...styles].join(' '));
     // A word the screen cannot read is shown as such where it is written,
     // not only as a note under the drawing.
     const offer = tag === 'td' ? options.choices?.({ row, column }) : undefined;
@@ -323,7 +333,7 @@ export function createGrid(options: GridOptions): Grid {
   }
 
   /** Puts the selection, and the text box, on a cell. */
-  function place(next: GridPosition, extend = false): void {
+  function place(next: GridPosition, extend = false, focus = true): void {
     const wanted = clamp(next);
     const owning = wanted.row < 0 ? undefined : cellAt(table, wanted.row, wanted.column);
     const resolved = owning ? { row: owning.row, column: owning.column } : wanted;
@@ -357,7 +367,7 @@ export function createGrid(options: GridOptions): Grid {
     if (!same) node.append(input);
     if (offered && offered.choices.length > 0) node.append(opener);
     else opener.remove();
-    input.focus({ preventScroll: true });
+    if (focus) input.focus({ preventScroll: true });
     options.move(at);
   }
 
@@ -593,13 +603,49 @@ export function createGrid(options: GridOptions): Grid {
     const rowKey = at.row < 0 ? undefined : table.rows[at.row]?.cells[0]?.text;
     switch (target) {
       case 'header': return { kind: 'header' };
-      case 'column': return column === undefined ? undefined : { kind: 'column', name: column };
+      // A heading picked: the heading of that column, which is what was pointed at.
+      case 'column': return column === undefined ? undefined
+        : at.row < 0 ? { kind: 'header', column } : { kind: 'column', name: column };
       case 'row': return rowKey === undefined ? undefined : { kind: 'range', from: rowKey, to: rowKey };
       // A cell is named by its leading cell, or by another column when the
       // leading one repeats down the table (`^` merged, `#` numbered).
-      case 'cell': return at.row < 0 ? undefined : cellSelectorFor(table, at.row, at.column);
+      case 'cell': return at.row < 0
+        ? (column === undefined ? undefined : { kind: 'header', column })
+        : cellSelectorFor(table, at.row, at.column);
       default: return undefined;
     }
+  }
+
+  /**
+   * With cells as the target and a range picked, a style goes on every cell
+   * of the range, not just the one the range ended on. Pressing what all of
+   * them already have takes it off them all. False when this does not apply.
+   */
+  function styleRange(property: StyleProperty, value: string | undefined): boolean {
+    if (target !== 'cell' || single() || options.source === undefined) return false;
+    const box = range();
+    const selectors: Selector[] = [];
+    // Headings in the range are styled as headings, each its own column's.
+    if (box.top < 0) {
+      for (let column = box.left; column <= box.right; column++) {
+        const name = table.columns[column]?.header;
+        if (name !== undefined) selectors.push({ kind: 'header', column: name });
+      }
+    }
+    for (let row = Math.max(0, box.top); row <= box.bottom; row++) {
+      for (let column = box.left; column <= box.right; column++) {
+        const owner = cellAt(table, row, column);
+        // A merged cell is styled once, by the cell that owns it.
+        if (!owner || owner.row !== row || owner.column !== column) continue;
+        const one = cellSelectorFor(table, row, column);
+        if (one) selectors.push(one);
+      }
+    }
+    if (selectors.length === 0) return false;
+    const off = value !== undefined && selectors.every(one => styleAt(table, one, property) === value);
+    const source = options.source;
+    options.apply(() => setStyleAll(source, selectors, property, off ? undefined : value), at);
+    return true;
   }
 
   function createStyleBar(): HTMLElement {
@@ -623,6 +669,7 @@ export function createGrid(options: GridOptions): Grid {
     bar.append(choose);
 
     const set = (property: StyleProperty, value: string | undefined): void => {
+      if (styleRange(property, value)) return;
       const which = selector();
       if (!which) return;
       // Pressing the colour already applied takes it off.
@@ -772,26 +819,50 @@ export function createGrid(options: GridOptions): Grid {
   function rowColumnMenu(): MenuItem[] {
     const row = Math.max(0, at.row);
     const here = (): GridPosition => ({ row, column: at.column });
+    // What is picked says how many: three rows picked, three rows added or
+    // taken away — as in a spreadsheet. One cell picked is one row.
+    const box = range();
+    const top = Math.max(0, box.top);
+    const bottom = Math.max(top, box.bottom);
+    const rows = bottom - top + 1;
+    const columns = box.right - box.left + 1;
+    const source = options.source;
+    const many = (steps: ((one: TableFile) => Edit)[], single: () => Edit): Edit =>
+      (source === undefined || steps.length <= 1 ? single() : inSequence(source, steps));
+    const times = <T>(count: number, make: (n: number) => T): T[] => Array.from({ length: count }, (_, n) => make(n));
     return [
-      { label: t('editor.grid.rowAbove'), run: () => options.apply(() => insertRow(table, row), here()) },
       {
-        label: t('editor.grid.rowBelow'),
-        run: () => options.apply(() => insertRow(table, row + 1), { row: row + 1, column: at.column }),
-      },
-      { label: t('editor.grid.removeRow'), run: () => options.apply(() => removeRow(table, row), here()) },
-      {
-        label: t('editor.grid.columnLeft'), separated: true,
-        run: () => options.apply(() => insertColumn(table, at.column, ''), here()),
+        label: t(rows > 1 ? 'editor.grid.rowsAbove' : 'editor.grid.rowAbove', { count: rows }),
+        run: () => options.apply(() => many(times(rows, () => (one: TableFile) => insertRow(one, top)),
+          () => insertRow(table, top)), { row: top, column: at.column }),
       },
       {
-        label: t('editor.grid.columnRight'),
-        run: () => options.apply(
-          () => insertColumn(table, at.column + 1, ''), { row: at.row, column: at.column + 1 }),
+        label: t(rows > 1 ? 'editor.grid.rowsBelow' : 'editor.grid.rowBelow', { count: rows }),
+        run: () => options.apply(() => many(times(rows, () => (one: TableFile) => insertRow(one, bottom + 1)),
+          () => insertRow(table, bottom + 1)), { row: bottom + 1, column: at.column }),
       },
       {
-        label: t('editor.grid.removeColumn'),
-        run: () => options.apply(
-          () => removeColumn(table, at.column), { row: at.row, column: Math.max(0, at.column - 1) }),
+        label: t(rows > 1 ? 'editor.grid.removeRows' : 'editor.grid.removeRow', { count: rows }),
+        disabled: rows >= table.rows.length,
+        // From the bottom up, so each row is still where it was counted.
+        run: () => options.apply(() => many(times(rows, n => (one: TableFile) => removeRow(one, bottom - n)),
+          () => removeRow(table, row)), { row: Math.max(0, Math.min(top, table.rows.length - rows - 1)), column: at.column }),
+      },
+      {
+        label: t(columns > 1 ? 'editor.grid.columnsLeft' : 'editor.grid.columnLeft', { count: columns }), separated: true,
+        run: () => options.apply(() => many(times(columns, () => (one: TableFile) => insertColumn(one, box.left, '')),
+          () => insertColumn(table, at.column, '')), { row: at.row, column: box.left }),
+      },
+      {
+        label: t(columns > 1 ? 'editor.grid.columnsRight' : 'editor.grid.columnRight', { count: columns }),
+        run: () => options.apply(() => many(times(columns, () => (one: TableFile) => insertColumn(one, box.right + 1, '')),
+          () => insertColumn(table, at.column + 1, '')), { row: at.row, column: box.right + 1 }),
+      },
+      {
+        label: t(columns > 1 ? 'editor.grid.removeColumns' : 'editor.grid.removeColumn', { count: columns }),
+        disabled: columns >= table.columns.length,
+        run: () => options.apply(() => many(times(columns, n => (one: TableFile) => removeColumn(one, box.right - n)),
+          () => removeColumn(table, at.column)), { row: at.row, column: Math.max(0, box.left - 1) }),
       },
       ...mergeItems(),
     ];
@@ -854,10 +925,13 @@ export function createGrid(options: GridOptions): Grid {
     ];
     for (const [align, label, title] of aligns) {
       add(label, title, () => {
-        if (target === 'column') {
+        // The delimiter row aligns a column's figures; a heading picked is
+        // aligned by a rule of its own, below.
+        if (target === 'column' && at.row >= 0) {
           options.apply(() => setAlign(table, at.column, align), here());
           return;
         }
+        if (styleRange('align', align)) return;
         const which = selector();
         if (!which) return;
         const off = styleAt(table, which, 'align') === align;

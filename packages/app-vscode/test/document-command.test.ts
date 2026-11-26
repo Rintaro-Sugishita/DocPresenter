@@ -88,7 +88,7 @@ describe('新しい文書', () => {
     choosing(labels => labels.indexOf('自分で入力する…'));
     picks.inputs = ['SD-AUTH-002'];
     expect(await pickNumber('t')).toBeUndefined();
-    expect(picks.refused).toEqual(['SD-AUTH-002 はもう docs/b.md で使われている']);
+    expect(picks.refused).toEqual(['SD-AUTH-002 はすでに docs/b.md で使われています']);
   });
 
   it('同じ名前の文書があれば作らない', async () => {
@@ -96,7 +96,7 @@ describe('新しい文書', () => {
     choosing(() => 0);
     picks.inputs = ['T', 'a'];
     await newDocument();
-    expect(picks.refused).toEqual(['docs/a.md はもうある']);
+    expect(picks.refused).toEqual(['docs/a.md はすでにあります']);
     expect(held.get('docs/a.md')).toBe(doc('SD-AUTH-001'));
   });
 

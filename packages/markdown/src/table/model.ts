@@ -51,7 +51,8 @@ export interface Row {
 }
 
 export type Selector =
-  | { readonly kind: 'header' }
+  /** The heading row; with `column`, the heading of that column alone (`header:金額`). */
+  | { readonly kind: 'header'; readonly column?: string }
   | { readonly kind: 'column'; readonly name: string }
   | { readonly kind: 'row'; readonly which: 'odd' | 'even' | 'all' }
   /**

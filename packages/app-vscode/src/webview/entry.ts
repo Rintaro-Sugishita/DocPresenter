@@ -16,6 +16,7 @@ import {
   type EditorSettings, type Picture, type ResourceKind, type SheetView,
 } from '@docpresenter/editor';
 import { drawMermaid } from '@docpresenter/editor/mermaid';
+import { useItemSettings } from '@docpresenter/diagram';
 import { answerRenderRequest, useTheme } from './render-requests.js';
 import { createReviewUi } from './review-ui.js';
 import { freeName, inDocument, inWorkspace, resourceFolder } from '../paths.js';
@@ -81,9 +82,12 @@ const loader = {
     ? path : images[here(path)]),
 };
 
+/** Files made from this screen whose first edit — their whole text — the host has already written. */
+const created = new Set<string>();
+
 const render = (text: string): string => {
   const doc = parseDocument(text);
-  return renderDocument(doc, resolveDocument(doc, settings.locale), { loader });
+  return renderDocument(doc, resolveDocument(doc, settings.locale), { loader, path: documentPath });
 };
 
 /**
@@ -94,8 +98,13 @@ const render = (text: string): string => {
  * `.dgm` in a text editor, or a branch was checked out — showing the old one
  * is the single thing this tool must not do.
  */
-function mount(): void {
+function mount(keep = true): void {
   const at = view?.active ?? 0;
+  // Where the reader was: a file arriving from outside (a table just made,
+  // a drawing saved elsewhere) redraws the page, and must not send the reader
+  // back to the top of it.
+  const pane = document.querySelector<HTMLElement>('.dp-editor-pane');
+  const scroll = keep ? pane?.scrollTop ?? 0 : 0;
   view?.destroy();
   const root = document.getElementById('editor');
   if (!root) return;
@@ -118,6 +127,7 @@ function mount(): void {
       // Held here as well as written to disk: the sheet is drawn from this
       // map the moment the import line lands, and the write is a round trip.
       files[path] = text;
+      created.add(path);
       send({ kind: 'create', path, text });
       return { path: inDocument(documentPath, path), text };
     },
@@ -172,7 +182,15 @@ function mount(): void {
         send({ kind: 'change', span: edit.span, description: edit.description, text: edit.text });
         return;
       }
-      files[here(edit.path)] = text;
+      const path = here(edit.path);
+      // The new file's own text, which the editor records as its first edit:
+      // the file was written with it already, and writing it again would
+      // put it in twice.
+      if (created.delete(path) && edit.span.start === 0 && edit.span.end === 0 && edit.text === text) {
+        files[path] = text;
+        return;
+      }
+      files[path] = text;
       send({
         kind: 'change', path: here(edit.path),
         span: edit.span, description: edit.description, text: edit.text,
@@ -185,8 +203,17 @@ function mount(): void {
     },
     // A zoomed drawing moved the shapes its comments point at.
     onZoom: () => reviews.layout(),
+    // A table written in the prose: into a file of its own, or to Excel.
+    tableMenu: table => {
+      const say = VSCODE_MESSAGES.in(settings.locale);
+      return [
+        { label: say('vscode.tables.menuSplit'), run: () => send({ kind: 'split-table', line: table.line }) },
+        { label: say('vscode.tables.menuExcel'), run: () => send({ kind: 'table-excel', text: table.text }) },
+      ];
+    },
     // A comment on one shape of a drawing, from the menu on it; a table,
     // opened in Excel and written back when Excel saves it.
+    openFile: path => send({ kind: 'open-file', path: here(path) }),
     figureMenu: (figure, target) => {
       const path = figure.dataset['path'];
       const say = VSCODE_MESSAGES.in(settings.locale);
@@ -195,11 +222,24 @@ function mount(): void {
           // A sheet imported from a workbook: the workbook is the team's own, opened as it is.
           : isWorkbookPath(path) ? [{ label: say('vscode.excel.openSource'), run: () => send({ kind: 'open-external', path: here(splitWorkbookPath(path).file) }) }]
             : [];
-      return [...excel, ...reviews.figureMenu(target)];
+      // A drawing or a table is a file of its own: opened beside, as text.
+      const own = path !== undefined && /\.(dgm|table|mmd|ermlx)$/i.test(path)
+        ? [{ label: say('vscode.figure.openFile'), run: () => send({ kind: 'open-file', path: here(path) }) }]
+        : [];
+      return [...own, ...excel, ...reviews.figureMenu(target)];
     },
   });
   if (at > 0) view.select(at);
   reviews.apply();
+  if (scroll > 0) {
+    const put = (): void => {
+      const now = document.querySelector<HTMLElement>('.dp-editor-pane');
+      if (now) now.scrollTop = scroll;
+    };
+    put();
+    // Pictures take their height once decoded; ask again when the frame is laid out.
+    requestAnimationFrame(put);
+  }
 }
 
 window.addEventListener('message', (event: MessageEvent<ToView>) => {
@@ -207,6 +247,7 @@ window.addEventListener('message', (event: MessageEvent<ToView>) => {
   if (message.kind === 'open') {
     documentPath = message.path;
     history = createHistory();
+    useItemSettings(message.settings);
     // The files come as they are on disk; the screen measures every range on
     // their LF text, so a range means the same on every machine (protocol.ts).
     source = toLf(message.source);
@@ -218,13 +259,17 @@ window.addEventListener('message', (event: MessageEvent<ToView>) => {
       commitKey: message.commitKey,
       locale: isLocale(message.locale) ? message.locale : DEFAULT_SETTINGS.locale,
     };
-    mount();
+    mount(false);
     return;
   }
   if (message.kind === 'file') {
-    if (message.path === documentPath) source = toLf(message.text);
+    const text = toLf(message.text);
+    // What is held already — a file this page made itself, coming back from
+    // the disk — changes nothing on it.
+    if ((message.path === documentPath ? source : files[message.path]) === text) return;
+    if (message.path === documentPath) source = text;
     else if (files[message.path] === undefined && !/\.(dgm|table|mmd|ermlx)$/i.test(message.path)) return;
-    else files[message.path] = toLf(message.text);
+    else files[message.path] = text;
     mount();
     return;
   }
@@ -235,6 +280,7 @@ window.addEventListener('message', (event: MessageEvent<ToView>) => {
     return;
   }
   if (message.kind === 'image') {
+    if (images[message.path] === message.url) return;
     images[message.path] = message.url;
     mount();
     return;

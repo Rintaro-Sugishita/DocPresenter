@@ -5,6 +5,9 @@
   "command.openToSide.title": "DocPresenter Diagram を横に開く",
   "command.format.title": "図を整形する（並び順と空白をそろえる）",
   "command.exportSvg.title": "図を SVG に書き出す…",
+  "command.exportHtml.title": "画面を HTML に書き出す…",
+  "command.exportXaml.title": "画面を XAML（WPF）に書き出す…",
   "command.toMermaid.title": "図を Mermaid（flowchart）に変換する",
-  "command.fromMermaid.title": "Mermaid の flowchart を図（.dgm）に変換する"
+  "command.fromMermaid.title": "Mermaid の flowchart を図（.dgm）に変換する",
+  "command.renameShape.title": "図形の名前を変える（線・配置・項目一覧も一緒に変わります）"
 }

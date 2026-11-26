@@ -6,6 +6,17 @@ export const DIAGRAM_STYLE = `
 /* The canvas: direct manipulation of a diagram. Everything here is editor
    chrome drawn over the real drawing, never part of the output. */
 .dp-canvas { font-family: system-ui, sans-serif; font-size: 13px; }
+/* A see-through shape — a frame round a screen — is still picked by pressing
+   inside it, as it was when it was filled. What lies on it is drawn after it,
+   so a press on that still goes to that. */
+.dp-canvas-stage .dp-node[style*="--dp-fill:none"] > :not(text) { pointer-events: visible; }
+/* Ctrl held while dragging: the copy that will be left follows the pointer,
+   drawn faint, and the shapes stay where they are. */
+.dp-canvas-ghost { opacity: 0.55; pointer-events: none; }
+/* Visible = False: still there to pick, drawn faintly with a dashed edge. */
+.dp-canvas-stage .dp-unseen { opacity: 0.3; }
+.dp-canvas-stage .dp-unseen > :not(text) { stroke-dasharray: 4 3; }
+.dp-canvas-copying, .dp-canvas-copying * { cursor: copy !important; }
 .dp-canvas-bar {
   display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin-bottom: 0.5em;
 }
@@ -19,6 +30,12 @@ export const DIAGRAM_STYLE = `
   color: #3a4048; font-size: 12px; font-variant-numeric: tabular-nums;
   min-width: 14em; padding: 0.2em 0.4em; background: #f2f3f5; border-radius: 3px;
 }
+.dp-canvas-name {
+  font: inherit; font-size: 12px; font-family: ui-monospace, Consolas, monospace; color: #1c1f24;
+  padding: 0.2em 0.4em; border: 1px solid #d3d7dd; border-radius: 3px; background: #fff; min-width: 6em;
+}
+.dp-canvas-name[hidden] { display: none; }
+.dp-canvas-name:focus { outline: none; border-color: #1f5fa8; box-shadow: 0 0 0 2px #cfe0f5; }
 .dp-canvas-hint { color: #8b929c; font-size: 11px; margin-left: auto; }
 /* The alignment row. It appears with the selection that gives it a meaning. */
 .dp-canvas-aligners { display: inline-flex; gap: 1px; align-items: center; }
@@ -66,6 +83,9 @@ export const DIAGRAM_STYLE = `
   fill: rgba(31, 95, 168, 0.12); stroke: #1f5fa8; stroke-width: 1.5; pointer-events: none;
 }
 .dp-canvas-handle { fill: #fff; stroke: #1f5fa8; stroke-width: 1.5; cursor: nwse-resize; }
+.dp-canvas-handle-ne, .dp-canvas-handle-sw { cursor: nesw-resize; }
+.dp-canvas-handle-n, .dp-canvas-handle-s { cursor: ns-resize; }
+.dp-canvas-handle-e, .dp-canvas-handle-w { cursor: ew-resize; }
 /* The edge between a form's labels and its inputs. */
 .dp-canvas-column { fill: #1f5fa8; fill-opacity: .35; cursor: col-resize; }
 .dp-canvas-column:hover { fill-opacity: .7; }
@@ -77,6 +97,9 @@ export const DIAGRAM_STYLE = `
 }
 /* Pink and dashed, so a guide never reads as part of the drawing. */
 .dp-canvas-guide { stroke: #e0439b; stroke-width: 1; stroke-dasharray: 3 3; pointer-events: none; }
+.dp-canvas-edge-hover { fill: none; stroke: #1f5fa8; stroke-width: 4; opacity: 0.2; pointer-events: none; }
+.dp-canvas-on-line, .dp-canvas-on-line [data-node] { cursor: pointer; }
+.dp-canvas-on-picked { cursor: move; }
 .dp-canvas-edge-picked {
   fill: none; stroke: #1f5fa8; stroke-width: 2.5; opacity: 0.45; pointer-events: none;
 }

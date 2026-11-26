@@ -76,6 +76,10 @@ function walk(node: Element, at: Offset, items: Placed[], diagnostics: Phrase[])
     for (const item of background(node, at)) {
       items.push({ item, top: item.kind === 'fill' ? item.y : rectOf(node, at).y });
     }
+    if (node instanceof HTMLLIElement) {
+      const marker = listMarker(node, at);
+      if (marker) items.push({ item: marker, top: box.y });
+    }
     for (const child of node.childNodes) {
       if (child instanceof Element) walk(child, at, items, diagnostics);
       else if (child instanceof Text) {
@@ -93,6 +97,57 @@ function walk(node: Element, at: Offset, items: Placed[], diagnostics: Phrase[])
       }
     }
   }
+}
+
+/**
+ * The bullet or number in front of a list item. The browser draws it as a
+ * `::marker`, which is no element and has no text node, so walking the tree
+ * never meets it: left alone, a list prints as indented lines with nothing in
+ * front of them. It is set on the item's first line, where the browser put it.
+ */
+function listMarker(item: HTMLLIElement, at: Offset): TextItem | undefined {
+  const style = getComputedStyle(item);
+  if (style.display !== 'list-item' || style.visibility === 'hidden') return undefined;
+  if (style.listStylePosition !== 'outside') return undefined;
+  const type = style.listStyleType;
+  const list = item.parentElement;
+  let text: string;
+  if (type === 'disc') text = '•';
+  else if (type === 'circle') text = '◦';
+  else if (type === 'square') text = '▪';
+  else if (type === 'decimal' && list instanceof HTMLOListElement) {
+    const index = [...list.children].filter(child => child instanceof HTMLLIElement).indexOf(item);
+    text = `${list.reversed ? list.start - index : list.start + index}.`;
+  } else return undefined;
+  const line = firstLineTop(item, at);
+  if (line === undefined) return undefined;
+  const size = parseFloat(style.fontSize);
+  const box = rectOf(item, at);
+  // A bullet sits about one em left of the text; a number ends a third of
+  // an em before it, as the browser sets them.
+  const width = text.length === 1 ? size * 0.5 : text.length * size * 0.55;
+  const gap = text.length === 1 ? size * 0.55 : size * 0.35;
+  return {
+    kind: 'text', text, x: box.x - gap - width, y: line + ascentOf(style), size,
+    bold: false, italic: false, family: familyOf(style),
+    colour: colourOf(style.color) ?? '#000000',
+  };
+}
+
+/** The top of the first character in `element`, as `textRuns` measures it. */
+function firstLineTop(element: Element, at: Offset): number | undefined {
+  const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+  const range = document.createRange();
+  for (let node = walker.nextNode() as Text | null; node; node = walker.nextNode() as Text | null) {
+    const index = node.data.search(/\S/);
+    if (index < 0) continue;
+    range.setStart(node, index);
+    range.setEnd(node, index + 1);
+    const rect = range.getBoundingClientRect();
+    if (rect.width === 0 && rect.height === 0) continue;
+    return rect.top + window.scrollY - at.top;
+  }
+  return undefined;
 }
 
 /**

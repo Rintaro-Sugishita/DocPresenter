@@ -5,6 +5,7 @@ export * from './messages.js';
 export * from './table/model.js';
 export * from './table/parse.js';
 export * from './table/format.js';
+export * from './table/markdown-tables.js';
 export * from './document/model.js';
 export * from './document/parse.js';
 export * from './document/expand.js';
@@ -13,6 +14,9 @@ export * from './document/headings.js';
 export * from './document/attributes.js';
 export * from './document/figure.js';
 export * from './document/numbers.js';
+export * from './document/variables.js';
+export * from './document/paper.js';
+export * from './document/settings.js';
 export * from './review.js';
 export * from './numbering/model.js';
 export * from './numbering/resolve.js';
@@ -21,6 +25,8 @@ export * from './html/render.js';
 export * from './html/table.js';
 export * from './html/path.js';
 export * from './html/span.js';
+export * from './html/math.js';
+export * from './html/katex-style.js';
 export {
   MERMAID_VIEWS, fenceInfo, fencesOf, mermaidFigure, setFenceView, viewOf,
   type Fence, type MermaidView,

@@ -10,6 +10,7 @@
 // the CLI makes with its own browser.
 
 import * as vscode from 'vscode';
+import { openWithSystem } from './open-file.js';
 import {
   build, readGraph, renderPage, reviewSourceOf, themeOf, type Artifact, type FormatWriter,
 } from '@docpresenter/build';
@@ -286,7 +287,7 @@ async function offerToOpen(path: string): Promise<void> {
   const reveal = t('vscode.export.reveal');
   const open = await vscode.window.showInformationMessage(
     `DocPresenter: ${t('vscode.export.done', { path })}`, opening, reveal);
-  if (open === opening) await vscode.env.openExternal(uri);
+  if (open === opening) await openWithSystem(uri);
   if (open === reveal) await vscode.commands.executeCommand('revealFileInOS', uri);
 }
 

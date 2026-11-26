@@ -5,7 +5,7 @@ import { defineMessages } from '@docpresenter/base';
 
 export const DOC_MESSAGES = defineMessages({
   'doc.unsupported': '{path} は扱えません（.md・.dgm・.table を指定してください）',
-  'doc.table.removed': '削除 {file}（{source} が無くなった）',
+  'doc.table.removed': '削除しました: {file}（{source} が無くなったためです）',
   'doc.table.wouldRemove': '{file} は {source} が無くなったので消せます（--no-prune のため残しています）',
   'doc.table.edited': '{file} は {source} が無くなったが、書き出した後に書き換えられているので消しません',
   'doc.table.summary': '表: 書き出し {written} 件、変わらないので飛ばしたもの {skipped} 件、削除 {removed} 件、失敗 {failed} 件',

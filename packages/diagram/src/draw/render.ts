@@ -5,9 +5,9 @@
 // cannot be repeated across the many diagrams of one page.
 
 import {
-  EDGE_LABEL, edgeLabelBox, layOutDiagram, type Box, type EdgeRoute, type ItemMark,
+  EDGE_LABEL, edgeLabelBox, layOutDiagram, type Box, type EdgeRoute, type ItemMark, type LaidOutDiagram,
 } from '../layout.js';
-import { fontOf, isDisabled } from '../states.js';
+import { fontOf, isDisabled, isHidden } from '../states.js';
 import { lineHeightFor } from '../layout.js';
 import { lineText, type TextLine } from '../inline.js';
 import { textWidth } from '../text.js';
@@ -50,21 +50,47 @@ export function renderDiagram(
   const byId = new Map(diagram.nodes.map(n => [n.id, n]));
   const tables = new Map(laid.tables.map(table => [table.container, table]));
 
+  // A shape written `visible: false` keeps its room and is not drawn, nor is
+  // what it holds, nor a connection to it — except for an editor, which draws
+  // it faintly so it can be picked.
+  const unseen = new Set<string>();
+  const hide = (id: string, depth = 0): void => {
+    if (unseen.has(id) || depth > 64) return;
+    unseen.add(id);
+    const container = diagram.containers.get(id);
+    for (const one of container ? container.cells.flat() : byId.get(id)?.children ?? []) hide(one, depth + 1);
+  };
+  for (const node of diagram.nodes) if (isHidden(diagram.style.get(node.id))) hide(node.id);
+
   const behind: string[] = [];
   const front: string[] = [];
   for (const id of laid.order) {
     const node = byId.get(id);
     const box = laid.boxes.get(id);
     if (!node || !box) continue;
-    (box.z < 0 ? behind : front).push(renderNode(node, box, diagram, url, marks, tables.get(id)));
+    if (unseen.has(id) && !hidden) continue;
+    const drawn = renderNode(node, box, diagram, url, marks, tables.get(id));
+    (box.z < 0 ? behind : front).push(unseen.has(id) ? drawn.replace('class="dp-node', 'class="dp-unseen dp-node') : drawn);
   }
 
   // Connections are drawn in two passes: every line and plate first, then every
   // label, so one connection's plate can never blank out another's label.
   const rounded = diagram.mode === 'flow';
+  // A picture with its name under it is met at the picture: a line that
+  // stopped at the box round both would end well short of the icon, out in
+  // the words below it. Only where lines run straight between shapes — a
+  // flow's square corners are worked out on the whole box.
+  const ends = new Map<string, Box>();
+  if (diagram.mode !== 'flow') {
+    for (const node of diagram.nodes) {
+      const box = laid.boxes.get(node.id);
+      const art = box ? artBox(diagram, node, box) : undefined;
+      if (art) ends.set(node.id, art);
+    }
+  }
   const drawn = laid.routes
-    .filter(route => hidden || route.edge.line !== 'invisible')
-    .map(route => renderEdge(route, byId, laid.boxes, rounded, marks));
+    .filter(route => hidden || (route.edge.line !== 'invisible' && !unseen.has(route.edge.from) && !unseen.has(route.edge.to)))
+    .map(route => renderEdge(route, byId, laid.boxes, rounded, marks, ends));
   const edges = [
     ...drawn.map(e => e.geometry),
     ...drawn.map(e => e.label),
@@ -153,7 +179,7 @@ function renderNode(
     ? groupLabel(box)
     : place === 'none' || node.shape === 'line' || tabPages(diagram).has(node.id)
       ? ''
-      : label(box, diagram.style.get(node.id)?.get('align'), node.shape, place === 'under', fontOf(diagram.style.get(node.id)));
+      : label(withoutButton(box, icon), diagram.style.get(node.id)?.get('align'), node.shape, place === 'under', fontOf(diagram.style.get(node.id)));
   const colours = styleColours(diagram, node.id);
   const style = colours === '' ? '' : ` style="${escapeAttr(colours)}"`;
   // Words with no frame and no words — a table cell not written in yet — are
@@ -269,7 +295,8 @@ function styleClasses(diagram: DiagramFile, id: string): string[] {
   const rule = diagram.style.get(id);
   if (!rule) return [];
   return [...rule]
-    .filter(([property, value]) => !COLOUR.test(value) && !READ_HERE.includes(property))
+    .filter(([property, value]) => !COLOUR.test(value) && !READ_HERE.includes(property)
+      && !((property === 'fill' || property === 'line') && value === 'none'))
     .map(([property, value]) => `dp-${property}-${value}`);
 }
 
@@ -322,6 +349,30 @@ const ICON_ROOM = 44;
  * long name that has to wrap takes its room out of the picture rather than
  * running off the bottom of the box.
  */
+/**
+ * The square a part's picture is drawn in, when it is drawn as a picture over
+ * its name. A control stretched over its whole box, a list drawn from its
+ * rows and a shape with no picture are their whole box: undefined.
+ */
+function artBox(diagram: DiagramFile, node: Node, box: Box): Box | undefined {
+  const icon = diagram.style.get(node.id)?.get('icon');
+  if (icon === undefined || icon === TABLE_PICTURE) return undefined;
+  if (isListing(icon) && node.items.length > 0) return undefined;
+  if (!isIconPath(icon)) {
+    const art = stencilArt(icon);
+    if (!art || art.fit) return undefined;
+  }
+  // Only a picture with words under it is smaller than its box.
+  if (box.lines.every(line => lineText(line) === '')) return undefined;
+  const size = artSize(box);
+  return {
+    ...box,
+    x: box.x + (box.width - size) / 2,
+    y: box.y + Math.max(0, (box.height - LINE_HEIGHT * box.lines.length - size) / 2),
+    width: size, height: size,
+  };
+}
+
 function artSize(box: Box): number {
   const room = Math.min(ICON_ROOM, box.height - LINE_HEIGHT * box.lines.length);
   return Math.max(16, Math.min(room, box.width));
@@ -391,6 +442,10 @@ function styleColours(diagram: DiagramFile, id: string): string {
       parts.push(`opacity:${value}`);
       continue;
     }
+    // `fill: none` lets what is behind show through — a frame round a screen.
+    if (property === 'fill' && value === 'none') { parts.push('--dp-fill:none'); continue; }
+    // `line: none`: no outline — a text box that only shows a value, say.
+    if (property === 'line' && value === 'none') { parts.push('--dp-line:none'); continue; }
     if (!COLOUR.test(value)) continue;
     if (property === 'fill') parts.push(`--dp-fill:${value}`);
     if (property === 'line') parts.push(`--dp-line:${value}`);
@@ -427,6 +482,18 @@ function element(outline: Outline, className: string): string {
     case 'path':
       return `<path${className} d="${outline.d}"/>`;
   }
+}
+
+/** How much of a control's right end is its button — a drop-down's chevron, a spinner's arrows. */
+const BUTTONS: Readonly<Record<string, number>> = { 'ui/select': 24, 'ui/spinner': 20 };
+
+/**
+ * The room a control's value has: the box less the button at its right end,
+ * so a value set to the right stops before the chevron rather than under it.
+ */
+function withoutButton(box: Box, icon: string | undefined): Box {
+  const button = icon === undefined ? 0 : BUTTONS[icon] ?? 0;
+  return button === 0 ? box : { ...box, width: Math.max(0, box.width - button) };
 }
 
 function label(
@@ -478,19 +545,60 @@ function groupLabel(box: Box): string {
 
 interface DrawnEdge { readonly geometry: string; readonly label: string }
 
+/**
+ * Where each connection is drawn: its route, with a straight line to a
+ * picture moved to the picture's middle, as `renderEdge` draws it. An editor
+ * picks lines by these points; the route's own runs to the middle of the box
+ * round the picture and its name, below the line on screen.
+ */
+export function drawnRoutes(diagram: DiagramFile, laid: LaidOutDiagram): EdgeRoute[] {
+  if (diagram.mode === 'flow') return [...laid.routes];
+  const ends = new Map<string, Box>();
+  for (const node of diagram.nodes) {
+    const box = laid.boxes.get(node.id);
+    const art = box ? artBox(diagram, node, box) : undefined;
+    if (art) ends.set(node.id, art);
+  }
+  return laid.routes.map(route => {
+    const from = laid.boxes.get(route.edge.from);
+    const to = laid.boxes.get(route.edge.to);
+    const fromArt = ends.get(route.edge.from);
+    const toArt = ends.get(route.edge.to);
+    if (!from || !to || route.points.length !== 2 || (!fromArt && !toArt)) return route;
+    const moved = (point: Point, box: Box, art: Box | undefined): Point => (art ? {
+      x: point.x + (art.x + art.width / 2) - (box.x + box.width / 2),
+      y: point.y + (art.y + art.height / 2) - (box.y + box.height / 2),
+    } : point);
+    return { ...route, points: [moved(route.points[0]!, from, fromArt), moved(route.points[1]!, to, toArt)] };
+  });
+}
+
 function renderEdge(
   route: EdgeRoute, byId: ReadonlyMap<string, Node>, boxes: ReadonlyMap<string, Box>,
-  rounded: boolean, marks?: DiagramMarks,
+  rounded: boolean, marks?: DiagramMarks, ends: ReadonlyMap<string, Box> = new Map(),
 ): DrawnEdge {
-  const { edge, points } = route;
+  const { edge } = route;
+  let { points } = route;
   const from = boxes.get(edge.from);
   const to = boxes.get(edge.to);
   if (!from || !to || points.length < 2) return { geometry: '', label: '' };
 
+  // A straight line to a picture runs to the picture's middle, keeping any
+  // step aside it was given beside a second line between the same two.
+  const fromArt = ends.get(edge.from);
+  const toArt = ends.get(edge.to);
+  if (points.length === 2 && (fromArt || toArt)) {
+    const moved = (point: Point, box: Box, art: Box | undefined): Point => (art ? {
+      x: point.x + (art.x + art.width / 2) - (box.x + box.width / 2),
+      y: point.y + (art.y + art.height / 2) - (box.y + box.height / 2),
+    } : point);
+    points = [moved(points[0]!, from, fromArt), moved(points[1]!, to, toArt)];
+  }
   const clipped = [...points];
-  clipped[0] = border(from, byId.get(edge.from)?.shape ?? 'rect', points[1]!, points[0]);
+  clipped[0] = border(fromArt ?? from, fromArt ? 'rect' : byId.get(edge.from)?.shape ?? 'rect', points[1]!, points[0]);
   clipped[clipped.length - 1] = border(
-    to, byId.get(edge.to)?.shape ?? 'rect', points[points.length - 2]!, points[points.length - 1]);
+    toArt ?? to, toArt ? 'rect' : byId.get(edge.to)?.shape ?? 'rect',
+    points[points.length - 2]!, points[points.length - 1]);
 
   const plate = edgeLabelBox(route);
   const change = marks?.edges.get(`${edge.from}->${edge.to}`);

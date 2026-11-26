@@ -268,6 +268,7 @@ function parseSelector(text: string): Selector {
   if (text === 'header') return { kind: 'header' };
   const [prefix, rest] = splitOnce(text, ':');
   switch (prefix) {
+    case 'header': return rest === '' ? { kind: 'header' } : { kind: 'header', column: rest };
     case 'col':  return { kind: 'column', name: rest };
     case 'row':  return { kind: 'row', which: rest === 'odd' || rest === 'even' ? rest : 'all' };
     case 'cell': {

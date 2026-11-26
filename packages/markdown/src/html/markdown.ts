@@ -33,6 +33,7 @@ import xml from 'highlight.js/lib/languages/xml';
 import yaml from 'highlight.js/lib/languages/yaml';
 import { bracketedSpan } from './span.js';
 import { superSub } from './script.js';
+import { math } from './math.js';
 import { escapeAttr, escapeHtml } from '@docpresenter/base';
 
 // The languages a design document is written about. Each is a few kilobytes,
@@ -65,7 +66,7 @@ function highlight(code: string, language: string): string {
 export const markdown = new MarkdownIt({
   html: true, linkify: false, typographer: false, breaks: true,
   highlight,
-}).use(bracketedSpan).use(superSub);
+}).use(bracketedSpan).use(superSub).use(math);
 
 // `hljs` on every highlighted block, so the theme can colour it as one.
 const plainFence = markdown.renderer.rules.fence!;

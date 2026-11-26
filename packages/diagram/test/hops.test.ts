@@ -90,3 +90,24 @@ describe('交差点では片方が跨ぐ', () => {
     }
   });
 });
+
+describe('戻る線は、ほかの線が来る側の反対から出る', () => {
+  it('グループの中の分岐を横切らずに上がる', () => {
+    const source = [
+      'flow {',
+      '  login ([ログイン])', '  q ([特殊画面])', '  stop [中断]', '  done [完了]', '  again [再開]',
+      '  group g "グループ" { q; stop; done; again }',
+      '  login --> q', '  q --> stop', '  q --> done', '  q --> again', '  again --> login',
+      '}',
+    ].join('\n');
+    const laid = layOutDiagram(parseDiagram(source), 'ja');
+    const into = laid.routes.find(r => r.edge.from === 'q' && r.edge.to === 'again')!.points;
+    const back = laid.routes.find(r => r.edge.from === 'again' && r.edge.to === 'login')!.points;
+    // The line coming in turns across at the height of its first corner; the
+    // line going back climbs on the far side of where that one arrives.
+    const arrives = into[into.length - 1]!.x;
+    const from = into[0]!.x;
+    const leaves = back[0]!.x;
+    expect(Math.sign(leaves - arrives)).toBe(Math.sign(arrives - from) || 1);
+  });
+});

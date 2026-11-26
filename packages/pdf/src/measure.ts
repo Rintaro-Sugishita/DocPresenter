@@ -177,18 +177,25 @@ interface LaidOut {
 }
 
 function layOut(root: HTMLElement, options: MeasureOptions): LaidOut {
-  const portrait = readPageSetup(document.documentElement);
-  const landscape = turned(portrait);
+  // The document's own paper may be either way up (`paper: A4 landscape`);
+  // a block that asks for the other way is printed on that paper turned.
+  const paper = readPageSetup(document.documentElement);
+  const upright = paper.width > paper.height ? turned(paper) : paper;
+  const portrait = upright;
+  const landscape = turned(upright);
+  const usual: Orientation = paper.width > paper.height ? 'landscape' : 'portrait';
   const diagnostics: Phrase[] = [];
 
   // Two passes, because a page turned sideways is a different measure and the
   // browser has to lay the block out at the width it will be printed at. Only
   // the blocks that asked for it are taken from the second pass, and a document
   // with none is not laid out twice.
-  const turns = root.querySelector('[data-page="landscape"]') !== null;
+  const other: Orientation = usual === 'portrait' ? 'landscape' : 'portrait';
+  const turns = root.querySelector(`[data-page="${other}"]`) !== null;
+  const setupOf = (orientation: Orientation): PageSetup => (orientation === 'landscape' ? landscape : portrait);
   const blocks = [
-    ...(turns ? pass(root, landscape, 'landscape', diagnostics) : []),
-    ...pass(root, portrait, 'portrait', diagnostics),
+    ...(turns ? pass(root, setupOf(other), other, usual, diagnostics) : []),
+    ...pass(root, setupOf(usual), usual, usual, diagnostics),
   ].sort((a, b) => a.index - b.index);
 
   const sheets: Sheet[] = [];
@@ -291,7 +298,7 @@ function layOut(root: HTMLElement, options: MeasureOptions): LaidOut {
         ...placed.map(toPoints2),
         ...(isCover[index] ? [] : [foot(setup, feet[index]!, options)]),
       ],
-      ...(sheet.orientation === 'landscape'
+      ...(sheet.orientation !== usual
         ? { width: setup.width, height: setup.height } : {}),
     };
   });
@@ -308,7 +315,7 @@ function layOut(root: HTMLElement, options: MeasureOptions): LaidOut {
   const outline = outlineOf(root);
   return {
     plan: {
-      width: portrait.width, height: portrait.height, pages: built,
+      width: setupOf(usual).width, height: setupOf(usual).height, pages: built,
       ...(outline.length === 0 ? {} : { outline }),
       ...(options.title === undefined ? {} : { title: options.title }),
       ...(options.commit === undefined ? {} : { commit: options.commit }),
@@ -399,7 +406,7 @@ function turned(setup: PageSetup): PageSetup {
  * it, and the blocks that belong on it are read.
  */
 function pass(
-  root: HTMLElement, setup: PageSetup, orientation: Orientation, diagnostics: Phrase[],
+  root: HTMLElement, setup: PageSetup, orientation: Orientation, usual: Orientation, diagnostics: Phrase[],
 ): MeasuredBlock[] {
   const contentWidth = (setup.width - setup.margin.left - setup.margin.right) * PX_PER_PT;
   root.style.width = `${contentWidth}px`;
@@ -421,7 +428,7 @@ function pass(
     const boundary = section.classList.contains('dp-sheet');
     for (const [n, element] of blocksOf(section).entries()) {
       const at = index++;
-      if (orientationOf(element) !== orientation) continue;
+      if (orientationOf(element, usual) !== orientation) continue;
       const rect = boxOf(element, left, top);
       if (rect.height <= 0) continue;
       measured.push({
@@ -444,11 +451,11 @@ function pass(
   return measured;
 }
 
-/** `{page="landscape"}` on an import reaches the page as an attribute. */
-function orientationOf(element: HTMLElement): Orientation {
-  return element.getAttribute('data-page') === 'landscape'
-    || element.querySelector('[data-page="landscape"]') !== null
-    ? 'landscape' : 'portrait';
+/** `{page="landscape"}` (or `portrait`) on an import reaches the page as an attribute. */
+function orientationOf(element: HTMLElement, usual: Orientation): Orientation {
+  const asked = element.getAttribute('data-page')
+    ?? element.querySelector('[data-page]')?.getAttribute('data-page');
+  return asked === 'landscape' || asked === 'portrait' ? asked : usual;
 }
 
 function heightOf(item: Item): number {

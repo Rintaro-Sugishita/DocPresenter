@@ -11,6 +11,7 @@
 
 import { DEFAULT_LOCALE, type Locale } from '@docpresenter/base';
 import { TABLE_LEDGER } from './table-export.js';
+import { SETTINGS_PATH } from './html.js';
 
 // Where a file name is checked lives with the rest of what every shell shares.
 export { nameProblem } from '@docpresenter/base';
@@ -212,6 +213,7 @@ export function planScaffold(
   create('docs/assets/.gitkeep', '');
   create('shared/glossary.table', glossary(words));
   create('.docpresenter/guide.md', shipped.guide);
+  create(SETTINGS_PATH, settingsTemplate(answers.locale ?? DEFAULT_LOCALE));
   for (const [name, text] of Object.entries(shipped.specs)) create(`.docpresenter/spec/${name}`, text);
 
   for (const path of ['CLAUDE.md', 'AGENTS.md']) {
@@ -407,4 +409,76 @@ function agentPointer(words: Words): string {
 function yamlText(value: string): string {
   return /^[^\s'"#:\-?[\]{},&*!|>%@`][^:#]*$/.test(value) && !/\s$/.test(value)
     ? value : JSON.stringify(value);
+}
+
+/** The repository's settings as `init` writes them: what the shipped behaviour is, spelled out to change. */
+export function settingsTemplate(locale: Locale): string {
+  return locale === 'ja' ? [
+    '# DocPresenter のリポジトリ全体の設定。この作業場のすべての文書に効く。',
+    '',
+    '# 表紙（PDF・印刷の 1 ページ目）',
+    '# 表紙は文書の最初の ## より前の部分（# の見出しとその下の行）で、中央に寄せて出す。',
+    '# その下に front matter の欄を表で並べる。ここに書いた順に、書いたものだけを出す。',
+    '#   - document          … 出す名前は決まったもの（文書番号）',
+    '#   - reviewer: 承認者  … どの front matter の欄でも、名前を付けて出せる',
+    '#   fields: []          … 表を出さない',
+    'cover:',
+    '  fields:',
+    '    - document',
+    '    - version',
+    '    - status',
+    '    - author',
+    '    - updated',
+    '',
+    '# 画面の項目一覧（新しく作る表の列）',
+    '# 書いた順に列を作る。「見出し: 役割」の役割を付けた列は、ツールが読み書きする。',
+    '# 役割: category（分類） number（No） id（ID） name（項目名） type（型） required（必須） align（寄せ）',
+    '# 役割の無い列（桁数など）は空のまま作り、チームが埋める。見出しを変えても役割で読める。',
+    '# 書かなければ、同梱の列（分類・No・ID・項目名・型・必須・寄せ・初期値・説明）で作る。',
+    '# items:',
+    '#   columns:',
+    '#     - 分類: category',
+    '#     - No: number',
+    '#     - ID: id',
+    '#     - 論理名: name',
+    '#     - 型: type',
+    '#     - 桁数',
+    '#     - 必須: required',
+    '#     - 寄せ: align',
+    '#     - 説明',
+    '',
+  ].join('\n') : [
+    '# DocPresenter settings for the whole repository: every document in it.',
+    '',
+    '# The cover (the first page of a PDF or a print)',
+    '# The cover is what a document writes before its first ## (its # heading and',
+    '# the lines under it), centred. Under it the front matter fields are listed,',
+    '# in the order written here, and only those.',
+    '#   - document            ... listed under its shipped name',
+    '#   - reviewer: Approver  ... any front matter field, under the name given',
+    '#   fields: []            ... no table',
+    'cover:',
+    '  fields:',
+    '    - document',
+    '    - version',
+    '    - status',
+    '    - author',
+    '    - updated',
+    '',
+    '# A screen\'s item table (the columns a new one has)',
+    '# Columns in the order written. A "heading: role" column is read and written',
+    '# by the tool; roles: category number id name type required align. A column',
+    '# with no role (length, say) is made empty for the team to fill. Without this',
+    '# the shipped columns are used.',
+    '# items:',
+    '#   columns:',
+    '#     - Category: category',
+    '#     - No: number',
+    '#     - ID: id',
+    '#     - Logical name: name',
+    '#     - Type: type',
+    '#     - Length',
+    '#     - Required: required',
+    '',
+  ].join('\n');
 }

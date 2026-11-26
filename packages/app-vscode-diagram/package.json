@@ -2,7 +2,7 @@
   "name": "docpresenter-diagram",
   "displayName": "DocPresenter Diagram",
   "description": "%extension.description%",
-  "version": "0.1.6",
+  "version": "0.1.9",
   "publisher": "rintaro-sugishita",
   "private": true,
   "license": "SEE LICENSE IN LICENSE.md",
@@ -17,6 +17,7 @@
     "作図", "図", "フローチャート", "構成図", "画面設計", "状態遷移図"
   ],
   "main": "./media/extension.cjs",
+  "activationEvents": ["onLanguage:dgm"],
   "contributes": {
     "languages": [
       {
@@ -45,7 +46,10 @@
       { "command": "docpresenterDiagram.open", "title": "%command.open.title%", "category": "DocPresenter Diagram" },
       { "command": "docpresenterDiagram.openToSide", "title": "%command.openToSide.title%", "category": "DocPresenter Diagram", "icon": "$(open-preview)" },
       { "command": "docpresenterDiagram.format", "title": "%command.format.title%", "category": "DocPresenter Diagram" },
+      { "command": "docpresenterDiagram.renameShape", "title": "%command.renameShape.title%", "category": "DocPresenter Diagram" },
       { "command": "docpresenterDiagram.exportSvg", "title": "%command.exportSvg.title%", "category": "DocPresenter Diagram" },
+      { "command": "docpresenterDiagram.exportHtml", "title": "%command.exportHtml.title%", "category": "DocPresenter Diagram" },
+      { "command": "docpresenterDiagram.exportXaml", "title": "%command.exportXaml.title%", "category": "DocPresenter Diagram" },
       { "command": "docpresenterDiagram.toMermaid", "title": "%command.toMermaid.title%", "category": "DocPresenter Diagram" },
       { "command": "docpresenterDiagram.fromMermaid", "title": "%command.fromMermaid.title%", "category": "DocPresenter Diagram" }
     ],
@@ -53,7 +57,9 @@
       "editor/title": [
         { "command": "docpresenterDiagram.openToSide", "when": "(resourceExtname == .dgm || editorLangId == dgm) && !activeCustomEditorId", "group": "navigation" },
         { "command": "docpresenterDiagram.exportSvg", "when": "resourceExtname == .dgm || editorLangId == dgm", "group": "docpresenterDiagram@1" },
-        { "command": "docpresenterDiagram.toMermaid", "when": "resourceExtname == .dgm || editorLangId == dgm", "group": "docpresenterDiagram@2" }
+        { "command": "docpresenterDiagram.toMermaid", "when": "resourceExtname == .dgm || editorLangId == dgm", "group": "docpresenterDiagram@2" },
+        { "command": "docpresenterDiagram.exportHtml", "when": "resourceExtname == .dgm || editorLangId == dgm", "group": "docpresenterDiagram@3" },
+        { "command": "docpresenterDiagram.exportXaml", "when": "resourceExtname == .dgm || editorLangId == dgm", "group": "docpresenterDiagram@4" }
       ],
       "editor/context": [
         { "command": "docpresenterDiagram.openToSide", "when": "(resourceExtname == .dgm || editorLangId == dgm) && !activeCustomEditorId", "group": "navigation@9" },
@@ -64,7 +70,9 @@
         { "command": "docpresenterDiagram.exportSvg", "when": "resourceExtname == .dgm", "group": "navigation@10" },
         { "command": "docpresenterDiagram.format", "when": "resourceExtname == .dgm", "group": "navigation@12" },
         { "command": "docpresenterDiagram.toMermaid", "when": "resourceExtname == .dgm", "group": "navigation@11" },
-        { "command": "docpresenterDiagram.fromMermaid", "when": "resourceExtname == .mmd || resourceExtname == .mermaid", "group": "navigation@13" }
+        { "command": "docpresenterDiagram.fromMermaid", "when": "resourceExtname == .mmd || resourceExtname == .mermaid", "group": "navigation@13" },
+        { "command": "docpresenterDiagram.exportHtml", "when": "resourceExtname == .dgm", "group": "navigation@11.1" },
+        { "command": "docpresenterDiagram.exportXaml", "when": "resourceExtname == .dgm", "group": "navigation@11.2" }
       ],
       "commandPalette": [
         { "command": "docpresenterDiagram.open", "when": "resourceExtname == .dgm || editorLangId == dgm" },
@@ -72,15 +80,20 @@
         { "command": "docpresenterDiagram.format", "when": "resourceExtname == .dgm || editorLangId == dgm" },
         { "command": "docpresenterDiagram.exportSvg", "when": "resourceExtname == .dgm || editorLangId == dgm" },
         { "command": "docpresenterDiagram.toMermaid", "when": "resourceExtname == .dgm || editorLangId == dgm" },
-        { "command": "docpresenterDiagram.fromMermaid", "when": "editorIsOpen" }
+        { "command": "docpresenterDiagram.fromMermaid", "when": "editorIsOpen" },
+        { "command": "docpresenterDiagram.exportHtml", "when": "resourceExtname == .dgm || editorLangId == dgm" },
+        { "command": "docpresenterDiagram.exportXaml", "when": "resourceExtname == .dgm || editorLangId == dgm" }
       ]
     },
     "keybindings": [
-      { "command": "docpresenterDiagram.openToSide", "key": "ctrl+k v", "mac": "cmd+k v", "when": "editorLangId == dgm" }
+      { "command": "docpresenterDiagram.openToSide", "key": "ctrl+k v", "mac": "cmd+k v", "when": "editorLangId == dgm" },
+      { "command": "docpresenterDiagram.renameShape", "key": "f2", "when": "editorTextFocus && editorLangId == dgm && !editorReadonly" }
     ]
   },
   "dependencies": {
     "@docpresenter/base": "*",
-    "@docpresenter/diagram": "*"
+    "@docpresenter/diagram": "*",
+    "@docpresenter/editor": "*",
+    "@docpresenter/markdown": "*"
   }
 }

@@ -84,6 +84,25 @@ export function withDisabled(diagram: DiagramFile): DiagramFile {
   return { ...diagram, style };
 }
 
+/**
+ * Whether a shape is written as not shown (`visible: false`). It keeps its
+ * room — a stack leaves the gap it would fill — and only the editor draws it,
+ * faintly, so it can still be picked.
+ */
+export function isHidden(style: ReadonlyMap<string, string> | undefined): boolean {
+  const value = style?.get('visible');
+  return value !== undefined && OFF.has(value.trim().toLowerCase());
+}
+
+/** Hides a shape, keeping its room, or shows it again. */
+export function setVisible(source: string, id: string, visible: boolean): Edit {
+  const own = parseDiagram(source);
+  return {
+    ...setNodeStyle(own, source, id, { visible: visible ? undefined : 'false' }),
+    ...described(dgm(visible ? 'diagram.did.show' : 'diagram.did.hide')),
+  };
+}
+
 /** Makes a shape one that cannot be used, or usable again. */
 export function setEnabled(source: string, id: string, enabled: boolean): Edit {
   // The style written in the file, not the one the parts filled in: the part's

@@ -60,7 +60,7 @@ export const DEFAULT_PARTS = `# 同梱の画面部品
 
 parts {
   # --- 面 ---
-  frame      [ ] { fill: #ffffff, line: #d3d7dd }                             380x300
+  frame      [ ] { fill: none, line: #d3d7dd }                                380x300
   panel      [ ] { fill: #f7f8fa, line: #d3d7dd }                             320x120
   banner     [ ] { fill: #eef3f9, line: #c3d3e6 }                             320x56
   alert      [ ] { fill: #fdecea, line: #e9a8a2 }                             320x56
@@ -78,8 +78,8 @@ parts {
   # --- 入力 ---
   textbox    [ ] { fill: #fbfbfc, line: #aeb4bd, align: left, item: 入力 }    320x34
   textarea   [ ] { fill: #fbfbfc, line: #aeb4bd, align: left, item: 入力 }    320x90
-  select     [ ] { icon: ui/select, item: 入力 }                              160x34
-  spinner    [ ] { icon: ui/spinner, item: 入力 }                             120x34
+  select     [ ] { icon: ui/select, align: left, item: 入力 }                 160x34
+  spinner    [ ] { icon: ui/spinner, align: right, item: 入力 }               120x34
   slider     [ ] { icon: ui/slider, item: 入力 }                              160x24
   checkbox   [ ] { icon: ui/check, item: 入力 }                                16x16
   checked    [ ] { icon: ui/check-on, item: 入力 }                             16x16

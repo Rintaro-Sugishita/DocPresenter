@@ -62,6 +62,8 @@ describe('右クリックメニューの並び', () => {
       'docpresenterDiagram.open',
       'docpresenterDiagram.exportSvg',
       'docpresenterDiagram.toMermaid',
+      'docpresenterDiagram.exportHtml',
+      'docpresenterDiagram.exportXaml',
       'docpresenterDiagram.format',
     ]);
   });

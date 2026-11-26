@@ -114,7 +114,7 @@ describe('ピンの解除', () => {
     expect(() => unpinNode(parseDiagram(FLOW), FLOW, 'next')).toThrow(DiagramEditError);
   });
 
-  it('自由配置の図では外せない（外すと置き場所が無くなる）', () => {
+  it('自由配置の図では外せません（外すと置き場所が無くなるためです）', () => {
     const file = parseDiagram(SCREEN);
     expect(canUnpin(file, 'title')).toBe(false);
     expect(() => unpinNode(file, SCREEN, 'title')).toThrow(/自由配置/);
@@ -339,7 +339,7 @@ describe('まとめて動かす・まとめる', () => {
   it('グループにするのは 1 行足すだけ（中身は動かない）', () => {
     const source = 'free {\n  a [A]\n  b [B]\n}\n\nlayout {\n  a @ (10, 10)\n  b @ (10, 90)\n}';
     const written = applyEdit(source, groupNodes(parseDiagram(source), source, ['a', 'b'], 'まとまり'));
-    expect(written).toContain('  group group1 "まとまり" { a; b }');
+    expect(written).toContain('  group group1 "まとまり" {\n    a\n    b\n  }');
     const file = parseDiagram(written);
     expect(file.nodes.find(n => n.id === 'group1')!.children).toEqual(['a', 'b']);
     expect(file.layout.get('a')).toMatchObject({ x: 10, y: 10 });
@@ -825,7 +825,7 @@ describe('部品を変える', () => {
     expect(setNodeShape(file, 'plain', 'ellipse').description).toBe('図形の種類を変更');
   });
 
-  it('行を持つ部品の種類は変えられない（行ごと消えるため）', () => {
+  it('行を持つ部品の種類は変えられません（行ごと消えるため）', () => {
     expect(() => setNodeShape(parseDiagram(SCREEN), 'nav', 'ellipse')).toThrow(DiagramEditError);
   });
 

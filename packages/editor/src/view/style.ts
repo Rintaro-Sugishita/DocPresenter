@@ -3,6 +3,11 @@
 // the base package, and the canvas's parts are in the diagram package.
 
 export const EDITOR_STYLE = `
+/* A caption is centred on the page unless the theme says otherwise; a theme
+   copied into a workspace before this was decided says nothing about it. */
+:where(.dp-caption) { text-align: center; }
+:where(.dp-figure[data-align="left"] > .dp-caption) { text-align: left; }
+:where(.dp-figure[data-align="right"] > .dp-caption) { text-align: right; }
 /* The editor is as wide as the place it is given, whatever is in it: the tab
    bar of a long document scrolls on its own rather than widening the editor,
    which would push the page — and the buttons at its edges — out of view. */
@@ -14,12 +19,27 @@ export const EDITOR_STYLE = `
      between blocks sits in it. The width of the text is the same. */
   padding: 3em 3.5em 3em 5.5em; box-shadow: 0 1px 4px rgba(0,0,0,.12);
 }
+/* A document that names its paper is shown on it: the sheet as wide as the
+   page, its margins the printed ones (the left one at least wide enough for
+   the hanging numbers), and each sheet at least one page tall. */
+.dp-editor-pane > .dp-page[data-paper] {
+  max-width: none; width: var(--page-width); box-sizing: border-box;
+  padding: var(--page-margin-top, 20mm) var(--page-margin-right, 18mm)
+    var(--page-margin-bottom, 18mm) max(var(--page-margin-left, 18mm), 5.5em);
+}
+.dp-editor-pane:not(.dp-continuous) > .dp-page[data-paper] .dp-sheet:not([hidden]) {
+  min-height: calc(var(--page-height) - var(--page-margin-top, 20mm) - var(--page-margin-bottom, 18mm));
+}
+.dp-tabbar-paper {
+  font: inherit; font-size: 0.85em; margin-right: 0.5em; padding: 0.1em 0.3em;
+  border: 1px solid #d3d7dd; border-radius: 3px; background: #fff; color: #3a4048;
+}
 /* Heading numbers hang in the margin, so the structure reads down the left
    edge and nothing below a heading is indented — the text keeps its width.
    The screen's own: what is printed is laid out by the theme. */
 .dp-editor-pane .dp-page :is(h2, h3, h4) { position: relative; }
 .dp-editor-pane .dp-page :is(h2, h3, h4) > .dp-number:first-child {
-  position: absolute; right: 100%; margin-right: 0.6em; white-space: nowrap;
+  position: absolute; left: calc(-1 * var(--dp-number-room, 3em)); white-space: nowrap;
 }
 .dp-editor-pane .dp-sheet[hidden] { display: none; }
 
@@ -94,7 +114,7 @@ export const EDITOR_STYLE = `
    the ＋ moves into what margin there is. */
 @media (max-width: 640px) {
   .dp-editor-pane > .dp-page { padding: 1.5em 1.2em 1.5em 2.6em; }
-  .dp-editor-pane .dp-page :is(h2, h3, h4) > .dp-number:first-child { position: static; margin-right: 0.4em; }
+  .dp-editor-pane .dp-page :is(h2, h3, h4) > .dp-number:first-child { position: static; left: auto; margin-right: 0.4em; }
   .dp-append-zone { left: -2.5em; width: 2.4em; }
 }
 /* Where the addition goes, while the ＋ is pointed at or a picture is held over it. */

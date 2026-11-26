@@ -56,6 +56,11 @@ export interface FigureNames {
   readonly path?: string;
   readonly caption?: string;
   readonly label?: string;
+  /**
+   * The paper the figure is printed on, when it is not the document's:
+   * `landscape` or `portrait`. Empty takes the attribute away.
+   */
+  readonly page?: string;
 }
 
 /**
@@ -129,6 +134,10 @@ export function renameFigure(source: string, span: ByteSpan, names: FigureNames)
     } else {
       line = setImportAttribute(line, 'caption', caption === '' ? undefined : caption);
     }
+  }
+
+  if (names.page !== undefined) {
+    line = setImportAttribute(line, 'page', names.page === '' ? undefined : names.page);
   }
 
   if (names.path !== undefined && names.path !== block.path) {

@@ -150,6 +150,20 @@ const PARTS: readonly Drawn[] = [
       + `<rect x="7" y="3" width="10" height="18" rx="2" ${LINE}/>`
       + `<path d="M10.5 18.5 h3" ${LINE}/>`,
   },
+  {
+    name: 'net/pc',
+    group: 'network',
+    body: `<rect x="3" y="4" width="18" height="12" rx="1.5" ${FILL}/>`
+      + `<rect x="3" y="4" width="18" height="12" rx="1.5" ${LINE}/>`
+      + `<path d="M12 16 v3.5 M8 20 h8" ${LINE}/>`,
+  },
+  {
+    name: 'net/laptop',
+    group: 'network',
+    body: `<rect x="5" y="5" width="14" height="10" rx="1" ${FILL}/>`
+      + `<rect x="5" y="5" width="14" height="10" rx="1" ${LINE}/>`
+      + `<path d="M2.5 18.5 h19 l-2 -3.5 h-15 Z" ${LINE}/>`,
+  },
 ];
 
 
@@ -336,5 +350,5 @@ export function stencilArt(name: string): StencilPart | undefined {
 
 /** True when the value names a file rather than a part shipped with the tool. */
 export function isIconPath(value: string): boolean {
-  return /\.(svg|png)$/i.test(value);
+  return /\.(svg|png|jpe?g|gif|webp)$/i.test(value);
 }

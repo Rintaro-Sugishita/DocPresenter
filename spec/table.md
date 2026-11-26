@@ -254,6 +254,7 @@ still renders; a reader SHOULD report it as a diagnostic.
 | Selector | Selects |
 |---|---|
 | `header` | the header row |
+| `header:COL` | the heading of the column headed `COL` alone; applied after `header`, so it wins over it |
 | `col:NAME` | every cell of the column whose header is `NAME` |
 | `NAME` | the same — a bare name is a column |
 | `row:odd` / `row:even` | body rows, counted from 1 |

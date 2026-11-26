@@ -89,6 +89,13 @@ export interface Edge {
 }
 
 /** A position pinned by hand. Absent means the layout is computed. */
+/** A size with no place, and the line that says it. */
+export interface Sizing {
+  readonly width: number;
+  readonly height: number;
+  readonly span: ByteSpan;
+}
+
 export interface Placement {
   readonly x: number;
   readonly y: number;
@@ -299,6 +306,12 @@ export interface DiagramFile {
   readonly body: Section | undefined;
   /** The layout layer: only what a human pinned. */
   readonly layout: ReadonlyMap<string, Placement>;
+  /**
+   * Sizes written without a place (`textbox2 206x39`): how big a shape is,
+   * leaving where it goes to whatever arranges it — its container. A pin
+   * would take it out of the container; this keeps it in.
+   */
+  readonly sizes?: ReadonlyMap<string, Sizing>;
   /** Corners a connection turns through, keyed `from->to`. */
   readonly bends: ReadonlyMap<string, Bend>;
   /** Absent when the file has no `layout { … }` block yet. */

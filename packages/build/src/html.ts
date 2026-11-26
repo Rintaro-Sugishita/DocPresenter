@@ -6,12 +6,26 @@
 // Nothing about the result depends on where it is put.
 
 import {
-  describe, headingsOf, isAddress, renderDocument,
+  describe, headingsOf, isAddress, renderDocument, paperOf, paperStyle,
   type DiffMarks, type DocumentFile,
-  type ResolvedDocument, type ResourceLoader,
+  type ResolvedDocument, type ResourceLoader, hasMath, KATEX_STYLE, MATH_RULES,
 } from '@docpresenter/markdown';
+import { parse as parseYaml } from 'yaml';
 import { asLf, type Workspace } from './workspace.js';
 import { BUILD_MESSAGES } from './messages.js';
+
+/** Rules every page has under its theme, at no specificity so any theme rule wins. */
+export const BASE_PAGE_STYLE = [
+  ':where(.dp-caption) { text-align: center; }',
+  ':where(.dp-figure[data-align="left"] > .dp-caption) { text-align: left; }',
+  ':where(.dp-figure[data-align="right"] > .dp-caption) { text-align: right; }',
+  // The title page: what comes before the first `##`, centred, on a page of
+  // its own when printed — the document's own words, however the author set them.
+  ':where(.dp-title-page) { text-align: center; }',
+  ':where(.dp-title-page) > :where(h1) { margin-bottom: 0.6em; }',
+  ':where(.dp-paged .dp-title-page) { margin-top: 55mm; margin-bottom: 20mm; }',
+  ':where(.dp-title-page table) { margin-left: auto; margin-right: auto; }',
+].join('\n');
 
 export interface PageOptions {
   readonly workspace: Workspace;
@@ -40,6 +54,7 @@ export function renderPage(options: PageOptions): string {
   const workspace = asLf(options.workspace);
   const raw = document.frontmatter.raw;
   const title = text(raw['title']) ?? text(raw['document']) ?? options.root;
+  const paper = paperOf(raw);
 
   const loader: ResourceLoader = {
     // Paths in a build are workspace-relative already: expansion rewrote every
@@ -53,9 +68,12 @@ export function renderPage(options: PageOptions): string {
       : workspace.dataUrl?.(path),
   };
 
-  const body = renderDocument(document, resolved, {
-    loader, ...(options.marks === undefined ? {} : { marks: options.marks }),
+  const rendered = renderDocument(document, resolved, {
+    loader, path: options.root, ...(options.marks === undefined ? {} : { marks: options.marks }),
   });
+  // What comes before the first `##` is the title page; the body starts there.
+  const titled = titlePage(rendered);
+  const body = titled?.body ?? rendered;
 
   return [
     '<!doctype html>',
@@ -63,11 +81,21 @@ export function renderPage(options: PageOptions): string {
     `<meta name="viewport" content="width=device-width, initial-scale=1">`,
     `<title>${escape(title)}</title>`,
     ...meta(options),
+    // What the page is before any theme speaks: a caption is centred on the
+    // page. A theme copied into a workspace before this was decided still says
+    // nothing about it, and a theme that does say is not overruled.
+    `<style>${BASE_PAGE_STYLE}</style>`,
     `<style>${style}</style>`,
+    // KaTeX's stylesheet, fonts inside, only for a page that has a formula.
+    ...(hasMath(body) ? [`<style>${KATEX_STYLE}
+${MATH_RULES}</style>`] : []),
+    // The paper the document names, over the theme's: the PDF is cut to it.
+    ...(paper === undefined ? [] : [`<style>:root { ${paperStyle(paper)} }</style>`]),
     '</head><body>',
-    front(options),
+    front(options, titled?.title),
     body,
-    ...(options.mermaidScript !== undefined && hasMermaid(body)
+    // The same script lays formulas down as pictures for the PDF.
+    ...(options.mermaidScript !== undefined && (hasMermaid(body) || hasMath(body))
       // Inline, like the theme: the page still opens with no network. The one
       // sequence that would end the element early is broken up.
       ? [`<script>${options.mermaidScript.replace(/<\/script/gi, '<\\/script')}</script>`]
@@ -110,17 +138,31 @@ function meta(options: PageOptions): string[] {
  * `# heading`, and printing the same words twice is how a generated cover
  * announces that it was generated.
  */
-function cover(options: PageOptions): string {
+function cover(options: PageOptions, page?: string): string {
   const raw = options.document.frontmatter.raw;
   const t = BUILD_MESSAGES.in(options.resolved.locale);
-  const fields: [string, string | undefined][] = [
-    [t('build.cover.document'), text(raw['document'])],
-    [t('build.cover.version'), text(raw['version'])],
-    [t('build.cover.status'), text(raw['status'])],
-    [t('build.cover.author'), text(raw['author'])],
-    [t('build.cover.updated'), text(raw['updated'])],
-  ];
+  const labels: Readonly<Record<string, string>> = {
+    document: t('build.cover.document'), version: t('build.cover.version'), status: t('build.cover.status'),
+    author: t('build.cover.author'), updated: t('build.cover.updated'),
+  };
+  // Which front matter keys the cover lists, in what order and under what
+  // name: the repository's settings say, for every document in it.
+  const fields: [string, string | undefined][] = coverFields(options.workspace)
+    .map(({ key, label }) => [label ?? labels[key] ?? key, text(raw[key])]);
   const shown = fields.filter((f): f is [string, string] => f[1] !== undefined && f[1] !== '');
+  // A title page written in the document: its words, then the fields under them.
+  if (page !== undefined) {
+    return [
+      '<header class="dp-cover dp-cover-page">',
+      `<div class="dp-title-page">\n${page.trim()}\n</div>`,
+      ...(shown.length === 0 ? [] : [
+        '<dl class="dp-cover-fields">',
+        ...shown.map(([name, value]) => `<dt>${escape(name)}</dt><dd>${escape(value)}</dd>`),
+        '</dl>',
+      ]),
+      '</header>',
+    ].join('\n');
+  }
   if (shown.length === 0) return '';
   // The title is for paper. On screen the document's own first heading says it
   // a line below, and the theme shows this one only on a page of its own.
@@ -149,8 +191,8 @@ function cover(options: PageOptions): string {
  * which pages are front matter — those carry their own numbering, and the
  * body's "12 / 13" counts the body alone.
  */
-function front(options: PageOptions): string {
-  const parts = [cover(options), contents(options), figures(options)]
+function front(options: PageOptions, title?: string): string {
+  const parts = [cover(options, title), contents(options), figures(options)]
     .filter(part => part !== '');
   if (parts.length === 0) return '';
   return `<section class="dp-front">\n${parts.join('\n')}\n</section>`;
@@ -254,4 +296,69 @@ function text(value: unknown): string | undefined {
 function escape(value: string): string {
   return value.replace(/&/g, '&amp;').replace(/</g, '&lt;')
     .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+/**
+ * The title page a document writes for itself: everything on its first sheet
+ * before the first `##`, when the sheet opens with a `#` heading — and the
+ * rendered body without it. A first sheet that is nothing but the title page
+ * leaves no empty sheet behind it, which would print as a blank page.
+ */
+export function titlePage(body: string): { title: string; body: string } | undefined {
+  const open = /<section class="dp-sheet"[^>]*>\n?/.exec(body);
+  if (!open) return undefined;
+  const start = open.index + open[0].length;
+  const end = body.indexOf('</section>', start);
+  if (end < 0) return undefined;
+  const sheet = body.slice(start, end);
+  if (!/^\s*<h1[\s>]/.test(sheet)) return undefined;
+  const at = sheet.search(/<h2[\s>]/);
+  const title = at < 0 ? sheet : sheet.slice(0, at);
+  const rest = at < 0 ? '' : sheet.slice(at);
+  const after = body.slice(end + '</section>'.length).replace(/^\n/, '');
+  return {
+    title,
+    body: rest.trim() === '' ? body.slice(0, open.index) + after : body.slice(0, start) + rest + body.slice(end),
+  };
+}
+
+/** Where a repository keeps its settings for every document in it. */
+export const SETTINGS_PATH = '.docpresenter/settings.yml';
+
+/** A front matter key the cover lists, and the name it is listed under (the shipped one when none). */
+export interface CoverField {
+  readonly key: string;
+  readonly label?: string;
+}
+
+/** What the cover lists when the repository says nothing. */
+const COVER_FIELDS: readonly CoverField[] = ['document', 'version', 'status', 'author', 'updated'].map(key => ({ key }));
+
+/**
+ * The cover's fields, from the repository's settings:
+ *
+ *   cover:
+ *     fields: [document, version, author, { reviewer: 承認 }]
+ *
+ * An empty list shows none. A settings file that cannot be read is passed
+ * over, and the shipped list is used.
+ */
+export function coverFields(workspace: Workspace): readonly CoverField[] {
+  const text = workspace.read(SETTINGS_PATH);
+  if (text === undefined) return COVER_FIELDS;
+  let settings: unknown;
+  try { settings = parseYaml(text); } catch { return COVER_FIELDS; }
+  const cover = (settings as { cover?: { fields?: unknown } } | null)?.cover;
+  const listed = cover?.fields;
+  if (!Array.isArray(listed)) return COVER_FIELDS;
+  const out: CoverField[] = [];
+  for (const one of listed) {
+    if (typeof one === 'string' && one.trim() !== '') out.push({ key: one.trim() });
+    else if (one && typeof one === 'object') {
+      for (const [key, label] of Object.entries(one as Record<string, unknown>)) {
+        out.push(label === null || label === undefined ? { key } : { key, label: String(label) });
+      }
+    }
+  }
+  return out;
 }

@@ -58,6 +58,8 @@ export type ToView =
     readonly commitKey: CommitKey;
     /** VS Code's display language, so the editor speaks the same one as the host. */
     readonly locale: Locale;
+    /** The repository's settings (`.docpresenter/settings.yml`), read. */
+    readonly settings?: unknown;
   }
   /** Somebody else changed a file — the document itself, or one it refers to. */
   | { readonly kind: 'file'; readonly path: string; readonly text: string }
@@ -161,6 +163,12 @@ export type FromView =
   | { readonly kind: 'open-in-excel'; readonly path: string }
   /** A workbook a sheet is imported from, opened in whatever opens it. */
   | { readonly kind: 'open-external'; readonly path: string }
+  /** A file the document uses (a drawing, a table), opened as text beside it. */
+  | { readonly kind: 'open-file'; readonly path: string }
+  /** A table written in the document, from the line it starts on, moved into a `.table` of its own. */
+  | { readonly kind: 'split-table'; readonly line: number }
+  /** A table written in the document, opened in Excel as a copy. */
+  | { readonly kind: 'table-excel'; readonly text: string }
   | {
     readonly kind: 'measured'; readonly id: number;
     readonly plan?: PagePlan; readonly diagnostics?: readonly string[]; readonly error?: string;

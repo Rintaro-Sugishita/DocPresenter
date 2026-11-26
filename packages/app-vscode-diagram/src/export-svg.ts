@@ -58,17 +58,32 @@ export async function exportSvg(extensionUri: vscode.Uri, uri?: vscode.Uri): Pro
 async function picturesOf(
   drawing: vscode.Uri, style: ReadonlyMap<string, ReadonlyMap<string, string>>,
 ): Promise<(path: string) => string> {
-  const found = new Map<string, string>();
+  const found = await pictureData(drawing, style);
+  return path => found[path] ?? path;
+}
+
+const PICTURE_TYPES: Readonly<Record<string, string>> = {
+  svg: 'image/svg+xml', png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp',
+};
+
+/**
+ * The pictures the drawing's `icon:` declarations point at by path, as data
+ * URLs by the path the drawing writes. One that cannot be read is left out.
+ */
+export async function pictureData(
+  drawing: vscode.Uri, style: ReadonlyMap<string, ReadonlyMap<string, string>>,
+): Promise<Record<string, string>> {
+  const found: Record<string, string> = {};
   for (const rule of style.values()) {
     const icon = rule.get('icon');
-    if (icon === undefined || !/\.(svg|png)$/i.test(icon) || found.has(icon)) continue;
+    const type = icon === undefined ? undefined : PICTURE_TYPES[/\.([a-z]+)$/i.exec(icon)?.[1]?.toLowerCase() ?? ''];
+    if (icon === undefined || type === undefined || icon in found) continue;
     try {
       const bytes = await vscode.workspace.fs.readFile(vscode.Uri.joinPath(drawing, '..', ...icon.split('/')));
-      const type = /\.svg$/i.test(icon) ? 'image/svg+xml' : 'image/png';
-      found.set(icon, `data:${type};base64,${Buffer.from(bytes).toString('base64')}`);
+      found[icon] = `data:${type};base64,${Buffer.from(bytes).toString('base64')}`;
     } catch { /* 読めない絵は名前で描かれる */ }
   }
-  return path => found.get(path) ?? path;
+  return found;
 }
 
 /**

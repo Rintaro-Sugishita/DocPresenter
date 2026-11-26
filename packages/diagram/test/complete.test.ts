@@ -24,6 +24,18 @@ const DRAWING = [
 ].join('\n');
 
 describe('作図ファイルの補完', () => {
+  it('接続先の候補には、ID と図形の種類に加えて図形の文字も出し、文字でも絞れる', () => {
+    const offered = at('flow {\n  loginSc ([ログイン画面])\n  inputId [社員コード入力]\n  loginSc --> |\n}');
+    const one = offered.find(item => item.label === 'inputId')!;
+    expect(one.detail).toContain('社員コード入力');
+    expect(one.filter).toBe('inputId 社員コード入力');
+  });
+
+  it('複数行に書いたグループの中では、メンバーにできる図形を出し、メンバーを図形と取り違えない', () => {
+    const marked = 'flow {\n  a ([A])\n  b [B]\n  group g "G" {\n    a\n    |\n  }\n}';
+    expect(labels(marked)).toEqual(['a', 'b']);
+    expect(at(marked)[0]!.detail).toContain('A');
+  });
   it('最上位ではセクションを出し、図が既にあれば図の種類は出さない', () => {
     expect(labels('|')).toEqual(['flow', 'free', 'overlay', 'layout', 'style', 'use', 'items', 'parts']);
     expect(labels('flow {\n  a [A]\n}\n\nla|')).toEqual(['layout', 'style', 'use', 'parts']);
@@ -98,7 +110,7 @@ describe('作図ファイルの補完', () => {
     const file = DRAWING.replace('  |\n', '') + '\n\nstyle {\n  theme: default\n  db { fill: #eee }\n  |\n}';
     expect(labels(file)).toEqual(['start', 'form', 'check', 'back']);
     expect(labels(file.replace('  |', '  form { fill: shade, |'))).toEqual(
-      ['line', 'color', 'align', 'icon', 'arrow', 'slope', 'weight', 'font', 'font-size', 'enabled', 'opacity']);
+      ['line', 'color', 'align', 'icon', 'arrow', 'slope', 'weight', 'font', 'font-size', 'enabled', 'visible', 'opacity']);
     expect(labels(file.replace('  |', '  form { line: |'))).toEqual(['dashed']);
     const icons = at(file.replace('  |', '  form { icon: net/r|'));
     expect(icons.map(one => one.label)).toContain('net/router');

@@ -50,11 +50,20 @@ export function pinNodes(
   const added: string[] = [];
   let anyNew = false;
 
-  for (const [id, pin] of pins) {
+  for (let [id, pin] of pins) {
     if (!file.nodes.some(node => node.id === id)) {
       throw new DiagramEditError(dgm('diagram.edit.missingShape', { id }));
     }
+    // A size written on its own goes onto the pin: one line says it, not two.
+    const sized = file.sizes?.get(id);
+    if (sized && pin.width === undefined) pin = { ...pin, width: sized.width, height: sized.height };
     const existing = file.layout.get(id);
+    if (sized && !existing) {
+      // The size line becomes the pin, where it stands.
+      changes.push({ span: sized.span, text: formatPlacement(id, pin, undefined, idWidth(file)) });
+      continue;
+    }
+    if (sized) changes.push(whole(source, sized.span, ''));
     if (existing) {
       const like = sliceBytes(source, existing.span.start, existing.span.end);
       // Moving a shape moves it. A size or a depth the author set stays set.
@@ -88,6 +97,32 @@ export function pinNodes(
     }
   }
   return splice(source, changes, anyNew ? dgm('diagram.did.pin') : dgm('diagram.did.move'));
+}
+
+/**
+ * Sets how big a shape is and nothing about where it goes: `id WxH`. For a
+ * shape a container holds — a pin would take it out of the container, and a
+ * text box made taller in a form should stay in the form. A shape that is
+ * pinned already has its size written on its pin, so that is where it goes.
+ */
+export function sizeNode(
+  file: DiagramFile, source: string, id: string, size: { width: number; height: number },
+): Edit {
+  if (!file.nodes.some(node => node.id === id)) {
+    throw new DiagramEditError(dgm('diagram.edit.missingShape', { id }));
+  }
+  const pin = file.layout.get(id);
+  if (pin) return pinNode(file, source, id, { x: pin.x, y: pin.y, width: size.width, height: size.height });
+  const text = `${padTo(id, idWidth(file))}${round(size.width)}x${round(size.height)}`;
+  const existing = file.sizes?.get(id);
+  if (existing) return splice(source, [{ span: existing.span, text }], dgm('diagram.did.resize'));
+  if (file.layoutBlock) {
+    const { insertAt, indent } = file.layoutBlock;
+    return splice(source, [{ span: { start: insertAt, end: insertAt }, text: `\n${indent}${text}` }], dgm('diagram.did.resize'));
+  }
+  const end = byteLength(source.replace(/\s+$/, ''));
+  return splice(source, [{ span: { start: end, end: byteLength(source) }, text: `\n\nlayout {\n  ${text}\n}\n` }],
+    dgm('diagram.did.resize'));
 }
 
 /**
@@ -329,7 +364,7 @@ const PART_BASE = 'part';
 export function partIdBase(name: string | undefined): string {
   if (name === undefined) return PART_BASE;
   const last = name.split('/').filter(Boolean).pop() ?? '';
-  const bare = last.replace(/\.(svg|png)$/i, '')
+  const bare = last.replace(/\.(svg|png|jpe?g|gif|webp)$/i, '')
     .replace(/[-\s.]+([A-Za-z0-9])/g, (_, next: string) => next.toUpperCase())
     .replace(/[^A-Za-z0-9_぀-鿿]/g, '')
     .replace(/\d+$/, '');
@@ -366,6 +401,41 @@ export interface NewShape {
  * decide where it goes. Both land in the same edit, so one gesture is one
  * change however many lines it took.
  */
+/** The name a new zone gets: `zone1`, `zone2`, … */
+export function nextZoneId(file: DiagramFile): string {
+  const taken = new Set(file.nodes.map(node => node.id));
+  for (let n = 1; ; n++) if (!taken.has(`zone${n}`)) return `zone${n}`;
+}
+
+/**
+ * A zone: a named frame round part of a network — a LAN, a DMZ, a cloud's
+ * network. It is a group that holds nothing yet, pinned where it is put and
+ * drawn behind what is placed on it, its name in its corner. What goes inside
+ * is put there by hand, as everything is in a free drawing.
+ */
+export function addZone(
+  file: DiagramFile, source: string, at: { x: number; y: number }, label: string,
+  size: { width: number; height: number } = { width: 320, height: 200 },
+): Edit {
+  if (!file.body) throw new DiagramEditError(dgm('diagram.edit.noBody'));
+  const id = nextZoneId(file);
+  const changes: Change[] = [{
+    span: { start: file.body.insertAt, end: file.body.insertAt },
+    text: `\n${file.body.indent}group ${id} "${label.replace(/"/g, '')}" {\n${file.body.indent}}`,
+  }];
+  const line = formatPlacement(id, { ...at, ...size }, undefined, idWidth(file));
+  if (file.layoutBlock) {
+    changes.push({
+      span: { start: file.layoutBlock.insertAt, end: file.layoutBlock.insertAt },
+      text: `\n${file.layoutBlock.indent}${line}`,
+    });
+  } else {
+    const end = byteLength(source.replace(/\s+$/, ''));
+    changes.push({ span: { start: end, end: byteLength(source) }, text: `\n\nlayout {\n  ${line}\n}\n` });
+  }
+  return splice(source, changes, dgm('diagram.did.addZone'));
+}
+
 export function addNode(file: DiagramFile, source: string, shape: NewShape): Edit {
   if (!file.body) throw new DiagramEditError(dgm('diagram.edit.noBody'));
   const named = shape.part !== undefined;
@@ -454,7 +524,7 @@ export function groupNodes(
   const id = nextShapeId(file, 'group');
   return splice(source, [{
     span: { start: file.body.insertAt, end: file.body.insertAt },
-    text: `\n${file.body.indent}group ${id} "${text}" { ${ids.join('; ')} }`,
+    text: `\n${file.body.indent}${groupText({ id, text, shape: 'group', className: undefined, children: [], items: [], span: { start: 0, end: 0 } }, ids, file.body.indent)}`,
   }], dgm('diagram.did.group'));
 }
 
@@ -485,12 +555,14 @@ function removalOf(file: DiagramFile, source: string, ids: readonly string[]): C
       changes.push(whole(source, node.span, ''));
       const pin = file.layout.get(node.id);
       if (pin) changes.push(whole(source, pin.span, ''));
+      const sized = file.sizes?.get(node.id);
+      if (sized) changes.push(whole(source, sized.span, ''));
       continue;
     }
     if (node.shape !== 'group' || !node.children.some(child => going.has(child))) continue;
     changes.push({
       span: node.span,
-      text: groupLine(node, node.children.filter(child => !going.has(child))),
+      text: groupText(node, node.children.filter(child => !going.has(child)), indentBefore(file, source, node.span.start)),
     });
   }
   for (const edge of file.edges) {
@@ -672,7 +744,7 @@ export function setNodeText(
   // in its words, not turned into a box of the same words.
   const part = file.partOf.get(id);
   const line = node.shape === 'group'
-    ? groupLine({ ...node, text }, node.children)
+    ? groupText({ ...node, text }, node.children, indentBefore(file, source, node.span.start))
     : part !== undefined
       ? `${node.id}${gapOf(node, source)}${part}:${text === '' ? '' : `"${text}"`}`
       : nodeLine(node, node.shape, text, gapOf(node, source));
@@ -924,9 +996,23 @@ function nodeLine(node: Node, shape: ShapeKind, text: string, gap = ' '): string
   return `${node.id}${gap}${open}${text}${close}${name}`;
 }
 
-function groupLine(group: Node, children: readonly string[]): string {
+/**
+ * A group as it is written: its members one to a line under it and the
+ * closing brace on its own, at `indent` — the indent of the group's own
+ * line, which the span it replaces starts after.
+ */
+export function groupText(group: Node, children: readonly string[], indent: string): string {
   const way = group.direction === undefined ? '' : ` ${group.direction}`;
-  return `group ${group.id} "${group.text}"${way} { ${children.join('; ')} }`;
+  const head = `group ${group.id} "${group.text}"${way}`;
+  if (children.length === 0) return `${head} {}`;
+  return `${head} {\n${children.map(child => `${indent}  ${child}`).join('\n')}\n${indent}}`;
+}
+
+/** The blanks a line starts with, before the byte `start` on it. */
+function indentBefore(file: DiagramFile, source: string | undefined, start: number): string {
+  if (source === undefined) return file.body?.indent ?? '  ';
+  const before = sliceBytes(source, 0, start);
+  return /[ \t]*$/.exec(before.slice(before.lastIndexOf('\n') + 1))?.[0] ?? '';
 }
 
 /**
@@ -1028,4 +1114,110 @@ export function editBetween(before: string, after: string, description: Phrase):
     text: after.slice(head, after.length - tail),
     ...described(description),
   };
+}
+
+/**
+ * Rewrites the words on a connection: `a --> b "label"`. An empty label takes
+ * them off. The connector, the spacing and a trailing `~` stay as written.
+ */
+export function setEdgeLabel(
+  file: DiagramFile, source: string, from: string, to: string, label: string,
+): Edit {
+  const edge = file.edges.find(e => e.from === from && e.to === to);
+  if (!edge) throw new DiagramEditError(dgm('diagram.edit.missingLine', { from, to }));
+  // A double quote would end the label early: the parser reads up to the next one.
+  const now = label.trim().replace(/"/g, '”');
+  if ((edge.label ?? '') === now) throw new DiagramEditError(dgm('diagram.edit.noChange'));
+  const line = sliceBytes(source, edge.span.start, edge.span.end);
+  let body = line.replace(/\s+$/, '');
+  let tail = '';
+  const loose = /(\s*~)$/.exec(body);
+  // `a ~~~ b` ends in a name, so a `~` at the very end is the loose mark.
+  if (loose && !/~~~\s*$/.test(body)) { tail = loose[1]!; body = body.slice(0, loose.index); }
+  body = body.replace(/\s*"[^"]*"$/, '');
+  const written = `${body}${now === '' ? '' : ` "${now}"`}${tail}`;
+  return { span: edge.span, text: written, ...described(dgm('diagram.did.edgeLabel')) };
+}
+
+/** What a shape's name may be made of, as the parser reads one. */
+const ID_WORD = 'A-Za-z0-9_\u3040-\u9fff';
+
+/**
+ * Gives a shape another name, everywhere the drawing names it: its own line,
+ * its connections, the groups and containers that hold it, its pin, its size,
+ * its look and its corners. Words a reader sees — labels in quotes, text in
+ * brackets — are left alone, even when they happen to spell the old name.
+ */
+export function renameNode(file: DiagramFile, source: string, was: string, now: string): Edit {
+  find(file, was);
+  if (!new RegExp(`^[${ID_WORD}]+$`, 'u').test(now)) {
+    throw new DiagramEditError(dgm('diagram.edit.badId', { id: now }));
+  }
+  if (now === was) throw new DiagramEditError(dgm('diagram.edit.noChange'));
+  if (file.nodes.some(node => node.id === now) || file.containers.has(now)) {
+    throw new DiagramEditError(dgm('diagram.edit.takenId', { id: now }));
+  }
+  const word = new RegExp(`(?<![${ID_WORD}])${escapeRegExp(was)}(?![${ID_WORD}])`, 'gu');
+  const changes: Change[] = [];
+  /** The name at the start of a line, and nothing after it. */
+  const lead = (span: ByteSpan): void => {
+    const text = sliceBytes(source, span.start, span.end);
+    if (!text.startsWith(was) || new RegExp(`^[${ID_WORD}]`, 'u').test(text.slice(was.length))) return;
+    changes.push({ span: { start: span.start, end: span.start + byteLength(was) }, text: now });
+  };
+  /** Every name in a line or a block, outside what is quoted or bracketed. */
+  const words = (span: ByteSpan): void => {
+    const text = sliceBytes(source, span.start, span.end);
+    const next = text.replace(/("[^"]*"|\[[^\]\n]*\])|([^"[]+)/g,
+      (all: string, kept: string | undefined) => (kept !== undefined ? all : all.replace(word, now)));
+    if (next !== text) changes.push({ span, text: next });
+  };
+  for (const node of file.nodes) {
+    if (node.shape === 'group') words(node.span);
+    else if (node.id === was) lead(node.span);
+  }
+  for (const edge of file.edges) if (edge.from === was || edge.to === was) words(edge.span);
+  for (const container of file.containers.values()) words(container.span);
+  for (const [key, bend] of file.bends) if (key.split('->').includes(was)) words(bend.span);
+  const pin = file.layout.get(was);
+  if (pin) lead(pin.span);
+  const sized = file.sizes?.get(was);
+  if (sized) lead(sized.span);
+  const look = file.styleSpans.get(was);
+  if (look) lead(look);
+  // A line inside a block already rewritten goes with the block.
+  const kept = changes.filter(one => !changes.some(other => other !== one
+    && other.span.start <= one.span.start && one.span.end <= other.span.end
+    && (other.span.end - other.span.start) > (one.span.end - one.span.start)));
+  return splice(source, kept, dgm('diagram.did.rename'));
+}
+
+function escapeRegExp(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * Moves every pin and corner so the shape furthest up and to the left sits at
+ * (0, 0). Only ever asked for: done on every save, it would rewrite every
+ * line of a layout a diff is meant to read.
+ */
+export function moveToOrigin(file: DiagramFile, source: string): Edit {
+  const pins = [...file.layout];
+  if (pins.length === 0) throw new DiagramEditError(dgm('diagram.edit.nothingToMove'));
+  const dx = Math.min(...pins.map(([, pin]) => pin.x));
+  const dy = Math.min(...pins.map(([, pin]) => pin.y));
+  if (dx === 0 && dy === 0) throw new DiagramEditError(dgm('diagram.edit.atOrigin'));
+  const changes: Change[] = pins.map(([id, pin]) => ({
+    span: pin.span,
+    text: formatPlacement(id, { ...pin, x: pin.x - dx, y: pin.y - dy },
+      sliceBytes(source, pin.span.start, pin.span.end)),
+  }));
+  for (const [key, bend] of file.bends) {
+    const [from, to] = key.split('->');
+    changes.push({
+      span: bend.span,
+      text: `${from} -> ${to} @ ` + bend.points.map(p => `(${round(p.x - dx)}, ${round(p.y - dy)})`).join('; '),
+    });
+  }
+  return splice(source, changes, dgm('diagram.did.origin'));
 }
