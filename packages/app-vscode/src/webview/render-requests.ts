@@ -6,7 +6,7 @@
 
 import { drawMermaid, flattenMermaid, mermaidPicture } from '@docpresenter/editor/mermaid';
 import { measure } from '@docpresenter/pdf';
-import { PRINT_CLASS, type Locale } from '@docpresenter/base';
+import { fitOverlays, PRINT_CLASS, type Locale } from '@docpresenter/base';
 import type { FromView, ToView } from '../protocol.js';
 
 /** Answers a request if it is one of these. Returns whether it was. */
@@ -52,6 +52,8 @@ async function measurePage(
     await drawMermaid(stage, locale);
     await flattenMermaid(stage);
     await Promise.all([...stage.querySelectorAll('img')].map(image => image.decode().catch(() => undefined)));
+    // A screenshot wider than the page shrinks to it, its callouts with it.
+    fitOverlays(stage);
     const measured = measure(stage, { foot, title, locale });
     send({ kind: 'measured', id, plan: measured.plan, diagnostics: measured.diagnostics });
   } catch (error) {

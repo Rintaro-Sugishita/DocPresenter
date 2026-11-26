@@ -359,10 +359,13 @@ pre > code { background: none; padding: 0; font-size: 1em; }
 .dp-diagram .dp-edge-label { font-size: 12px; fill: #3a4048; }
 
 /* Image overlays ---------------------------------------------------------- */
-/* 注釈の座標は画像の画素なので、画像は縮めない（縮めると丸だけが元の位置に残ってずれる）。
-   `.dp-figure-body img` の max-width: 100% より強く書く。狭い画面では図の枠が横に流れる。 */
+/* 注釈の座標は画像の画素で、位置は「画素 × --dp-overlay-scale」で書かれる。縮めた倍率は画面側が
+   測って入れる（dp-overlay-fit が付く）。付いていなければ倍率は 1 なので、画像は縮めない——
+   `.dp-figure-body img` の max-width: 100% より強く書き、狭い画面では図の枠が横に流れる。 */
 .dp-overlay { position: relative; display: inline-block; line-height: 0; }
 .dp-overlay .dp-overlay-image { display: block; max-width: none; height: auto; }
+.dp-overlay.dp-overlay-fit { max-width: 100%; }
+.dp-overlay.dp-overlay-fit .dp-overlay-image { max-width: 100%; }
 .dp-figure-body:has(> .dp-overlay) { max-width: 100%; overflow-x: auto; }
 .dp-callout-leader { position: absolute; overflow: visible; }
 .dp-callout-leader line { stroke: #b3261e; stroke-width: 1.5; }

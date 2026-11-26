@@ -3,14 +3,16 @@
 // part of the file — and where a number points is exactly the thing people
 // argue about in a review. Dragging one writes one line.
 //
-// Unlike a drawing, an overlay is already on the page as HTML at the image's
-// own scale, so this takes over what the renderer produced rather than drawing
-// its own copy.
+// Unlike a drawing, an overlay is already on the page as HTML, so this takes
+// over what the renderer produced rather than drawing its own copy. The page
+// may have shrunk the image to fit; positions are written the way the renderer
+// writes them (image pixels times the scale), and a drag is divided by it.
 
 import type { Callout, DiagramFile } from '../model.js';
-import { DEFAULT_LOCALE, type Edit, type Locale } from '@docpresenter/base';
+import { DEFAULT_LOCALE, overlayScale, type Edit, type Locale } from '@docpresenter/base';
 import { DIAGRAM_MESSAGES } from '../messages.js';
 import { moveCallout } from '../edits.js';
+import { leaderStyle, pointStyle } from '../draw/overlay.js';
 
 const STEP = 4;
 const THRESHOLD = 3;
@@ -71,10 +73,7 @@ export function createOverlayEditor(options: OverlayEditorOptions): OverlayEdito
     }
     const at = selected === undefined ? undefined : byMarker.get(selected);
     handle.hidden = at === undefined;
-    if (at) {
-      handle.style.left = `${at.targetX}px`;
-      handle.style.top = `${at.targetY}px`;
-    }
+    if (at) handle.setAttribute('style', pointStyle(at.targetX, at.targetY));
     describe();
   }
 
@@ -128,9 +127,13 @@ export function createOverlayEditor(options: OverlayEditorOptions): OverlayEdito
   stage.addEventListener('pointermove', event => {
     const current = drag;
     if (!current) return;
-    const dx = event.clientX - current.from.x;
-    const dy = event.clientY - current.from.y;
-    if (!current.moved && Math.hypot(dx, dy) < THRESHOLD) return;
+    const screenX = event.clientX - current.from.x;
+    const screenY = event.clientY - current.from.y;
+    if (!current.moved && Math.hypot(screenX, screenY) < THRESHOLD) return;
+    // The pointer moves in screen pixels; the file counts image pixels.
+    const scale = overlayScale(stage);
+    const dx = screenX / scale;
+    const dy = screenY / scale;
     current.moved = true;
     const c = current.callout;
     current.at = current.end === 'marker'
@@ -161,21 +164,15 @@ export function createOverlayEditor(options: OverlayEditorOptions): OverlayEdito
     name: string, at: { x: number; y: number; targetX: number; targetY: number },
   ): void {
     const marker = markerOf(name);
-    if (marker) {
-      marker.style.left = `${at.x}px`;
-      marker.style.top = `${at.y}px`;
-    }
-    if (name === selected) {
-      handle.style.left = `${at.targetX}px`;
-      handle.style.top = `${at.targetY}px`;
-    }
+    if (marker) marker.setAttribute('style', pointStyle(at.x, at.y));
+    if (name === selected) handle.setAttribute('style', pointStyle(at.targetX, at.targetY));
     const leader = leaderOf(name);
     if (leader) {
       const left = Math.min(at.x, at.targetX);
       const top = Math.min(at.y, at.targetY);
       const width = Math.max(1, Math.abs(at.targetX - at.x));
       const height = Math.max(1, Math.abs(at.targetY - at.y));
-      leader.setAttribute('style', `left:${left}px;top:${top}px`);
+      leader.setAttribute('style', leaderStyle(left, top, width, height));
       leader.setAttribute('width', String(width));
       leader.setAttribute('height', String(height));
       leader.setAttribute('viewBox', `0 0 ${width} ${height}`);

@@ -4,7 +4,7 @@
 // and the subsetter are most of what is left of the page's weight once Mermaid
 // is split off, and most readers only read (viewer.ts imports this lazily).
 
-import { PRINT_CLASS, type Locale } from '@docpresenter/base';
+import { fitOverlays, PRINT_CLASS, type Locale } from '@docpresenter/base';
 import { BUILD_MESSAGES, reviewSourceOf, type Workspace } from '@docpresenter/build';
 import { createSubsetter, measure, writePdf, type Subsetter } from '@docpresenter/pdf';
 import { localFonts } from './fonts.js';
@@ -64,6 +64,8 @@ export async function makePdf(request: PdfRequest): Promise<PdfResult> {
     doc.body.append(stage);
     await request.draw(stage);
     await Promise.all([...stage.querySelectorAll('img')].map(image => image.decode().catch(() => undefined)));
+    // A screenshot wider than the page shrinks to it, its callouts with it.
+    fitOverlays(stage);
 
     const raw = composed.prepared.document.frontmatter.raw;
     const version = raw['version']

@@ -13,6 +13,7 @@ export * from './view/menu.js';
 export * from './view/swatches.js';
 export * from './view/toolbar.js';
 export * from './view/zoom.js';
+export * from './view/overlay-fit.js';
 export * from './file-name.js';
 export * from './grid-line.js';
 export * from './view/long-press.js';

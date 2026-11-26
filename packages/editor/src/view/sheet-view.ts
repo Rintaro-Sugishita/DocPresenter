@@ -26,7 +26,7 @@ import { TableEditError } from '../table.js';
 import { createCanvas } from '@docpresenter/diagram';
 import { createOverlayEditor } from '@docpresenter/diagram';
 import { createGrid, type CellChoices, type Grid, type GridPosition } from './grid.js';
-import { attachZoom, createMenu, type MenuItem } from '@docpresenter/base';
+import { attachZoom, createMenu, fitOverlays, type MenuItem } from '@docpresenter/base';
 import { EDITOR_STYLE } from './style.js';
 import { BASE_STYLE, useDarkStyle } from '@docpresenter/base';
 import { DIAGRAM_STYLE } from '@docpresenter/diagram';
@@ -1691,6 +1691,8 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
     for (const block of page.querySelectorAll<HTMLElement>('.dp-mermaid')) addMermaidSwitch(block);
     for (const block of page.querySelectorAll<HTMLElement>('.dp-code')) addCopyButton(block);
     for (const figure of page.querySelectorAll<HTMLElement>('.dp-figure')) addZoom(figure);
+    // A screenshot with callouts shrinks to the page, its numbers with it.
+    fitOverlays(page);
     options.decorate?.(page);
     if (grid) {
       const figure = page.querySelector<HTMLElement>(`.dp-figure[data-path="${cssEscape(grid.path)}"]`);

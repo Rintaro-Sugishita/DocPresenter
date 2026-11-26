@@ -1,7 +1,10 @@
 // Renders an overlay: a screenshot with numbered callouts. The image is a
 // binary a diff cannot show, so only the markers and their wording are ours to
-// draw — and those are what a reviewer actually argues about. The image keeps
-// its natural size because the coordinates in the file are image pixels.
+// draw — and those are what a reviewer actually argues about. The coordinates
+// in the file are image pixels, so every position is written as those pixels
+// times `--dp-overlay-scale`: the page sets it once it knows how far the image
+// was shrunk to fit (fitOverlays in @docpresenter/base), and without it the
+// image keeps its natural size and the scale stays 1.
 
 import type { Callout, DiagramFile } from '../model.js';
 import { DEFAULT_LOCALE, escapeAttr, escapeHtml, type Locale } from '@docpresenter/base';
@@ -41,13 +44,28 @@ function renderMarker(callout: Callout): string {
   // The marker's own name identifies it, so an editor can find the pair on the
   // page without counting them.
   const named = ` data-callout="${escapeAttr(callout.marker)}"`;
-  const leader = `<svg class="dp-callout-leader"${named} style="left:${left}px;top:${top}px"`
-    + ` width="${width}" height="${height}" viewBox="0 0 ${width} ${height}"`
+  const leader = `<svg class="dp-callout-leader"${named} style="${leaderStyle(left, top, width, height)}"`
+    + ` width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" preserveAspectRatio="none"`
     + ` xmlns="http://www.w3.org/2000/svg" aria-hidden="true">`
     + `<line x1="${callout.x - left}" y1="${callout.y - top}"`
-    + ` x2="${callout.targetX - left}" y2="${callout.targetY - top}"/></svg>`;
+    + ` x2="${callout.targetX - left}" y2="${callout.targetY - top}" vector-effect="non-scaling-stroke"/></svg>`;
 
   return leader
-    + `<span class="dp-callout"${named} style="left:${callout.x}px;top:${callout.y}px"`
+    + `<span class="dp-callout"${named} style="${pointStyle(callout.x, callout.y)}"`
     + ` title="${escapeAttr(callout.text)}">${escapeHtml(callout.marker)}</span>`;
+}
+
+/** A length in image pixels, as it lands on the page once the image is scaled. */
+export function overlayLength(pixels: number): string {
+  return `calc(${pixels}px * var(--dp-overlay-scale, 1))`;
+}
+
+/** Where a point of the image (a marker, or the end of a leader) is put. */
+export function pointStyle(x: number, y: number): string {
+  return `left:${overlayLength(x)};top:${overlayLength(y)}`;
+}
+
+/** The box a leader line is drawn in. The line's stroke keeps its width when the box is scaled. */
+export function leaderStyle(left: number, top: number, width: number, height: number): string {
+  return `${pointStyle(left, top)};width:${overlayLength(width)};height:${overlayLength(height)}`;
 }

@@ -232,7 +232,9 @@ describe('画像注釈のレンダリング', () => {
     const html = renderOverlay(diagram);
     expect(html).toContain('src="../assets/login-screen.png"');
     // The marker carries its own name, so an editor can find the pair it draws.
-    expect(html).toContain('class="dp-callout" data-callout="①" style="left:168px;top:126px"');
+    // Positions are image pixels times the scale the page shrinks the image by.
+    expect(html).toContain('class="dp-callout" data-callout="①"'
+      + ' style="left:calc(168px * var(--dp-overlay-scale, 1));top:calc(126px * var(--dp-overlay-scale, 1))"');
     expect(html).toContain('<ol class="dp-callouts">');
     expect(html).toContain('ログイン状態を保持');
   });

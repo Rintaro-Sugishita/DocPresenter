@@ -8,7 +8,7 @@
 // shared link means the same thing tomorrow. A folder on this computer cannot
 // travel in a link; it is moved about in the page itself.
 
-import { attachZoom, describeError, followColourScheme, useDarkStyle, ZOOM_STYLE, type Locale } from '@docpresenter/base';
+import { attachZoom, describeError, fitOverlays, followColourScheme, useDarkStyle, ZOOM_STYLE, type Locale } from '@docpresenter/base';
 import { hasMermaid, takeIn, type BuildDiagnostic, type Workspace } from '@docpresenter/build';
 import { addressOf, ViewerError, type Addressed, type Fetch, type Host, type Location } from './hosts/index.js';
 import { WEB_MESSAGES, type WebMessage } from './messages.js';
@@ -573,6 +573,8 @@ export function startViewer(env: ViewerEnvironment): void {
     useDarkStyle(doc, 'theme', composed.style);
     main.innerHTML = composed.body;
     addZooms(main, locale);
+    // A screenshot with callouts shrinks to the page, its numbers with it.
+    fitOverlays(main);
     void drawn(main, composed.body).catch(fail);
 
     const failed = [...held.texts, ...held.images].filter(([, value]) => value === undefined).map(([path]) => path);
