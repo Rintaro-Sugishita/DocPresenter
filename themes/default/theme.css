@@ -359,8 +359,11 @@ pre > code { background: none; padding: 0; font-size: 1em; }
 .dp-diagram .dp-edge-label { font-size: 12px; fill: #3a4048; }
 
 /* Image overlays ---------------------------------------------------------- */
+/* 注釈の座標は画像の画素なので、画像は縮めない（縮めると丸だけが元の位置に残ってずれる）。
+   `.dp-figure-body img` の max-width: 100% より強く書く。狭い画面では図の枠が横に流れる。 */
 .dp-overlay { position: relative; display: inline-block; line-height: 0; }
-.dp-overlay-image { display: block; max-width: none; }
+.dp-overlay .dp-overlay-image { display: block; max-width: none; height: auto; }
+.dp-figure-body:has(> .dp-overlay) { max-width: 100%; overflow-x: auto; }
 .dp-callout-leader { position: absolute; overflow: visible; }
 .dp-callout-leader line { stroke: #b3261e; stroke-width: 1.5; }
 .dp-callout {
