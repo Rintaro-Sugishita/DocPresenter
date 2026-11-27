@@ -263,9 +263,11 @@ group id ["label"] [direction] { member; member; … }
 ```
 
 Members are identifiers separated by `;`. The whole group is one line — this is
-the one construct that could reasonably have been nested, and is not, so that
+a construct that could reasonably have been nested, and is not, so that
 adding a member is a one-line diff and a group's own position in `layout` reads
-like any other shape's.
+like any other shape's. A lane (§3.6) may be written as a block because there
+the same holds the other way round: a shape belongs to exactly one lane, so
+writing it inside the lane is the one-line diff.
 
 A group is drawn as a container behind its members and MAY be given a pin of its
 own; DocPresenter writes `z:-1` for groups so that members stay clickable.
@@ -318,42 +320,65 @@ SHOULD say so rather than ignore it.
 ### 3.6 Swimlanes: `swim`
 
 A `swim` is a `flow` whose shapes are kept to **lanes**. It holds every line a
-`flow` holds, read the same way, and one more:
+`flow` holds, read the same way, and a lane, written in one of two ways.
+
+**As a block**, the shapes written inside it:
+
+```
+lane id ["label"] {
+  shape lines, group lines, connection lines, comments
+}
+```
+
+The opening line ends in `{` and nothing follows it; the lane runs to the
+matching `}` on a line of its own, braces counted as a section's are (§1). What
+the lane holds is every shape and group written inside it. A connection written
+inside is a connection like any other, and says nothing about the lane. A lane
+MUST NOT be written inside a lane.
+
+**On one line**, listing what it holds, as a group is written (§3.3):
 
 ```
 lane id ["label"] { member; member; … }
 ```
 
-A lane is written as a group is (§3.3) — one line, members separated by `;`,
-the label optional and defaulting to the id — but takes no direction: every
-lane runs the way the whole drawing does. A lane is a group for every other
+The block is the usual way: a step is written once, where it belongs, and moving
+it to another lane is moving its line. The one-line form suits a lane that holds
+shapes written elsewhere, and both MAY be mixed in one `swim`.
+
+Either way the label is optional and defaults to the id, and a lane takes no
+direction: every lane runs the way the whole drawing does. A lane is a group for every other
 purpose: its id is unique among shapes and groups, a style rule may name it,
 and a connection may end at it. A `lane` line anywhere but in a `swim` is an
 error, and a reader MUST report it.
 
 ```
 swim Ordering LR {
-  lane cust "Customer"  { start; order; recv }
-  lane shop "Shop"      { accept; check; ship }
-  lane wh   "Warehouse" { pick; pack }
+  lane cust "Customer" {
+    start ([Start])
+    order [Place order]
+    recv  ([Receive])
+  }
 
-  start  ([Start])
-  order  [Place order]
-  accept [Accept]
-  check  {In stock?}
-  pick   [Pick]
-  pack   [Pack]
-  ship   [Ship]
-  recv   ([Receive])
+  lane shop "Shop" {
+    accept [Accept]
+    check  {In stock?}
+    ship   [Ship]
+  }
+
+  lane wh "Warehouse" { pick; pack }
+
+  pick [Pick]
+  pack [Pack]
 
   start  --> order
   order  --> accept
   accept --> check
-  check  --> pick "yes"
   check  --> order "no"
+  check  --> pick  "yes"
+  ship   --> recv
   pick   --> pack
   pack   --> ship
-  ship   --> recv
 }
 ```
 
@@ -375,6 +400,13 @@ so. A shape in no lane is still drawn — after the last lane, outside every
 band — and a reader SHOULD say so: a step nobody assigned is a gap in the
 diagram the author will want to see. A `swim` with no lanes is laid out as a
 `flow`, and a reader SHOULD say so.
+
+A block lane is one entity like any other, and its line is its **opening line**:
+that is the range a reader carries for it (§6.1), and changing its label
+rewrites that line alone. The shapes inside carry their own lines, so adding or
+removing one is a one-line diff that leaves the lane's line untouched. An editor
+that deletes a block lane SHOULD delete its opening and closing lines and keep
+what it held, which is then in no lane.
 
 A pin (§4.1) wins here as everywhere: a pinned shape is drawn where it is
 pinned, in its lane or not, and a pinned lane is drawn as a pinned group.
@@ -591,12 +623,15 @@ line that has comments.
 
 **The semantics section.** In a `swim`, the lanes first, in the order they were
 written (§3.6); then shapes, then groups, then connections, each block
-separated by a blank line.
+separated by a blank line. A block lane holds its shapes and then its groups,
+one level deeper, ordered as the same lines outside a lane are; the
+connections written inside it are written with the others. A block lane is
+separated from the lanes beside it by a blank line.
 
 | Line | Canonical form |
 |---|---|
 | header | `flow Title LR {` — the title, then the direction (§3.5); `swim` the same |
-| lane | `lane id "label" { a; b }`, the columns lined up as a group's |
+| lane | `lane id "label" {` for a block; `lane id "label" { a; b }` on one line, the one-line lanes' columns lined up as a group's |
 | shape | `id [label]:::class`, the ids padded to one column. The brackets as tight as reading them back allows: `[ /a/ ]` keeps its spaces, or it would read as a parallelogram |
 | part | `id part:"label"`; a part holding rows writes them two spaces deeper per level, `-` or `+`, then `*` for the picked one |
 | group | `group id "label" LR { a; b }`, the columns lined up. The label is left out when it is the id, which is what a group without one shows |

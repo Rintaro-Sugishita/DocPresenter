@@ -464,11 +464,16 @@ function removalOf(file: DiagramFile, source: string, ids: readonly string[]): C
   for (const node of file.nodes) {
     if (going.has(node.id)) {
       changes.push(whole(source, node.span, ''));
+      // A lane written as a block goes without what it holds: its opening and
+      // closing lines go, and the shapes inside stay, in no lane.
+      if (node.close) changes.push(whole(source, node.close, ''));
       const pin = file.layout.get(node.id);
       if (pin) changes.push(whole(source, pin.span, ''));
       continue;
     }
-    if (node.shape !== 'group' || !node.children.some(child => going.has(child))) continue;
+    // A block lane holds what is written inside it: a line deleted there is
+    // a member gone, and the lane's own line says nothing to rewrite.
+    if (node.shape !== 'group' || node.close || !node.children.some(child => going.has(child))) continue;
     changes.push({
       span: node.span,
       text: groupLine(node, node.children.filter(child => !going.has(child))),
@@ -906,6 +911,8 @@ function nodeLine(node: Node, shape: ShapeKind, text: string, gap = ' '): string
 }
 
 function groupLine(group: Node, children: readonly string[]): string {
+  // A block lane's line is its opening line; what it holds is below it.
+  if (group.close) return `lane ${group.id} "${group.text}" {`;
   const way = group.direction === undefined ? '' : ` ${group.direction}`;
   // A lane stays a lane when its members or its label change.
   return `${group.lane ? 'lane' : 'group'} ${group.id} "${group.text}"${way} { ${children.join('; ')} }`;

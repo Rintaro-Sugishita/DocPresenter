@@ -286,7 +286,7 @@ function atTop({ before, column, known, say, context }: At): Completion[] {
   if (!drawing) {
     add({ label: 'flow', kind: 'section', insert: 'flow $1{\n\t$0\n}', detail: say('diagram.complete.flow') });
     add({
-      label: 'swim', kind: 'section', insert: 'swim ${1:LR} {\n\tlane ${2:id} "$3" { $0 }\n}',
+      label: 'swim', kind: 'section', insert: 'swim ${1:LR} {\n\tlane ${2:id} "$3" {\n\t\t$0\n\t}\n}',
       detail: say('diagram.complete.swim'),
     });
     add({ label: 'free', kind: 'section', insert: 'free $1{\n\t$0\n}', detail: say('diagram.complete.free') });
@@ -376,7 +376,7 @@ function inSemantics(at: At): Completion[] {
       },
       // A lane is only read in a swim, so it is only offered there.
       ...(known.sections.has('swim') ? [{
-        label: 'lane', kind: 'keyword' as const, insert: 'lane ${1:id} "$2" { $0 }',
+        label: 'lane', kind: 'keyword' as const, insert: 'lane ${1:id} "$2" {\n\t$0\n}',
         detail: say('diagram.complete.lane'), from, again: true,
       }] : []),
     ];

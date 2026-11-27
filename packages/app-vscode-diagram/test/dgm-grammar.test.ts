@@ -82,6 +82,15 @@ describe('.dgm の色付け', () => {
     expect(scopeOf(file, 4, '-->')).toBe('keyword.operator.connector.dgm');
   });
 
+  it('ブロックのレーンの中も図形として色が付き、その } で swim は閉じない', () => {
+    const file = 'swim {\n  lane cust "顧客" {\n    a [A]\n  }\n  b [B]\n}\nstyle {\n}';
+    expect(scopeOf(file, 1, 'lane')).toBe('keyword.other.lane.dgm');
+    expect(scopeOf(file, 2, 'a')).toBe('entity.name.tag.dgm');
+    expect(scopeOf(file, 2, 'A')).toBe('string.unquoted.label.dgm');
+    expect(scopeOf(file, 4, 'b')).toBe('entity.name.tag.dgm');
+    expect(scopeOf(file, 6, 'style')).toBe('keyword.control.section.dgm');
+  });
+
   it('両端の矢印も接続記号として色が付く', () => {
     const file = 'flow {\n  a [A]\n  b [B]\n  a <-.-> b "x"\n}';
     expect(scopeOf(file, 3, '<-.->')).toBe('keyword.operator.connector.dgm');

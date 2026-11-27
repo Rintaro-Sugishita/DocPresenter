@@ -60,6 +60,7 @@
         { "include": "#rows-block" },
         { "include": "#group" },
         { "include": "#lane" },
+        { "include": "#lane-block" },
         { "include": "#line-node" },
         { "include": "#connection" },
         { "include": "#part-use" },
@@ -129,6 +130,30 @@
         "5": { "patterns": [{ "include": "#members" }] },
         "6": { "name": "punctuation.section.braces.end.dgm" }
       }
+    },
+
+    "lane-block": {
+      "comment": "`lane id \"label\" {` alone on its line, its shapes inside, closed by `}` (spec/dgm.md §3.6). A region of its own, so that its closing brace does not close the swim.",
+      "begin": "^\\s*(lane)\\s+([A-Za-z0-9_぀-鿿]+)\\s*(\"[^\"]*\")?\\s*(\\{)\\s*$",
+      "beginCaptures": {
+        "1": { "name": "keyword.other.lane.dgm" },
+        "2": { "name": "entity.name.tag.dgm" },
+        "3": { "name": "string.quoted.double.label.dgm", "patterns": [{ "include": "#inline" }] },
+        "4": { "name": "punctuation.section.block.begin.dgm" }
+      },
+      "end": "^\\s*(\\})\\s*$",
+      "endCaptures": { "1": { "name": "punctuation.section.block.end.dgm" } },
+      "name": "meta.lane.dgm",
+      "patterns": [
+        { "include": "#comments" },
+        { "include": "#rows-inline" },
+        { "include": "#rows-block" },
+        { "include": "#group" },
+        { "include": "#line-node" },
+        { "include": "#connection" },
+        { "include": "#part-use" },
+        { "include": "#shape" }
+      ]
     },
 
     "direction": {

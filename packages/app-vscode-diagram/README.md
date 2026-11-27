@@ -34,19 +34,21 @@ flow {
 
 <img src="https://raw.githubusercontent.com/Rintaro-Sugishita/DocPresenter/HEAD/packages/app-vscode/images/en/dgm-flow.png" alt="The flowchart laid out from the flow above" width="440">
 
-**swim**: write a flow and add `lane` lines, and it becomes a swimlane diagram. The lanes are bands in the order
-written, and every shape is kept inside its own lane. Which step comes after which is still decided by the
-connections, as in a flow.
+**swim**: write a flow with its shapes inside `lane` blocks, and it becomes a swimlane diagram. The lanes are
+bands in the order written, and every shape is kept inside its own lane. Which step comes after which is still
+decided by the connections, as in a flow. A lane can also list its members on one line: `lane id "label" { a; b }`.
 
 ```
 swim Ordering LR {
-  lane cust "Customer" { order; recv }
-  lane shop "Shop"     { accept; ship }
+  lane cust "Customer" {
+    order [Place order]
+    recv  ([Receive])
+  }
 
-  order  [Place order]
-  accept [Accept]
-  ship   [Ship]
-  recv   ([Receive])
+  lane shop "Shop" {
+    accept [Accept]
+    ship   [Ship]
+  }
 
   order  --> accept
   accept --> ship

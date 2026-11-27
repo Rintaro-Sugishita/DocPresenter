@@ -33,18 +33,21 @@ flow {
 
 <img src="https://raw.githubusercontent.com/Rintaro-Sugishita/DocPresenter/HEAD/packages/app-vscode/images/ja/dgm-flow.png" alt="上の flow から自動で配置されたフローチャート" width="440">
 
-**swim**：flow と同じ書き方に `lane` の行を足すと、スイムレーン図になる。レーンは書いた順に帯として並び、
+**swim**：flow と同じ書き方で、図形を `lane` のブロックの中に書くと、スイムレーン図になる。レーンは書いた順に帯として並び、
 どの図形も自分のレーンの中に置かれる。流れの中での前後は、flow と同じく接続から決まる。
+`lane id "ラベル" { a; b }` のように、メンバーを 1 行で並べて書くこともできる。
 
 ```
 swim 受注処理 LR {
-  lane cust "顧客" { order; recv }
-  lane shop "店舗" { accept; ship }
+  lane cust "顧客" {
+    order [注文する]
+    recv  ([受け取り])
+  }
 
-  order  [注文する]
-  accept [受注]
-  ship   [発送]
-  recv   ([受け取り])
+  lane shop "店舗" {
+    accept [受注]
+    ship   [発送]
+  }
 
   order  --> accept
   accept --> ship

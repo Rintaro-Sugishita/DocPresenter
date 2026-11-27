@@ -74,6 +74,11 @@ const GROUP = /^group\s+([A-Za-z0-9_぀-鿿]+)\s*(?:"([^"]*)")?\s*(?:(TB|TD|BT|L
  */
 const LANE = /^lane\s+([A-Za-z0-9_぀-鿿]+)\s*(?:"([^"]*)")?\s*\{([^}]*)\}\s*$/;
 /**
+ * `lane sales "営業" {` alone on its line — a lane written as a block: the
+ * shapes written inside it, up to its closing `}`, are what it holds.
+ */
+const LANE_OPEN = /^lane\s+([A-Za-z0-9_぀-鿿]+)\s*(?:"([^"]*)")?\s*\{$/;
+/**
  * `flow LR {` — Mermaid's words for the way a flow runs. Written first, as
  * Mermaid writes `flowchart LR`, or last, after a title (`flow 構成 LR {`).
  */
@@ -366,6 +371,7 @@ const ITEM = /^([-+])\s+(.*)$/;
 
 function parseBody(
   body: readonly SourceLine[], nodes: Node[], edges: Edge[], partOf: Map<string, string>, swim = false,
+  inLane = false,
 ): void {
   for (let i = 0; i < body.length; i++) {
     const source = body[i]!;
@@ -387,6 +393,35 @@ function parseBody(
         ...(group[3] === undefined ? {} : { direction: group[3] as FlowDirection }),
         span,
       });
+      continue;
+    }
+
+    const block = LANE_OPEN.exec(text);
+    if (block) {
+      if (!swim) throw new DiagramParseError(dgm('diagram.parse.laneOutsideSwim', { id: block[1]! }), line);
+      if (inLane) throw new DiagramParseError(dgm('diagram.parse.laneInLane', { id: block[1]! }), line);
+      // Up to the matching brace, counted as a section's is: a part's rows
+      // and a group's members open and close braces of their own inside.
+      const inner: SourceLine[] = [];
+      let depth = 1;
+      let end: SourceLine | undefined;
+      while (++i < body.length) {
+        const next = body[i]!;
+        depth += countChar(next.text, '{') - countChar(next.text, '}');
+        if (depth === 0) { end = next; break; }
+        inner.push(next);
+      }
+      if (!end) throw new DiagramParseError(dgm('diagram.parse.unclosedLane', { id: block[1]! }), line);
+      const lane: Node = {
+        id: block[1]!, text: block[2] ?? block[1]!, shape: 'group', lane: true,
+        className: undefined, items: [], children: [], span, close: end.span,
+      };
+      nodes.push(lane);
+      // What it holds is every shape and group written inside it; the
+      // connections written there are connections like any other.
+      const before = nodes.length;
+      parseBody(inner, nodes, edges, partOf, swim, true);
+      nodes[before - 1] = { ...lane, children: nodes.slice(before).map(node => node.id) };
       continue;
     }
 

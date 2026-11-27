@@ -220,6 +220,8 @@ interface Pieces {
   readonly style: Piece<StyleEntry>[];
   readonly parts: Piece<Part>[];
   readonly callouts: Piece<Callout>[];
+  /** Comments just before the closing brace of a block lane, by the lane's id. */
+  readonly laneTrailing: ReadonlyMap<string, readonly string[]>;
   /** Comments after the last entity of each kind of section. */
   readonly trailing: ReadonlyMap<string, readonly string[]>;
 }
@@ -248,7 +250,11 @@ function collectPieces(
     const last = endAt.get(span.end);
     if (first !== undefined && last !== undefined) found.set(first, { kind, value, last });
   };
-  for (const node of file.nodes) add('node', node, node.span);
+  for (const node of file.nodes) {
+    add('node', node, node.span);
+    // A block lane's closing brace is a line of its own, but no entity.
+    if (node.close) add('laneEnd', node, node.close);
+  }
   for (const edge of file.edges) add('edge', edge, edge.span);
   for (const [id, pin] of file.layout) add('pin', { id, pin }, pin.span);
   for (const [key, bend] of file.bends) add('bend', { key, bend }, bend.span);
@@ -258,8 +264,9 @@ function collectPieces(
 
   const out: Pieces = {
     nodes: [], edges: [], body: [], pins: [], bends: [], containers: [], style: [], parts: [], callouts: [],
-    trailing: new Map(),
+    laneTrailing: new Map(), trailing: new Map(),
   };
+  const laneTrailing = out.laneTrailing as Map<string, string[]>;
   const trailing = out.trailing as Map<string, string[]>;
 
   for (const section of sections) {
@@ -285,6 +292,11 @@ function collectPieces(
       if (!entity) {
         if (text.startsWith('#')) { pending.push(text); continue; }
         return i;
+      }
+      if (entity.kind === 'laneEnd') {
+        laneTrailing.set((entity.value as Node).id, pending);
+        pending = [];
+        continue;
       }
       const piece = { value: entity.value as never, first: i, last: entity.last, leading: pending };
       pending = [];
@@ -618,14 +630,19 @@ function writeBody(
   file: DiagramFile, lines: readonly Line[], pieces: Pieces,
   order: ReadonlyMap<string, number>, plan: BodyPlan,
 ): (readonly Written[])[] {
-  const shapes = pieces.nodes.filter(one => one.value.shape !== 'group');
-  const groups = pieces.nodes.filter(one => one.value.shape === 'group' && !one.value.lane);
+  // What a block lane holds is written inside it, not among the rest.
+  const held = new Set(file.nodes.filter(node => node.close).flatMap(node => node.children));
+  const outside = pieces.nodes.filter(one => !held.has(one.value.id));
+  const shapes = outside.filter(one => one.value.shape !== 'group');
+  const groups = outside.filter(one => one.value.shape === 'group' && !one.value.lane);
   // A swim's lanes come first, in the order written: that order is the order
   // of the bands, so it is the author's to decide, not the formatter's.
-  const lanes = pieces.nodes.filter(one => one.value.lane);
+  const lanes = outside.filter(one => one.value.lane);
   const idWidth = widest(shapes.map(one => one.value.id));
   const groupColumns = groupColumnsOf(groups.map(one => one.value));
-  const laneColumns = groupColumnsOf(lanes.map(one => one.value));
+  // Only one-line lanes are lined up: a block's opening line stands alone,
+  // its contents between it and the next lane.
+  const laneColumns = groupColumnsOf(lanes.filter(one => !one.value.close).map(one => one.value));
   const edgeWidths = {
     from: widest(pieces.edges.map(one => one.value.from)),
     to: widest(pieces.edges.filter(one => one.value.label !== undefined).map(one => one.value.to)),
@@ -633,8 +650,10 @@ function writeBody(
 
   const writeNode = (piece: Piece<Node>): Written => ({
     leading: piece.leading,
-    lines: piece.value.lane
-      ? [INDENT + groupLine(piece.value, laneColumns, order, 'lane')]
+    lines: piece.value.close
+      ? spaced(piece, laneBlock(piece))
+      : piece.value.lane
+      ? spaced(piece, [INDENT + groupLine(piece.value, laneColumns, order, 'lane')])
       : piece.value.shape === 'group'
       ? [INDENT + groupLine(piece.value, groupColumns, order)]
       : shapeLines(file, piece, lines, idWidth),
@@ -643,13 +662,57 @@ function writeBody(
     leading: piece.leading, lines: [INDENT + edgeLine(piece.value, edgeWidths)],
   });
 
-  if (plan.nodes === 'verbatim') {
-    return [pieces.body.map(piece => ('from' in piece.value
-      ? writeEdge(piece as Piece<Edge>) : writeNode(piece as Piece<Node>)))];
-  }
   const nodeRank = (piece: Piece<Node>): number | undefined => order.get(piece.value.id);
   const sortNodes = (list: Piece<Node>[]): Piece<Node>[] =>
     (plan.nodes === 'canonical' ? byRank(list, nodeRank, piece => piece.value.id) : list);
+
+  /**
+   * A block lane: its opening line, its shapes and then its groups one level
+   * deeper, and its closing brace. The connections written inside it are
+   * written with the others; only what it holds says what the lane is.
+   */
+  function laneBlock(piece: Piece<Node>): string[] {
+    const lane = piece.value;
+    const inner = pieces.nodes.filter(one => lane.children.includes(one.value.id));
+    const innerShapes = sortNodes(inner.filter(one => one.value.shape !== 'group'));
+    const innerGroups = sortNodes(inner.filter(one => one.value.shape === 'group'));
+    const width = widest(innerShapes.map(one => one.value.id));
+    const columns = groupColumnsOf(innerGroups.map(one => one.value));
+    const deeper = (line: string): string => (line === '' ? '' : INDENT + line);
+    const out = [INDENT + laneHead(lane)];
+    const blocks = [
+      innerShapes.map(one => ({ leading: one.leading, lines: shapeLines(file, one, lines, width) })),
+      innerGroups.map(one => ({ leading: one.leading, lines: [INDENT + groupLine(one.value, columns, order)] })),
+    ].filter(block => block.length > 0);
+    blocks.forEach((block, b) => {
+      if (b > 0) out.push('');
+      block.forEach((one, index) => {
+        if (one.leading.length > 0 && index > 0) out.push('');
+        out.push(...one.leading.map(text => INDENT + INDENT + text), ...one.lines.map(deeper));
+      });
+    });
+    const trailing = pieces.laneTrailing.get(lane.id) ?? [];
+    if (trailing.length > 0) {
+      if (blocks.length > 0) out.push('');
+      out.push(...trailing.map(text => INDENT + INDENT + text));
+    }
+    out.push(`${INDENT}}`);
+    return out;
+  }
+
+  /** A blank line before a lane that follows or is a block: blocks are told apart as sections are. */
+  const spaced = (piece: Piece<Node>, written: string[]): string[] => {
+    const at = lanes.indexOf(piece);
+    if (at <= 0 || piece.leading.length > 0) return written;
+    return piece.value.close || lanes[at - 1]!.value.close ? ['', ...written] : written;
+  };
+
+  if (plan.nodes === 'verbatim') {
+    return [pieces.body
+      .filter(piece => 'from' in piece.value || !held.has((piece.value as Node).id))
+      .map(piece => ('from' in piece.value
+        ? writeEdge(piece as Piece<Edge>) : writeNode(piece as Piece<Node>)))];
+  }
   const edges = plan.edges === 'canonical' ? sortEdges(pieces.edges, order) : pieces.edges;
   return [lanes.map(writeNode), sortNodes(shapes).map(writeNode), sortNodes(groups).map(writeNode), edges.map(writeEdge)];
 }
@@ -754,6 +817,11 @@ function groupColumnsOf(groups: readonly Node[]): GroupColumns {
 /** A group's label, left out when it is only the id the parser would use anyway. */
 function groupLabel(group: Node): string {
   return group.text === group.id ? '' : `"${group.text}"`;
+}
+
+/** A block lane's opening line. */
+function laneHead(lane: Node): string {
+  return `lane ${[lane.id, groupLabel(lane)].filter(field => field !== '').join(' ')} {`;
 }
 
 function groupLine(
@@ -1020,7 +1088,7 @@ function modelOf(file: DiagramFile): string {
     mode: file.mode,
     swim: file.swim ?? false,
     // The order of the lanes is the order of the bands.
-    lanes: file.nodes.filter(node => node.lane).map(node => node.id),
+    lanes: file.nodes.filter(node => node.lane).map(node => [node.id, node.close !== undefined]),
     direction: file.direction ?? null,
     image: file.image ?? null,
     theme: file.theme ?? null,

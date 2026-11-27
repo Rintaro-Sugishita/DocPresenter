@@ -1,9 +1,9 @@
 // Tests for the swim mode: a flow whose shapes are kept to the lanes it names.
 
 import { describe, expect, it } from 'vitest';
-import { applyEdit } from '@docpresenter/base';
+import { applyEdit, sliceBytes } from '@docpresenter/base';
 import {
-  completeDiagram, DiagramParseError, formatDiagram, layOutDiagram, parseDiagram, removeNode,
+  completeDiagram, DiagramParseError, formatDiagram, layOutDiagram, parseDiagram, removeNode, setNodeText,
   type Box, type LaidOutDiagram,
 } from '../src/index.js';
 
@@ -252,5 +252,101 @@ describe('swim の補完', () => {
 
   it('swim の見出しでは向きを出す', () => {
     expect(offered('swim |')).toContain('LR');
+  });
+});
+
+const BLOCK = `swim 受注 LR {
+  lane cust "顧客" {
+    start ([開始])
+    order [注文する]
+    recv  ([受け取り])
+    start --> order
+  }
+
+  lane shop "店舗" {
+    accept [受注]
+    ship   [発送]
+  }
+
+  order  --> accept
+  accept --> ship
+  ship   --> recv
+}
+`;
+
+describe('ブロックで書くレーン', () => {
+  it('中に書いた図形がメンバーになり、レーン自身は開きの行になる', () => {
+    const file = parseDiagram(BLOCK);
+    const cust = file.nodes.find(node => node.id === 'cust')!;
+    expect(cust.lane).toBe(true);
+    expect(cust.children).toEqual(['start', 'order', 'recv']);
+    expect(sliceBytes(BLOCK, cust.span.start, cust.span.end)).toBe('lane cust "顧客" {');
+    expect(cust.close).toBeDefined();
+    // The connection written inside is a connection like any other.
+    expect(file.edges.map(edge => `${edge.from}->${edge.to}`)).toContain('start->order');
+  });
+
+  it('1 行で書くレーンと混ぜてよい', () => {
+    const file = parseDiagram('swim {\n  lane a {\n    x [X]\n  }\n  lane b { y }\n  y [Y]\n  x --> y\n}');
+    expect(file.nodes.filter(node => node.lane).map(node => [node.id, node.children])).toEqual([
+      ['a', ['x']], ['b', ['y']],
+    ]);
+  });
+
+  it('レーンの中のレーンと、閉じていないレーンは誤り', () => {
+    expect(() => parseDiagram('swim {\n  lane a {\n    lane b {\n    }\n  }\n}')).toThrow(/b/);
+    expect(() => parseDiagram('swim {\n  lane a {\n    x [X]\n}')).toThrow(DiagramParseError);
+    expect(() => parseDiagram('flow {\n  lane a {\n    x [X]\n  }\n}')).toThrow(DiagramParseError);
+  });
+
+  it('どの図形も自分のレーンの中に置かれる', () => {
+    const laid = layOutDiagram(parseDiagram(BLOCK));
+    expect(laid.diagnostics).toEqual([]);
+    for (const id of ['start', 'order', 'recv']) expect(within(box(laid, id), box(laid, 'cust'))).toBe(true);
+    for (const id of ['accept', 'ship']) expect(within(box(laid, id), box(laid, 'shop'))).toBe(true);
+  });
+
+  it('整形すると、レーンの中は図形・グループの順に一段深く、接続は外にまとめる', () => {
+    const formatted = formatDiagram(BLOCK);
+    expect(formatted.text).toBe(`swim 受注 LR {
+  lane cust "顧客" {
+    start ([開始])
+    order [注文する]
+    recv  ([受け取り])
+  }
+
+  lane shop "店舗" {
+    accept [受注]
+    ship   [発送]
+  }
+
+  start  --> order
+  order  --> accept
+  accept --> ship
+  ship   --> recv
+}
+`);
+    expect(formatDiagram(formatted.text).changed).toBe(false);
+  });
+
+  it('メンバーを消すと、その行だけが消えてレーンの行は変わらない', () => {
+    const written = applyEdit(BLOCK, removeNode(parseDiagram(BLOCK), BLOCK, 'recv'));
+    expect(written).toContain('  lane cust "顧客" {\n    start ([開始])\n    order [注文する]\n    start --> order\n  }');
+    expect(parseDiagram(written).nodes.find(node => node.id === 'cust')?.children).toEqual(['start', 'order']);
+  });
+
+  it('レーンを消すと、中の図形はレーンの外に残る', () => {
+    const written = applyEdit(BLOCK, removeNode(parseDiagram(BLOCK), BLOCK, 'cust'));
+    const file = parseDiagram(written);
+    expect(file.nodes.some(node => node.id === 'cust')).toBe(false);
+    expect(file.nodes.map(node => node.id)).toEqual(expect.arrayContaining(['start', 'order', 'recv']));
+    expect(file.edges).toHaveLength(4);
+  });
+
+  it('ラベルを直すと、開きの行だけが書き換わる', () => {
+    const edit = setNodeText(parseDiagram(BLOCK), 'cust', 'お客様', BLOCK);
+    const written = applyEdit(BLOCK, edit);
+    expect(written).toContain('  lane cust "お客様" {\n    start ([開始])');
+    expect(parseDiagram(written).nodes.find(node => node.id === 'cust')?.children).toEqual(['start', 'order', 'recv']);
   });
 });

@@ -66,6 +66,13 @@ export interface Node {
    * written. Absent for every other node.
    */
   readonly lane?: true;
+  /**
+   * A lane written as a block, its shapes inside it, rather than as one line
+   * listing them: the line that closes it. The lane's own `span` is then its
+   * opening line — the lane is that line, and what it holds are lines of
+   * their own.
+   */
+  readonly close?: ByteSpan;
   /** The shape's own line, so renaming one shape rewrites one line. */
   readonly span: ByteSpan;
 }
