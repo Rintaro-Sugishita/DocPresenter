@@ -13,6 +13,7 @@ import type { Block, DocumentFile, Import } from '../document/model.js';
 import type { NumberedElement, ResolvedDocument } from '../numbering/model.js';
 import { markdown, mermaidFigure, viewOf, type RenderEnv } from './markdown.js';
 import { joinPath } from './path.js';
+import { documentVariables, expandVariables } from '../document/variables.js';
 import { legend, markClass, markOf, type DiffMarks, type RemovedText } from './diff.js';
 import { escapeAttr, escapeHtml, renderTable, selectRows } from './table.js';
 
@@ -44,12 +45,23 @@ export interface RenderOptions {
    * around them agree.
    */
   readonly locale?: Locale;
+  /**
+   * The document's own path, for `{{FileName}}` and the like. Without it
+   * those names are left as written; the date and the front matter still fill in.
+   */
+  readonly path?: string;
+  /** What `{{name}}` stands for, when the caller has worked it out already. */
+  readonly variables?: ReadonlyMap<string, string>;
 }
 
 export function renderDocument(
   document: DocumentFile, resolved: ResolvedDocument, given: RenderOptions,
 ): string {
-  const options: RenderOptions = { ...given, locale: given.locale ?? resolved.locale };
+  const options: RenderOptions = {
+    ...given, locale: given.locale ?? resolved.locale,
+    variables: given.variables
+      ?? documentVariables(document.frontmatter, given.path === undefined ? {} : { path: given.path }),
+  };
   const elementByBlock = new Map<unknown, NumberedElement>(
     resolved.elements.map(e => [e.block, e]),
   );
@@ -153,11 +165,11 @@ function renderBlock(
       const changed = markClass(markOf(options.marks, block.doc, block.span));
       const marked = changed ? ` class="${changed.trim()}"` : '';
       return `<h${block.level}${label}${marked}${span}>`
-        + `${prefix}${inline(block.text, block.span.start, resolved)}</h${block.level}>`;
+        + `${prefix}${inline(block.text, block.span.start, resolved, options.variables)}</h${block.level}>`;
     }
     case 'prose':
       return `<div class="dp-prose${markClass(markOf(options.marks, block.doc, block.span))}"${span}>`
-        + `${markdown.render(substitute(block.text, block.span.start, resolved), proseEnv(block, resolved.locale))}</div>`;
+        + `${markdown.render(filled(substitute(block.text, block.span.start, resolved), options.variables), proseEnv(block, resolved.locale))}</div>`;
     case 'import':
       return renderImport(block, elementByBlock.get(block), options);
     case 'separator':
@@ -327,15 +339,18 @@ function renderKnown(
     const diagram = withParts(parseDiagram(source),
       used => options.loader.read(joinPath(path, used)));
     const marks = options.marks?.diagrams.get(path);
+    // A picture a shape points at is written relative to the drawing, as the
+    // library is, not to the document.
+    const picture = (target: string): string => (isAddress(target) ? url(target) : url(joinPath(path, target)));
     // A library has nothing of its own to place, so what it draws is itself.
     if (diagram.mode === 'parts') {
       return renderDiagram(
         specimenOf(diagram, used => options.loader.read(joinPath(path, used)), options.locale),
-        url, marks, options.locale);
+        picture, marks, options.locale);
     }
     const gone = options.marks?.showRemoved === 'strike' && marks?.removed
       ? goneList(options, 'markdown.diff.goneParts', [...marks.removed.nodes, ...marks.removed.edges]) : '';
-    if (diagram.mode !== 'overlay') return renderDiagram(diagram, url, marks, options.locale) + gone;
+    if (diagram.mode !== 'overlay') return renderDiagram(diagram, picture, marks, options.locale) + gone;
     // The image is written relative to the diagram, not to the document.
     const image = diagram.image === undefined ? undefined : url(joinPath(path, diagram.image));
     return renderOverlay(diagram, image, options.locale);
@@ -413,8 +428,21 @@ function proseEnv(block: Extract<Block, { kind: 'prose' }>, locale: Locale): Ren
   };
 }
 
-function inline(text: string, baseOffset: number, resolved: ResolvedDocument): string {
-  return markdown.renderInline(substitute(text, baseOffset, resolved));
+function inline(
+  text: string, baseOffset: number, resolved: ResolvedDocument, names?: ReadonlyMap<string, string>,
+): string {
+  return markdown.renderInline(filled(substitute(text, baseOffset, resolved), names));
+}
+
+/**
+ * `{{name}}` replaced by what it stands for. The value is text, not Markdown:
+ * a version written `1.0*` is shown with its star.
+ */
+function filled(text: string, names: ReadonlyMap<string, string> | undefined): string {
+  if (names === undefined || !text.includes('{{')) return text;
+  const safe = new Map([...names].map(([name, value]) => [name,
+    escapeHtml(value).replace(/[\\`*_[\]{}()#+!|~-]/g, char => `\\${char}`)]));
+  return expandVariables(text, safe);
 }
 
 /**

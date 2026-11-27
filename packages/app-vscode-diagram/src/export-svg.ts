@@ -5,7 +5,7 @@
 import { describeError } from '@docpresenter/base';
 import { parseDiagram, renderDiagram, standaloneSvg, withParts } from '@docpresenter/diagram';
 import * as vscode from 'vscode';
-import { librariesUsed } from './dgm-language.js';
+import { DGM_LANGUAGE, librariesUsed } from './dgm-language.js';
 import { hostLocale, t } from './l10n.js';
 
 /**
@@ -14,7 +14,7 @@ import { hostLocale, t } from './l10n.js';
  */
 export async function exportSvg(extensionUri: vscode.Uri, uri?: vscode.Uri): Promise<void> {
   const target = uri ?? vscode.window.activeTextEditor?.document.uri ?? activeTabUri();
-  if (!target || !/\.dgm$/i.test(target.path)) {
+  if (!target || !isDiagram(target)) {
     void vscode.window.showInformationMessage(`DocPresenter Diagram: ${t('diagramExt.notDiagram')}`);
     return;
   }
@@ -35,9 +35,13 @@ export async function exportSvg(extensionUri: vscode.Uri, uri?: vscode.Uri): Pro
   const theme = new TextDecoder().decode(
     await vscode.workspace.fs.readFile(vscode.Uri.joinPath(extensionUri, 'media', 'theme.css')));
 
-  const offered = target.with({ path: target.path.replace(/\.dgm$/i, '.svg') });
+  // A drawing with no file yet is offered a name in the first folder of the workspace.
+  const folder = vscode.workspace.workspaceFolders?.[0]?.uri;
+  const offered = target.scheme === 'untitled'
+    ? folder ? vscode.Uri.joinPath(folder, `${target.path.split('/').pop() || 'diagram'}.svg`) : undefined
+    : target.with({ path: target.path.replace(/\.dgm$/i, '.svg') });
   const chosen = await vscode.window.showSaveDialog({
-    defaultUri: offered, filters: { SVG: ['svg'] }, saveLabel: t('diagramExt.svg.saveLabel'),
+    ...(offered === undefined ? {} : { defaultUri: offered }), filters: { SVG: ['svg'] }, saveLabel: t('diagramExt.svg.saveLabel'),
   });
   if (!chosen) return;
   await vscode.workspace.fs.writeFile(chosen, new TextEncoder().encode(standaloneSvg(svg, theme)));
@@ -54,17 +58,43 @@ export async function exportSvg(extensionUri: vscode.Uri, uri?: vscode.Uri): Pro
 async function picturesOf(
   drawing: vscode.Uri, style: ReadonlyMap<string, ReadonlyMap<string, string>>,
 ): Promise<(path: string) => string> {
-  const found = new Map<string, string>();
+  const found = await pictureData(drawing, style);
+  return path => found[path] ?? path;
+}
+
+const PICTURE_TYPES: Readonly<Record<string, string>> = {
+  svg: 'image/svg+xml', png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp',
+};
+
+/**
+ * The pictures the drawing's `icon:` declarations point at by path, as data
+ * URLs by the path the drawing writes. One that cannot be read is left out.
+ */
+export async function pictureData(
+  drawing: vscode.Uri, style: ReadonlyMap<string, ReadonlyMap<string, string>>,
+): Promise<Record<string, string>> {
+  const found: Record<string, string> = {};
   for (const rule of style.values()) {
     const icon = rule.get('icon');
-    if (icon === undefined || !/\.(svg|png)$/i.test(icon) || found.has(icon)) continue;
+    const type = icon === undefined ? undefined : PICTURE_TYPES[/\.([a-z]+)$/i.exec(icon)?.[1]?.toLowerCase() ?? ''];
+    if (icon === undefined || type === undefined || icon in found) continue;
     try {
       const bytes = await vscode.workspace.fs.readFile(vscode.Uri.joinPath(drawing, '..', ...icon.split('/')));
-      const type = /\.svg$/i.test(icon) ? 'image/svg+xml' : 'image/png';
-      found.set(icon, `data:${type};base64,${Buffer.from(bytes).toString('base64')}`);
+      found[icon] = `data:${type};base64,${Buffer.from(bytes).toString('base64')}`;
     } catch { /* 読めない絵は名前で描かれる */ }
   }
-  return path => found.get(path) ?? path;
+  return found;
+}
+
+/**
+ * Whether a document is a drawing: a `.dgm` file, or a document VS Code has
+ * been told is one — an untitled one whose language was set to dgm, before it
+ * has a name to tell by.
+ */
+export function isDiagram(uri: vscode.Uri): boolean {
+  if (/\.dgm$/i.test(uri.path)) return true;
+  const open = vscode.workspace.textDocuments?.find(one => one.uri.toString() === uri.toString());
+  return open?.languageId === DGM_LANGUAGE;
 }
 
 /** The file of the tab in front, when it is not a text editor — the canvas, say. */

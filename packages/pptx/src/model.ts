@@ -14,6 +14,14 @@ export const EMU_PER_PT = EMU_PER_INCH / 72;
 
 /** 16:9, because the drawing is the point and a drawing is wide. */
 export const SLIDE = { width: 12192000, height: 6858000 } as const;
+/** 4:3, 10 × 7.5 inches: the older slide, still asked for by a projector or a template. */
+export const SLIDE_4_3 = { width: 9144000, height: 6858000 } as const;
+
+/** How big a slide is, in EMU. */
+export interface SlideSize {
+  readonly width: number;
+  readonly height: number;
+}
 
 export interface TextBlock {
   readonly kind: 'text';

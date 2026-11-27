@@ -31,16 +31,17 @@ export interface Cell {
   rowspan: number;
   colspan: number;
   /**
-   * A cell written `#`: its place among the `#` cells of its column, from 1.
-   * The number is computed, never written, so a row inserted above does not
+   * A cell written `#`: its place among the `#` cells of its column, from 1 —
+   * or, written `#-#`, its place under the last `#` above it (`3-1`). The
+   * number is computed, never written, so a row inserted above does not
    * change every row below it in the diff.
    */
-  number?: number;
+  number?: string;
 }
 
 /** The cell's text as a reader sees it: a `#` cell shows its number. */
 export function shownText(cell: Cell): string {
-  return cell.number === undefined ? cell.text : String(cell.number);
+  return cell.number ?? cell.text;
 }
 
 /** Holds only the cells that start in this row; merged-away positions are absent. */
@@ -50,7 +51,8 @@ export interface Row {
 }
 
 export type Selector =
-  | { readonly kind: 'header' }
+  /** The heading row; with `column`, the heading of that column alone (`header:金額`). */
+  | { readonly kind: 'header'; readonly column?: string }
   | { readonly kind: 'column'; readonly name: string }
   | { readonly kind: 'row'; readonly which: 'odd' | 'even' | 'all' }
   /**
@@ -136,7 +138,7 @@ export function cellSelectorFor(
   if (header === undefined || row < 0 || row >= table.rows.length) return undefined;
   const key = rowKeyOf(table, row);
   const usable = (text: string | undefined): text is string =>
-    text !== undefined && text.trim() !== '' && text !== '#' && text !== '^' && text !== '<';
+    text !== undefined && text.trim() !== '' && text !== '#' && text !== '#-#' && text !== '^' && text !== '<';
   if (usable(key) && table.rows.filter((_, r) => rowKeyOf(table, r) === key).length === 1) {
     return { kind: 'cell', row: key, column: header };
   }

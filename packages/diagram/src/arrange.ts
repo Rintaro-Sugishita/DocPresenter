@@ -174,6 +174,31 @@ export function arrangeContainers(
     }
   }
 
+  // Forms stacked one under another line their inputs up: each one's label
+  // column is as wide as the widest label of them all. Without it every
+  // field put on the left on its own is a form of its own, sized to its own
+  // label, and a column of them is a ragged edge. Only the labels are
+  // measured — the inputs still take whatever room is left.
+  for (const container of diagram.containers.values()) LABEL_ROOM.delete(container);
+  for (const container of diagram.containers.values()) {
+    if (container.kind !== 'stack' || container.flow !== 'down') continue;
+    const forms = members(container)
+      .map(id => diagram.containers.get(id))
+      .filter((one): one is Container => one !== undefined && isLabelGrid(one));
+    if (forms.length < 2) continue;
+    let room = 0;
+    for (const form of forms) {
+      for (const row of form.cells) {
+        const cell = row[0];
+        if (cell === undefined || cell === EMPTY_CELL || diagram.containers.has(cell)) continue;
+        if (area(form, cell).cols > 1) continue;
+        const size = sizeOf(cell);
+        room = Math.max(room, size.natural ?? size.width);
+      }
+    }
+    for (const form of forms) LABEL_ROOM.set(form, room);
+  }
+
   // How big each thing wants to be. A container is as big as what it holds, so
   // this walks inwards; the guard is for a container that holds itself.
   const wanted = new Map<string, Size>();
@@ -296,6 +321,15 @@ function area(
   return { row: top, col: left, rows: bottom - top + 1, cols: right - left + 1 };
 }
 
+/** The label column a form shares with the forms stacked with it, worked out per layout. */
+const LABEL_ROOM = new WeakMap<Container, number>();
+
+/** A grid laid out as a form: a column of labels as wide as they are, and the inputs taking the rest. */
+function isLabelGrid(container: Container): boolean {
+  return container.kind === 'grid' && container.cols[0] === 'auto' && container.cols[1] === '1fr'
+    && container.cols.length === 2;
+}
+
 /**
  * How wide each column is. `auto` is as wide as its widest member, a number is
  * itself, and `1fr` shares what is left over — so a form says `120, 1fr` and
@@ -322,6 +356,8 @@ function columnWidths(
   // `auto` is as wide as what is written: a column of captions is as wide as
   // its longest caption, not as the 320 the library gives a label.
   const widths = spec.map((one, i) => (one === 'auto' || one === '1fr' ? widest(i, one === 'auto') : Number(one)));
+  const shared = LABEL_ROOM.get(container);
+  if (shared !== undefined && spec[0] === 'auto') widths[0] = Math.max(widths[0]!, shared);
   if (room === undefined) return widths;
 
   const gaps = container.gap.x * Math.max(0, count - 1);
@@ -443,8 +479,13 @@ function place(
     // where someone put it, and its cell is left empty.
     if (diagram.layout.has(cell)) return;
     const where = area(container, cell);
-    const width = sum(widths.slice(where.col, where.col + where.cols))
+    const room = sum(widths.slice(where.col, where.col + where.cols))
       + container.gap.x * (where.cols - 1);
+    // A shape given a size of its own keeps a narrower width than its cell
+    // gives — a short field among long ones — starting at the cell's left.
+    // It is never wider: the cell is the room it has.
+    const own = diagram.sizes?.get(cell)?.width;
+    const width = own === undefined ? room : Math.min(own, room);
     const rowHeight = sum(heights.slice(where.row, where.row + where.rows))
       + container.gap.y * (where.rows - 1);
     // The cell gives its width; the height is the shape's own, in the middle

@@ -10,7 +10,7 @@
 import { splitWorkbookPath } from '@docpresenter/xlsx';
 import { parseDiagram } from '@docpresenter/diagram';
 import {
-  duplicateNumbers, isAddress, isBuildRoot, joinPath, parseDocument, type DocumentFile,
+  duplicateNumbers, isAddress, isBuildRoot, joinPath, parseDocument, withVariables, type DocumentFile,
 } from '@docpresenter/markdown';
 import { asLf, type BuildDiagnostic, type Workspace } from './workspace.js';
 import { DEFAULT_LOCALE, describeError, type Locale } from '@docpresenter/base';
@@ -51,7 +51,7 @@ export function readGraph(given: Workspace, locale: Locale = DEFAULT_LOCALE): Re
     const source = workspace.read(path);
     if (source === undefined) continue;
     try {
-      parsed.set(path, parseDocument(source));
+      parsed.set(path, withVariables(parseDocument(source), { path }));
     } catch (error) {
       // A document that will not parse is only a build failure when something
       // asks for it; until then it is a warning, so that a half-written note in

@@ -9,6 +9,9 @@
 import mermaid from 'mermaid';
 import { DEFAULT_LOCALE, LocalizedError, type Locale } from '@docpresenter/base';
 import { EDITOR_MESSAGES } from './messages.js';
+import { MATH_PICTURE } from '@docpresenter/markdown';
+import { flattenMath, mathPicture } from './math.js';
+export { flattenMath, injectMathStyle, mathImage, mathPicture } from './math.js';
 
 let initialised = false;
 let counter = 0;
@@ -72,6 +75,8 @@ export async function drawMermaid(root: ParentNode, locale: Locale = DEFAULT_LOC
  * arrives with lines that point nowhere. A picture arrives as it was drawn.
  */
 export async function flattenMermaid(root: ParentNode, scale = 3): Promise<void> {
+  // Formulas too: the PDF has none of KaTeX's fonts.
+  await flattenMath(root, scale);
   for (const host of root.querySelectorAll<HTMLElement>('.dp-mermaid-diagram[data-drawn="yes"]')) {
     const svg = host.querySelector('svg');
     const source = host.dataset['source'];
@@ -96,6 +101,8 @@ export async function flattenMermaid(root: ParentNode, scale = 3): Promise<void>
 export async function mermaidPicture(
   source: string, scale = 2,
 ): Promise<{ data: string; width: number; height: number }> {
+  // A formula asked for as a picture comes the same way, for a slide.
+  if (source.startsWith(MATH_PICTURE)) return mathPicture(source.slice(MATH_PICTURE.length));
   const svg = await mermaidSvg(source);
   const parsed = new DOMParser().parseFromString(svg, 'image/svg+xml').documentElement;
   const box = (parsed.getAttribute('viewBox') ?? '').split(/[\s,]+/).map(Number);

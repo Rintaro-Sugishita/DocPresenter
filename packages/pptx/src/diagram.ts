@@ -133,7 +133,9 @@ export function drawingOf(diagram: DiagramFile, options: DrawingOptions = {}): D
       preset: preset.preset,
       x: box.x, y: box.y, width: box.width, height: box.height,
       lines: node.shape === 'group' ? groupLabel(box) : box.lines.map(line => [...line]),
-      ...(node.shape === 'text'
+      // `fill: none` is see-through: a frame drawn round a screen shows what
+      // is behind it rather than painting it white.
+      ...(node.shape === 'text' || (style?.get('fill') === 'none' && !marked)
         ? {}
         : { fill: (marked ? DIFF[marked] : undefined)
             ?? fill ?? (node.shape === 'group' ? '#f7f8fa' : '#ffffff') }),

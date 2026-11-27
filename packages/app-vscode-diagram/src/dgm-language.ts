@@ -72,6 +72,7 @@ function item(one: Completion, position: vscode.Position): vscode.CompletionItem
   made.insertText = new vscode.SnippetString(one.insert);
   made.range = new vscode.Range(new vscode.Position(position.line, one.from), position);
   if (one.sort !== undefined) made.sortText = one.sort;
+  if (one.filter !== undefined) made.filterText = one.filter;
   if (one.again) made.command = { title: '', command: 'editor.action.triggerSuggest' };
   return made;
 }
@@ -157,6 +158,11 @@ function relativeTo(folder: readonly string[], to: readonly string[]): string {
 }
 
 export async function readText(uri: vscode.Uri): Promise<string | undefined> {
+  // An open file is read as it is on screen, saved or not: the item table a
+  // rename just changed is changed in its editor first, and only on disk once
+  // somebody saves it.
+  const open = vscode.workspace.textDocuments?.find(document => document.uri.toString() === uri.toString());
+  if (open) return open.getText();
   try {
     return new TextDecoder('utf-8').decode(await vscode.workspace.fs.readFile(uri));
   } catch {

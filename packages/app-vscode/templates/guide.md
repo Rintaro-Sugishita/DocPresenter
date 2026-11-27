@@ -57,6 +57,7 @@ status: draft             # draft / review / approved など
 author: 設計チーム
 updated: 2026-10-06       # 最後に内容を変えた日
 theme: default
+paper: A4                 # 用紙。A3 A4 A5 B4 B5 letter slide（16:9）。横向きは `A4 landscape`。書かなければテーマの既定
 output: [html, pdf]       # 書き出す形式（html / pdf / pptx）。無い文書は書き出しの対象にならない
 ---
 ```
@@ -111,7 +112,7 @@ output: [html, pdf]       # 書き出す形式（html / pdf / pptx）。無い�
 | `#fig-…` / `#tbl-…` | ラベル。図は `fig-`、表は `tbl-` |
 | `caption="…"` | 図表の題。番号（「図 3」）は自動で前に付く |
 | `rows="範囲名"` | 表の一部だけを出す。範囲は `.table` の `range {}` に名前で定義する |
-| `page="landscape"` | 横向きのページに送る（列の多い表など） |
+| `page="landscape"` / `page="portrait"` | PDF でこの図表だけを横／縦向きのページに送る（列の多い表など） |
 | `width="55%"` / `align="center"` | 画像・図の幅と寄せ |
 | `view="diagram" / "code" / "both"` | Mermaid を図で出すか、コードで出すか、両方か |
 
@@ -141,6 +142,19 @@ output: [html, pdf]       # 書き出す形式（html / pdf / pptx）。無い�
 - ラベルの接頭辞は `fig` `tbl` `sec` `req`（要件）`des`（設計）`tst`（試験）のどれか。
 - 同じ文書の中でラベルは重複してはならない。共有の図表を取り込むときも、文書ごとにラベルを付ける。
 - コード（`` `…` ``）の中の `@` は参照として扱われない。
+
+**変数 `{{名前}}`**：本文・見出し・frontmatter の値に書くと、表示のときに値へ置き換わる。
+
+| 名前 | 値 |
+| --- | --- |
+| `{{FileName}}` / `{{FileTitle}}` / `{{Folder}}` | この文書のファイル名（`login.md`）／拡張子なし（`login`）／フォルダ |
+| `{{Date}}`（`{{Today}}`） | 表示・書き出しをした日（`2026-11-24`） |
+| `{{Title}}` `{{DocNumber}}` `{{Version}}` `{{Author}}` `{{Status}}` `{{Updated}}` | frontmatter の `title` `document` `version` `author` `status` `updated` |
+| `{{キー}}` | frontmatter に書いた任意のキーの値 |
+
+- frontmatter の値に書けるのは、ファイル名と日付の変数だけ（`title: "{{FileTitle}} 設計書"`）。
+- コードブロックとコード（`` `…` ``）の中の `{{…}}` は置き換わらない。知らない名前もそのまま出る。
+- 一重の `{…}` はただの文字。
 
 ### 2.6 コードと Mermaid
 

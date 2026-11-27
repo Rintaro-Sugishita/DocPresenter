@@ -14,6 +14,8 @@ export interface FigureNamesValue {
   readonly name: string;
   readonly caption: string;
   readonly label: string;
+  /** The paper it is printed on: '' for the document's, or `landscape` / `portrait`. */
+  readonly page: string;
 }
 
 export interface FigureNamesOptions {
@@ -63,7 +65,7 @@ export function openFigureNames(options: FigureNamesOptions): FigureNamesForm {
   form.setAttribute('aria-labelledby', heading.id);
   form.append(heading);
 
-  const field = (label: string, input: HTMLInputElement, hint: string, before?: string, after?: string): void => {
+  const field = (label: string, input: HTMLElement, hint: string, before?: string, after?: string): void => {
     const row = element('label', 'dp-names-field');
     const name = element('span', 'dp-names-label');
     name.textContent = label;
@@ -93,6 +95,17 @@ export function openFigureNames(options: FigureNamesOptions): FigureNamesForm {
   field(t('editor.figure.caption'), caption, t('editor.figure.captionHint'));
   const label = input(options.value.label, `${options.prefix}-…`);
   field(t('editor.figure.label'), label, t('editor.figure.labelHint', { prefix: options.prefix }));
+  // A wide drawing or table is printed on a page of its own, turned sideways.
+  const page = element('select', 'dp-names-input');
+  for (const [value, text] of [['', t('editor.figure.pageDocument')], ['landscape', t('editor.figure.pageLandscape')],
+    ['portrait', t('editor.figure.pagePortrait')]] as const) {
+    const choice = element('option');
+    choice.value = value;
+    choice.textContent = text;
+    page.append(choice);
+  }
+  page.value = options.value.page;
+  field(t('editor.figure.page'), page, t('editor.figure.pageHint'));
 
   const problem = element('p', 'dp-names-problem');
   problem.setAttribute('role', 'alert');
@@ -122,6 +135,14 @@ export function openFigureNames(options: FigureNamesOptions): FigureNamesForm {
     options.onClose?.();
   };
   const onKey = (event: KeyboardEvent): void => {
+    // Ctrl+Enter is how a block of the document is confirmed, so it confirms
+    // this too — from any field, the page select included.
+    if (event.key === 'Enter' && (event.ctrlKey || event.metaKey) && !event.isComposing) {
+      event.preventDefault();
+      event.stopPropagation();
+      form.requestSubmit();
+      return;
+    }
     if (event.key !== 'Escape') return;
     event.preventDefault();
     event.stopPropagation();
@@ -130,7 +151,9 @@ export function openFigureNames(options: FigureNamesOptions): FigureNamesForm {
 
   form.addEventListener('submit', event => {
     event.preventDefault();
-    const value = { name: name.value.trim(), caption: caption.value.trim(), label: label.value.trim() };
+    const value = {
+      name: name.value.trim(), caption: caption.value.trim(), label: label.value.trim(), page: page.value,
+    };
     if (value.name === '' || UNSAFE.test(value.name)) {
       say(t('editor.figure.badName'));
       name.focus();

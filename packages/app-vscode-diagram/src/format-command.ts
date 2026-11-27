@@ -9,7 +9,7 @@ import { describeError, say } from '@docpresenter/base';
 import { formatDiagram } from '@docpresenter/diagram';
 import * as vscode from 'vscode';
 import { DGM_LANGUAGE, librariesUsed } from './dgm-language.js';
-import { activeTabUri } from './export-svg.js';
+import { activeTabUri, isDiagram } from './export-svg.js';
 import { hostLocale, t } from './l10n.js';
 
 export function registerDgmFormatter(): vscode.Disposable {
@@ -67,7 +67,7 @@ function changedLines(before: string, after: string): { start: number; end: numb
  */
 export async function formatDiagramFile(uri?: vscode.Uri): Promise<void> {
   const target = uri ?? vscode.window.activeTextEditor?.document.uri ?? activeTabUri();
-  if (!target || !/\.dgm$/i.test(target.path)) {
+  if (!target || !isDiagram(target)) {
     void vscode.window.showInformationMessage(`DocPresenter Diagram: ${t('diagramExt.notDiagram')}`);
     return;
   }
@@ -83,6 +83,6 @@ export async function formatDiagramFile(uri?: vscode.Uri): Promise<void> {
   const edit = new vscode.WorkspaceEdit();
   for (const one of edits) edit.replace(target, one.range, one.newText);
   if (!await vscode.workspace.applyEdit(edit)) return;
-  if (!unsaved) await document.save();
+  if (!unsaved && !document.isUntitled) await document.save();
   void vscode.window.showInformationMessage(`DocPresenter Diagram: ${t('diagramExt.format.done', { path })}`);
 }

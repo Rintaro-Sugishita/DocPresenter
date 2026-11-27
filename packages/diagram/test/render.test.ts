@@ -86,7 +86,7 @@ describe('作図のレンダリング', () => {
 
   it('描けなかったものは注記として残す', () => {
     const svg = renderDiagram(parseDiagram('free {\n a [A]\n b [B]\n}\nlayout {\n a @ (0,0)\n}'));
-    expect(svg).toContain('<!-- 配置がない: b -->');
+    expect(svg).toContain('<!-- 配置がありません: b -->');
   });
 });
 

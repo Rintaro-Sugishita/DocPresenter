@@ -88,6 +88,17 @@ VS Code の **「ドキュメントのフォーマット」**（Shift+Alt+F）�
 図を SVG ファイルとして保存する。保存先には、図と同じフォルダ・同じ名前が最初に示される。テーマの図の規則をファイルの中に入れ、
 部品がパスで指す絵も埋め込むので、ブラウザや画像ビューア、Office のソフトで開いても同じ見た目になる。
 
+## Mermaid と行き来する
+
+**「DocPresenter Diagram: 図を Mermaid（flowchart）に変換する」** は、図（`flow` / `free`）を Mermaid の `flowchart` にして、
+保存していない新しい文書として横に開く。**「Mermaid の flowchart を図（.dgm）に変換する」** は、その逆をする。
+Markdown の中の ```` ```mermaid ```` ブロックは、選んでから実行すればそこだけを変換する。
+どちらも元のファイルは書き換えない。座標・絵・クリック処理など、相手の記法に無いものは持っていかず、何を置いてきたかをメッセージで知らせる。
+
+## 保存していない図
+
+新しいファイルの言語モードを `dgm` にすれば、保存する前からキャンバスで開ける（「横に開く」・SVG 書き出し・整形も同じ）。
+
 ## 形式
 
 `.dgm` の形式は [spec/dgm.md](https://github.com/Rintaro-Sugishita/DocPresenter/blob/HEAD/spec/dgm.md) に定めてあり、

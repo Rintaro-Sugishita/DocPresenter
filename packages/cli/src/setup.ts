@@ -6,7 +6,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import {
-  TEAM_THEME, TEMPLATE_DOCUMENT, TEMPLATE_REVISION, documentFiles, documentPaths, planScaffold,
+  SETTINGS_PATH, TEAM_THEME, TEMPLATE_DOCUMENT, TEMPLATE_REVISION, documentFiles, documentPaths, planScaffold,
   type Shipped,
 } from '@docpresenter/build';
 import { nameProblem } from '@docpresenter/base';
@@ -98,7 +98,7 @@ export function initCommand(ctx: Context, args: ParsedArgs, root: string, from: 
   const candidates = [
     paths.document, paths.revision, 'docs/assets/.gitkeep', 'shared/glossary.table',
     '.docpresenter/guide.md', ...SPECS.map(spec => `.docpresenter/spec/${spec}`),
-    TEMPLATE_DOCUMENT, TEMPLATE_REVISION, TEAM_THEME, 'CLAUDE.md', 'AGENTS.md', '.gitignore',
+    TEMPLATE_DOCUMENT, TEMPLATE_REVISION, TEAM_THEME, SETTINGS_PATH, 'CLAUDE.md', 'AGENTS.md', '.gitignore',
   ];
   const existing = new Map<string, string>();
   for (const path of candidates) {

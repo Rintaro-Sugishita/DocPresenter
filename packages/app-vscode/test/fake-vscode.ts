@@ -109,7 +109,13 @@ export const languages = {
     formatters.push({ selector, provider });
     return { dispose: () => undefined };
   },
+  registerRenameProvider: (selector: unknown, provider: unknown) => {
+    renamers.push({ selector, provider });
+    return { dispose: () => undefined };
+  },
 };
+/** What the extension registered to rename with F2. */
+export const renamers: { selector: unknown; provider: unknown }[] = [];
 
 export class TextEdit {
   constructor(readonly range: Range, readonly newText: string) {}
@@ -163,7 +169,20 @@ export class TextDocument {
   /** Nothing here is typed into by hand, so nothing is ever unsaved. */
   readonly isDirty = false;
   constructor(readonly uri: Uri, private body: string) {}
-  getText(): string { return this.body; }
+  getText(range?: Range): string {
+    return range === undefined ? this.body : this.body.slice(this.offsetAt(range.start), this.offsetAt(range.end));
+  }
+  /** The run of `pattern` the position is in, as VS Code finds a word. */
+  getWordRangeAtPosition(at: Position, pattern: RegExp): Range | undefined {
+    const offset = this.offsetAt(at);
+    const flags = pattern.flags.includes('g') ? pattern.flags : `${pattern.flags}g`;
+    for (const found of this.body.matchAll(new RegExp(pattern.source, flags))) {
+      const start = found.index;
+      const end = start + found[0].length;
+      if (start <= offset && offset <= end) return new Range(this.positionAt(start), this.positionAt(end));
+    }
+    return undefined;
+  }
   positionAt(offset: number): Position {
     const before = this.body.slice(0, offset);
     const line = before.split('\n').length - 1;
@@ -302,6 +321,8 @@ export const window = {
   /** A line in the status bar: recorded with the messages, as a test reads what was said. */
   setStatusBarMessage: (message: string) => { shown.push(message); return { dispose: () => undefined }; },
   showTextDocument: async () => undefined,
+  /** A cursor moved in a text editor: nobody moves one in a test. */
+  onDidChangeTextEditorSelection: () => ({ dispose: () => undefined }),
   /** What the next file dialog answers. */
   showOpenDialog: async () => picks.dialog,
   /** Where the next save dialog saves: what the test said, or the place it offered. */

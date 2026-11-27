@@ -154,6 +154,12 @@ then changes one line, not every number below it; a row with something else in
 that column (`—`) is skipped. Selecting some of the rows (§5) keeps the numbers
 they had in the whole table.
 
+A cell whose entire content is `#-#` is a **number under the last `#` above it**
+in its column: the first `#-#` after a `#` numbered 3 is `3-1`, the next `3-2`,
+until the next `#`. A `#-#` with no `#` above it counts as a `#`. This is how the
+item list of a screen numbers what is in a table on the screen under the table
+([`dgm.md`](dgm.md) §7.5).
+
 A cell MUST NOT contain a newline. Where a cell needs a list or a paragraph, that
 is what §4 is for.
 
@@ -248,6 +254,7 @@ still renders; a reader SHOULD report it as a diagnostic.
 | Selector | Selects |
 |---|---|
 | `header` | the header row |
+| `header:COL` | the heading of the column headed `COL` alone; applied after `header`, so it wins over it |
 | `col:NAME` | every cell of the column whose header is `NAME` |
 | `NAME` | the same — a bare name is a column |
 | `row:odd` / `row:even` | body rows, counted from 1 |

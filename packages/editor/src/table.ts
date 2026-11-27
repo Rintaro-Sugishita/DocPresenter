@@ -7,10 +7,10 @@
 
 import {
   cellAt, delimiterField, displayWidth, escapeCell, formatGrid, formatRule, insertField, joinFields,
-  removeField, replaceField, sameSelector, splitFields,
+  parseTable, removeField, replaceField, sameSelector, splitFields,
   type Align, type Selector, type TableFile,
 } from '@docpresenter/markdown';
-import { described, LocalizedError, type Edit, type Phrase } from '@docpresenter/base';
+import { applyEdit, byteOffsetOf, described, LocalizedError, type Edit, type Phrase } from '@docpresenter/base';
 import { ed } from './messages.js';
 
 export class TableEditError extends LocalizedError {}
@@ -432,6 +432,50 @@ export function setStyle(
     span: existing.span,
     text: formatRule(selector, declarations),
     ...described(value === undefined ? ed('editor.did.unstyle') : ed('editor.did.style')),
+  };
+}
+
+/**
+ * Sets one property on several selectors at once — every cell of a picked
+ * range — as one edit, so one undo takes it all back. Each rule is written
+ * in turn on the file as the last one left it, and the edit is the stretch
+ * of the file that changed.
+ */
+export function setStyleAll(
+  source: string, selectors: readonly Selector[], property: StyleProperty, value: string | undefined,
+): Edit {
+  return inSequence(source, selectors.map(selector => (table: TableFile) => setStyle(table, selector, property, value)));
+}
+
+/**
+ * Several edits of a table, each made on the table the one before left, as
+ * one edit: the smallest range that holds them all. Several rows added is
+ * one change to take back, not one per row. Said as the last of them says,
+ * or as `said` when given.
+ */
+export function inSequence(
+  source: string, steps: readonly ((table: TableFile) => Edit)[], said?: ReturnType<typeof described>,
+): Edit {
+  let text = source;
+  let last: Edit | undefined;
+  for (const step of steps) {
+    last = step(parseTable(text));
+    text = applyEdit(text, last);
+  }
+  let start = 0;
+  while (start < source.length && start < text.length && source[start] === text[start]) start++;
+  // Never split a surrogate pair or a CRLF down the middle.
+  while (start > 0 && /[\uDC00-\uDFFF\n]/.test(source[start] ?? '')) start--;
+  let tail = 0;
+  while (tail < source.length - start && tail < text.length - start
+    && source[source.length - 1 - tail] === text[text.length - 1 - tail]) tail++;
+  while (tail > 0 && /[\uDC00-\uDFFF\n]/.test(source[source.length - tail] ?? '')) tail--;
+  const told = said ?? last ?? described(ed('editor.did.nothing'));
+  return {
+    span: { start: byteOffsetOf(source, start), end: byteOffsetOf(source, source.length - tail) },
+    text: text.slice(start, text.length - tail),
+    description: told.description,
+    ...(told.phrase ? { phrase: told.phrase } : {}),
   };
 }
 

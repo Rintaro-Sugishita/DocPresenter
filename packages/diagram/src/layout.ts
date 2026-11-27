@@ -5,6 +5,7 @@
 // the pin meaningless.
 
 import { arrangeContainers, containerOf, type Hole, type TableRules } from './arrange.js';
+import { fontOf } from './states.js';
 import { layoutEngine, type GraphEdge } from './engine.js';
 // Puts the engine that ships with the tool in the register. Something has to
 // import it for its registration to run, and `engine.js` cannot — the two
@@ -137,6 +138,10 @@ const GROUP_HEADER = 18; // room for the group's own label
 const CHANNEL_GAP = 28;  // between the shapes and a detouring connection
 const FONT = 14;
 const LINE_HEIGHT = 20;
+/** How far apart the lines of words of a size are: as the default is, scaled. */
+export function lineHeightFor(size: number): number {
+  return Math.round(LINE_HEIGHT * size / FONT);
+}
 const TEXT_PAD = 24;
 const MAX_NODE_WIDTH = 260;
 /** The room a cylinder's lid takes out of its box. */
@@ -580,7 +585,10 @@ function route(
     for (const one of chosen.lanes) lanes[side(one)]++;
     done(chosen.points);
   }
-  return placeLabels(stepOver(routes, boxes, across));
+  // A group's frame is not a shape a line hides behind: a crossing inside one
+  // is drawn, so it is stepped over like any other.
+  const solid = new Map([...boxes].filter(([id]) => byId.get(id)?.shape !== 'group'));
+  return placeLabels(stepOver(routes, solid, across));
 }
 
 /** Between two connections turning in the same gap between two rows. */
@@ -659,6 +667,10 @@ function channels(
     readonly down: boolean;
     /** The middle of the gap it crosses, which is where it would turn. */
     readonly middle: number;
+    /** How far the gap reaches either side of the middle. */
+    readonly half: number;
+    /** Whether a frame in the way moved the middle off the one between its two shapes. */
+    readonly moved: boolean;
   }
 
   const runs: Run[] = [];
@@ -686,12 +698,35 @@ function channels(
     const above = toFrame.y + toFrame.height <= fromFrame.y;
     if (!below && !above) continue;
 
-    const middle = below
+    // The gap ends at whatever the turn would run into first: the shape at
+    // the far end, or a frame standing in the way across the run. Measured
+    // to the far shape alone, a line to a shape beside a group turned along
+    // the group's border, where it read as part of the frame.
+    let near = below ? fromFrame.y + fromFrame.height : fromFrame.y;
+    let far = below ? toFrame.y : toFrame.y + toFrame.height;
+    const low = Math.min(t(a).x, t(b).x);
+    const high = Math.max(t(a).x, t(b).x);
+    for (const [id, other] of boxes) {
+      if (id === edge.from || id === edge.to || byId.get(id)?.shape !== 'group') continue;
+      const box = turn ? flip(other) : other;
+      if (box.x >= high || box.x + box.width <= low) continue;
+      if (below) {
+        if (box.y > near && box.y < far) far = box.y;
+        if (box.y + box.height > near && box.y + box.height < far && box.y < near) near = box.y + box.height;
+      } else {
+        const bottom = box.y + box.height;
+        if (bottom < near && bottom > far) far = bottom;
+        if (box.y < near && box.y > far && bottom > near) near = box.y;
+      }
+    }
+    const middle = (near + far) / 2;
+    const plain = below
       ? (fromFrame.y + fromFrame.height + toFrame.y) / 2
       : (toFrame.y + toFrame.height + fromFrame.y) / 2;
     runs.push({
       edge, turn, from: turn ? flip(from) : from, to: turn ? flip(to) : to,
       at: { tail: t(a).x, head: t(b).x }, down: below, middle,
+      half: Math.abs(far - near) / 2, moved: Math.abs(middle - plain) >= 1,
     });
   }
 
@@ -944,8 +979,15 @@ function channels(
     const aside2 = sorted.filter(([, group]) => away(group));
     const fan = sorted.filter(([, group]) => !away(group));
 
+    // Which edge: away from where the rest of the side's lines come from. The
+    // line set aside climbs straight out past them, and on their side it would
+    // cut across every one of them on its way.
+    const here = (one: { run: Run; end: 'tail' | 'head' }): number =>
+      (one.end === 'tail' ? one.run.at.tail : one.run.at.head);
+    const lean = fan.reduce((sum, [, group]) => sum + Math.sign(toward(group[0]!) - here(group[0]!)), 0);
+    const edge = lean < 0 ? 1 : -1;
     aside2.forEach(([, group], i) => {
-      const place = Math.round(-room + i * LANE_CLEAR);
+      const place = Math.round(edge * (room - i * LANE_CLEAR));
       for (const one of group) offsets.get(one.run)![one.end] = Math.max(-room, Math.min(room, place));
     });
     const kept = Math.max(0, room - aside2.length * LANE_CLEAR);
@@ -965,7 +1007,11 @@ function channels(
     if (rows.length === 0) continue;
     const count = howMany.get(key) ?? 1;
     if (count < 2) {
-      for (const run of rows) occupy(run, run.middle + pairStep(run));
+      for (const run of rows) {
+        // A line whose gap a frame narrowed turns in what is left of it.
+        if (run.moved) out.set(run.edge, { ...out.get(run.edge)!, lane: Math.round(run.middle + pairStep(run)) });
+        occupy(run, run.middle + pairStep(run));
+      }
       continue;
     }
 
@@ -978,12 +1024,7 @@ function channels(
     }
     // Centred on the middle of the gap, so the lanes sit where the one line
     // used to, and kept clear of the rows on either side.
-    const room = Math.max(0, Math.min(...rows.map(run => {
-      const near = run.down
-        ? Math.min(run.middle - (run.from.y + run.from.height), run.to.y - run.middle)
-        : Math.min(run.middle - (run.to.y + run.to.height), run.from.y - run.middle);
-      return near - LANE_MARGIN;
-    })));
+    const room = Math.max(0, Math.min(...rows.map(run => run.half - LANE_MARGIN)));
     const total = halves.reduce((sum, half) => sum + half * 2, 0) + LANE_GAP * (count - 1);
     const squeeze = total > room * 2 && total > 0 ? (room * 2) / total : 1;
     const centres: number[] = [];
@@ -1435,7 +1476,14 @@ function blocked(
   // are not in the way of it.
   const ends = new Set([...inside(diagram, edge.from), ...inside(diagram, edge.to)]);
   for (const node of diagram.nodes) {
-    if (ends.has(node.id) || node.shape === 'group') continue;
+    if (ends.has(node.id)) continue;
+    // A group is in the way of a line that has nothing to do with it: one
+    // passing through its frame reads as a line of the group's. A line to or
+    // from something inside it goes in and out, as it has to.
+    if (node.shape === 'group') {
+      const held = inside(diagram, node.id);
+      if (held.has(edge.from) || held.has(edge.to)) continue;
+    }
     const box = boxes.get(node.id);
     if (box && crossesBox(a, b, box)) return true;
   }
@@ -1596,21 +1644,26 @@ function measure(
   // The size a part gives, for a shape with no pin to carry one — a shape in a
   // container is placed without a pin, and a text box is 34 tall because the
   // library says so.
-  const given = diagram.partSizes.get(node.id);
+  // A size written with no place is the author's, over the library's.
+  const given = diagram.sizes?.get(node.id) ?? diagram.partSizes.get(node.id);
   const runs = parseLabel(node.text);
   const shown = lineText(runs);
+  // Words in a size of their own (`font-size: 18`) are measured at that size,
+  // and their lines are as far apart as that size needs.
+  const font = fontOf(diagram.style.get(node.id)).size ?? FONT;
+  const pitch = lineHeightFor(font);
   // A label broken by hand is as wide as its widest line, not as all of it.
   const natural = shown.includes('\n')
-    ? Math.max(...shown.split('\n').map(line => textWidth(line, FONT)))
-    : textWidth(node.text, FONT);
+    ? Math.max(...shown.split('\n').map(line => textWidth(line, font)))
+    : textWidth(node.text, font);
   // A diamond holds its words in the middle, where it is widest, so it wraps
   // them narrower than a box would and then grows round them.
-  if (node.shape === 'diamond' && !given) return diamond(runs, natural, pin?.width);
+  if (node.shape === 'diamond' && !given) return diamond(runs, natural, pin?.width, font);
   const inner = (pin?.width ?? given?.width) !== undefined
     ? (pin?.width ?? given!.width) - TEXT_PAD
     : Math.min(MAX_NODE_WIDTH, Math.max(DEFAULT_SIZE.width, natural + TEXT_PAD)) - TEXT_PAD;
-  const lines = wrapRuns(runs, inner, FONT);
-  const widest = lines.reduce((w, line) => Math.max(w, textWidth(lineText(line), FONT)), 0);
+  const lines = wrapRuns(runs, inner, font);
+  const widest = lines.reduce((w, line) => Math.max(w, textWidth(lineText(line), font)), 0);
   // A cylinder spends the top of its box on the lid, so the text needs the
   // room back; otherwise two lines run into the curve.
   const lid = node.shape === 'cylinder' ? CYLINDER_LID : 0;
@@ -1622,7 +1675,7 @@ function measure(
   if (given) {
     return {
       width: given.width,
-      height: lines.length > 1 ? Math.max(given.height, lines.length * LINE_HEIGHT) : given.height,
+      height: lines.length > 1 || pitch > LINE_HEIGHT ? Math.max(given.height, lines.length * pitch) : given.height,
       lines,
       // A caption is as wide as the library says, but a column of captions
       // sized `auto` is as wide as the longest of their words.
@@ -1631,7 +1684,7 @@ function measure(
   }
   return {
     width: Math.max(DEFAULT_SIZE.width, Math.ceil(widest) + TEXT_PAD),
-    height: Math.max(DEFAULT_SIZE.height, lines.length * LINE_HEIGHT + TEXT_PAD + lid + art),
+    height: Math.max(DEFAULT_SIZE.height, lines.length * pitch + TEXT_PAD + lid + art),
     lines,
   };
 }
@@ -1662,17 +1715,18 @@ const DIAMOND_SHARE = 0.65;
  * first line and below the last is part of the pitch, not of the words.
  */
 function diamond(
-  runs: ReturnType<typeof parseLabel>, natural: number, pinned: number | undefined,
+  runs: ReturnType<typeof parseLabel>, natural: number, pinned: number | undefined, font = FONT,
 ): { width: number; height: number; lines: readonly TextLine[] } {
+  const pitch = lineHeightFor(font);
   const wrap = pinned !== undefined
     ? Math.max(1, pinned / 2 - DIAMOND_INSET * 2)
-    : Math.min(DIAMOND_TEXT, Math.max(1, natural));
-  const lines = wrapRuns(runs, wrap, FONT, true);
-  const widest = lines.reduce((w, line) => Math.max(w, textWidth(lineText(line), FONT)), 0);
+    : Math.min(DIAMOND_TEXT * font / FONT, Math.max(1, natural));
+  const lines = wrapRuns(runs, wrap, font, true);
+  const widest = lines.reduce((w, line) => Math.max(w, textWidth(lineText(line), font)), 0);
   const tw = Math.ceil(widest) + DIAMOND_INSET * 2;
   // Less room above and below than at the sides: a glyph's box already has
   // some room inside it there.
-  const th = lines.length * LINE_HEIGHT - (LINE_HEIGHT - FONT) + DIAMOND_INSET;
+  const th = lines.length * pitch - (pitch - font) + DIAMOND_INSET;
   const width = pinned
     ?? (tw / DEFAULT_SIZE.width <= DIAMOND_SHARE ? DEFAULT_SIZE.width : Math.max(DEFAULT_SIZE.width, tw * 2));
   // A pinned width narrower than the words leaves no room to grow into; it is
@@ -1725,7 +1779,13 @@ function autoPositions(
       diagnostics.push(dgm('diagram.layout.directionContainer', { id: group.id }));
     }
   }
-  const clusters = new Set(directed.filter(n => !diagram.containers.has(n.id)).map(n => n.id));
+  // Every group is laid out as one: a frame drawn afterwards round shapes
+  // placed with no idea they belong together catches whatever the engine
+  // happened to put between them, and a shape outside the group then reads
+  // as one of its members. A group without a direction takes the direction
+  // of whatever it sits in.
+  const grouped = diagram.nodes.filter(n => n.shape === 'group' && !diagram.containers.has(n.id));
+  const clusters = new Set(grouped.map(n => n.id));
 
   // Which directed group lays out each shape, and each directed group that
   // sits inside another. First come, first served: a shape is laid out once.
@@ -1736,25 +1796,21 @@ function autoPositions(
     }
     return false;
   };
-  for (const group of directed) {
-    if (!clusters.has(group.id)) continue;
+  for (const group of grouped) {
     const seen = new Set<string>();
     const take = (id: string): void => {
       if (seen.has(id)) return;
       seen.add(id);
       const node = byId.get(id);
-      // A plain group inside is a frame drawn round what it holds, not a
-      // layout of its own: what it holds is laid out here.
-      if (node?.shape === 'group' && !clusters.has(id)) {
-        for (const child of node.children) take(child);
-        return;
-      }
       if (!present.has(id) && !clusters.has(id)) return;
       // A group named inside one it already holds would hold itself.
       if (holds(group.id, id)) return;
       const other = owner.get(id);
       if (other !== undefined) {
-        if (other !== group.id) {
+        // Two groups may share a shape; it is laid out in the first, and the
+        // second's frame is drawn round it where it lands. Only two
+        // directions pulling at one shape is worth saying.
+        if (other !== group.id && group.direction !== undefined && byId.get(other)?.direction !== undefined) {
           diagnostics.push(dgm('diagram.layout.twoDirections', { id, group: other, other: group.id }));
         }
         return;
@@ -1817,6 +1873,15 @@ function autoPositions(
     return node.children.flatMap(child => laidOutAs(child, seen));
   }
 
+  /** The direction a layout runs in: its own, else the one it sits in. */
+  function directionAt(level: string | undefined): FlowDirection | undefined {
+    for (let at = level, depth = 0; at !== undefined && depth < 64; at = owner.get(at), depth++) {
+      const direction = byId.get(at)?.direction;
+      if (direction !== undefined) return direction;
+    }
+    return diagram.direction;
+  }
+
   // What each layout places, in the order the file names it.
   const units = new Map<string | undefined, string[]>();
   const add = (level: string | undefined, id: string): void => {
@@ -1839,7 +1904,7 @@ function autoPositions(
     const members = (units.get(level) ?? []).filter(id => !clusters.has(id) || lay(id));
     if (level !== undefined && members.length === 0) return false;
 
-    const axis = axisOf(level === undefined ? diagram.direction : byId.get(level)!.direction);
+    const axis = axisOf(directionAt(level));
     const inside = new Set(members);
     const joined = (joins.get(level) ?? []).filter(one => inside.has(one.from) && inside.has(one.to));
     const laid = layoutEngine().arrange({

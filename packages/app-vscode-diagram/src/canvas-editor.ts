@@ -5,12 +5,16 @@
 // `WorkspaceEdit`, so undo, the unsaved dot and the Git diff are VS Code's own,
 // and the text editor beside the canvas shows the change as it is made.
 
-import { replaceBytes, unitsBefore } from '@docpresenter/base';
+import { byteLength, replaceBytes, unitsBefore } from '@docpresenter/base';
 import * as vscode from 'vscode';
 import { itemTableName } from '@docpresenter/diagram';
 import { itemTableOf, librariesUsed, readText } from './dgm-language.js';
 import { hostLocale } from './l10n.js';
 import type { FromCanvas, ToCanvas } from './protocol.js';
+import { parseDiagram, withParts } from '@docpresenter/diagram';
+import { readSettings, SETTINGS_FILE } from '@docpresenter/markdown';
+import { pictureData } from './export-svg.js';
+import { choosePicture } from './pick-picture.js';
 
 export const CANVAS_VIEW = 'docpresenterDiagram.canvas';
 
@@ -23,19 +27,29 @@ export class CanvasEditorProvider implements vscode.CustomTextEditorProvider {
     panel.webview.html = canvasPage(panel.webview, media);
 
     const post = (message: ToCanvas): void => { void panel.webview.postMessage(message); };
-    const send = async (kind: ToCanvas['kind']): Promise<void> => {
+    const send = async (kind: 'open' | 'update'): Promise<void> => {
       const source = document.getText();
       const libraries = Object.fromEntries(await librariesUsed(document.uri, source));
       // A table already there under the name a new one would take is used,
       // not written over — so the canvas has to know it is there.
       const itemTable = itemTableName(document.uri.path);
+      // The repository's settings: the columns a new item table has.
+      const root = vscode.workspace.getWorkspaceFolder(document.uri)?.uri;
+      const settings = root === undefined ? undefined : readSettings(await readText(vscode.Uri.joinPath(root, SETTINGS_FILE)));
       if (itemTableOf(source) === undefined) {
         const there = await readText(vscode.Uri.joinPath(document.uri, '..', itemTable));
         if (there !== undefined) libraries[itemTable] = there;
       }
       // The theme's text goes once, for the canvas to make its dark colours from.
       const theme = kind === 'open' ? await readText(vscode.Uri.joinPath(media, 'theme.css')) : undefined;
-      post({ kind, source, libraries, itemTable, locale: hostLocale(), ...(theme === undefined ? {} : { theme }) });
+      let pictures: Record<string, string> = {};
+      try {
+        pictures = await pictureData(document.uri, withParts(parseDiagram(source), path => libraries[path]).style);
+      } catch { /* 読めない図には絵も無い */ }
+      post({
+        kind, source, libraries, itemTable, locale: hostLocale(), pictures,
+        ...(theme === undefined ? {} : { theme }), ...(settings === undefined ? {} : { settings }),
+      });
     };
 
     /**
@@ -72,8 +86,17 @@ export class CanvasEditorProvider implements vscode.CustomTextEditorProvider {
           await vscode.workspace.applyEdit(edit);
           return;
         }
+        case 'pick-picture': {
+          const chosen = await choosePicture(document.uri);
+          post({ kind: 'picked', id: message.id, ...(chosen === undefined ? {} : chosen) });
+          return;
+        }
         case 'source':
           await vscode.window.showTextDocument(document, { viewColumn: vscode.ViewColumn.Beside });
+          return;
+        case 'open-file':
+          await vscode.window.showTextDocument(vscode.Uri.joinPath(document.uri, '..', ...message.path.split('/')),
+            { viewColumn: vscode.ViewColumn.Beside, preview: false });
           return;
         case 'error':
           void vscode.window.showErrorMessage(`DocPresenter Diagram: ${message.message}`);
@@ -116,7 +139,16 @@ export class CanvasEditorProvider implements vscode.CustomTextEditorProvider {
       if (document.getText() === mine) { mine = undefined; return; }
       void send('update');
     });
-    panel.onDidDispose(() => changed.dispose());
+    // The canvas follows the cursor of the text beside it: what the line under
+    // it names is shown picked — the one way to pick a stack its members cover.
+    const moved = vscode.window.onDidChangeTextEditorSelection(event => {
+      if (event.textEditor.document.uri.toString() !== document.uri.toString()) return;
+      const at = event.selections[0]?.active;
+      if (!at) return;
+      const text = document.getText();
+      post({ kind: 'cursor', offset: byteLength(text.slice(0, document.offsetAt(at))) });
+    });
+    panel.onDidDispose(() => { changed.dispose(); moved.dispose(); });
   }
 }
 

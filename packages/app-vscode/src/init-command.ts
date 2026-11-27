@@ -3,7 +3,7 @@
 
 import * as vscode from 'vscode';
 import {
-  TEAM_THEME, TEMPLATE_DOCUMENT, TEMPLATE_REVISION, documentPaths, planScaffold, type Shipped,
+  SETTINGS_PATH, TEAM_THEME, TEMPLATE_DOCUMENT, TEMPLATE_REVISION, documentPaths, planScaffold, type Shipped,
 } from '@docpresenter/build';
 import { hostLocale, t } from './l10n.js';
 import { SheetEditorProvider } from './sheet-editor.js';
@@ -66,7 +66,7 @@ export async function initWorkspace(context: vscode.ExtensionContext): Promise<v
   const candidates = [
     paths.document, paths.revision, 'docs/assets/.gitkeep', 'shared/glossary.table',
     '.docpresenter/guide.md', ...SPECS.map(spec => `.docpresenter/spec/${spec}`),
-    TEMPLATE_DOCUMENT, TEMPLATE_REVISION, TEAM_THEME,
+    TEMPLATE_DOCUMENT, TEMPLATE_REVISION, TEAM_THEME, SETTINGS_PATH,
     'CLAUDE.md', 'AGENTS.md', '.gitignore',
   ];
   const existing = new Map<string, string>();

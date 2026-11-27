@@ -93,6 +93,13 @@ Written down so nobody assumes silence means absence:
 - **The document layer** (`.md`): the `@import "…"` directive and its
   attributes, `---` as a sheet separator, `{#label}` on headings, `@label`
   cross-references, and the frontmatter keys. Specified next.
+  Until then, one rule of it: **formulas** are written as Markdown Preview
+  Enhanced writes them — `$…$` in a line (the opening `$` not followed by a
+  space, the closing one not preceded by a space nor followed by a digit, so
+  `$5 and $10` stays two prices) and `$$…$$` on lines of their own — and drawn
+  with KaTeX. Nothing inside code is a formula, and `\$` is a dollar sign. A
+  formula is HTML on screen and in a page; a PDF and a slide carry it as a
+  picture.
 - **Theme files**: which style tokens a theme is expected to resolve. A style
   token is a name in a `.dgm` or `.table` file
   ([`dgm.md` §7](dgm.md), [`table.md` §6](table.md)); what a theme does with it

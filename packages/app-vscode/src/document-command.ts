@@ -87,6 +87,9 @@ export async function newDocument(target?: vscode.Uri): Promise<void> {
 
   const typed = await vscode.window.showInputBox({
     title: step(3), prompt: t('vscode.init.name'),
+    // The title is usually the name too, so it is offered as one: with what
+    // no file name may hold turned into "_", and nothing a folder would read.
+    value: title.trim().replace(/[<>:"\\/|?*\u0000-\u001f]/g, '_').replace(/[. ]+$/, ''),
     validateInput: async value => {
       const name = withoutExtension(value, 'md');
       const path = documentPaths(place, name).document;

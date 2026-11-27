@@ -6,6 +6,30 @@ const centre = (box: Box): { x: number; y: number } => ({ x: box.x + box.width /
 const laid = (source: string): ReturnType<typeof layOutDiagram> => layOutDiagram(parseDiagram(source));
 const CHAIN = '  a [A]\n  b [B]\n  c [C]\n  a --> b\n  b --> c\n}';
 
+describe('向きのないグループ', () => {
+  it('グループに入っていない図形は、グループの枠の中に置かない', () => {
+    const { boxes } = laid([
+      'flow {',
+      '  check {作業中？}',
+      '  qr ([特殊画面])', '  stop [中断]', '  done [完了]', '  again [再開]',
+      '  qr2 ([特殊画面2])', '  start [スタート]',
+      '  group g "グループ" {', '    qr', '    stop', '    done', '    again', '  }',
+      '  check --> qr "Yes"', '  check --> qr2 "No"', '  qr2 --> start',
+      '  qr --> stop', '  qr --> done', '  qr --> again',
+      '}',
+    ].join('\n'));
+    const frame = boxes.get('g')!;
+    const overlaps = (id: string): boolean => {
+      const box = boxes.get(id)!;
+      return box.x < frame.x + frame.width && box.x + box.width > frame.x
+        && box.y < frame.y + frame.height && box.y + box.height > frame.y;
+    };
+    expect(overlaps('qr2')).toBe(false);
+    expect(overlaps('start')).toBe(false);
+    expect(overlaps('stop')).toBe(true);
+  });
+});
+
 describe('flow の向き', () => {
   it('Mermaid と同じ語で、見出しの最初か最後に書く', () => {
     expect(parseDiagram(`flow LR {\n${CHAIN}`).direction).toBe('LR');
@@ -118,7 +142,7 @@ describe('グループの向き', () => {
   it('グループの名前を変えても、向きは書いたまま残る', () => {
     const source = NESTED;
     const written = applyEdit(source, setNodeText(parseDiagram(source), 'g', '横並び'));
-    expect(written).toContain('group g "横並び" LR { b; c }');
+    expect(written).toContain('group g "横並び" LR {\n    b\n    c\n  }');
   });
 });
 

@@ -58,6 +58,6 @@ describe('新しい図', () => {
     picks.inputs = ['flow'];
     await newDiagram(Uri.file('/w/docs/old'));
     expect(offered).toHaveLength(1);
-    expect(picks.refused).toEqual(['docs/old/flow.dgm はもうある']);
+    expect(picks.refused).toEqual(['docs/old/flow.dgm はすでにあります']);
   });
 });

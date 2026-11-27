@@ -8,7 +8,8 @@
 
 import * as vscode from 'vscode';
 import { starterDiagram, type DiagramKind } from '@docpresenter/editor/starter';
-import { itemTableName, newItemTable, parseDiagram, starterScreen, withParts } from '@docpresenter/diagram';
+import { itemTableName, newItemTable, parseDiagram, starterScreen, useItemSettings, withParts } from '@docpresenter/diagram';
+import { readSettings, SETTINGS_FILE } from '@docpresenter/markdown';
 import {
   folderOf, nameMessage, numbersInUse, pickFolder, withoutExtension, workspaceFiles, type FolderChoice,
 } from './document-command.js';
@@ -58,6 +59,7 @@ export async function newDiagram(target?: vscode.Uri): Promise<void> {
     const source = starterScreen(table, hostLocale());
     await vscode.workspace.fs.writeFile(files.at(path), new TextEncoder().encode(source));
     if (!await files.exists(tablePath)) {
+      useItemSettings(readSettings(await files.read?.(SETTINGS_FILE)));
       const made = newItemTable(withParts(parseDiagram(source), () => undefined), hostLocale());
       await vscode.workspace.fs.writeFile(files.at(tablePath), new TextEncoder().encode(made));
     }

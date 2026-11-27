@@ -420,9 +420,9 @@ describe('a table on the screen lists its items by column', () => {
     '| 分類 | No | ID           | 項目名 | 必須 | 寄せ |',
     '|------|---:|--------------|--------|:----:|:----:|',
     '| 表示 |  # | results      | 一覧   |  —   |      |',
-    '| 入力 |  # | results.pick | 選択   |  ○   |      |',
-    '| 表示 |  # | results.name | 氏名   |  —   |  右  |',
-    '| 表示 |  # | sumValue     | 件数   |  —   |      |',
+    '| 入力 | #-# | results.pick | 選択   |  ○   |      |',
+    '| 表示 | #-# | results.name | 氏名   |  —   |  右  |',
+    '| 表示 | #-# | sumValue     | 件数   |  —   |      |',
     '| 操作 |  # | search       | 検索   |  —   |      |',
     '',
   ].join('\n');
@@ -437,6 +437,25 @@ describe('a table on the screen lists its items by column', () => {
     expect(links.get('results.pick')).toMatchObject({ at: 'pickHead', label: 'pickHead', parent: 'results', required: true });
     expect(links.get('sumValue')?.label).toBe('sumLabel');
     expect(list().itemLinks!.notes).toEqual([]);
+  });
+
+  it('says a row under the table written # would be numbered on past it, and match puts #-# there', () => {
+    const flat = ITEMS.replace(/#-#/g, ' # ');
+    expect(list(flat).itemLinks!.notes.map(note => note.id)).toEqual([
+      'diagram.items.subNumber', 'diagram.items.subNumber', 'diagram.items.subNumber',
+    ]);
+    // The screen still numbers them under the table.
+    expect(list(flat).itemLinks!.links.get('sumValue')?.number).toBe('1-3');
+    const fixed = applyEdit(flat, syncItemTable(list(flat), flat)!);
+    const numbers = readItemTable(fixed)!.rows.map(row => [row.cells[2], row.cells[1]]);
+    expect(numbers).toEqual([
+      ['results', '#'], ['results.pick', '#-#'], ['results.name', '#-#'], ['sumValue', '#-#'], ['search', '#'],
+    ]);
+    expect(list(fixed).itemLinks!.notes).toEqual([]);
+    // And #-# under a table that is not numbered goes back to #.
+    const bare = ITEMS.replace(/\| {2}# \| results {6}\|/, '|  — | results      |');
+    const back = readItemTable(applyEdit(bare, syncItemTable(list(bare), bare)!))!.rows.map(row => row.cells[1]);
+    expect(back).toEqual(['—', '#', '#', '#', '#']);
   });
 
   it('draws a column\'s number on its heading, and its alignment on every cell', () => {
@@ -460,10 +479,10 @@ describe('a table on the screen lists its items by column', () => {
 
   it('lists the columns in a new item table, named by their headings', () => {
     const made = newItemTable(list(undefined));
-    const ids = readItemTable(made)!.rows.map(row => [row.cells[2], row.cells[3], row.cells[0]]);
+    const ids = readItemTable(made)!.rows.map(row => [row.cells[2], row.cells[3], row.cells[0], row.cells[1]]);
     expect(ids).toEqual([
-      ['results', '', '表示'], ['results.pick', '選択', '入力'], ['results.name', '氏名', '表示'],
-      ['search', '検索', '操作'],
+      ['results', '', '表示', '#'], ['results.pick', '選択', '入力', '#-#'], ['results.name', '氏名', '表示', '#-#'],
+      ['search', '検索', '操作', '#'],
     ]);
     // Words in a footer are not an item unless the table lists them (as above).
   });
@@ -473,6 +492,17 @@ describe('a table on the screen lists its items by column', () => {
     const edit = syncItemTable(list(without), without)!;
     const rows = readItemTable(applyEdit(without, edit))!.rows.map(row => row.cells[2]);
     expect(rows).toEqual(['results', 'results.pick', 'results.name', 'sumValue', 'search']);
+  });
+
+  it('takes what a cell holds as the column too: a check box with its words is not an item of its own', () => {
+    const held = LIST
+      .replace("  pick1    checkbox:\n", "  pick1    \"\"\n  box1     checkbox:\n  words1   label:\"有効\"\n")
+      .replace('    sumLabel ; sumValue\n  }\n', '    sumLabel ; sumValue\n  }\n  stack pick1 (right; gap: 4; pad: 0) { box1 ; words1 }\n');
+    const screen = list(ITEMS, held);
+    expect(screen.itemLinks!.notes).toEqual([]);
+    expect(itemOfShape(screen, 'box1')).toBe('results.pick');
+    expect(readItemTable(newItemTable(list(undefined, held)))!.rows.map(row => [row.cells[2], row.cells[0]])).toContainEqual(
+      ['results.pick', '入力']);
   });
 
   it('renames a column\'s row with the column', () => {

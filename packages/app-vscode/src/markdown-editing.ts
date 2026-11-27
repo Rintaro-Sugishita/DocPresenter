@@ -10,7 +10,8 @@
 import * as vscode from 'vscode';
 import { toggleInline, type InlineMark } from '@docpresenter/base';
 import {
-  completionContext, enterInList, IMPORTABLE, indentListItems, joinPath, labelCandidates, type TextChange,
+  completionContext, enterInList, formatMarkdownTables, PAPER_NAMES, paperOf, paperValue, IMPORTABLE, indentListItems, joinPath, labelCandidates,
+  type TextChange,
 } from '@docpresenter/markdown';
 import { inDocument } from './paths.js';
 import { hostLocale, t } from './l10n.js';
@@ -25,8 +26,22 @@ export function registerMarkdownEditing(): vscode.Disposable {
     vscode.commands.registerTextEditorCommand('docpresenter.markdown.bold', editor => mark(editor, 'bold')),
     vscode.commands.registerTextEditorCommand('docpresenter.markdown.italic', editor => mark(editor, 'italic')),
     vscode.commands.registerTextEditorCommand('docpresenter.markdown.code', editor => mark(editor, 'code')),
-    vscode.languages.registerCompletionItemProvider({ language: 'markdown' }, { provideCompletionItems }, '@', '"', '/'),
+    vscode.commands.registerTextEditorCommand('docpresenter.formatMarkdownTables', editor => formatTables(editor)),
+    vscode.languages.registerCompletionItemProvider({ language: 'markdown' }, { provideCompletionItems }, '@', '"', '/', ':', ' '),
   );
+}
+
+/** Lines up every table written in the document; nothing else in it changes. */
+async function formatTables(editor: vscode.TextEditor): Promise<void> {
+  const document = editor.document;
+  const text = document.getText();
+  const formatted = formatMarkdownTables(text);
+  if (formatted === text) {
+    void vscode.window.showInformationMessage(`DocPresenter: ${t('vscode.tables.formatted')}`);
+    return;
+  }
+  const whole = new vscode.Range(document.positionAt(0), document.positionAt(text.length));
+  await editor.edit(edit => edit.replace(whole, formatted));
 }
 
 /** Applies a change worked out on the document's text, and puts the cursor where it says. */
@@ -71,11 +86,37 @@ function offsets(editor: vscode.TextEditor): { start: number; end: number } {
   };
 }
 
+/**
+ * The papers a document may name, after `paper:` in its front matter — the
+ * names are a closed list, and a misspelt one quietly leaves the theme's.
+ */
+function paperChoices(document: vscode.TextDocument, position: vscode.Position): vscode.CompletionItem[] | undefined {
+  if (document.lineAt(0).text.trim() !== '---') return undefined;
+  for (let line = 1; line < position.line; line++) if (document.lineAt(line).text.trim() === '---') return undefined;
+  const before = document.lineAt(position.line).text.slice(0, position.character);
+  const found = /^(paper\s*:\s*)(\S*)$/.exec(before);
+  if (!found) return undefined;
+  const range = new vscode.Range(position.line, found[1]!.length, position.line, position.character);
+  const values = PAPER_NAMES.flatMap(name => (name.startsWith('slide')
+    ? [paperValue(name, 'landscape')]
+    : [paperValue(name, 'portrait'), paperValue(name, 'landscape')]));
+  return values.map((value, n) => {
+    const item = new vscode.CompletionItem(value, vscode.CompletionItemKind.EnumMember);
+    const paper = paperOf({ paper: value })!;
+    item.detail = `${paper.width} × ${paper.height} mm`;
+    item.sortText = String(n).padStart(2, '0');
+    item.range = range;
+    return item;
+  });
+}
+
 async function provideCompletionItems(
   document: vscode.TextDocument, position: vscode.Position,
 ): Promise<vscode.CompletionItem[] | undefined> {
   const text = document.getText();
   const at = document.offsetAt(position);
+  const paper = paperChoices(document, position);
+  if (paper) return paper;
   const context = completionContext(text, at);
   if (!context) return undefined;
   const range = new vscode.Range(document.positionAt(context.from), position);

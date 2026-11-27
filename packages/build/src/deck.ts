@@ -10,7 +10,7 @@
 import { isWorkbookPath } from '@docpresenter/xlsx';
 import { parseDiagram, parseRuns, withParts, type Run } from '@docpresenter/diagram';
 import {
-  cellAt, columnWidths, describe, shownText, fencesOf, joinPath, parseTable, selectRows, sheetsOf, viewOf,
+  cellAt, columnWidths, describe, displayMath, shownText, fencesOf, MATH_PICTURE, joinPath, parseTable, selectRows, sheetsOf, viewOf,
   type Block as DocBlock, type Cell, type DiffMarks, type DocumentFile,
   type MermaidView, type NumberedElement, type ResolvedDocument, type TableFile,
 } from '@docpresenter/markdown';
@@ -168,9 +168,21 @@ function proseBlocks(text: string, options: DeckOptions, source?: string): Block
     paragraphs = [];
   };
   const prose = (line: string): readonly Run[] => parseRuns(substitute(line, options.resolved));
+  const formulas = new Map(displayMath(text).map(one => [one.from, one]));
   /** The lines from..to, as text — and as a table wherever a Markdown table stands. */
   const take = (from: number, to: number): void => {
     for (let at = from; at < to;) {
+      // A formula on lines of its own: its picture, or its TeX where none could be made.
+      const formula = formulas.get(at);
+      if (formula && formula.to < to) {
+        flush();
+        const picture = options.pictures?.get(`${MATH_PICTURE}${formula.tex}`);
+        blocks.push(picture
+          ? { kind: 'picture', data: picture.data, width: picture.width, height: picture.height }
+          : { kind: 'text', paragraphs: codeLines(`$$${formula.tex}$$`) });
+        at = formula.to + 1;
+        continue;
+      }
       const table = markdownTable(lines, at, to);
       if (table) {
         flush();

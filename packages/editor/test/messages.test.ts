@@ -26,7 +26,7 @@ describe('editor messages', () => {
   it('refuses in either language', () => {
     let caught: unknown;
     try { removeSheet(parseDocument('# 一枚\n'), '# 一枚\n', 1); } catch (error) { caught = error; }
-    expect((caught as Error).message).toBe('最後のシートは削除できない');
+    expect((caught as Error).message).toBe('最後のシートは削除できません');
     expect(describeError(caught, 'en')).toBe('The last sheet cannot be deleted');
   });
 });

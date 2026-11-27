@@ -42,6 +42,8 @@ export interface Completion {
   readonly again?: boolean;
   /** Ordering within the list, where the order matters more than the alphabet. */
   readonly sort?: string;
+  /** What typing is matched against, when more than the label should find it. */
+  readonly filter?: string;
 }
 
 export interface CompletionContext {
@@ -93,6 +95,11 @@ const PROPERTIES: readonly { name: string; detail: DiagramMessage }[] = [
   { name: 'arrow', detail: 'diagram.complete.lineArrow' },
   { name: 'slope', detail: 'diagram.complete.slope' },
   { name: 'weight', detail: 'diagram.complete.weight' },
+  { name: 'font', detail: 'diagram.complete.font' },
+  { name: 'font-size', detail: 'diagram.complete.fontSize' },
+  { name: 'enabled', detail: 'diagram.complete.enabled' },
+  { name: 'visible', detail: 'diagram.complete.visible' },
+  { name: 'opacity', detail: 'diagram.complete.opacity' },
 ];
 
 /** The tokens the shipped theme gives a meaning to. Any other is passed on as written. */
@@ -102,18 +109,23 @@ const TOKENS: Readonly<Record<string, readonly string[]>> = {
   align: ['left', 'center', 'right'],
   arrow: ['none', 'start', 'end', 'both'],
   slope: ['down', 'up'],
+  enabled: ['false'],
+  visible: ['false'],
+  item: ['no'],
 };
 const CLASSES = ['changed', 'pending', 'removed', 'disabled'];
 
 const CIRCLED = '①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳';
 
 /** Where in the file a line is. A nested block is the thing its braces belong to. */
-type Frame = 'top' | 'semantics' | 'overlay' | 'layout' | 'style' | 'parts' | 'rows' | 'container';
+type Frame = 'top' | 'semantics' | 'overlay' | 'layout' | 'style' | 'parts' | 'rows' | 'container' | 'members';
 
 /** What the file already says, gathered from every line that can be read. */
 interface Known {
   /** Shapes and groups, by id, in the order written. */
   readonly shapes: Map<string, ShapeKind>;
+  /** What each shape says — its words, or a group's label — for telling ids apart in a list. */
+  readonly texts: Map<string, string>;
   readonly edges: { from: string; to: string }[];
   readonly pinned: Set<string>;
   readonly bent: Set<string>;
@@ -159,12 +171,15 @@ export function completeDiagram(
     case 'style': return inStyle(at);
     case 'parts': return inPart(at);
     case 'rows': return [];
+    case 'members': return groupMembers(at);
   }
 }
 
 const SECTION = /^(free|flow|overlay|layout|style|parts)\b[^{]*\{$/;
 const CONTAINER_OPEN = new RegExp(`^(stack|grid|tabs)\\s+(${ID}+)\\s*(?:\\([^)]*\\))?\\s*\\{(.*)$`);
 const ROWS_OPEN = new RegExp(`^${ID}+\\s+[A-Za-z0-9_-]+:\\s*\\{\\s*$`);
+/** `group g "…" {` with its members on the lines below. */
+const GROUP_OPEN = new RegExp(`^group\\s+${ID}+[^{}]*\\{[^}]*$`);
 
 /**
  * The frame each line opens in, and the names the file holds.
@@ -174,7 +189,7 @@ const ROWS_OPEN = new RegExp(`^${ID}+\\s+[A-Za-z0-9_-]+:\\s*\\{\\s*$`);
  */
 function read(lines: readonly string[], typing: number): { frames: Frame[]; known: Known } {
   const known: Known = {
-    shapes: new Map(), edges: [], pinned: new Set(), bent: new Set(), styled: new Set(),
+    shapes: new Map(), texts: new Map(), edges: [], pinned: new Set(), bent: new Set(), styled: new Set(),
     held: new Set(), classes: new Set(), sections: new Set(), callouts: 0, theme: false,
   };
   const frames: Frame[] = [];
@@ -193,7 +208,8 @@ function read(lines: readonly string[], typing: number): { frames: Frame[]; know
       if (section) known.sections.add(section[1]!);
       const opened: Frame = section ? sectionFrame(section[1]!)
         : frame === 'layout' && CONTAINER_OPEN.test(text) ? 'container'
-          : frame === 'semantics' && ROWS_OPEN.test(text) ? 'rows' : frame;
+          : frame === 'semantics' && ROWS_OPEN.test(text) ? 'rows'
+            : frame === 'semantics' && GROUP_OPEN.test(text) ? 'members' : frame;
       for (let i = 0; i < change; i++) stack.push(opened);
     } else {
       for (let i = 0; i < -change; i++) stack.pop();
@@ -224,7 +240,12 @@ const RULE_LINE = new RegExp(`^(${ID}+)\\s*\\{`);
 function take(frame: Frame, text: string, known: Known): void {
   if (frame === 'semantics') {
     const group = GROUP_LINE.exec(text);
-    if (group) { known.shapes.set(group[1]!, 'group'); return; }
+    if (group) {
+      known.shapes.set(group[1]!, 'group');
+      const label = /^group\s+\S+\s*"([^"]*)"/.exec(text)?.[1];
+      if (label) known.texts.set(group[1]!, label);
+      return;
+    }
     const line = LINE_NODE.exec(text);
     if (line) { known.shapes.set(line[1]!, 'line'); return; }
     const edge = EDGE_LINE.exec(text);
@@ -235,7 +256,10 @@ function take(frame: Frame, text: string, known: Known): void {
         known.classes.add(name);
         return '';
       });
-      known.shapes.set(node[1]!, SHAPES.find(one => written.startsWith(one.open))?.shape ?? 'rect');
+      const shape = SHAPES.find(one => written.trim().startsWith(one.open));
+      known.shapes.set(node[1]!, shape?.shape ?? 'rect');
+      const words = wordsIn(written.trim(), shape);
+      if (words) known.texts.set(node[1]!, words);
     }
   } else if (frame === 'layout') {
     const bend = BEND_LINE.exec(text);
@@ -367,12 +391,28 @@ function inSemantics(at: At): Completion[] {
     return [
       ...ids(known, from, say, id => known.shapes.get(id) !== 'group'),
       {
-        label: 'group', kind: 'keyword', insert: 'group ${1:id} "$2" { $0 }',
+        label: 'group', kind: 'keyword', insert: 'group ${1:id} "$2" {\n\t$0\n}',
         detail: say('diagram.complete.group'), from, again: true,
       },
     ];
   }
   return [];
+}
+
+/** The words a shape's line gives it: inside its brackets, or a part's quotes. */
+function wordsIn(written: string, shape: { open: string; close: string } | undefined): string {
+  if (shape && written.endsWith(shape.close)) {
+    return written.slice(shape.open.length, written.length - shape.close.length).replace(/^"|"$/g, '').trim();
+  }
+  return /"([^"]*)"\s*$/.exec(written)?.[1]?.trim() ?? '';
+}
+
+/** A member line of a group written over several lines: one shape, not yet in it. */
+function groupMembers(at: At): Completion[] {
+  const { before, column, known, say } = at;
+  const typed = new RegExp(`^\\s*(${ID}*)$`).exec(before);
+  if (!typed) return [];
+  return ids(known, column - typed[1]!.length, say, id => known.shapes.get(id) !== 'group');
 }
 
 /** Mermaid's four words for the way a flow runs, and its second spelling of one. */
@@ -409,10 +449,17 @@ function parts({ context, say }: At, from: number): Completion[] {
 
 /** The shapes and groups in the file, narrowed by `keep`. */
 function ids(known: Known, from: number, say: Say, keep: (id: string) => boolean): Completion[] {
-  return [...known.shapes].filter(([id]) => keep(id)).map(([id, shape], i) => ({
-    label: id, kind: 'id', insert: id, from, detail: shapeName(shape, say),
-    sort: String(i).padStart(4, '0'),
-  }));
+  return [...known.shapes].filter(([id]) => keep(id)).map(([id, shape], i) => {
+    // The words beside the id, so `loginSc` reads as ログイン画面 in the
+    // list; typing either finds it.
+    const text = known.texts.get(id);
+    return {
+      label: id, kind: 'id', insert: id, from,
+      detail: text ? `${text} — ${shapeName(shape, say)}` : shapeName(shape, say),
+      ...(text ? { filter: `${id} ${text}` } : {}),
+      sort: String(i).padStart(4, '0'),
+    };
+  });
 }
 
 /** What the canvas calls the shape. A group is not one of the twelve, so it has a word of its own. */

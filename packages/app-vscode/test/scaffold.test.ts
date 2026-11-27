@@ -34,6 +34,7 @@ describe('作業場の初期化', () => {
     expect(result.document).toBe('docs/auth-design.md');
     expect(result.files.map(file => file.path).sort()).toEqual([
       '.docpresenter/guide.md',
+      '.docpresenter/settings.yml',
       '.docpresenter/spec/dgm.md',
       '.docpresenter/spec/table.md',
       '.docpresenter/templates/document.md',

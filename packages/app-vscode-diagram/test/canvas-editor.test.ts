@@ -40,7 +40,7 @@ describe('キャンバス', () => {
     expect(view.html()).toContain('canvas.js');
     await view.say({ kind: 'ready' });
     expect(view.sent).toEqual([{
-      kind: 'open', source: DGM, libraries: { '../shared/parts.dgm': PARTS }, itemTable: 'login-items.table', locale: 'ja',
+      kind: 'open', source: DGM, libraries: { '../shared/parts.dgm': PARTS }, itemTable: 'login-items.table', locale: 'ja', pictures: {},
     }]);
   });
 
@@ -85,6 +85,34 @@ describe('キャンバス', () => {
     await new Promise(resolve => setTimeout(resolve, 0));
     expect(view.sent.map(one => one.kind)).toEqual(['open', 'update']);
     expect(view.sent[1]!.source).toBe(`# 説明\n${DGM}`);
+  });
+
+  it('項目一覧は、保存前でも開いている内容のまま画面に渡る', async () => {
+    const view = await open();
+    give({ 'docs/login.dgm': `items "login-items.table"\n${DGM}`, 'shared/parts.dgm': PARTS, 'docs/login-items.table': '| ID |\n|----|\n| ok |\n' });
+    const drawing = await documentAt('docs/login.dgm');
+    const sent: ToCanvas[] = [];
+    let receive: ((message: FromCanvas) => unknown) | undefined;
+    const panel = {
+      webview: {
+        options: {}, html: '', cspSource: 'vscode-webview:', asWebviewUri: (uri: unknown) => uri,
+        postMessage: (message: ToCanvas) => { sent.push(message); return Promise.resolve(true); },
+        onDidReceiveMessage: (listen: (message: FromCanvas) => unknown) => { receive = listen; return { dispose: () => undefined }; },
+      },
+      onDidDispose: () => ({ dispose: () => undefined }),
+    };
+    void view;
+    await new CanvasEditorProvider(Uri.file('/ext')).resolveCustomTextEditor(drawing as never, panel as never);
+    await receive?.({ kind: 'ready' });
+    const table = await documentAt('docs/login-items.table');
+    const edit = new (await import('./fake-vscode.js')).WorkspaceEdit();
+    edit.replace(table.uri, new (await import('./fake-vscode.js')).Range(table.positionAt(16), table.positionAt(18)), 'go');
+    await workspace.applyEdit(edit);
+    // ディスクにはまだ古い表がある（保存されていない）
+    held.set('docs/login-items.table', '| ID |\n|----|\n| ok |\n');
+    await new Promise(resolve => setTimeout(resolve, 0));
+    const last = sent.at(-1) as { libraries: Record<string, string> };
+    expect(last.libraries['login-items.table']).toContain('| go |');
   });
 
   it('テキスト側で打つたびに描き直しても、画面を前に出さない', async () => {

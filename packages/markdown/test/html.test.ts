@@ -347,9 +347,10 @@ describe('見出しの扱い', () => {
     expect(renderTable(table)).toContain('<span style="color:#ff0000">注目</span>');
   });
 
-  it('既定では見出しも列の寄せに従う', () => {
+  it('列の寄せは本文のセルだけ。見出しは見出しの規則がなければテーマの位置のまま', () => {
     const html = renderTable(styled('  header { fill: #eceef1 }'));
-    expect(html).toMatch(/<th[^>]*dp-align-right[^>]*>値/);
+    expect(html).not.toMatch(/<th[^>]*dp-align-right[^>]*>値/);
+    expect(html).toMatch(/<td[^>]*dp-align-right/);
   });
 
   it('見出しだけ別の寄せにできる', () => {
@@ -384,5 +385,17 @@ describe('パスの算術', () => {
 
   it('絶対パスはそのまま', () => {
     expect(joinPath('docs/a.md', '/x.png')).toBe('/x.png');
+  });
+});
+
+describe('列ごとの見出しの寄せ', () => {
+  it('header:列名 はその列の見出しだけに効き、header より強い', async () => {
+    const { parseTable, renderTable, formatSelector } = await import('../src/index.js');
+    const table = parseTable('| 項目 | 金額 |\n| --- | --: |\n| a | 1 |\n\nstyle {\n  header { align: left }\n  header:金額 { align: right }\n}\n');
+    const html = renderTable(table);
+    const heads = [...html.matchAll(/<th(?=[\s>])([^>]*)>/g)].map(m => m[1]);
+    expect(heads[0]).toContain('left');
+    expect(heads[1]).toContain('right');
+    expect(formatSelector({ kind: 'header', column: '金額' })).toBe('header:金額');
   });
 });

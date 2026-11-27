@@ -22,7 +22,7 @@ import { byteLength, padToWidth, displayWidth, type Phrase } from '@docpresenter
 import { containerOf, members } from './arrange.js';
 import { layOutDiagram } from './layout.js';
 import { dgm } from './messages.js';
-import type { Bend, Callout, Container, DiagramFile, Edge, Node, Part, Placement } from './model.js';
+import type { Bend, Callout, Container, DiagramFile, Edge, Node, Part, Placement, Sizing } from './model.js';
 import { parseDiagram } from './parse.js';
 import { withParts, type PartReader } from './parts.js';
 
@@ -215,6 +215,7 @@ interface Pieces {
   /** Body order as written, shapes and connections together. */
   readonly body: Piece<Node | Edge>[];
   readonly pins: Piece<{ id: string; pin: Placement }>[];
+  readonly sizes: Piece<{ id: string; size: Sizing }>[];
   readonly bends: Piece<{ key: string; bend: Bend }>[];
   readonly containers: Piece<Container>[];
   readonly style: Piece<StyleEntry>[];
@@ -251,13 +252,14 @@ function collectPieces(
   for (const node of file.nodes) add('node', node, node.span);
   for (const edge of file.edges) add('edge', edge, edge.span);
   for (const [id, pin] of file.layout) add('pin', { id, pin }, pin.span);
+  for (const [id, size] of file.sizes ?? []) add('size', { id, size }, size.span);
   for (const [key, bend] of file.bends) add('bend', { key, bend }, bend.span);
   for (const container of file.containers.values()) add('container', container, container.span);
   for (const part of file.parts.values()) add('part', part, part.span);
   for (const callout of file.callouts) add('callout', callout, callout.span);
 
   const out: Pieces = {
-    nodes: [], edges: [], body: [], pins: [], bends: [], containers: [], style: [], parts: [], callouts: [],
+    nodes: [], edges: [], body: [], pins: [], sizes: [], bends: [], containers: [], style: [], parts: [], callouts: [],
     trailing: new Map(),
   };
   const trailing = out.trailing as Map<string, string[]>;
@@ -293,6 +295,7 @@ function collectPieces(
         case 'node': out.nodes.push(piece); out.body.push(piece); break;
         case 'edge': out.edges.push(piece); out.body.push(piece); break;
         case 'pin': out.pins.push(piece); break;
+        case 'size': out.sizes.push(piece); break;
         case 'bend': out.bends.push(piece); break;
         case 'container': out.containers.push(piece); break;
         case 'part': out.parts.push(piece); break;
@@ -629,7 +632,7 @@ function writeBody(
   const writeNode = (piece: Piece<Node>): Written => ({
     leading: piece.leading,
     lines: piece.value.shape === 'group'
-      ? [INDENT + groupLine(piece.value, groupColumns, order)]
+      ? (INDENT + groupLine(piece.value, groupColumns, order)).split('\n')
       : shapeLines(file, piece, lines, idWidth),
   });
   const writeEdge = (piece: Piece<Edge>): Written => ({
@@ -754,7 +757,10 @@ function groupLine(group: Node, columns: GroupColumns, order: ReadonlyMap<string
   const fields = [padToWidth(group.id, columns.id)];
   if (columns.label > 0) fields.push(padToWidth(groupLabel(group), columns.label));
   if (columns.direction > 0) fields.push(padToWidth(group.direction ?? '', columns.direction));
-  return `group ${fields.join(' ')} ${children.length === 0 ? '{}' : `{ ${children.join('; ')} }`}`;
+  // One member to a line, so adding or removing one is a line of its own in a
+  // diff and two branches doing it do not collide on one long line.
+  if (children.length === 0) return `group ${fields.join(' ').trimEnd()} {}`;
+  return `group ${fields.join(' ').trimEnd()} {\n${children.map(child => `${INDENT}${INDENT}${child}`).join('\n')}\n${INDENT}}`;
 }
 
 function edgeLine(edge: Edge, widths: { from: number; to: number }): string {
@@ -788,6 +794,10 @@ function writeLayout(
     size: widest(pins.map(piece => sizeOf(piece.value.pin))),
   };
 
+  // Sizes with no place, after the pins, lined up with them.
+  const sizes = byRank(pieces.sizes, piece => order.get(piece.value.id), piece => piece.value.id);
+  const sizeWidth = Math.max(pinColumns.id, widest(sizes.map(piece => piece.value.id)));
+
   const edgeRank = new Map(sortEdges(file.edges.map(edge => ({ value: edge })), order)
     .map((one, index) => [`${one.value.from}->${one.value.to}`, index]));
   const bends = byRank(pieces.bends, piece => edgeRank.get(piece.value.key), piece => piece.value.key);
@@ -796,6 +806,10 @@ function writeLayout(
   return [
     containers,
     pins.map(piece => ({ leading: piece.leading, lines: [INDENT + pinLine(piece.value.id, piece.value.pin, pinColumns)] })),
+    sizes.map(piece => ({
+      leading: piece.leading,
+      lines: [`${INDENT}${padToWidth(piece.value.id, sizeWidth)} ${piece.value.size.width}x${piece.value.size.height}`],
+    })),
     bends.map(piece => ({
       leading: piece.leading,
       lines: [`${INDENT}${padToWidth(bendName(piece.value.key), bendWidth)} @ `
@@ -1017,6 +1031,7 @@ function modelOf(file: DiagramFile): string {
     edges: sorted(file.edges.map(edge => [edge.from, edge.to, edge.label ?? null, edge.line, edge.arrow, edge.loose])),
     layout: sorted([...file.layout].map(([id, pin]) => [id, pin.x, pin.y, pin.width ?? null,
       pin.height ?? null, pin.z ?? null])),
+    sizes: sorted([...file.sizes ?? []].map(([id, size]) => [id, size.width, size.height])),
     bends: sorted([...file.bends].map(([key, bend]) => [key, bend.points.map(point => [point.x, point.y])])),
     containers: sorted([...file.containers.values()].map(container => [container.id, container.kind,
       container.flow, container.scroll, container.show ?? null, container.cols,

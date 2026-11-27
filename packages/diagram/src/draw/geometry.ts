@@ -177,7 +177,7 @@ export interface LabelLayout {
  * made of centred labels reads as nothing anyone would build.
  */
 export function labelLayout(
-  box: Box, align: string | undefined, shape: ShapeKind, pictureHeight = 0,
+  box: Box, align: string | undefined, shape: ShapeKind, pictureHeight = 0, lineHeight = LINE_HEIGHT,
 ): LabelLayout {
   const anchor: Anchor = align === 'left' ? 'start' : align === 'right' ? 'end' : 'middle';
   const inset = 8;
@@ -191,10 +191,10 @@ export function labelLayout(
   // A part's name sits under its picture, which is where a network drawing
   // puts it; everything else centres in its shape.
   const top = pictureHeight > 0
-    ? box.y + Math.max(0, (box.height - LINE_HEIGHT * box.lines.length - pictureHeight) / 2)
-      + pictureHeight + LINE_HEIGHT * 0.65
-    : box.y + (box.height + lid) / 2 - ((box.lines.length - 1) * LINE_HEIGHT) / 2;
-  return { x, anchor, top, lineHeight: LINE_HEIGHT };
+    ? box.y + Math.max(0, (box.height - lineHeight * box.lines.length - pictureHeight) / 2)
+      + pictureHeight + lineHeight * 0.65
+    : box.y + (box.height + lid) / 2 - ((box.lines.length - 1) * lineHeight) / 2;
+  return { x, anchor, top, lineHeight };
 }
 
 /** Where the line from the centre towards `towards` leaves the shape. */

@@ -67,7 +67,14 @@ export function labelsBeside(file: DiagramFile, id: string): boolean {
  * on top unless it says left.
  */
 export function labelSide(file: DiagramFile): LabelSide {
-  return file.library.get('label')?.style.get('field')?.trim() === 'left' ? 'left' : 'top';
+  if (file.library.get('label')?.style.get('field')?.trim() === 'left') return 'left';
+  // A screen whose labels someone has already put on the left goes on that
+  // way: the next field added takes the side the screen chose, rather than
+  // coming in on top and having to be turned round by hand every time.
+  for (const container of file.containers.values()) {
+    if (isLabelForm(file, container)) return 'left';
+  }
+  return 'top';
 }
 
 /** The field a shape belongs to — as its input, its label, or the field itself. */
@@ -552,7 +559,16 @@ function insertRow(cells: readonly (readonly string[])[], after: string | undefi
   const out = cells.map(row => [...row]);
   const width = Math.max(1, ...out.map(row => row.length));
   const at = after === undefined ? -1 : out.findIndex(row => row.includes(after));
-  const column = at < 0 ? 0 : out[at]!.indexOf(after!);
+  // The next empty cell after it, in reading order, is where a reader expects
+  // the next field: a new row with a hole before the field is a grid nobody drew.
+  if (at >= 0) {
+    for (let r = at, c = out[at]!.indexOf(after!) + 1; r < out.length; r++, c = 0) {
+      for (; c < out[r]!.length; c++) {
+        if (out[r]![c] === EMPTY_CELL) { out[r]![c] = id; return out; }
+      }
+    }
+  }
+  const column = 0;
   const row = Array.from({ length: width }, (_, c) => (c === column ? id : EMPTY_CELL));
   out.splice(at < 0 ? out.length : at + 1, 0, row);
   return out;

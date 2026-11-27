@@ -67,7 +67,7 @@ export function formatGrid(table: TableFile): string {
 /** Writes a selector back in the form the parser reads. */
 export function formatSelector(selector: Selector): string {
   switch (selector.kind) {
-    case 'header': return 'header';
+    case 'header': return selector.column === undefined ? 'header' : `header:${selector.column}`;
     case 'column': return `col:${selector.name}`;
     case 'row': return `row:${selector.which}`;
     case 'cell': return selector.by === undefined

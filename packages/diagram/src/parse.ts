@@ -6,7 +6,7 @@ import { byteLength, LocalizedError, type ByteSpan, type Phrase } from '@docpres
 import { dgm } from './messages.js';
 import type {
   ArrowStyle, Bend, Callout, DiagramFile, DiagramMode, Edge, EdgeStyle, FlowDirection, LayoutBlock, Node,
-  Container, Item, Part, Placement, Point, Section, ShapeKind,
+  Container, Item, Part, Placement, Point, Section, ShapeKind, Sizing,
 } from './model.js';
 
 /** One source line, trimmed, with the bytes it occupies. */
@@ -69,10 +69,19 @@ const NODE = /^([A-Za-z0-9_぀-鿿]+)\s*(.+?)(?::::([\w-]+))?$/;
 const EDGE = /^([A-Za-z0-9_぀-鿿]+)\s*(<-->|<->|<-\.->|-->|->|--|-\.->|~~~)\s*([A-Za-z0-9_぀-鿿]+)\s*(?:"([^"]*)")?\s*(~)?\s*$/;
 const GROUP = /^group\s+([A-Za-z0-9_぀-鿿]+)\s*(?:"([^"]*)")?\s*(?:(TB|TD|BT|LR|RL)\s*)?\{([^}]*)\}\s*$/;
 /**
+ * `group g "名前" {` with its members on the lines below, one to a line, and
+ * `}` on a line of its own. The canonical way to write one: a member added
+ * or taken out is a line added or taken out, which two branches can each do
+ * without their merge colliding on one long line.
+ */
+const GROUP_OPEN = /^group\s+([A-Za-z0-9_぀-鿿]+)\s*(?:"([^"]*)")?\s*(?:(TB|TD|BT|LR|RL)\s*)?\{([^}]*)$/;
+/**
  * `flow LR {` — Mermaid's words for the way a flow runs. Written first, as
  * Mermaid writes `flowchart LR`, or last, after a title (`flow 構成 LR {`).
  */
 const DIRECTION = /^(TB|TD|BT|LR|RL)$/;
+/** `id WxH`: a size and no place. */
+const SIZING = /^([A-Za-z0-9_぀-鿿]+)\s+(\d+)x(\d+)\s*$/;
 const PLACEMENT = /^([A-Za-z0-9_぀-鿿]+)\s*@\s*\(\s*(-?\d+)\s*,\s*(-?\d+)\s*\)\s*(?:(\d+)x(\d+))?\s*(?:z\s*:\s*(-?\d+))?\s*$/;
 /** `a -> b @ (120, 200); (320, 200)` — the corners a connection turns through. */
 const BEND = /^([A-Za-z0-9_぀-鿿]+)\s*-+>\s*([A-Za-z0-9_぀-鿿]+)\s*@\s*(.+)$/;
@@ -135,6 +144,7 @@ export function parseDiagram(source: string): DiagramFile {
   const nodes: Node[] = [];
   const edges: Edge[] = [];
   const layout = new Map<string, Placement>();
+  const sizes = new Map<string, Sizing>();
   const bends = new Map<string, Bend>();
   const containers = new Map<string, Container>();
   const style = new Map<string, ReadonlyMap<string, string>>();
@@ -201,7 +211,7 @@ export function parseDiagram(source: string): DiagramFile {
       image = quoted[1]!;
       parseCallouts(inner, callouts);
     } else if (kind === 'layout') {
-      parseLayout(inner, layout, bends, containers);
+      parseLayout(inner, layout, bends, containers, sizes);
       layoutBlock = blockOf(lines, raw, start, i, inner);
     } else {
       theme = parseStyle(inner, style, styleSpans) ?? theme;
@@ -214,7 +224,7 @@ export function parseDiagram(source: string): DiagramFile {
   if (!mode && uses.length > 0) mode = 'parts';
   if (!mode) throw new DiagramParseError(dgm('diagram.parse.noSection'), 1);
   return {
-    mode, direction, comments, nodes, edges, body, layout, bends, containers, layoutBlock, styleBlock,
+    mode, direction, comments, nodes, edges, body, layout, sizes, bends, containers, layoutBlock, styleBlock,
     theme, style, styleSpans, image, callouts, uses, itemTable, itemLinks: undefined,
     parts, partOf, partSizes: new Map(),
     // What the file can reach is known only once the parts are applied, which
@@ -366,6 +376,38 @@ function parseBody(
     if (text === '' || text.startsWith('#')) continue;
     const line = source.number;
     refuseHyphens(text, line);
+
+    const opened = GROUP.exec(text) ? null : GROUP_OPEN.exec(text);
+    if (opened) {
+      const members = opened[4]!.split(';');
+      let closed = false;
+      while (++i < body.length) {
+        const inner = body[i]!;
+        span = { start: span.start, end: inner.span.end };
+        if (inner.text === '' || inner.text.startsWith('#')) continue;
+        const end = inner.text.indexOf('}');
+        members.push(...(end < 0 ? inner.text : inner.text.slice(0, end)).split(';'));
+        if (end >= 0) {
+          if (inner.text.slice(end + 1).trim() !== '') {
+            throw new DiagramParseError(dgm('diagram.parse.unreadableLine', { text: inner.text }), inner.number);
+          }
+          closed = true;
+          break;
+        }
+      }
+      if (!closed) throw new DiagramParseError(dgm('diagram.parse.unclosed', { kind: 'group' }), line);
+      for (const member of members) refuseHyphen(member, line);
+      nodes.push({
+        id: opened[1]!,
+        text: opened[2] ?? opened[1]!,
+        shape: 'group',
+        className: undefined, items: [],
+        children: members.map(one => one.trim()).filter(one => one !== ''),
+        ...(opened[3] === undefined ? {} : { direction: opened[3] as FlowDirection }),
+        span,
+      });
+      continue;
+    }
 
     const group = GROUP.exec(text);
     if (group) {
@@ -533,7 +575,7 @@ const DEFAULT_PAD = 16;
 
 function parseLayout(
   body: readonly SourceLine[], out: Map<string, Placement>, bends: Map<string, Bend>,
-  containers: Map<string, Container>,
+  containers: Map<string, Container>, sizes: Map<string, Sizing>,
 ): void {
   for (let i = 0; i < body.length; i++) {
     const source = body[i]!;
@@ -576,6 +618,12 @@ function parseLayout(
         throw new DiagramParseError(dgm('diagram.parse.unreadableBend', { text }), source.number);
       }
       bends.set(`${bend[1]}->${bend[2]}`, { points, span: source.span });
+      continue;
+    }
+
+    const sized = SIZING.exec(text);
+    if (sized) {
+      sizes.set(sized[1]!, { width: Number(sized[2]), height: Number(sized[3]), span: source.span });
       continue;
     }
 

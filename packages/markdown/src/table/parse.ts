@@ -16,6 +16,8 @@ const MERGE_UP = '^';
 const MERGE_LEFT = '<';
 /** A number computed from the row's place: 1, 2, 3 down the column. */
 const AUTO_NUMBER = '#';
+/** A number under the last `#` above it: 3-1, 3-2 — a table's columns in a screen's item list. */
+const AUTO_SUB_NUMBER = '#-#';
 
 export class TableParseError extends LocalizedError {
   constructor(message: Phrase, readonly line: number) {
@@ -206,14 +208,24 @@ function parseGrid(
   });
 
   // `#` numbers the rows that have one, column by column: the item list of a
-  // screen writes it in its No column, and the numbers follow the rows.
+  // screen writes it in its No column, and the numbers follow the rows. `#-#`
+  // counts under the last `#` above it, as a screen numbers the columns of a
+  // table under the table; with no `#` above, it counts as one.
   const counted = new Map<number, number>();
+  const under = new Map<number, number>();
   for (const row of rows) {
     for (const cell of row.cells) {
-      if (cell.text !== AUTO_NUMBER) continue;
+      if (cell.text === AUTO_SUB_NUMBER && counted.has(cell.column)) {
+        const next = (under.get(cell.column) ?? 0) + 1;
+        under.set(cell.column, next);
+        cell.number = `${counted.get(cell.column)!}-${next}`;
+        continue;
+      }
+      if (cell.text !== AUTO_NUMBER && cell.text !== AUTO_SUB_NUMBER) continue;
       const next = (counted.get(cell.column) ?? 0) + 1;
       counted.set(cell.column, next);
-      cell.number = next;
+      under.delete(cell.column);
+      cell.number = String(next);
     }
   }
 
@@ -256,6 +268,7 @@ function parseSelector(text: string): Selector {
   if (text === 'header') return { kind: 'header' };
   const [prefix, rest] = splitOnce(text, ':');
   switch (prefix) {
+    case 'header': return rest === '' ? { kind: 'header' } : { kind: 'header', column: rest };
     case 'col':  return { kind: 'column', name: rest };
     case 'row':  return { kind: 'row', which: rest === 'odd' || rest === 'even' ? rest : 'all' };
     case 'cell': {

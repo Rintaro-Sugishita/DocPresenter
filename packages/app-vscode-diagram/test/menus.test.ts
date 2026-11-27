@@ -61,6 +61,9 @@ describe('右クリックメニューの並び', () => {
     expect(dgm).toEqual([
       'docpresenterDiagram.open',
       'docpresenterDiagram.exportSvg',
+      'docpresenterDiagram.toMermaid',
+      'docpresenterDiagram.exportHtml',
+      'docpresenterDiagram.exportXaml',
       'docpresenterDiagram.format',
     ]);
   });

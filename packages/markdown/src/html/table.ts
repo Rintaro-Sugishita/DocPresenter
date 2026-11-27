@@ -33,10 +33,10 @@ const LENGTH = /^\d+(\.\d+)?(%|em|px|ch)$/;
 export function renderTable(table: TableFile, marks?: TableMarks): string {
   const head = table.columns
     .map((c, i) => {
-      const rules = [...headerRules(table), ...columnRules(table, c.header)];
+      const rules = [...columnRules(table, c.header), ...headerRules(table, c.header)];
       // A header is a cell. It takes the same inline Markdown the others do —
       // dropping it there would show the notation to the reader.
-      return `<th${styleAttrs(alignOf(table, i, rules), rules)}>`
+      return `<th${styleAttrs(headerAlignOf(table, c.header), rules)}>`
         + `${inlineMarkdown(c.header)}</th>`;
     })
     .join('');
@@ -143,6 +143,21 @@ export function alignOf(table: TableFile, column: number, rules: readonly StyleR
   return ALIGN_CLASS[table.columns[column]?.align ?? 'default'];
 }
 
+/**
+ * A heading's alignment. The delimiter row aligns the column's figures, not
+ * its heading: right-aligning amounts must not push the word 金額 over to
+ * the right with them. Only a rule written for the header moves it; without
+ * one it sits where the theme puts headings.
+ */
+export function headerAlignOf(table: TableFile, column?: string): string {
+  // The column's own heading rule first: it is the more particular one.
+  for (const rule of [...headerRules(table, column)].reverse()) {
+    const align = rule.declarations.get('align');
+    if (align === 'left' || align === 'center' || align === 'right') return ALIGN_CLASS[align];
+  }
+  return '';
+}
+
 /** Cells hold inline markdown; a block reference expands to its definition. */
 function renderCellText(table: TableFile, text: string): string {
   const block = /^@(\S+)$/.exec(text);
@@ -167,12 +182,19 @@ export function inlineMarkdown(text: string): string {
  * the same fills and rules while you are editing; one implementation keeps the
  * grid and the printed table from disagreeing.
  */
-export function headerRules(table: TableFile): readonly StyleRule[] {
-  return table.style.filter(r => r.selector.kind === 'header');
+/**
+ * The rules for the heading row, and — given a column — for that column's
+ * heading too, after them, so the particular one is applied last.
+ */
+export function headerRules(table: TableFile, column?: string): readonly StyleRule[] {
+  const all = table.style.filter(r => r.selector.kind === 'header' && r.selector.column === undefined);
+  const own = column === undefined ? []
+    : table.style.filter(r => r.selector.kind === 'header' && r.selector.column === column);
+  return [...all, ...own];
 }
 
-export function headerClasses(table: TableFile): string[] {
-  return declarationClasses(headerRules(table));
+export function headerClasses(table: TableFile, column?: string): string[] {
+  return declarationClasses(headerRules(table, column));
 }
 
 export function rowClasses(table: TableFile, row: number): string[] {

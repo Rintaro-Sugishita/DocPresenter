@@ -153,6 +153,31 @@ describe('labels on the left', () => {
     expect(auto).toContain('grid frame (cols: auto, 1fr;');
   });
 
+  it('積み重ねた横ラベルのフォームどうしは、いちばん長いラベルに合わせて入力をそろえる', () => {
+    const source = [
+      'use "default"', '', 'free {',
+      '  forms ""',
+      '  aForm ""', '  aLabel label:"ID"', '  aBox textbox:',
+      '  bForm ""', '  bLabel label:"とても長いラベルの名前"', '  bBox textbox:',
+      '}', '', 'layout {',
+      '  forms @ (0, 0) 500x200',
+      '  stack forms (down; gap: 8; pad: 0) {', '    aForm', '    bForm', '  }',
+      '  grid aForm (cols: auto, 1fr; gap: 12 12; pad: 0) { aLabel ; aBox }',
+      '  grid bForm (cols: auto, 1fr; gap: 12 12; pad: 0) { bLabel ; bBox }',
+      '}', '',
+    ].join('\n');
+    const laid = layOutDiagram(read(source));
+    expect(laid.boxes.get('aBox')!.x).toBe(laid.boxes.get('bBox')!.x);
+    // The inputs still take the room that is left: not fixed to a width.
+    expect(laid.boxes.get('aBox')!.width).toBe(laid.boxes.get('bBox')!.width);
+  });
+
+  it('一度ラベルを左にした画面では、次に足す入力もラベルを左にする', () => {
+    const { text } = left();
+    expect(labelSide(read(text))).toBe('left');
+    expect(labelSide(read(TOP))).toBe('top');
+  });
+
   it('takes the side for a new form from the library', () => {
     const library = 'use "default"\n\nparts {\n  label "" { color: #333333, field: left } 320x18\n}\n';
     const source = 'use "mine.dgm"\n\nfree {\n  frame frame:\n}\n\nlayout {\n  frame @ (0, 0) 300x200\n}\n';

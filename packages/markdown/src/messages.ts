@@ -9,26 +9,26 @@ import { defineMessages } from '@docpresenter/base';
 
 export const MARKDOWN_MESSAGES = defineMessages({
   // --- reading -----------------------------------------------------------------
-  'markdown.parse.separatorNeedsBlank': '`---` の前には空行が必要（setext 見出しと区別できないため）',
-  'markdown.parse.unclosedFrontmatter': 'frontmatter が閉じられていない',
-  'markdown.table.noGrid': '表のグリッドが見つからない',
-  'markdown.table.unreadableLine': '解釈できない行: {text}',
-  'markdown.table.badDelimiter': '区切り行が正しくない',
+  'markdown.parse.separatorNeedsBlank': '`---` の前には空行が必要です（setext 見出しと区別できないためです）',
+  'markdown.parse.unclosedFrontmatter': 'frontmatter が閉じられていません',
+  'markdown.table.noGrid': '表のグリッドが見つかりません',
+  'markdown.table.unreadableLine': '解釈できない行があります: {text}',
+  'markdown.table.badDelimiter': '区切り行が正しくありません',
   'markdown.table.noCellAbove': "'{mark}' の上に結合できるセルがない（{column} 列目）",
   'markdown.table.noCellLeft': "'{mark}' の左に結合できるセルがない（{column} 列目）",
 
   // --- resolving -------------------------------------------------------------------
-  'markdown.cycle': '参照が循環している: {chain}',
-  'markdown.missing': '参照先が見つからない: {target}',
-  'markdown.unreadable': '{target} を読めない: {message}',
+  'markdown.cycle': '参照が循環しています: {chain}',
+  'markdown.missing': '参照先が見つかりません: {target}',
+  'markdown.unreadable': '{target} を読めません: {message}',
   'markdown.duplicateLabel': "ラベル '{label}' が重複している",
   'markdown.unknownAttribute': "未知の属性 '{name}' は無視される",
   'markdown.kindMismatch': "ラベル '{label}' の種別が参照先 '{path}' と食い違う",
-  'markdown.missingImage': '取り込めなかった画像がある: {path}',
-  'markdown.missingRange': '名前付き範囲が見つからない: {rows}',
+  'markdown.missingImage': '取り込めなかった画像があります: {path}',
+  'markdown.missingRange': '名前付き範囲が見つかりません: {rows}',
 
   // --- renaming a figure -------------------------------------------------------------
-  'markdown.figure.notFound': 'この図表の取り込み行が見つからない（文書が書き換わった可能性がある）',
+  'markdown.figure.notFound': 'この図表の取り込み行が見つかりません（文書が書き換わった可能性があります）',
   'markdown.figure.badLabel': "ラベル '{label}' は使えない（英数字・-・_ で、fig- などで始める）",
   'markdown.figure.wrongPrefix': "ラベル '{label}' は {prefix}- で始める",
   'markdown.figure.labelTaken': "ラベル '{label}' は、この文書の別の場所で使われている",

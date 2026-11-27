@@ -28,7 +28,7 @@ describe('ルート探索', () => {
 
   it('ルートが 1 つも無ければ警告する', async () => {
     const graph = readGraph(workspace({ 'a.md': '# A\n' }));
-    expect(graph.diagnostics.some(d => d.message.includes('ビルドするものが何も無い'))).toBe(true);
+    expect(graph.diagnostics.some(d => d.message.includes('ビルドするものがありません'))).toBe(true);
   });
 
   it('読めない文書は警告で、他のビルドを止めない', async () => {
@@ -129,20 +129,20 @@ describe('成果物', () => {
   it('書けない形式は黙って落とさず、そう言う', async () => {
     const result = await build(workspace({ 'a.md': root('# A', '[pdf]'), ...THEME }));
     expect(result.artifacts).toEqual([]);
-    expect(result.diagnostics.some(d => d.message.includes('pdf 出力はこの環境では書けない'))).toBe(true);
+    expect(result.diagnostics.some(d => d.message.includes('pdf の出力はこの環境では書き出せません'))).toBe(true);
   });
 
   it('テーマが無ければエラー', async () => {
     const result = await build(workspace({ 'a.md': root('# A') }));
     expect(result.diagnostics.some(d =>
-      d.severity === 'error' && d.message.includes('テーマが見つからない'))).toBe(true);
+      d.severity === 'error' && d.message.includes('テーマが見つかりません'))).toBe(true);
   });
 
   it('ルートでないものを名指しされたらそう言う', async () => {
     const result = await build(workspace({ 'a.md': root('# A'), 'b.md': '# B\n', ...THEME }),
       { only: ['b.md'] });
     expect(result.artifacts).toEqual([]);
-    expect(result.diagnostics.some(d => d.message.includes('ビルドルートではない'))).toBe(true);
+    expect(result.diagnostics.some(d => d.message.includes('ビルドルートではありません'))).toBe(true);
   });
 });
 
@@ -247,15 +247,15 @@ describe('web 上の画像', () => {
       inline: async () => undefined,
     });
     const page = result.artifacts[0]!.text!;
-    expect(page).toContain('取り込めなかった画像がある');
+    expect(page).toContain('取り込めなかった画像があります');
     expect(page).not.toContain(`src="${ADDRESS}"`);
-    expect(result.diagnostics.some(d => d.message.includes('外部の画像を取り込めなかった'))).toBe(true);
+    expect(result.diagnostics.some(d => d.message.includes('外部の画像を取り込めませんでした'))).toBe(true);
   });
 
   it('取り込む手段の無い器では、そう報告する', async () => {
     const result = await build(workspace({ 'a.md': source, ...THEME }));
     expect(result.diagnostics.some(d =>
-      d.message.includes('外部の画像を取り込めない器'))).toBe(true);
+      d.message.includes('外部の画像を取り込めない環境'))).toBe(true);
   });
 
   it('同じ住所を二度取りに行かない', async () => {
@@ -279,7 +279,7 @@ describe('web 上の画像', () => {
 
   it('無い画像は黙って消えず、そう言う', async () => {
     const files = { 'a.md': `---\ntitle: T\noutput: [html]\n---\n\n# 題\n\n@import "none.png"\n`, ...THEME };
-    expect((await build(workspace(files))).artifacts[0]!.text!).toContain('参照先が見つからない');
+    expect((await build(workspace(files))).artifacts[0]!.text!).toContain('参照先が見つかりません');
   });
 
   it('幅と寄せは文書の指示として出る', async () => {
@@ -320,7 +320,7 @@ describe('書き出しのボタン（文書と形式を名指しする）', () =
 
   it('形式を言わなければ、これまでどおりルートでない文書は断る', async () => {
     const result = await build(workspace({ 'note.md': '# メモ\n', ...THEME }), { only: ['note.md'] });
-    expect(result.diagnostics.some(d => d.message.includes('ビルドルートではない'))).toBe(true);
+    expect(result.diagnostics.some(d => d.message.includes('ビルドルートではありません'))).toBe(true);
   });
 });
 
@@ -328,7 +328,7 @@ describe('Mermaid', () => {
   const doc = root(['```mermaid', 'flowchart TD', '  A --> B', '```', '',
     '```mermaid {view="code"}', 'flowchart TD', '  C --> D', '```'].join('\n'), '[html, pptx]');
 
-  it('HTML は描くスクリプトを持つ（Mermaid が無い文書は持たない）', async () => {
+  it('HTML は描くスクリプトを持つ（Mermaid がありません文書は持たない）', async () => {
     const result = await build(workspace({ 'a.md': doc, 'b.md': root('# B'), ...THEME }), {
       mermaidScript: 'window.__drawn = true;',
     });

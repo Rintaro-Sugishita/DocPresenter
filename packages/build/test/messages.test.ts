@@ -25,7 +25,7 @@ describe('build messages', () => {
     expect(html).toContain('<html lang="ja">');
     expect(html).toContain('文書番号');
     expect(html).toContain('表 1');
-    expect(ja.diagnostics.find(d => d.path === 'docs/stray.dgm')?.message).toBe('どの成果物にも含まれていない');
+    expect(ja.diagnostics.find(d => d.path === 'docs/stray.dgm')?.message).toBe('どの成果物にも含まれていません');
   });
 
   it('writes them in English for a builder who reads English', async () => {

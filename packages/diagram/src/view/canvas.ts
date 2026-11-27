@@ -9,9 +9,9 @@
 import { layOutDiagram, type Box } from '../layout.js';
 import { containerOf, dropInto, rowRoles } from '../arrange.js';
 import type { DiagramFile, Item, ShapeKind } from '../model.js';
-import { renderDiagram } from '../draw/render.js';
+import { drawnRoutes, renderDiagram } from '../draw/render.js';
 import { roundedPath } from '../draw/geometry.js';
-import { stencilArt, stencilParts } from '../draw/stencil.js';
+import { isIconPath, stencilArt, stencilParts } from '../draw/stencil.js';
 import { DEFAULT_GROUPS, DEFAULT_LIBRARY } from '../default-parts.js';
 import { parseDiagram } from '../parse.js';
 import { withParts } from '../parts.js';
@@ -22,18 +22,21 @@ import {
 import { DIAGRAM_MESSAGES, dgm } from '../messages.js';
 import {
   addNode, bendEdge, canUnpin, editBetween, withLibrary, connectNodes, disconnectNodes, groupMembers, groupNodes,
-  nextShapeId, pinNode, pinNodes, reconnect, removeNodes, setContainerCells, setItems, setStackFlow,
+  nextShapeId, pinNode, pinNodes, sizeNode, addZone, nextZoneId, reconnect, removeNodes, setContainerCells, setItems, setStackFlow,
   putIntoContainer, setNodePart, setNodeShape, setNodeStyle, setNodeText, unpinNode,
+  setEdgeLabel, renameNode, moveToOrigin,
   DiagramEditError,
 } from '../edits.js';
 import {
-  followLabel, itemOfShape, itemShapes, linkItemTable, newItemTable, renameItemId, setItemCell, syncItemTable,
+  followLabel, isLeftOut, itemOfShape, itemShapes, linkItemTable, newItemTable, renameItemId, setItemCell, syncItemTable,
 } from '../items.js';
 import {
   addTableColumn, addTableRow, isEmptyTable, makeTable, removeTableColumn, removeTableRow, renameColumn,
   setColumnPart, setRowRole, setScroll, tableOf, type RowRole,
 } from '../table.js';
 import { stackNodes } from '../stack-up.js';
+import { duplicateNodes, type Copied } from '../copy.js';
+import { checkState, isDisabled, isHidden, setEnabled, setVisible, toggleCheck } from '../states.js';
 import {
   addField, addLabel, fieldOf, fieldShapes, formOf, isLabelForm, setLabelColumn, setLabelSide, type AddedField,
 } from '../fields.js';
@@ -64,6 +67,21 @@ const textPicks = new WeakMap<Document, string>();
  * A host that keeps it itself passes `zoom` and `onZoom` instead.
  */
 const zoomPicks = new WeakMap<Document, number | undefined>();
+/** Whether a drag draws a band wherever it starts, per document: it outlives the redraw an edit makes. */
+const bandModes = new WeakMap<Document, boolean>();
+/**
+ * The last thing added, to add again with F4: the same part, the same shape,
+ * another row. Kept per document, outside any one canvas — every edit builds
+ * the canvas again, and "again" is about the one before.
+ */
+type Repeat =
+  | { readonly kind: 'part'; readonly name: string; readonly labelled: boolean }
+  | { readonly kind: 'shape'; readonly shape: ShapeKind; readonly icon?: string | undefined; readonly text?: string | undefined }
+  | { readonly kind: 'zone' }
+  | { readonly kind: 'tableRow' }
+  | { readonly kind: 'tableColumn' }
+  | { readonly kind: 'row' };
+const repeats = new WeakMap<Document, Repeat>();
 /** The kinds of item that are inputs, and so come with a label. */
 const INPUTS = new Set(['入力', 'input']);
 /** A shape that draws itself from rows, and the rows it draws. */
@@ -78,6 +96,8 @@ const GRID = 4;
 /** A press this short of a move is a selection, not a drag. */
 const THRESHOLD = 3;
 const MIN_SIZE = 16;
+/** An empty cell of a grid. */
+const EMPTY = '.';
 
 
 /**
@@ -122,6 +142,16 @@ export interface CanvasOptions {
   /** Remembers the selection without writing anything. */
   readonly select: (ids: readonly string[], edge?: string | undefined) => void;
   readonly showSource: () => void;
+  /**
+   * Opens the drawing's own file in a text editor beside this one. When
+   * given, the source button offers it alongside the text shown here.
+   */
+  readonly openSourceFile?: (() => void) | undefined;
+  /**
+   * More lines for the menu about the drawing as a whole, from the host —
+   * where the screen's item table is shown beside the canvas, say.
+   */
+  readonly drawingMenu?: (() => readonly MenuItem[]) | undefined;
   readonly close: () => void;
   readonly onError?: (message: string) => void;
   /** Which language the bar, the menus and the hints speak. */
@@ -147,6 +177,18 @@ export interface CanvasOptions {
   readonly zoom?: number | undefined;
   /** Told when the zoom changes. Without it the canvas keeps the zoom itself, per document. */
   readonly onZoom?: ((scale: number | undefined) => void) | undefined;
+  /**
+   * Where a picture a shape points at (`icon: ./images/logo.png`) is to be
+   * had, as the drawing writes it. Without it, or for a picture it does not
+   * know, the picture is drawn as its name.
+   */
+  readonly picture?: ((path: string) => string | undefined) | undefined;
+  /**
+   * Asks the author for a picture — a file dialog, say — and answers with its
+   * path as the drawing writes it, or undefined when they changed their mind.
+   * Without it the canvas does not offer to choose one.
+   */
+  readonly pickPicture?: (() => Promise<string | undefined>) | undefined;
 }
 
 export interface Canvas {
@@ -159,6 +201,28 @@ export interface Canvas {
   focus(): void;
 }
 
+/**
+ * What Ctrl+C took, kept outside any one canvas: the canvas is built again
+ * after every edit, and a copy that went with it could never be pasted.
+ */
+let clipboard: Copied | undefined;
+/** How many times the copy has been pasted, so each paste lands a step further on rather than on the last. */
+let pastes = 0;
+/** How far a paste lands from what was copied. */
+const PASTE_STEP = 20;
+
+/** The resize handles: a name, and where each sits as -1, 0 or 1 across and down. */
+const HANDLES: readonly (readonly [string, -1 | 0 | 1, -1 | 0 | 1])[] = [
+  ['nw', -1, -1], ['n', 0, -1], ['ne', 1, -1], ['e', 1, 0],
+  ['se', 1, 1], ['s', 0, 1], ['sw', -1, 1], ['w', -1, 0],
+];
+
+/** Which sides a handle moves. A handle with no name is the old corner one. */
+function sidesOf(name: string | null | undefined): { across: -1 | 0 | 1; down: -1 | 0 | 1 } {
+  const found = HANDLES.find(([one]) => one === name);
+  return found ? { across: found[1], down: found[2] } : { across: 1, down: 1 };
+}
+
 export function createCanvas(options: CanvasOptions): Canvas {
   const { owner, file, source } = options;
   const locale = options.locale ?? DEFAULT_LOCALE;
@@ -166,6 +230,8 @@ export function createCanvas(options: CanvasOptions): Canvas {
   /** What the bar says when nothing in particular is picked. */
   const HINT = t('diagram.canvas.hint');
   const laid = layOutDiagram(file, locale);
+  /** The connections as they are drawn: a line to a picture meets the picture, not the box round it and its name. */
+  const routes = drawnRoutes(file, laid);
   // A finger has no right button: a long press opens the same menus.
   enableLongPress(owner);
   // The selection is a list rather than one id: grouping and moving several
@@ -174,10 +240,10 @@ export function createCanvas(options: CanvasOptions): Canvas {
   const primary = (): string | undefined => picked[picked.length - 1];
   const nameOf = (edge: { from: string; to: string }): string => `${edge.from}->${edge.to}`;
   /** The connection picked, if it is a connection that is picked. */
-  let line = laid.routes.some(r => nameOf(r.edge) === options.selectedEdge)
+  let line = routes.some(r => nameOf(r.edge) === options.selectedEdge)
     ? options.selectedEdge : undefined;
   const lineOf = (name: string | undefined) =>
-    laid.routes.find(r => nameOf(r.edge) === name);
+    routes.find(r => nameOf(r.edge) === name);
 
   /** Which rows a shape holds, if it is a tree, a list or a menu. */
   const listingOf = (id: string | undefined): Held | undefined => {
@@ -213,6 +279,9 @@ export function createCanvas(options: CanvasOptions): Canvas {
   // Declared up here because the bar is built before the code below runs, and
   // a `let` reached early is an error rather than an empty box.
   let where: HTMLElement | undefined;
+  let naming: HTMLInputElement | undefined;
+  /** The line the pointer is near, shown before it is pressed. */
+  let hovered: string | undefined;
   let release: HTMLButtonElement | undefined;
   let aligners: HTMLElement | undefined;
   let liners: HTMLElement | undefined;
@@ -225,7 +294,8 @@ export function createCanvas(options: CanvasOptions): Canvas {
   const root = element('div', 'dp-canvas');
   const stage = element('div', 'dp-canvas-stage');
   stage.tabIndex = 0;
-  stage.innerHTML = renderDiagram(file, undefined, undefined, locale, true);
+  const pictureOf = options.picture;
+  stage.innerHTML = renderDiagram(file, pictureOf ? path => pictureOf(path) ?? path : undefined, undefined, locale, true);
   const svg = stage.querySelector('svg');
   const bar = createBar();
   // The stage scrolls inside its own frame once it is zoomed past the page,
@@ -294,6 +364,13 @@ export function createCanvas(options: CanvasOptions): Canvas {
       const rect = shape('rect', 'dp-canvas-band');
       place(rect, bandBox());
       overlay.append(rect);
+    }
+
+    const near = lineOf(hovered);
+    if (near) {
+      const mark = shape('polyline', 'dp-canvas-edge-hover');
+      mark.setAttribute('points', points(near.points));
+      overlay.append(mark);
     }
 
     const chosen = lineOf(line);
@@ -370,13 +447,18 @@ export function createCanvas(options: CanvasOptions): Canvas {
     if (box && picked.length === 1) {
       // The handle is drawn at a fixed size on screen, so it stays grabbable on
       // a drawing the pane had to shrink.
+      // One on every corner and every side, so a shape can grow towards
+      // whichever side has room — not only down and to the right.
       const size = 9 / scale();
-      const handle = shape('rect', 'dp-canvas-handle');
-      handle.setAttribute('x', String(box.x + box.width - size / 2));
-      handle.setAttribute('y', String(box.y + box.height - size / 2));
-      handle.setAttribute('width', String(size));
-      handle.setAttribute('height', String(size));
-      overlay.append(handle);
+      for (const [name, across, down] of HANDLES) {
+        const handle = shape('rect', `dp-canvas-handle dp-canvas-handle-${name}`);
+        handle.setAttribute('data-handle', name);
+        handle.setAttribute('x', String(box.x + (box.width * (across + 1)) / 2 - size / 2));
+        handle.setAttribute('y', String(box.y + (box.height * (down + 1)) / 2 - size / 2));
+        handle.setAttribute('width', String(size));
+        handle.setAttribute('height', String(size));
+        overlay.append(handle);
+      }
     }
 
     // The edge between a form's labels and its inputs: drag it for a width,
@@ -474,7 +556,7 @@ export function createCanvas(options: CanvasOptions): Canvas {
   function edgeAt(at: { x: number; y: number }): { name: string; distance: number } | undefined {
     const near = 6 / scale();
     let best: { name: string; distance: number } | undefined;
-    for (const route of laid.routes) {
+    for (const route of routes) {
       for (let i = 0; i + 1 < route.points.length; i++) {
         const distance = toSegment(at, route.points[i]!, route.points[i + 1]!);
         if (distance <= near && (!best || distance < best.distance)) {
@@ -496,6 +578,41 @@ export function createCanvas(options: CanvasOptions): Canvas {
     const edge = edgeAt(at);
     if (rule && (!edge || rule.distance <= edge.distance)) return { rule: rule.id };
     return edge ? { line: edge.name } : {};
+  }
+
+  /**
+   * What a press is on: a shape, or the line or rule nearest it. A group's
+   * frame lies under the lines that cross it, and a line is one pixel wide:
+   * on a frame, a press near a line is on the line, or no line in a group
+   * could be picked at all — only by hitting its one pixel.
+   */
+  function underPointer(event: MouseEvent): { shape?: string; rule?: string; line?: string } {
+    const target = event.target as Element | null;
+    const shape = target?.closest('[data-node]')?.getAttribute('data-node') ?? undefined;
+    const node = shape === undefined ? undefined : file.nodes.find(one => one.id === shape);
+    // Inside the box of what is picked, a press on something behind it — the
+    // frame of the screen the stack sits on — is a press on what is picked.
+    const held = pickedAt(pointOn(event));
+    if (held !== undefined && shape !== undefined && shape !== held && pickedHolder(shape) !== held) {
+      const nearLine = nearest(pointOn(event));
+      return nearLine.line !== undefined ? nearLine : { shape: held };
+    }
+    if (shape !== undefined && node?.shape !== 'group') return { shape };
+    const near = nearest(pointOn(event));
+    if (near.line !== undefined || near.rule !== undefined) return near;
+    if (shape !== undefined) return { shape };
+    // The empty part of a picked container — a stack between its members — is
+    // the container: it draws nothing there to be pressed, but it is there.
+    return held === undefined ? {} : { shape: held };
+  }
+
+  /** The picked shape whose box holds the point, the innermost first. */
+  function pickedAt(at: { x: number; y: number }): string | undefined {
+    for (const id of [...picked].reverse()) {
+      const box = laid.boxes.get(id);
+      if (box && at.x >= box.x && at.x <= box.x + box.width && at.y >= box.y && at.y <= box.y + box.height) return id;
+    }
+    return undefined;
   }
 
   /** Which segment of a path a point is nearest to, counted from zero. */
@@ -621,6 +738,16 @@ export function createCanvas(options: CanvasOptions): Canvas {
     /** How far everything being dragged has moved, in the drawing's units. */
     by: { x: number; y: number };
     size: { width: number; height: number } | undefined;
+    /** Ctrl was held when the press began: letting go leaves a copy there and the shapes where they were. */
+    copy?: boolean;
+    /** The shape actually under the press, when the press took hold of what holds it. */
+    under?: string | undefined;
+    /** While copying, what follows the pointer: a drawn copy of each shape, the shapes themselves staying put. */
+    ghosts?: Map<string, Element>;
+    /** Which sides a resize moves: -1 the left or top, 1 the right or bottom, 0 neither. */
+    sides?: { across: -1 | 0 | 1; down: -1 | 0 | 1 };
+    /** Where the shape's corner is after a resize from the left or the top. */
+    corner?: { x: number; y: number };
   }
   let drag: Drag | undefined;
   /** What moves with the pointer: the picked shapes and what they contain. */
@@ -631,6 +758,28 @@ export function createCanvas(options: CanvasOptions): Canvas {
   let unit: { id: string; row: boolean } | undefined;
   /** The rubber band, in the drawing's coordinates. */
   let band: { from: { x: number; y: number }; to: { x: number; y: number } } | undefined;
+  /** In area selection, the shape the band started on: a click there picks it. */
+  let bandStart: string | undefined;
+  const bandMode = (): boolean => bandModes.get(owner) === true;
+
+  /**
+   * What holds a shape, for Alt+press: its container, or the group it is in.
+   * Pressed again on the same spot, one further out — the holder of what is
+   * picked, when that is already one of the shape's holders.
+   */
+  function holderOf(id: string): string | undefined {
+    const held = containerOf(file);
+    const up = (one: string): string | undefined => {
+      const container = held.get(one);
+      if (container !== undefined && laid.boxes.has(container)) return container;
+      return file.nodes.find(node => node.shape === 'group' && node.children.includes(one))?.id;
+    };
+    const chain: string[] = [];
+    for (let one = up(id), depth = 0; one !== undefined && depth < 32; one = up(one), depth++) chain.push(one);
+    if (chain.length === 0) return undefined;
+    const at = picked.length === 1 ? chain.indexOf(picked[0]!) : -1;
+    return chain[Math.min(at + 1, chain.length - 1)];
+  }
   /**
    * Where the shape being dragged would land inside its own container. Set
    * while the pointer is still inside it; letting go anywhere else means the
@@ -665,10 +814,18 @@ export function createCanvas(options: CanvasOptions): Canvas {
       return;
     }
     // A shape under the pointer wins; only then is a line looked for.
-    const onShape = onHandle ? primary() : target?.closest('[data-node]')?.getAttribute('data-node');
-    const near = onShape === undefined || onShape === null ? nearest(pointOn(event)) : {};
-    const id = onShape ?? near.rule;
-    const onLine = near.line;
+    const under: { shape?: string | undefined; rule?: string; line?: string } = onHandle ? { shape: primary() } : underPointer(event);
+    // Alt reaches past a shape to what holds it — a stack whose members cover
+    // it has no other place to be pressed — and, pressed again, past that.
+    const climbed = !onHandle && event.altKey && under.shape !== undefined ? holderOf(under.shape) : undefined;
+    // A press on something inside what is picked — a member of the stack that
+    // was picked with Alt or from the text — takes hold of what is picked, so
+    // the stack is dragged rather than the member under the pointer. Letting go
+    // without moving picks the member after all.
+    const kept = !onHandle && !event.altKey && !event.shiftKey && under.shape !== undefined
+      ? pickedHolder(under.shape) : undefined;
+    const id = climbed ?? kept ?? under.shape ?? under.rule;
+    const onLine = under.line;
 
     if (onEnd === 'from' || onEnd === 'to') {
       event.stopPropagation();
@@ -698,6 +855,21 @@ export function createCanvas(options: CanvasOptions): Canvas {
       event.stopPropagation();
       stage.focus({ preventScroll: true });
       bending = { index: Number(onBend), at: pointOn(event), fresh: false };
+      drag = {
+        kind: 'move', from: { x: event.clientX, y: event.clientY },
+        pointerId: event.pointerId, id: '', box: bandBox(), moved: false,
+        by: { x: 0, y: 0 }, size: undefined,
+      };
+      return;
+    }
+    // Area selection: a drag picks what it surrounds wherever it starts, even
+    // on a frame that covers the whole screen — which is where it is needed.
+    if (bandMode() && !onHandle && !event.shiftKey) {
+      event.stopPropagation();
+      stage.focus({ preventScroll: true });
+      if (connecting !== undefined) { connecting = undefined; describe(); }
+      band = { from: pointOn(event), to: pointOn(event) };
+      bandStart = id ?? undefined;
       drag = {
         kind: 'move', from: { x: event.clientX, y: event.clientY },
         pointerId: event.pointerId, id: '', box: bandBox(), moved: false,
@@ -783,8 +955,23 @@ export function createCanvas(options: CanvasOptions): Canvas {
       pointerId: event.pointerId,
       id: whole?.id ?? id, box, moved: false,
       by: { x: 0, y: 0 }, size: undefined,
+      copy: !onHandle && (event.ctrlKey || event.metaKey) && file.mode === 'free',
+      ...(onHandle ? { sides: sidesOf(target?.closest('.dp-canvas-handle')?.getAttribute('data-handle')) } : {}),
+      ...(kept !== undefined ? { under: under.shape } : {}),
     };
   });
+
+  /** The picked shape that holds `id`, however deep, when one does. */
+  function pickedHolder(id: string): string | undefined {
+    if (picked.includes(id)) return undefined;
+    const held = containerOf(file);
+    const up = (one: string): string | undefined => held.get(one)
+      ?? file.nodes.find(node => node.shape === 'group' && node.children.includes(one))?.id;
+    for (let one = up(id), depth = 0; one !== undefined && depth < 64; one = up(one), depth++) {
+      if (picked.includes(one)) return one;
+    }
+    return undefined;
+  }
 
   /**
    * What one press moves when it is on a field: the field's stack and all it
@@ -847,21 +1034,57 @@ export function createCanvas(options: CanvasOptions): Canvas {
         continue;
       }
       ids.add(id);
+      // What a container holds follows it on screen; the container's pin is
+      // all that is written, and it places them again where it lands.
+      for (const member of heldDeep(id)) ids.add(member);
     }
     return ids;
   }
 
+  /** Everything a container holds, at any depth. */
+  function heldDeep(id: string): string[] {
+    const out: string[] = [];
+    const visit = (at: string, depth: number): void => {
+      const container = file.containers.get(at);
+      if (!container || depth > 32) return;
+      for (const member of container.cells.flat()) {
+        if (member === EMPTY || out.includes(member) || member === at) continue;
+        out.push(member);
+        visit(member, depth + 1);
+      }
+    };
+    visit(id, 0);
+    return out;
+  }
+
   /** What a drag writes: the moved shapes, minus the groups that are computed. */
   function pinnedSet(): string[] {
+    const held = containerOf(file);
     return [...moving].filter(id => {
       const node = file.nodes.find(n => n.id === id);
+      // A member of a container that moves is placed by it, not pinned.
+      if (held.has(id) && moving.has(held.get(id)!) && !file.layout.has(id)) return false;
       return node?.shape !== 'group' || file.layout.has(id);
     });
   }
 
   stage.addEventListener('pointermove', event => {
     const current = drag;
-    if (!current) return;
+    if (!current) {
+      // Where a press would pick a line is shown as the pointer gets there:
+      // a line is thin, and "near enough" is otherwise a guess.
+      const under = event.buttons === 0 ? underPointer(event) : {};
+      const near = under.line;
+      const next = near !== line ? near : undefined;
+      // Over the empty part of what is picked, the pointer says it can be moved.
+      stage.classList.toggle('dp-canvas-on-picked', under.shape !== undefined && picked.includes(under.shape));
+      if (next !== hovered) {
+        hovered = next;
+        stage.classList.toggle('dp-canvas-on-line', near !== undefined);
+        paint();
+      }
+      return;
+    }
     const factor = scale();
     const dx = (event.clientX - current.from.x) / factor;
     const dy = (event.clientY - current.from.y) / factor;
@@ -872,6 +1095,21 @@ export function createCanvas(options: CanvasOptions): Canvas {
       // click that lands on the canvas instead of the shape renames nothing.
       stage.setPointerCapture(current.pointerId);
       current.moved = true;
+      // A copy is being made: the shapes stay where they are, and a copy of
+      // them is what the pointer carries — so what letting go will do is seen.
+      if (current.copy && current.kind === 'move') {
+        current.ghosts = new Map();
+        for (const id of moving) {
+          const node = drawing.querySelector(`[data-node="${cssEscape(id)}"]`);
+          if (!node) continue;
+          const ghost = node.cloneNode(true) as Element;
+          ghost.removeAttribute('data-node');
+          ghost.classList.add('dp-canvas-ghost');
+          node.parentNode?.append(ghost);
+          current.ghosts.set(id, ghost);
+        }
+        stage.classList.add('dp-canvas-copying');
+      }
     }
 
     if (bending) {
@@ -914,7 +1152,7 @@ export function createCanvas(options: CanvasOptions): Canvas {
       current.by = { x: snapped.x - box.x, y: snapped.y - box.y };
       preview = { box: { ...box, x: snapped.x, y: snapped.y }, guides: snapped.guides };
       for (const id of moving) {
-        const node = drawing.querySelector(`[data-node="${cssEscape(id)}"]`);
+        const node = current.ghosts?.get(id) ?? drawing.querySelector(`[data-node="${cssEscape(id)}"]`);
         // The shapes follow the pointer; their connections are re-routed when
         // they land, which is why they fade rather than stretch.
         node?.setAttribute('transform', `translate(${current.by.x}, ${current.by.y})`);
@@ -925,10 +1163,39 @@ export function createCanvas(options: CanvasOptions): Canvas {
       // the floor every other shape has would make one impossible to draw.
       const flat = file.nodes.find(n => n.id === primary())?.shape === 'line';
       const least = flat ? 0 : MIN_SIZE;
-      const width = Math.max(least, round(box.width + dx));
-      const height = Math.max(least, round(box.height + dy));
+      const sides = current.sides ?? { across: 1, down: 1 };
+      // A side pulled left or up moves the corner with it and grows the other
+      // way; the side across from it stays where it was.
+      let width = sides.across === 0 ? box.width : Math.max(least, round(box.width + dx * sides.across));
+      let height = sides.down === 0 ? box.height : Math.max(least, round(box.height + dy * sides.down));
+      // The side being pulled lines up with another shape's edge, the way a
+      // moved shape does — so two boxes can be made to end at the same line.
+      const guides: { axis: 'x' | 'y'; at: number }[] = [];
+      const others = [...laid.boxes].filter(([one]) => one !== current.id && !moving.has(one)).map(([, other]) => other);
+      const pull = (edge: number, axis: 'x' | 'y'): number => {
+        let best: number | undefined;
+        for (const other of others) {
+          const start = axis === 'x' ? other.x : other.y;
+          const size = axis === 'x' ? other.width : other.height;
+          for (const candidate of [start, start + size]) {
+            if (Math.abs(candidate - edge) <= SNAP && (best === undefined || Math.abs(candidate - edge) < Math.abs(best - edge))) {
+              best = candidate;
+            }
+          }
+        }
+        if (best === undefined) return edge;
+        guides.push({ axis, at: best });
+        return best;
+      };
+      if (sides.across > 0) width = Math.max(least, pull(box.x + width, 'x') - box.x);
+      if (sides.across < 0) width = Math.max(least, box.x + box.width - pull(box.x + box.width - width, 'x'));
+      if (sides.down > 0) height = Math.max(least, pull(box.y + height, 'y') - box.y);
+      if (sides.down < 0) height = Math.max(least, box.y + box.height - pull(box.y + box.height - height, 'y'));
+      const x = sides.across < 0 ? box.x + box.width - width : box.x;
+      const y = sides.down < 0 ? box.y + box.height - height : box.y;
       current.size = { width, height };
-      preview = { box: { ...box, width, height }, guides: [] };
+      current.corner = { x, y };
+      preview = { box: { ...box, x, y, width, height }, guides };
     }
     describe();
     paint();
@@ -944,6 +1211,8 @@ export function createCanvas(options: CanvasOptions): Canvas {
     dropping = undefined;
     drawing.classList.remove('dp-canvas-dragging');
     if (stage.hasPointerCapture(event.pointerId)) stage.releasePointerCapture(event.pointerId);
+    for (const ghost of current.ghosts?.values() ?? []) ghost.remove();
+    stage.classList.remove('dp-canvas-copying');
 
     if (sizing) {
       const done = sizing;
@@ -1012,7 +1281,13 @@ export function createCanvas(options: CanvasOptions): Canvas {
         ? [...laid.boxes].filter(([, other]) => within(other, box)).map(([id]) => id)
         : [];
       band = undefined;
-      if (inside.length > 0) pick(inside); else paint();
+      const started = bandStart;
+      bandStart = undefined;
+      // A click in area selection is still a click: it picks what it was on.
+      if (!current.moved && started !== undefined) { pick([started]); return; }
+      // A field caught by the band is picked as the field, so the next step —
+      // moving them, stacking them — acts on fields and not on their halves.
+      if (inside.length > 0) pick(file.mode === 'free' ? wholes(inside) : inside); else paint();
       return;
     }
 
@@ -1020,7 +1295,8 @@ export function createCanvas(options: CanvasOptions): Canvas {
       // A press on something already picked keeps the selection, so that a
       // selection can be dragged as one. Letting go without moving means it
       // was a click after all: the selection comes down to what was clicked.
-      if (current.id !== '' && picked.length > 1) pick([current.id]);
+      if (current.under !== undefined) pick([current.under]);
+      else if (current.id !== '' && picked.length > 1) pick([current.id]);
       preview = undefined;
       paint();
       return;
@@ -1030,8 +1306,16 @@ export function createCanvas(options: CanvasOptions): Canvas {
       const size = current.size;
       const id = current.id;
       if (!size) { preview = undefined; paint(); return; }
+      // A shape a container arranges keeps its place there: only how big it
+      // is is written. A pin would take it out of the container and leave an
+      // empty cell where it was.
+      if (containerOf(file).has(id) && !file.layout.has(id)) {
+        options.apply(() => sizeNode(file, source, id, size), [id]);
+        return;
+      }
+      const corner = current.corner ?? box;
       options.apply(() => pinNode(file, source, id, {
-        x: box.x - laid.origin.x, y: box.y - laid.origin.y, ...size,
+        x: corner.x - laid.origin.x, y: corner.y - laid.origin.y, ...size,
       }), [id]);
       return;
     }
@@ -1052,6 +1336,11 @@ export function createCanvas(options: CanvasOptions): Canvas {
     // The redraw that follows builds the canvas again, so the preview is left
     // in place: taking it off first would show the shapes jumping back.
     const by = current.by;
+    // Ctrl held: the shapes stay, and a copy of them lands where they were let go.
+    if (current.copy) {
+      paste(snapshot(unit ? [unit.id] : wholes(picked)), by);
+      return;
+    }
     // A row of a form belongs in the form: let go outside it, it stays. A
     // field let go anywhere else is pinned there as one — its stack, not the
     // label and the input one by one.
@@ -1099,8 +1388,15 @@ export function createCanvas(options: CanvasOptions): Canvas {
       dropCorner(Number(corner));
       return;
     }
-    const id = target?.closest('[data-node]')?.getAttribute('data-node');
-    if (id === null || id === undefined) return;
+    const under = underPointer(event);
+    // A line double-clicked: its words.
+    if (under.line !== undefined) {
+      event.preventDefault();
+      beginLineText(under.line);
+      return;
+    }
+    const id = under.shape;
+    if (id === undefined) return;
     event.preventDefault();
     // A tree holds rows rather than one label, so a double click on a row is
     // about that row. Which row is the one under the pointer, not the one that
@@ -1194,10 +1490,9 @@ export function createCanvas(options: CanvasOptions): Canvas {
       ]);
       return;
     }
-    const under = target?.closest('[data-node]')?.getAttribute('data-node');
-    const near = under ? {} : nearest(pointOn(event));
-    const overShape = under ?? near.rule;
-    const onLine = near.line;
+    const under = underPointer(event);
+    const overShape = under.shape ?? under.rule;
+    const onLine = under.line;
     if (onLine !== undefined) {
       pickLine(onLine);
       const items = lineItems(onLine);
@@ -1377,6 +1672,7 @@ export function createCanvas(options: CanvasOptions): Canvas {
    * at all has nothing to press, which is how one gets its first.
    */
   function addRowHere(): void {
+    repeats.set(owner, { kind: 'row' });
     if (row === undefined) { addRow(); return; }
     changeRows((items, at) => {
       const after = branch(items, at);
@@ -1422,6 +1718,7 @@ export function createCanvas(options: CanvasOptions): Canvas {
     if (!edge) return [];
     const bent = (file.bends.get(name)?.points.length ?? 0) > 0;
     return [
+      { label: t('diagram.canvas.editLineText'), run: () => beginLineText(name) },
       ...(bent ? [{
         label: t('diagram.canvas.straighten'),
         run: () => dropCorner('all'),
@@ -1441,21 +1738,51 @@ export function createCanvas(options: CanvasOptions): Canvas {
    */
   function pickedItems(): MenuItem[] {
     const id = primary();
-    if (id !== undefined) return shapeItems(id);
-    if (line !== undefined) return lineItems(line);
-    return addItems();
+    const own = id !== undefined ? shapeItems(id) : line !== undefined ? lineItems(line) : [];
+    return [...own, ...drawingItems().map((item, index) => ({ ...item, separated: index === 0 && own.length > 0 }))];
+  }
+
+  /** The shapes of the palette, put where the pointer was or beside what is picked. */
+  function paletteItems(event?: MouseEvent): MenuItem[] {
+    return PALETTE.map((shape): MenuItem => ({
+      label: t(`diagram.shape.${shape}`),
+      icon: shapeIcon(shape),
+      separated: shape === 'parallelogram',
+      run: () => addShape(shape, event),
+    }));
   }
 
   function addItems(event?: MouseEvent): MenuItem[] {
     return [
-      ...PALETTE.map((shape): MenuItem => ({
-        label: t(`diagram.shape.${shape}`),
-        icon: shapeIcon(shape),
-        separated: shape === 'parallelogram',
-        run: () => addShape(shape, event),
-      })),
-      ...tableItems().map((item, index) => ({ ...item, separated: index === 0 })),
+      ...paletteItems(event),
+      ...drawingItems().map((item, index) => ({ ...item, separated: index === 0 })),
     ];
+  }
+
+  /**
+   * Everything that can be put on the drawing. A screen leads with its parts
+   * and keeps the plain shapes one step in; a flow is drawn in shapes, so
+   * they come first and the pictures after.
+   */
+  function everythingItems(event?: MouseEvent): MenuItem[] {
+    if (file.mode === 'flow') {
+      return [...paletteItems(event), ...stencilItems(event).map((item, index) => ({ ...item, separated: index === 0 }))];
+    }
+    const parts = partItems(event);
+    return [...parts, { label: t('diagram.canvas.shapes'), icon: shapeIcon('rect'), separated: true, items: paletteItems(event) }];
+  }
+
+  /**
+   * Gives the picked shape another name, and its item in the item table
+   * with it — the table knows the item by the shape's name.
+   */
+  function rename(was: string, now: string): void {
+    options.apply(() => {
+      const edit = renameNode(file, source, was, now);
+      const table = options.itemSource;
+      const also = table === undefined || file.itemTable === undefined ? undefined : renameItemId(file, table, was, now);
+      return also ? { ...edit, also } : edit;
+    }, picked.map(one => (one === was ? now : one)));
   }
 
   /** What can be done about the screen's item table as a whole, if anything. */
@@ -1555,9 +1882,10 @@ export function createCanvas(options: CanvasOptions): Canvas {
         items: libraryItems(name => addPart(name, event, false, drawing), undefined, drawing.file),
       });
     }
-    if (drawing.file !== file) {
-      items.push(...stencilItems(event).map((item, index) => ({ ...item, separated: index === 0 })));
-    }
+    // The pictures stay on a drawing that names a library too: putting one
+    // screen part on it wrote the `use` line, and that is no reason for the
+    // network pictures to be gone from it.
+    items.push(...stencilItems(event).map((item, index) => ({ ...item, separated: index === 0 })));
     return items;
   }
 
@@ -1577,7 +1905,13 @@ export function createCanvas(options: CanvasOptions): Canvas {
    */
   function onFile(drawing: { file: DiagramFile; source: string }, edit: Edit): Edit {
     if (drawing.source === source) return edit;
-    return editBetween(source.replace(/\r\n/g, '\n'), applyEdit(drawing.source, edit), edit.phrase ?? dgm('diagram.did.addPart'));
+    // Worked out on the text read as LF, written back in the file's own line
+    // endings: a range measured on the one and applied to the other lands as
+    // many bytes early as there are line breaks before it — and a CRLF file
+    // ended up with its `free {` written twice.
+    const after = applyEdit(drawing.source, edit);
+    const written = source.includes('\r\n') ? after.replace(/\r?\n/g, '\r\n') : after;
+    return editBetween(source, written, edit.phrase ?? dgm('diagram.did.addPart'));
   }
 
   /** Whether a part of the library is an input, which is drawn with a label. */
@@ -1597,7 +1931,7 @@ export function createCanvas(options: CanvasOptions): Canvas {
         // The point is where it goes only when what is picked has no
         // arrangement to put it in.
         part: name, label: t('diagram.new.label'), near,
-        at: event ? pointIn(event) : emptySpot(),
+        at: event ? pointIn(event) : besidePicked() ?? emptySpot(),
       });
     } catch (error) {
       if (error instanceof DiagramEditError) { options.onError?.(describeEdit(error)); return; }
@@ -1632,7 +1966,18 @@ export function createCanvas(options: CanvasOptions): Canvas {
       if (kind) kind.push(one);
       else kinds.set(part.group, [one]);
     }
-    return [...kinds].map(([group, items]): MenuItem => ({ label: group, items }));
+    const menus = [...kinds].map(([group, items]): MenuItem => ({ label: group, items }));
+    // A zone — the frame round a LAN or a DMZ — goes with the pictures: it is
+    // what a network drawing puts them in. A drawing laid out by its flow has
+    // nowhere to pin one.
+    if (file.mode === 'free') {
+      menus.push({
+        label: t('diagram.canvas.addZone'),
+        icon: shapeIcon('group'),
+        run: () => addZoneHere(event),
+      });
+    }
+    return menus;
   }
 
   /**
@@ -1667,36 +2012,42 @@ export function createCanvas(options: CanvasOptions): Canvas {
 
   /** Adds a shape written as one of the library's parts — an input with its label, unless told not to. */
   function addPart(name: string, event?: MouseEvent, labelled = true, drawing = { file, source }): void {
-    if (labelled && drawing.file.mode === 'free' && isInputPart(name, drawing.file)) {
+    repeats.set(owner, { kind: 'part', name, labelled });
+    // A table's columns have their headings for labels: what is put in one is
+    // the part alone, in a cell, not a field with words of its own beside it.
+    const one = picked.length === 1 ? picked[0]! : undefined;
+    const inTable = one !== undefined && tableOf(drawing.file, one) !== undefined;
+    if (labelled && !inTable && drawing.file.mode === 'free' && isInputPart(name, drawing.file)) {
       addInput(name, event, drawing);
       return;
     }
     const into = beside();
     const at = file.mode === 'free' && !into
-      ? (event ? pointIn(event) : emptySpot())
+      ? (event ? pointIn(event) : besidePicked() ?? emptySpot())
       : undefined;
     options.apply(
       () => onFile(drawing, addNode(drawing.file, drawing.source, { shape: 'rect', text: '', at, part: name, into })),
-      [nextShapeId(drawing.file, 'part')],
+      [nextShapeId(drawing.file, 'part', name)],
     );
   }
 
   function addShape(
     shape: ShapeKind, event?: MouseEvent, icon?: string, text = t('diagram.new.shape'),
   ): void {
+    repeats.set(owner, { kind: 'shape', shape, icon, text });
     const into = beside();
     // A freely placed drawing has no engine to decide where a shape goes, so
-    // the new one is pinned: at the pointer if it came from the drawing, and
-    // under the drawing otherwise. Unless something in an arrangement is
-    // picked — then the arrangement is the engine, and it says where.
+    // the new one is pinned: at the pointer if it came from the drawing, under
+    // the shape picked, or under the drawing. Unless something in an
+    // arrangement is picked — then the arrangement is the engine, and it says where.
     const at = file.mode === 'free' && !into
-      ? (event ? pointIn(event) : emptySpot())
+      ? (event ? pointIn(event) : besidePicked() ?? emptySpot())
       : undefined;
     // Selected as soon as it exists, so the next gesture — dragging it, or
     // typing over its text — lands on the shape just added.
     options.apply(
       () => addNode(file, source, { shape, text, at, icon, into }),
-      [nextShapeId(file, icon === undefined ? shape : 'part')],
+      [nextShapeId(file, icon === undefined ? shape : 'part', icon)],
     );
   }
 
@@ -1737,13 +2088,289 @@ export function createCanvas(options: CanvasOptions): Canvas {
     };
   }
 
+  /**
+   * The picked shapes as the things they are parts of. A label and its input
+   * are one field, held in a stack of their own: picking several fields by
+   * dragging a band round them picks their labels and inputs, and stacking
+   * those would try to pull each out of its own field. So each is taken as
+   * its field, and a shape whose container is picked too goes with it.
+   */
+  function wholes(ids: readonly string[]): string[] {
+    const held = containerOf(file);
+    const out: string[] = [];
+    for (const one of ids) {
+      const field = fieldOf(file, one);
+      const whole = field && field.kind !== 'left' ? field.container : one;
+      if (!out.includes(whole)) out.push(whole);
+    }
+    return out.filter(one => {
+      for (let at = held.get(one), depth = 0; at !== undefined && depth < 64; at = held.get(at), depth++) {
+        if (out.includes(at)) return false;
+      }
+      return true;
+    });
+  }
+
+  /** The shapes given, as a copy: the drawing as it is now, and where they are drawn in it. */
+  function snapshot(ids: readonly string[]): Copied {
+    const places = new Map([...laid.boxes].map(([key, box]) =>
+      [key, { ...box, x: box.x - laid.origin.x, y: box.y - laid.origin.y }]));
+    return { file, source, ids: [...ids], places };
+  }
+
+  /** Writes a copy into this drawing, moved by `by`, and picks what was made. */
+  function paste(copied: Copied, by: { x: number; y: number }): void {
+    if (file.mode !== 'free' && file.mode !== 'flow') return;
+    let made: { edit: Edit; ids: string[] };
+    try {
+      made = duplicateNodes(file, source, copied, { x: Math.round(by.x), y: Math.round(by.y) });
+    } catch (error) {
+      if (error instanceof DiagramEditError) { options.onError?.(describeEdit(error)); preview = undefined; paint(); return; }
+      throw error;
+    }
+    options.apply(() => made.edit, made.ids);
+  }
+
+  /**
+   * The colours of a shape: its fill, its outline and its words, each a short
+   * row of ready colours, "none", and the way back to what the theme or the
+   * part says. They are written to the style section, where a hand-written
+   * `{ fill: … }` would go — the menu is a way to write it, not a second
+   * place for colours to live.
+   */
+  function colourItems(id: string): MenuItem {
+    type Swatch = readonly [string, string];
+    const FILLS: readonly Swatch[] = [
+      ['#ffffff', 'white'], ['#f7f8fa', 'grey'], ['#e3f2fd', 'blue'], ['#e8f5e9', 'green'],
+      ['#fff8e1', 'yellow'], ['#fdecea', 'red'],
+    ];
+    const LINES: readonly Swatch[] = [
+      ['#3a4048', 'dark'], ['#d3d7dd', 'grey'], ['#1f5fa8', 'blue'], ['#2e7d32', 'green'], ['#b3261e', 'red'],
+    ];
+    const TEXTS: readonly Swatch[] = [
+      ['#1c1f24', 'black'], ['#ffffff', 'white'], ['#1f5fa8', 'blue'], ['#2e7d32', 'green'], ['#b3261e', 'red'],
+    ];
+    const swatch = (colour: string): string => colour === 'none'
+      ? '<svg viewBox="0 0 16 16" width="16" height="16"><rect x="2.5" y="2.5" width="11" height="11" fill="none" stroke="#888"/><line x1="3" y1="13" x2="13" y2="3" stroke="#b3261e"/></svg>'
+      : `<svg viewBox="0 0 16 16" width="16" height="16"><rect x="2.5" y="2.5" width="11" height="11" fill="${colour}" stroke="#888"/></svg>`;
+    const node = file.nodes.find(one => one.id === id);
+    const set = (property: string, value: string | undefined): void => {
+      if (lookOf(property, id) === value) return;
+      options.apply(() => setNodeStyle(file, source, id, { [property]: value }), [id]);
+    };
+    const row = (property: string, swatches: readonly Swatch[], none: boolean): MenuItem[] => [
+      ...swatches.map(([colour, name]): MenuItem => ({
+        label: t(`diagram.canvas.colour.${name}` as never), icon: swatch(colour),
+        disabled: lookOf(property, id) === colour,
+        run: () => set(property, colour),
+      })),
+      ...(none ? [{
+        label: t('diagram.canvas.noColour'), icon: swatch('none'),
+        disabled: lookOf(property, id) === 'none',
+        run: () => set(property, 'none'),
+      }] : []),
+      {
+        label: t('diagram.canvas.defaultColour'), separated: true,
+        disabled: lookOf(property, id) === undefined,
+        run: () => set(property, undefined),
+      },
+    ];
+    return {
+      label: t('diagram.canvas.colours'), separated: true,
+      disabled: node?.shape === 'line',
+      items: [
+        { label: t('diagram.canvas.fillColour'), items: row('fill', FILLS, true) },
+        { label: t('diagram.canvas.lineColour'), items: row('line', LINES, true) },
+        { label: t('diagram.canvas.textColour'), items: row('color', TEXTS, false) },
+      ],
+    };
+  }
+
+  /**
+   * The picture a shape shows: chosen from a file, or taken away. Written as
+   * the shape's `icon`, the path as the drawing writes it.
+   */
+  function pictureItems(id: string): MenuItem[] {
+    const pick = options.pickPicture;
+    const node = file.nodes.find(one => one.id === id);
+    if (!pick || node === undefined || node.shape === 'line' || node.shape === 'group') return [];
+    const own = file.style.get(id)?.get('icon');
+    // Offered on a picture: the image part, or a shape already showing a file.
+    // On every text box it was a line nobody wanted between the ones they do.
+    if (own === undefined || (own !== 'ui/image' && !isIconPath(own))) return [];
+    const items: MenuItem[] = [{
+      label: t('diagram.canvas.pickPicture'),
+      run: () => {
+        void pick().then(path => {
+          if (path === undefined) return;
+          options.apply(() => setNodeStyle(file, source, id, { icon: path }), [id]);
+        }).catch((error: unknown) => options.onError?.(String(error)));
+      },
+    }];
+    if (own !== undefined && /\.(png|jpe?g|gif|svg|webp)$/i.test(own)) {
+      items.push({
+        label: t('diagram.canvas.dropPicture'),
+        run: () => options.apply(() => setNodeStyle(file, source, id, { icon: undefined }), [id]),
+      });
+    }
+    return items;
+  }
+
+  /**
+   * One change made to each of several shapes, as one edit: each worked out on
+   * the text the one before left, so their ranges never collide. A shape the
+   * change does not apply to (already that part) is passed over.
+   */
+  function eachOf(
+    ids: readonly string[], step: (now: DiagramFile, text: string, id: string) => Edit, phrase: Phrase,
+  ): Edit {
+    if (ids.length === 1) return step(file, source, ids[0]!);
+    let text = source;
+    let now: DiagramFile = file;
+    let refused: unknown;
+    let changed = false;
+    for (const id of ids) {
+      try {
+        text = applyEdit(text, step(now, text, id));
+        now = parseDiagram(text);
+        changed = true;
+      } catch (error) {
+        if (!(error instanceof DiagramEditError)) throw error;
+        refused = error;
+      }
+    }
+    if (!changed) throw refused ?? new DiagramEditError(dgm('diagram.edit.noChange'));
+    return editBetween(source, text, phrase);
+  }
+
+  /**
+   * Where the words sit in a shape: left, centre or right. A shape the item
+   * table aligns is aligned there — the table wins over the style, so writing
+   * the style would change nothing on screen.
+   */
+  function alignItems(id: string): MenuItem[] {
+    const node = file.nodes.find(n => n.id === id);
+    if (!node || node.shape === 'line' || node.shape === 'group' || node.items.length > 0) return [];
+    const targets = picked.filter(one => {
+      const other = file.nodes.find(n => n.id === one);
+      return other !== undefined && other.shape !== 'line' && other.shape !== 'group';
+    });
+    const current = file.style.get(id)?.get('align');
+    const table = options.itemSource;
+    const linked = (one: string): string | undefined => {
+      if (table === undefined) return undefined;
+      const item = itemOfShape(file, one);
+      return file.itemLinks?.links.has(item) ? item : undefined;
+    };
+    const set = (side: 'left' | 'center' | 'right' | undefined): void => options.apply(() => {
+      const inTable = targets.filter(one => linked(one) !== undefined);
+      const inStyle = targets.filter(one => linked(one) === undefined);
+      let drawingEdit: Edit | undefined;
+      if (inStyle.length > 0) {
+        drawingEdit = eachOf(inStyle, (_, text, one) => {
+          const own = parseDiagram(text);
+          return setNodeStyle(own, text, one, { align: side });
+        }, dgm('diagram.did.alignText'));
+      }
+      let tableEdit: Edit | undefined;
+      if (inTable.length > 0 && table !== undefined) {
+        let text = table;
+        for (const one of inTable) {
+          try { text = applyEdit(text, setItemCell(file, text, linked(one)!, 'align', side)); } catch (error) {
+            if (!(error instanceof DiagramEditError)) throw error;
+          }
+        }
+        if (text !== table) {
+          const first = setItemCell(file, table, linked(inTable[0]!)!, 'align', side);
+          tableEdit = { ...editBetween(table, text, dgm('diagram.did.alignText')), ...(first.path === undefined ? {} : { path: first.path }) };
+        }
+      }
+      if (drawingEdit && tableEdit) return { ...drawingEdit, also: tableEdit };
+      const one = drawingEdit ?? tableEdit;
+      if (!one) throw new DiagramEditError(dgm('diagram.edit.sameLook'));
+      return one;
+    }, [...picked]);
+    const sides = ['left', 'center', 'right'] as const;
+    return [{
+      label: t('diagram.canvas.textAlign'),
+      items: [
+        ...sides.map((side): MenuItem => ({
+          label: t(`diagram.canvas.textAlign.${side}`),
+          icon: alignIcon(side === 'center' ? 'centre' : side),
+          disabled: targets.length <= 1 && current === side,
+          run: () => set(side),
+        })),
+        { label: t('diagram.canvas.textAlign.default'), separated: true, run: () => set(undefined) },
+      ],
+    }];
+  }
+
+  /**
+   * Another picture for a shape that shows one of the shipped pictures — a
+   * router for a switch. The screen's own controls are parts, not pictures,
+   * and are changed with the part.
+   */
+  function iconItems(id: string): MenuItem[] {
+    const icon = file.style.get(id)?.get('icon');
+    if (icon === undefined || icon.startsWith('ui/') || stencilArt(icon) === undefined) return [];
+    const targets = picked.filter(one => {
+      const other = file.style.get(one)?.get('icon');
+      return other !== undefined && !other.startsWith('ui/') && stencilArt(other) !== undefined;
+    });
+    const kinds = new Map<string, MenuItem[]>();
+    for (const part of stencilParts(locale)) {
+      if (part.name.startsWith('ui/')) continue;
+      const one: MenuItem = {
+        label: part.label,
+        icon: partIcon(part.body),
+        disabled: part.name === icon && targets.length <= 1,
+        run: () => options.apply(() => eachOf(targets.length > 0 ? targets : [id],
+          (_, text, shape) => setNodeStyle(parseDiagram(text), text, shape, { icon: part.name }), dgm('diagram.did.icon')), [...picked]),
+      };
+      const kind = kinds.get(part.group);
+      if (kind) kind.push(one); else kinds.set(part.group, [one]);
+    }
+    return [{ label: t('diagram.canvas.changeIcon'), items: [...kinds].map(([group, list]): MenuItem => ({ label: group, items: list })) }];
+  }
+
+  /**
+   * Keeping a shape off the screen's item table, or putting it back: `item: no`
+   * in its own style. Every shape picked that is the same way goes with it.
+   */
+  function leaveOutItems(id: string): MenuItem[] {
+    if (file.mode !== 'free') return [];
+    const listed = itemShapes(file);
+    const out = isLeftOut(file, id);
+    if (!out && !listed.has(id)) return [];
+    const targets = picked.filter(one => (out ? isLeftOut(file, one) : listed.has(one)));
+    return [{
+      label: t(out ? 'diagram.canvas.putBackItem' : 'diagram.canvas.leaveOutItem'),
+      separated: true,
+      run: () => options.apply(() => eachOf(targets.length > 0 ? targets : [id],
+        (_, text, one) => setNodeStyle(parseDiagram(text), text, one, { item: out ? undefined : 'no' }),
+        dgm(out ? 'diagram.did.putBackItem' : 'diagram.did.leaveOutItem')), [...picked]),
+    }];
+  }
+
   function shapeItems(id: string): MenuItem[] {
     const node = file.nodes.find(n => n.id === id);
     const items: MenuItem[] = [];
+    // A table's rows and columns first: adding a row is what a table is
+    // pressed for, and it should not be at the bottom of a long menu.
+    const table = gridTableItems(id);
+    if (table.length > 0) {
+      const [first] = table;
+      items.push(...(first?.items ?? [first!]).map((one, index): MenuItem => ({ ...one, separated: index === 0 ? false : one.separated === true })));
+    }
+    // What holds it: a stack whose members cover it can be picked from here.
+    const holder = picked.length === 1 ? holderOf(id) : undefined;
+    if (holder !== undefined) {
+      items.push({ label: t('diagram.canvas.pickContainer', { id: holder }), separated: items.length > 0, run: () => pick([holder]) });
+    }
     if (picked.length > 1) {
       // Grouping adds one line naming what is inside. Nothing moves, so the
       // drawing looks the same the moment after.
-      const ids = [...picked];
+      const ids = wholes(picked);
       items.push({
         label: t('diagram.canvas.groupCount', { count: ids.length }),
         run: () => options.apply(() => groupNodes(file, source, ids, t('diagram.new.group')), ids),
@@ -1786,6 +2413,10 @@ export function createCanvas(options: CanvasOptions): Canvas {
         run: () => { connecting = id; describe(); },
         disabled: picked.length > 1,
       },
+      colourItems(id),
+      ...alignItems(id),
+      ...iconItems(id),
+      ...pictureItems(id),
     );
     for (const shape of PALETTE) {
       items.push({
@@ -1813,22 +2444,26 @@ export function createCanvas(options: CanvasOptions): Canvas {
             name => options.apply(() => setColumnPart(file, source, column.table, column.col, name), [id])),
         });
       }
+      // Every shape picked becomes the part, not only the last one pressed.
+      const targets = picked.filter(one => file.nodes.find(n => n.id === one)?.shape !== 'group');
       items.push({
         label: column ? t('diagram.canvas.cellPart')
           : file.partOf.has(id) ? t('diagram.canvas.changePart') : t('diagram.canvas.makePart'),
         separated: column === undefined,
         items: libraryItems(
-          name => options.apply(() => setNodePart(file, source, id, name), [id]),
-          file.partOf.get(id)),
+          name => options.apply(() => eachOf(targets.length > 0 ? targets : [id],
+            (now, text, one) => setNodePart(now, text, one, name), dgm('diagram.did.changePart')), [...picked]),
+          targets.length > 1 ? undefined : file.partOf.get(id)),
       });
     }
+    items.push(...stateItems(id));
     items.push(...fieldItems(id));
     items.push(...flowItems(id));
-    items.push(...gridTableItems(id));
     items.push(...scrollItems(id));
     if (file.itemTable !== undefined && options.itemSource !== undefined) {
       items.push({ label: t('diagram.canvas.itemList'), separated: true, items: itemListItems(id) });
     }
+    items.push(...leaveOutItems(id));
     items.push({
       label: t('diagram.canvas.unpin'),
       separated: true,
@@ -1870,10 +2505,16 @@ export function createCanvas(options: CanvasOptions): Canvas {
     return [{
       label: t('diagram.canvas.table'), separated: true,
       items: [
-        { label: t('diagram.canvas.tableRowBelow'), run: () => options.apply(() => addTableRow(file, source, table, row), [id]) },
+        {
+          label: t('diagram.canvas.tableRowBelow'),
+          run: () => { repeats.set(owner, { kind: 'tableRow' }); options.apply(() => addTableRow(file, source, table, row), [id]); },
+        },
         {
           label: t('diagram.canvas.tableColumnRight'),
-          run: () => options.apply(() => addTableColumn(file, source, table, col, t('diagram.table.column', { n: width + 1 })), [id]),
+          run: () => {
+            repeats.set(owner, { kind: 'tableColumn' });
+            options.apply(() => addTableColumn(file, source, table, col, t('diagram.table.column', { n: width + 1 })), [id]);
+          },
         },
         ...(row === undefined ? [] : [{
           label: t('diagram.canvas.rowRole'), separated: true,
@@ -1908,6 +2549,49 @@ export function createCanvas(options: CanvasOptions): Canvas {
   }
 
   /** The table and column of a cell of a table's body; undefined for any other shape. */
+  /**
+   * What a control on a screen is showing: a check box ticked or not — this
+   * one shape, so a column of check boxes can tick some rows and not others —
+   * and whether it can be used at all.
+   */
+  function stateItems(id: string): MenuItem[] {
+    const node = file.nodes.find(one => one.id === id);
+    if (!node || node.shape === 'group' || file.mode !== 'free') return [];
+    const items: MenuItem[] = [];
+    const state = checkState(file, id);
+    if (state !== undefined) {
+      items.push({
+        label: t(state === 'on' ? 'diagram.canvas.uncheck' : 'diagram.canvas.check'),
+        separated: true,
+        run: () => options.apply(() => toggleCheck(file, source, id), [id]),
+      });
+    }
+    const unseen = isHidden(file.style.get(id));
+    const quiet = picked.filter(one => isHidden(file.style.get(one)) === unseen
+      && file.nodes.find(n => n.id === one)?.shape !== 'group');
+    items.push({
+      label: t(unseen ? 'diagram.canvas.show' : 'diagram.canvas.hide'),
+      separated: state === undefined,
+      run: () => options.apply(() => eachOf(quiet.length > 0 ? quiet : [id],
+        (_, text, one) => setVisible(text, one, unseen),
+        dgm(unseen ? 'diagram.did.show' : 'diagram.did.hide')), [...picked]),
+    });
+    const disabled = isDisabled(file.style.get(id));
+    // All that is picked goes the way the one pressed goes, so a mixed
+    // selection ends up all usable or all not.
+    const targets = picked.filter(one => {
+      const other = file.nodes.find(n => n.id === one);
+      return other !== undefined && other.shape !== 'group' && isDisabled(file.style.get(one)) === disabled;
+    });
+    items.push({
+      label: t(disabled ? 'diagram.canvas.enable' : 'diagram.canvas.disable'),
+      run: () => options.apply(() => eachOf(targets.length > 0 ? targets : [id],
+        (_, text, one) => setEnabled(text, one, disabled),
+        dgm(disabled ? 'diagram.did.enable' : 'diagram.did.disable')), [...picked]),
+    });
+    return items;
+  }
+
   function bodyColumnOf(id: string): { table: string; col: number } | undefined {
     const cell = tableOf(file, id);
     if (!cell || cell.row === undefined || cell.col === undefined || cell.row < 0) return undefined;
@@ -2149,6 +2833,60 @@ export function createCanvas(options: CanvasOptions): Canvas {
   }
 
   /**
+   * Opens a text box over a line's words — or, for a line with none, over the
+   * middle of its longest stretch, where the words will be drawn.
+   */
+  function beginLineText(name: string): void {
+    const route = lineOf(name);
+    if (!route) return;
+    if (line !== name) pickLine(name);
+    let at = route.labelAt;
+    if (!at) {
+      let best = 0;
+      for (let i = 0; i + 1 < route.points.length; i++) {
+        const a = route.points[i]!; const b = route.points[i + 1]!;
+        const length = Math.hypot(b.x - a.x, b.y - a.y);
+        if (length > best) { best = length; at = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }; }
+      }
+    }
+    if (!at) return;
+    const rect = drawing.getBoundingClientRect();
+    const stageAt = stage.getBoundingClientRect();
+    const factor = scale();
+    const was = route.edge.label ?? '';
+    const input = owner.createElement('input');
+    input.className = 'dp-canvas-text';
+    input.value = was;
+    input.spellcheck = false;
+    const width = Math.max(120, (was.length + 4) * 13);
+    input.style.left = `${rect.left - stageAt.left + at.x * factor - width / 2}px`;
+    input.style.top = `${rect.top - stageAt.top + at.y * factor - 12}px`;
+    input.style.width = `${width}px`;
+    input.style.height = '24px';
+    stage.append(input);
+    input.focus();
+    input.select();
+    let done = false;
+    const finish = (keep: boolean): void => {
+      if (done) return;
+      done = true;
+      const text = input.value.trim();
+      input.remove();
+      stage.focus({ preventScroll: true });
+      if (!keep || text === was) return;
+      const edge = route.edge;
+      options.apply(() => setEdgeLabel(file, source, edge.from, edge.to, text), [], name);
+    };
+    input.addEventListener('blur', () => finish(true));
+    input.addEventListener('keydown', event => {
+      event.stopPropagation();
+      if (event.isComposing) return;
+      if (event.key === 'Enter') { event.preventDefault(); finish(true); }
+      if (event.key === 'Escape') { event.preventDefault(); finish(false); }
+    });
+  }
+
+  /**
    * Opens a text box over one row of a tree, a list or a menu.
    *
    * The row has no id, so there is no shape to place the box over: it goes
@@ -2207,7 +2945,13 @@ export function createCanvas(options: CanvasOptions): Canvas {
   // Everything the mouse does, the keyboard does too. A shape nudged by 4 is
   // still the same one line of the file.
 
+  // Alt on its own, pressed for Alt+click, is VS Code's way into its menu bar:
+  // the arrow keys pressed next would then move through the menu, not the
+  // shape. The canvas keeps it.
+  const keepAlt = (event: KeyboardEvent): void => { if (event.key === 'Alt') event.preventDefault(); };
+  stage.addEventListener('keyup', keepAlt);
   stage.addEventListener('keydown', event => {
+    if (event.key === 'Alt') { event.preventDefault(); return; }
     const ids = [...laid.boxes.keys()];
     const at = primary();
     if (event.key === 'Escape') {
@@ -2259,6 +3003,38 @@ export function createCanvas(options: CanvasOptions): Canvas {
       options.apply(() => removeNodes(file, source, ids), []);
       return;
     }
+    // Copy, paste, and both at once. The copy is the drawing's own lines, so
+    // it pastes into this drawing or another one opened in the same window.
+    if ((event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey) {
+      const key = event.key.toLowerCase();
+      if (key === 'c' && picked.length > 0) {
+        event.preventDefault();
+        clipboard = snapshot(wholes(picked));
+        pastes = 0;
+        return;
+      }
+      if (key === 'v' && clipboard) {
+        event.preventDefault();
+        pastes += 1;
+        paste(clipboard, { x: PASTE_STEP * pastes, y: PASTE_STEP * pastes });
+        return;
+      }
+      if (key === 'd' && picked.length > 0) {
+        event.preventDefault();
+        paste(snapshot(wholes(picked)), { x: PASTE_STEP, y: PASTE_STEP });
+        return;
+      }
+      if (key === 'a') {
+        event.preventDefault();
+        selectAll();
+        return;
+      }
+    }
+    if (event.key === 'F4') {
+      event.preventDefault();
+      repeat();
+      return;
+    }
     if (event.key === 'F2' && at !== undefined) {
       event.preventDefault();
       beginText(at);
@@ -2286,6 +3062,88 @@ export function createCanvas(options: CanvasOptions): Canvas {
     }));
     options.apply(() => pinNodes(file, source, pins), [...picked]);
   });
+
+  /**
+   * Every shape, as what it is part of: a shape a container or a field holds
+   * is picked through its holder, so moving them all moves the arrangement
+   * and does not pull each member out of it with a pin of its own.
+   */
+  function selectAll(): void {
+    const ids = [...laid.boxes.keys()];
+    if (ids.length === 0) return;
+    const held = containerOf(file);
+    const top = ids.filter(id => {
+      for (let at = held.get(id), depth = 0; at !== undefined && depth < 64; at = held.get(at), depth++) {
+        if (laid.boxes.has(at)) return false;
+      }
+      return true;
+    });
+    pick(file.mode === 'free' ? wholes(top) : top);
+  }
+
+  /** The last addition, again: F4, as in a spreadsheet. */
+  function repeat(): void {
+    const last = repeats.get(owner);
+    if (!last) { options.onError?.(t('diagram.canvas.nothingToRepeat')); return; }
+    switch (last.kind) {
+      case 'part': {
+        const drawing = file.library.size > 0 ? { file, source } : file.mode === 'free' ? shipped() : undefined;
+        if (drawing) addPart(last.name, undefined, last.labelled, drawing);
+        return;
+      }
+      case 'shape': addShape(last.shape, undefined, last.icon, last.text); return;
+      case 'zone': addZoneHere(); return;
+      case 'row': addRowHere(); return;
+      case 'tableRow':
+      case 'tableColumn': {
+        const one = primary();
+        const cell = one === undefined ? undefined : tableOf(file, one);
+        if (!one || !cell) { options.onError?.(t('diagram.canvas.nothingToRepeat')); return; }
+        const width = Math.max(1, ...(file.containers.get(cell.table)?.cells.map(cells => cells.length) ?? [1]));
+        if (last.kind === 'tableRow') options.apply(() => addTableRow(file, source, cell.table, cell.row), [one]);
+        else options.apply(() => addTableColumn(file, source, cell.table, cell.col, t('diagram.table.column', { n: width + 1 })), [one]);
+        return;
+      }
+    }
+  }
+
+  /** A zone where the pointer was, or under the drawing. */
+  function addZoneHere(event?: MouseEvent): void {
+    repeats.set(owner, { kind: 'zone' });
+    const at = event ? pointIn(event) : besidePicked() ?? emptySpot();
+    options.apply(() => addZone(file, source, at, t('diagram.new.zone')), [nextZoneId(file)]);
+  }
+
+  /**
+   * Under the shape picked, when it is placed by hand: where the next of a
+   * run of the same thing goes. Undefined when nothing, or more than one
+   * thing, is picked.
+   */
+  function besidePicked(): { x: number; y: number } | undefined {
+    const one = picked.length === 1 ? picked[0] : undefined;
+    const box = one === undefined ? undefined : laid.boxes.get(one);
+    if (!box || file.mode !== 'free') return undefined;
+    return { x: round(box.x - laid.origin.x), y: round(box.y + box.height - laid.origin.y + 8) };
+  }
+
+  /** Moves the whole drawing so its top left is (0, 0). Asked for, never done on the quiet. */
+  function toOrigin(): void {
+    options.apply(() => moveToOrigin(file, source), [...picked]);
+  }
+
+  /**
+   * The menu that is not about any one shape: the item table, picking
+   * everything, the last addition again, the drawing to (0, 0).
+   */
+  function drawingItems(): MenuItem[] {
+    return [
+      { label: t('diagram.canvas.selectAll'), run: selectAll },
+      { label: t('diagram.canvas.repeat'), disabled: !repeats.has(owner), run: repeat },
+      ...(file.layout.size > 0 ? [{ label: t('diagram.canvas.toOrigin'), run: toOrigin }] : []),
+      ...tableItems().map((item, index) => ({ ...item, separated: index === 0 })),
+      ...(options.drawingMenu?.() ?? []).map((item, index) => ({ ...item, separated: index === 0 })),
+    ];
+  }
 
   // --- 整列 --------------------------------------------------------------
   //
@@ -2420,6 +3278,7 @@ export function createCanvas(options: CanvasOptions): Canvas {
         && lookOf(property ?? '', alone.id) === (value === '' ? undefined : value));
     }
     if (!where) return;
+    if (naming) naming.hidden = true;
     if (connecting !== undefined) {
       where.textContent = t('diagram.canvas.connectFrom', { id: connecting });
       return;
@@ -2452,6 +3311,16 @@ export function createCanvas(options: CanvasOptions): Canvas {
       return;
     }
     const pinned = file.layout.has(at) ? t('diagram.canvas.pinned') : t('diagram.canvas.auto');
+    if (naming && file.nodes.some(node => node.id === at)) {
+      naming.hidden = false;
+      // Not while it is being typed in: a redraw must not take the words back.
+      if (owner.activeElement !== naming || naming.dataset.id !== at) naming.value = at;
+      naming.dataset.id = at;
+      naming.size = Math.max(6, at.length + 2);
+      where.textContent = `${round(box.x - laid.origin.x)}, `
+        + `${round(box.y - laid.origin.y)}  ${round(box.width)}×${round(box.height)}  (${pinned})`;
+      return;
+    }
     where.textContent = `${at}  ${round(box.x - laid.origin.x)}, `
       + `${round(box.y - laid.origin.y)}  ${round(box.width)}×${round(box.height)}  (${pinned})`;
   }
@@ -2468,6 +3337,28 @@ export function createCanvas(options: CanvasOptions): Canvas {
 
   function createBar(): HTMLElement {
     const node = element('div', 'dp-canvas-bar');
+    // The picked shape's name, to change where it is shown: renaming it
+    // renames every line that names it.
+    naming = owner.createElement('input');
+    naming.className = 'dp-canvas-name';
+    naming.spellcheck = false;
+    naming.title = t('diagram.canvas.renameTitle');
+    naming.hidden = true;
+    naming.addEventListener('pointerdown', event => event.stopPropagation());
+    naming.addEventListener('keydown', event => {
+      event.stopPropagation();
+      if (event.isComposing) return;
+      const box = naming!;
+      const was = box.dataset.id ?? '';
+      if (event.key === 'Escape') { event.preventDefault(); box.value = was; stage.focus({ preventScroll: true }); return; }
+      if (event.key !== 'Enter') return;
+      event.preventDefault();
+      const now = box.value.trim();
+      if (now === '' || now === was) { box.value = was; stage.focus({ preventScroll: true }); return; }
+      rename(was, now);
+    });
+    naming.addEventListener('blur', () => { naming!.value = naming!.dataset.id ?? ''; });
+    node.append(naming);
     where = element('span', 'dp-canvas-where');
     node.append(where);
 
@@ -2604,33 +3495,29 @@ export function createCanvas(options: CanvasOptions): Canvas {
     rowButtons = rowed;
     node.append(rows);
 
-    add(t('diagram.canvas.addPart'), t('diagram.canvas.addPartTitle'), () => {
+    // One menu for everything that can be put on the drawing — parts, shapes,
+    // pictures — and one for what can be done to what is picked. The rest
+    // (back to automatic, the item table) lives in those two.
+    add(t('diagram.canvas.add'), t('diagram.canvas.addTitle'), () => {
       const at = bar.getBoundingClientRect();
-      menu.open(at.left + 8, at.bottom + 4, partItems());
+      menu.open(at.left + 8, at.bottom + 4, everythingItems());
     });
-    add(t('diagram.canvas.addShape'), t('diagram.canvas.addShapeTitle'), () => {
+    // Area selection, on until it is pressed again.
+    // Read from the map, not through bandMode(): the bar is built before that is declared.
+    const banding = add(t('diagram.canvas.bandMode'), t('diagram.canvas.bandModeTitle'), () => {
+      bandModes.set(owner, bandModes.get(owner) !== true);
+      banding.classList.toggle('dp-canvas-on', bandModes.get(owner) === true);
+    });
+    banding.classList.toggle('dp-canvas-on', bandModes.get(owner) === true);
+    add(t('diagram.canvas.source'), t('diagram.canvas.sourceTitle'), () => {
+      const open = options.openSourceFile;
+      if (!open) { options.showSource(); return; }
       const at = bar.getBoundingClientRect();
-      menu.open(at.left + 8, at.bottom + 4, PALETTE.map(shape => ({
-        label: t(`diagram.shape.${shape}`),
-        icon: shapeIcon(shape),
-        separated: shape === 'parallelogram',
-        run: () => addShape(shape),
-      })));
+      menu.open(at.left + 8, at.bottom + 4, [
+        { label: t('diagram.canvas.sourceFile'), run: open },
+        { label: t('diagram.canvas.sourceHere'), run: () => options.showSource() },
+      ]);
     });
-    release = add(t('diagram.canvas.unpin'), t('diagram.canvas.unpinToEngine'), () => {
-      const id = primary();
-      if (id === undefined || picked.length !== 1) return;
-      options.apply(() => unpinNode(file, source, id), [id]);
-    });
-    // The item table: made from here when the screen has none, matched to
-    // the screen when it has one. Not there for a drawing that is no screen.
-    if (tableItems().length > 0) {
-      add(t('diagram.canvas.itemList'), t('diagram.canvas.itemListTitle'), () => {
-        const at = bar.getBoundingClientRect();
-        menu.open(at.left + 8, at.bottom + 4, tableItems());
-      });
-    }
-    add(t('diagram.canvas.source'), t('diagram.canvas.sourceTitle'), () => options.showSource());
     add(t('diagram.canvas.more'), t('diagram.canvas.moreTitle'), () => {
       const at = bar.getBoundingClientRect();
       menu.open(at.right - 8, at.bottom + 4, pickedItems());

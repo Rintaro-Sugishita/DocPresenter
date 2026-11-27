@@ -10,6 +10,7 @@
     "@docpresenter/diagram": "*",
     "@docpresenter/markdown": "*",
     "@docpresenter/pptx": "*",
-    "@docpresenter/xlsx": "*"
+    "@docpresenter/xlsx": "*",
+    "yaml": "^2.9.1"
   }
 }

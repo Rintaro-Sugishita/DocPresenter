@@ -101,7 +101,7 @@ describe('行と列', () => {
     expect(read(text).containers.get('results')!.cells).toEqual([['resultsH2'], ['resultsR2']]);
   });
 
-  it('最後の行・最後の列は消せない', () => {
+  it('最後の行・最後の列は消せません', () => {
     const alone = step(made, removeTableRow(read(made), made, 'results', 1));
     expect(() => removeTableRow(read(alone), alone, 'results', 0)).toThrow(DiagramEditError);
     const narrow = step(made, removeTableColumn(read(made), made, 'results', 0));

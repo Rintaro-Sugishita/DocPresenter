@@ -6,7 +6,7 @@
 import { describe, expect, it } from 'vitest';
 import { unzipSync, strFromU8 } from 'fflate';
 import { parseDiagram, withParts } from '@docpresenter/diagram';
-import { drawingOf, escapeXml, hex, writePptx, type Deck } from '../src/index.js';
+import { drawingOf, escapeXml, hex, SLIDE_4_3, writePptx, type Deck } from '../src/index.js';
 
 const NL = String.fromCharCode(10);
 const diagram = (...lines: string[]) => parseDiagram(lines.join(NL));
@@ -187,6 +187,13 @@ describe('書庫', () => {
     ]] }] }],
     diagnostics: [],
   };
+
+  it('4:3 を頼めば、スライドの大きさが 4:3 になる', () => {
+    const wide = strFromU8(unzipSync(writePptx(deck))['ppt/presentation.xml']!);
+    expect(wide).toContain('type="screen16x9"');
+    const square = strFromU8(unzipSync(writePptx(deck, { size: SLIDE_4_3 }))['ppt/presentation.xml']!);
+    expect(square).toContain('cx="9144000" cy="6858000" type="screen4x3"');
+  });
 
   it('内容の型が先頭に来る', () => {
     const files = unzipSync(writePptx(deck));

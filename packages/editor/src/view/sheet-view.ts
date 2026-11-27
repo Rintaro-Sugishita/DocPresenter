@@ -9,6 +9,7 @@ import {
   PICTURE, importAttribute, isAddress, joinPath, labelPrefixFor, parseDocument, parseTable,
   removeImportLine, renameFigure, setFenceView, setImportAttribute, sheetsOf, viewOf, type MermaidView, type Sheet,
   enterInList, indentListItems, labelCandidates, cellAt, type TableFile, type TextChange,
+  PAPER_NAMES, paperOf, paperStyle, paperValue, setFrontmatterKey, type Paper, markdownTables, tableFromTsv,
 } from '@docpresenter/markdown';
 import { createSuggestions } from './suggest.js';
 import {
@@ -28,6 +29,7 @@ import { createOverlayEditor } from '@docpresenter/diagram';
 import { createGrid, type CellChoices, type Grid, type GridPosition } from './grid.js';
 import { attachZoom, createMenu, fitOverlays, type MenuItem } from '@docpresenter/base';
 import { EDITOR_STYLE } from './style.js';
+import { injectMathStyle } from '../math.js';
 import { BASE_STYLE, useDarkStyle } from '@docpresenter/base';
 import { DIAGRAM_STYLE } from '@docpresenter/diagram';
 import { createToolbar } from '@docpresenter/base';
@@ -124,6 +126,18 @@ export interface SheetViewOptions {
    * Offered while reading too, unlike the figure's own lines.
    */
   readonly figureMenu?: (figure: HTMLElement, target: Element) => readonly MenuItem[];
+  /**
+   * Opens a file the document uses (a drawing's `.dgm`) in an editor of its
+   * own, beside the document: the canvas offers it next to showing the text
+   * here. Without it the canvas shows the text here only.
+   */
+  readonly openFile?: ((path: string) => void) | undefined;
+  /**
+   * The lines for the menu on a table written in the prose: what the host
+   * can do with it (move it into a file, open it in Excel). `line` is where
+   * it starts in the document, from 0; `text` is the table as written.
+   */
+  readonly tableMenu?: (table: { line: number; text: string }) => readonly MenuItem[];
   /**
    * What Ctrl+Z takes back. A host that mounts the view again — because a
    * picture arrived, or a file changed — passes the same one each time, so the
@@ -228,6 +242,16 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
     const target = event.target as HTMLElement | null;
     if (target?.closest('.dp-grid, .dp-canvas, .dp-canvas-host, .dp-block-source')) return;
     const figure = target?.closest<HTMLElement>('.dp-figure');
+    const written = figure ? undefined : target?.closest('table');
+    if (written && target && !readOnly && options.tableMenu) {
+      const found = proseTable(written);
+      const items = found ? options.tableMenu(found) : [];
+      if (items.length > 0) {
+        event.preventDefault();
+        menu.open(event.clientX, event.clientY, items);
+      }
+      return;
+    }
     if (!figure || !target) return;
     const more = options.figureMenu?.(figure, target) ?? [];
     const own: MenuItem[] = readOnly || !nameable(figure) ? [] : [
@@ -241,6 +265,38 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
   const tabbar = element('div', 'dp-tabbar');
   tabbar.setAttribute('role', 'tablist');
   root.append(pane, tabbar);
+  // Every sheet, one to a line, as Excel lists them: a row of tabs longer
+  // than the window has no other way to reach the one at the far end.
+  tabbar.addEventListener('contextmenu', event => {
+    if ((event.target as HTMLElement | null)?.closest('select, input')) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const names = tabs.map(tab => tab.firstChild?.textContent ?? '');
+    if (names.length === 0) return;
+    menu.open(event.clientX, event.clientY, names.map((name, i): MenuItem => ({
+      label: `${i + 1}. ${name}`,
+      disabled: i + 1 === active,
+      run: () => {
+        select(i + 1);
+        tabs[i]?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+      },
+    })));
+  });
+
+  /** A table on the page that was written in the prose: where it is in the document, and its text. */
+  function proseTable(table: Element): { line: number; text: string } | undefined {
+    const prose = table.closest<HTMLElement>('.dp-prose');
+    const span = prose && prose.dataset['doc'] === undefined ? spanOf(prose) : undefined;
+    if (!prose || !span) return undefined;
+    const nth = [...prose.querySelectorAll('table')].indexOf(table as HTMLTableElement);
+    const lines = source.split('\n');
+    const firstLine = sliceBytes(source, 0, span.start).split('\n').length - 1;
+    const lastLine = firstLine + sliceBytes(source, span.start, span.end).split('\n').length - 1;
+    const tables = markdownTables(source).filter(one => one.first >= firstLine && one.last <= lastLine);
+    const found = tables[nth];
+    if (!found) return undefined;
+    return { line: found.first, text: lines.slice(found.first, found.last + 1).join('\n') };
+  }
 
   function element(tag: string, className: string): HTMLElement {
     const node = owner.createElement(tag);
@@ -267,6 +323,8 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
     readonly path: string | undefined;
     /** The text the box opened with: the range of the file, as it is in the file. */
     readonly initial: string;
+    /** The blocks after the host that the box holds too, hidden while it is open. */
+    readonly merged: readonly HTMLElement[];
   }
 
   let toolbar = createToolbar(owner, applyFormat, settings.locale);
@@ -283,11 +341,50 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
     toolbar.sync(area.value, area.selectionStart, area.selectionEnd);
   }
 
-  function beginEdit(host: HTMLElement): void {
+  function beginEdit(pressed: HTMLElement): void {
+    // A heading and the paragraphs under it are one thing to write: the
+    // heading opens with them, and a paragraph opens with its heading.
+    const section = sectionOf(pressed);
+    const host = section?.heading ?? pressed;
     if (editing?.host === host) return;
     const span = spanOf(host);
     if (!span) return;
-    open(host, span, sliceBytes(source, span.start, span.end), '', false, undefined);
+    const body = section?.body ?? [];
+    const last = body.length === 0 ? undefined : spanOf(body[body.length - 1]!);
+    const whole = last === undefined ? span : { start: span.start, end: last.end };
+    // The words are the body's, so the box is in the body's type, not the heading's.
+    const font = body.length === 0 ? undefined : owner.defaultView?.getComputedStyle(body[0]!).font;
+    open(host, whole, sliceBytes(source, whole.start, whole.end), '', false, undefined, body);
+    if (font && editing?.host === host) editing.area.style.font = font;
+  }
+
+  /**
+   * The heading a block of prose sits under and the prose that follows it,
+   * up to the next heading, figure or anything else — on the page as it is.
+   * Nothing when the block is not part of one: prose with no heading above
+   * it, or what was pulled in from another file.
+   */
+  function sectionOf(block: HTMLElement): { heading: HTMLElement; body: HTMLElement[] } | undefined {
+    const isHeading = (node: Element): node is HTMLElement => /^H[1-6]$/.test(node.tagName);
+    const isProse = (node: Element): node is HTMLElement => node.classList.contains('dp-prose');
+    const own = (node: HTMLElement): boolean => node.dataset['doc'] === undefined && spanOf(node) !== undefined;
+    const step = (node: Element, back: boolean): Element | null => {
+      let next = back ? node.previousElementSibling : node.nextElementSibling;
+      while (next && next.classList.contains('dp-append-gap')) next = back ? next.previousElementSibling : next.nextElementSibling;
+      return next;
+    };
+    if (!own(block) || (!isHeading(block) && !isProse(block))) return undefined;
+    let heading: HTMLElement | undefined = isHeading(block) ? block : undefined;
+    for (let at = step(block, true); heading === undefined && at; at = step(at, true)) {
+      if (!(at instanceof HTMLElement) || !own(at)) return undefined;
+      if (isHeading(at)) heading = at;
+      else if (!isProse(at)) return undefined;
+    }
+    if (heading === undefined) return undefined;
+    const body: HTMLElement[] = [];
+    for (let at = step(heading, false); at instanceof HTMLElement && isProse(at) && own(at); at = step(at, false)) body.push(at);
+    if (body.length === 0) return undefined;
+    return { heading, body };
   }
 
   /**
@@ -753,6 +850,7 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
         name: dot > 0 ? file.slice(0, dot) : file,
         caption: importAttribute(line, 'caption') ?? '',
         label: /\{[^}]*#([A-Za-z0-9_-]+)/.exec(line)?.[1] ?? '',
+        page: importAttribute(line, 'page') ?? '',
       },
       onClose: () => { namesForm = undefined; },
       onSubmit: value => {
@@ -760,7 +858,7 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
         let change;
         try {
           change = renameFigure(source, span, {
-            caption: value.caption, label: value.label, ...(moved === path ? {} : { path: moved }),
+            caption: value.caption, label: value.label, page: value.page, ...(moved === path ? {} : { path: moved }),
           });
         } catch (error) {
           return explain(error);
@@ -822,6 +920,7 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
       locale: settings.locale,
       owner,
       table,
+      source: text,
       at: current.at,
       target: current.target,
       apply: (make, next) => {
@@ -997,6 +1096,7 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
         if (canvas) canvas = { ...canvas, selected, edge };
       },
       close: (): void => { canvas = undefined; draw(); },
+      ...(options.openFile === undefined ? {} : { openSourceFile: () => options.openFile!(current.path) }),
       showSource: (): void => {
         canvas = undefined;
         const source = options.readResource?.(current.path) ?? '';
@@ -1036,6 +1136,7 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
   function open(
     host: HTMLElement, span: { start: number; end: number },
     initial: string, prefix: string, fresh: boolean, path: string | undefined,
+    merged: readonly HTMLElement[] = [],
   ): void {
     endEdit(true);
 
@@ -1052,8 +1153,45 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
     area.className = 'dp-block-source';
     area.value = initial;
     area.spellcheck = false;
+    // The box takes the type of what it is in, so prose is written in prose
+    // type — but a heading's is the heading's: large and bold, and the body
+    // written under it in the same box read as more heading. A heading's box
+    // takes the sheet's own type instead.
+    if (/^H[1-6]$/.test(host.tagName)) {
+      const body = owner.defaultView?.getComputedStyle(host.closest('.dp-sheet') ?? host.parentElement ?? host);
+      if (body) {
+        area.style.fontFamily = body.fontFamily;
+        area.style.fontSize = body.fontSize;
+        area.style.fontWeight = body.fontWeight;
+        area.style.fontStyle = body.fontStyle;
+        area.style.lineHeight = body.lineHeight;
+        area.style.letterSpacing = body.letterSpacing;
+        area.style.textTransform = 'none';
+      }
+    }
+    // Cells copied from Excel arrive as tab-separated text, which would land
+    // as one long line. A table is what was copied, so a table is written.
+    if (path === undefined) {
+      area.addEventListener('paste', event => {
+        const html = event.clipboardData?.getData('text/html') ?? '';
+        const plain = event.clipboardData?.getData('text/plain') ?? '';
+        if (!/<table/i.test(html) || !plain.includes('\t')) return;
+        const table = tableFromTsv(plain);
+        if (table === undefined) return;
+        event.preventDefault();
+        const before = area.value.slice(0, area.selectionStart);
+        const lead = before === '' || before.endsWith('\n\n') ? '' : before.endsWith('\n') ? '\n' : '\n\n';
+        // Through the browser's own insertion, so Ctrl+Z in the box takes it back.
+        if (!owner.execCommand('insertText', false, `${lead}${table}\n`)) {
+          area.setRangeText(`${lead}${table}\n`, area.selectionStart, area.selectionEnd, 'end');
+        }
+        area.dispatchEvent(new Event('input'));
+      });
+    }
 
-    const edit: BlockEdit = { host, original: host.innerHTML, span, area, prefix, fresh, path, initial };
+    const edit: BlockEdit = { host, original: host.innerHTML, span, area, prefix, fresh, path, initial, merged };
+    // What the box holds besides the block it opened in is not shown twice.
+    for (const node of merged) node.hidden = true;
     host.classList.add('dp-editing');
     const update = (): void => {
       resize(area);
@@ -1154,8 +1292,10 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
       // figure's body may have held a live grid, and restoring its HTML would
       // leave a picture of a grid with nothing wired to it — every button
       // clickable and dead. Draw it again instead.
-      if (current.path === undefined) current.host.innerHTML = current.original;
-      else draw();
+      if (current.path === undefined) {
+        current.host.innerHTML = current.original;
+        for (const node of current.merged) node.hidden = false;
+      } else draw();
       return;
     }
     commit(() => ({
@@ -1186,6 +1326,8 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
       const figure = pressed?.closest<HTMLElement>('.dp-figure');
       if (figure && (nameable(figure) || options.figureMenu)
         && !pressed?.closest('.dp-grid, .dp-canvas, .dp-canvas-host, .dp-block-source')) return;
+      // A table written in the prose has its menu too; opening the text would take it away.
+      if (!figure && options.tableMenu && pressed?.closest('.dp-prose table')) return;
     }
     const target = (event.target as HTMLElement | null)?.closest<HTMLElement>(CLICKABLE);
     if (!target || !pane.contains(target)) return;
@@ -1677,11 +1819,39 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
     owner.defaultView?.requestAnimationFrame(settle);
   }
 
+  /**
+   * Heading numbers hang in the margin with their left edges in one line, at
+   * the room the widest number in the whole document needs. Hung by their
+   * right edges instead, a deeper number — longer — would reach further left
+   * and read as if it were the higher level.
+   */
+  function alignHeadingNumbers(page: HTMLElement): void {
+    const view = owner.defaultView;
+    if (!view) return;
+    let room = 0;
+    for (const number of page.querySelectorAll<HTMLElement>(':is(h2, h3, h4) > .dp-number:first-child')) {
+      const size = parseFloat(view.getComputedStyle(number).fontSize) || 16;
+      // Measured where it can be, estimated where its sheet is hidden.
+      const width = number.offsetWidth || (number.textContent ?? '').length * size * 0.62;
+      room = Math.max(room, width);
+    }
+    const base = parseFloat(view.getComputedStyle(page).fontSize) || 16;
+    // Never past the margin, where it would leave the page.
+    page.style.setProperty('--dp-number-room', `${Math.min(room + base * 0.6, base * 5.2)}px`);
+  }
+
   function draw(): void {
     // An edit is not a change of subject: the reader stays where they were.
     const place = placeOf();
     const page = element('div', 'dp-page');
     page.innerHTML = render(source);
+    // The paper the document names: the page is shown at that size, so what
+    // is written is seen as wide as it will be printed.
+    const paper = paperIn(source);
+    if (paper) {
+      page.dataset['paper'] = paper.name;
+      page.style.cssText = paperStyle(paper);
+    }
     pane.replaceChildren(page);
     editing = undefined;
     sections = [...page.querySelectorAll<HTMLElement>('.dp-sheet')];
@@ -1694,6 +1864,7 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
     // A screenshot with callouts shrinks to the page, its numbers with it.
     fitOverlays(page);
     options.decorate?.(page);
+    alignHeadingNumbers(page);
     if (grid) {
       const figure = page.querySelector<HTMLElement>(`.dp-figure[data-path="${cssEscape(grid.path)}"]`);
       const body = figure?.querySelector<HTMLElement>('.dp-figure-body');
@@ -1808,6 +1979,8 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
     });
     tabbar.append(add, element('div', 'dp-tabbar-spacer'));
 
+    tabbar.append(paperChoice());
+
     const toggle = element('button', 'dp-tabbar-toggle') as HTMLButtonElement;
     toggle.type = 'button';
     toggle.textContent = t('editor.sheet.showAll');
@@ -1818,6 +1991,56 @@ export function mountSheetView(options: SheetViewOptions): SheetView {
       refresh();
     });
     tabbar.append(toggle);
+  }
+
+  /**
+   * The paper, chosen from the tab bar: written in the front matter, where
+   * the PDF and the screen both read it.
+   */
+  function paperChoice(): HTMLSelectElement {
+    const select = element('select', 'dp-tabbar-paper') as HTMLSelectElement;
+    select.title = t('editor.paper.title');
+    select.disabled = readOnly;
+    const add = (value: string, label: string): void => {
+      const option = owner.createElement('option');
+      option.value = value;
+      option.textContent = label;
+      select.append(option);
+    };
+    add('', t('editor.paper.default'));
+    for (const name of PAPER_NAMES) {
+      if (name === 'slide') { add(paperValue(name, 'landscape'), t('editor.paper.slide')); continue; }
+      if (name === 'slide-4:3') { add(paperValue(name, 'landscape'), t('editor.paper.slide43')); continue; }
+      add(paperValue(name, 'portrait'), `${name} ${t('editor.paper.portrait')}`);
+      add(paperValue(name, 'landscape'), `${name} ${t('editor.paper.landscape')}`);
+    }
+    const now = paperIn(source);
+    select.value = now ? paperValue(now.name, now.orientation) : '';
+    // A paper written some other way (`b5`, `orientation: 横`) still shows.
+    if (now && select.value === '') {
+      add(paperValue(now.name, now.orientation), `${now.name} ${t(now.orientation === 'landscape' ? 'editor.paper.landscape' : 'editor.paper.portrait')}`);
+      select.value = paperValue(now.name, now.orientation);
+    }
+    select.addEventListener('change', () => {
+      const value = select.value === '' ? undefined : select.value;
+      commit(() => {
+        // The orientation goes into the one value; a line of its own would
+        // say it twice, and could say it differently.
+        const first = setFrontmatterKey(source, 'orientation', undefined);
+        const second = setFrontmatterKey(applyEdit(source, { ...first, ...described(ed('editor.did.paperDefault')) }), 'paper', value);
+        const span = first.text === '' && first.span.start === first.span.end ? second.span : first.span;
+        return {
+          span, text: second.text,
+          ...described(value === undefined ? ed('editor.did.paperDefault') : ed('editor.did.paper', { paper: value })),
+        };
+      }, active);
+    });
+    return select;
+  }
+
+  /** What the document's front matter says about the paper; nothing when it says nothing or will not read. */
+  function paperIn(text: string): Paper | undefined {
+    try { return paperOf(parseDocument(text).frontmatter.raw); } catch { return undefined; }
   }
 
   /** Renaming edits the heading the name comes from; there is no other name. */
@@ -1947,4 +2170,6 @@ function injectStyle(document: Document): void {
   document.head.append(style);
   // Its dark counterpart, inert until the host turns the screen dark.
   useDarkStyle(document, 'editor', style.textContent);
+  // KaTeX's own, apart: its fonts make it large, and it paints no colours to turn round.
+  injectMathStyle(document);
 }
