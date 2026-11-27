@@ -45,7 +45,7 @@
     },
 
     "semantics": {
-      "begin": "^\\s*(free|flow)\\b([^{]*)(\\{)\\s*$",
+      "begin": "^\\s*(free|flow|swim)\\b([^{]*)(\\{)\\s*$",
       "beginCaptures": {
         "1": { "name": "keyword.control.section.dgm" },
         "2": { "name": "entity.name.section.dgm", "patterns": [{ "include": "#direction" }] },
@@ -59,6 +59,7 @@
         { "include": "#rows-inline" },
         { "include": "#rows-block" },
         { "include": "#group" },
+        { "include": "#lane" },
         { "include": "#line-node" },
         { "include": "#connection" },
         { "include": "#part-use" },
@@ -114,6 +115,19 @@
         "5": { "name": "punctuation.section.braces.begin.dgm" },
         "6": { "patterns": [{ "include": "#members" }] },
         "7": { "name": "punctuation.section.braces.end.dgm" }
+      }
+    },
+
+    "lane": {
+      "comment": "`lane id \"label\" { a; b }` — a band of a swim (spec/dgm.md §3.6). A group with no direction.",
+      "match": "^\\s*(lane)\\s+([A-Za-z0-9_぀-鿿]+)\\s*(\"[^\"]*\")?\\s*(\\{)([^}]*)(\\})\\s*$",
+      "captures": {
+        "1": { "name": "keyword.other.lane.dgm" },
+        "2": { "name": "entity.name.tag.dgm" },
+        "3": { "name": "string.quoted.double.label.dgm", "patterns": [{ "include": "#inline" }] },
+        "4": { "name": "punctuation.section.braces.begin.dgm" },
+        "5": { "patterns": [{ "include": "#members" }] },
+        "6": { "name": "punctuation.section.braces.end.dgm" }
       }
     },
 

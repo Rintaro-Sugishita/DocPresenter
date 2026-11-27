@@ -12,7 +12,7 @@ It comes with [DocPresenter](https://github.com/Rintaro-Sugishita/DocPresenter/b
 the design-document extension, which takes drawings into documents and exports them to HTML, PDF and PowerPoint. It
 also works on its own.
 
-## Two kinds of drawing
+## Kinds of drawing
 
 **flow**: write the shapes and how they connect; the layout is worked out for you.
 
@@ -33,6 +33,26 @@ flow {
 ```
 
 <img src="https://raw.githubusercontent.com/Rintaro-Sugishita/DocPresenter/HEAD/packages/app-vscode/images/en/dgm-flow.png" alt="The flowchart laid out from the flow above" width="440">
+
+**swim**: write a flow and add `lane` lines, and it becomes a swimlane diagram. The lanes are bands in the order
+written, and every shape is kept inside its own lane. Which step comes after which is still decided by the
+connections, as in a flow.
+
+```
+swim Ordering LR {
+  lane cust "Customer" { order; recv }
+  lane shop "Shop"     { accept; ship }
+
+  order  [Place order]
+  accept [Accept]
+  ship   [Ship]
+  recv   ([Receive])
+
+  order  --> accept
+  accept --> ship
+  ship   --> recv
+}
+```
 
 **free**: shapes stay where you put them. The positions are in a `layout` section of their own, so moving a shape
 changes one line there and nothing in what the drawing says.
@@ -59,7 +79,7 @@ Right-click a `.dgm` → **"Open in DocPresenter Diagram"**, or press **Ctrl+K V
 
 Opened as text (the usual way, without "Open in DocPresenter Diagram"), a `.dgm` is coloured by layer and offers suggestions as you type:
 
-- **At the top**: the sections (`flow` / `free` / `overlay` / `layout` / `style` / `parts`) and `use "…"`. Inside the quotes
+- **At the top**: the sections (`flow` / `swim` / `free` / `overlay` / `layout` / `style` / `parts`) and `use "…"`. Inside the quotes
   of `use`: `default`, `icons`, and the workspace's files of parts, written relative to this drawing.
 - **After a shape's id**: the twelve bracket pairs (`[ ]`, `([ ])`, `[( )]` …), the parts the drawing's libraries declare
   (`textbox:` …), and the connectors. **After a connector**: the shapes not yet joined from that one.

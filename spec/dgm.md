@@ -42,15 +42,15 @@ style {
 }
 ```
 
-There are five section names, in three layers:
+There are six section names, in three layers:
 
 | Layer | Section | Holds | Required |
 |---|---|---|:--:|
-| **L1 semantics** | `free` / `flow` / `overlay` | what is in the drawing | **exactly one** |
+| **L1 semantics** | `free` / `flow` / `swim` / `overlay` | what is in the drawing | **exactly one** |
 | **L2 layout** | `layout` | positions a person pinned, corners a line turns through | optional |
 | **L3 style** | `style` | the theme, and per-shape appearance | optional |
 
-A file **MUST** contain exactly one of `free`, `flow`, and `overlay`; a reader
+A file **MUST** contain exactly one of `free`, `flow`, `swim`, and `overlay`; a reader
 MUST report an error when there is none. It **SHOULD** contain at most one
 `layout` and one `style`; a reader that finds several MUST merge them in the
 order they appear.
@@ -70,14 +70,14 @@ free Authentication {
 
 The free text is a **title for people**. A reader MAY show it and MUST NOT
 attach meaning to it, with two exceptions: `overlay` requires it, and there it is
-a quoted path (§5); and in `flow`, a first or last word that is one of Mermaid's
-directions says which way the flow runs (§3.5). The text MUST NOT contain `{`.
+a quoted path (§5); and in `flow` and `swim`, a first or last word that is one of
+Mermaid's directions says which way the flow runs (§3.5). The text MUST NOT contain `{`.
 
 ### 1.2 Why three layers
 
 So that a diff says which kind of change it is without being read closely.
 
-- Semantics changed → only the `free` / `flow` block moved. **Review this.**
+- Semantics changed → only the `free` / `flow` / `swim` block moved. **Review this.**
 - Someone nudged a shape → only `layout` moved. **Skip this.**
 - Colours changed → only `style` moved.
 
@@ -315,6 +315,74 @@ arranged by the container, so its direction does not apply.
 In `free`, nothing is computed, so a direction has nothing to act on; a reader
 SHOULD say so rather than ignore it.
 
+### 3.6 Swimlanes: `swim`
+
+A `swim` is a `flow` whose shapes are kept to **lanes**. It holds every line a
+`flow` holds, read the same way, and one more:
+
+```
+lane id ["label"] { member; member; … }
+```
+
+A lane is written as a group is (§3.3) — one line, members separated by `;`,
+the label optional and defaulting to the id — but takes no direction: every
+lane runs the way the whole drawing does. A lane is a group for every other
+purpose: its id is unique among shapes and groups, a style rule may name it,
+and a connection may end at it. A `lane` line anywhere but in a `swim` is an
+error, and a reader MUST report it.
+
+```
+swim Ordering LR {
+  lane cust "Customer"  { start; order; recv }
+  lane shop "Shop"      { accept; check; ship }
+  lane wh   "Warehouse" { pick; pack }
+
+  start  ([Start])
+  order  [Place order]
+  accept [Accept]
+  check  {In stock?}
+  pick   [Pick]
+  pack   [Pack]
+  ship   [Ship]
+  recv   ([Receive])
+
+  start  --> order
+  order  --> accept
+  accept --> check
+  check  --> pick "yes"
+  check  --> order "no"
+  pick   --> pack
+  pack   --> ship
+  ship   --> recv
+}
+```
+
+A renderer lays a `swim` out in two steps:
+
+1. **Along the flow**, exactly as the same lines in a `flow`, as if there were
+   no lanes: which step comes after which is what the connections say, and a
+   lane changes none of it.
+2. **Across the flow**, each lane is a band, side by side in the order the
+   `lane` lines are written — top to bottom when the flow runs across the page
+   (`LR`, `RL`), left to right when it runs down (`TB`, `BT`). Every shape is
+   drawn inside the band of its lane. A band is as thick as the most it holds
+   at any one step, and every band is as long as the whole drawing, so the
+   lanes line up at both ends.
+
+A lane's members are what it lists; a plain group listed in a lane brings what
+it holds. A shape listed in two lanes is in the first, and a reader SHOULD say
+so. A shape in no lane is still drawn — after the last lane, outside every
+band — and a reader SHOULD say so: a step nobody assigned is a gap in the
+diagram the author will want to see. A `swim` with no lanes is laid out as a
+`flow`, and a reader SHOULD say so.
+
+A pin (§4.1) wins here as everywhere: a pinned shape is drawn where it is
+pinned, in its lane or not, and a pinned lane is drawn as a pinned group.
+Connections cross lanes freely; a lane is not something a line goes round.
+
+The order of the `lane` lines is the order of the bands, so a writer MUST keep
+it (§6.3).
+
 ### 3.4 Example
 
 ```
@@ -521,12 +589,14 @@ Sections are separated by one blank line and indented by two spaces. A comment
 belongs to the line below it and moves with it; a blank line is written before a
 line that has comments.
 
-**The semantics section.** Shapes, then groups, then connections, each block
+**The semantics section.** In a `swim`, the lanes first, in the order they were
+written (§3.6); then shapes, then groups, then connections, each block
 separated by a blank line.
 
 | Line | Canonical form |
 |---|---|
-| header | `flow Title LR {` — the title, then the direction (§3.5) |
+| header | `flow Title LR {` — the title, then the direction (§3.5); `swim` the same |
+| lane | `lane id "label" { a; b }`, the columns lined up as a group's |
 | shape | `id [label]:::class`, the ids padded to one column. The brackets as tight as reading them back allows: `[ /a/ ]` keeps its spaces, or it would read as a parallelogram |
 | part | `id part:"label"`; a part holding rows writes them two spaces deeper per level, `-` or `+`, then `*` for the picked one |
 | group | `group id "label" LR { a; b }`, the columns lined up. The label is left out when it is the id, which is what a group without one shows |
@@ -572,7 +642,7 @@ for a wide (CJK) character, one otherwise.
 
 **What a formatter guarantees.** It MUST NOT change what the file means or what
 it draws. DocPresenter's reads its own result back and compares it with the
-original — the model, every comment, and for `free` and `flow` every box, every
+original — the model, every comment, and for `free`, `flow` and `swim` every box, every
 route, and which of two overlapping shapes is in front — and writes nothing it
 cannot prove the same. Two cases follow from that:
 
@@ -798,6 +868,6 @@ second-guess it.
 ## 9. Not in version 0.1
 
 Stated so that an implementer knows these are absent rather than undocumented:
-ports on a shape (`web.right -> api.left`), nested groups, swimlanes, layers,
+ports on a shape (`web.right -> api.left`), nested groups, layers,
 curved connections (as opposed to the rounded corners of §8), `-.-` (dashed,
 no arrowhead), and any way to set a font.

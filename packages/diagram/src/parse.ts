@@ -69,6 +69,11 @@ const NODE = /^([A-Za-z0-9_぀-鿿]+)\s*(.+?)(?::::([\w-]+))?$/;
 const EDGE = /^([A-Za-z0-9_぀-鿿]+)\s*(<-->|<->|<-\.->|-->|->|--|-\.->|~~~)\s*([A-Za-z0-9_぀-鿿]+)\s*(?:"([^"]*)")?\s*(~)?\s*$/;
 const GROUP = /^group\s+([A-Za-z0-9_぀-鿿]+)\s*(?:"([^"]*)")?\s*(?:(TB|TD|BT|LR|RL)\s*)?\{([^}]*)\}\s*$/;
 /**
+ * `lane sales "営業" { a; b }` — a band of a `swim`. Written as a group is, but
+ * with no direction: a lane runs the way the whole drawing does.
+ */
+const LANE = /^lane\s+([A-Za-z0-9_぀-鿿]+)\s*(?:"([^"]*)")?\s*\{([^}]*)\}\s*$/;
+/**
  * `flow LR {` — Mermaid's words for the way a flow runs. Written first, as
  * Mermaid writes `flowchart LR`, or last, after a title (`flow 構成 LR {`).
  */
@@ -84,7 +89,7 @@ const BEND = /^([A-Za-z0-9_぀-鿿]+)\s*-+>\s*([A-Za-z0-9_぀-鿿]+)\s*@\s*(.+)$
  * read. The first is cut where a connector or a bracket starts.
  */
 const LEADING_NAME = new RegExp(
-  `^(?:group\\s+|(?:stack|grid|tabs)\\s+)?([${ID_CHARS}-]+?)(?=\\s|$|[\\[({>"@:<~]|-[-.>])`);
+  `^(?:group\\s+|lane\\s+|(?:stack|grid|tabs)\\s+)?([${ID_CHARS}-]+?)(?=\\s|$|[\\[({>"@:<~]|-[-.>])`);
 const TARGET_NAME = new RegExp(
   `^[${ID_CHARS}]+\\s*(?:<-\\.->|<-->|<->|-\\.->|-->|->|--|-+>|~~~)\\s*([${ID_CHARS}-]+)`);
 
@@ -146,6 +151,7 @@ export function parseDiagram(source: string): DiagramFile {
   let layoutBlock: LayoutBlock | undefined;
   let body: Section | undefined;
   let direction: FlowDirection | undefined;
+  let swim = false;
   let styleBlock: Section | undefined;
 
   for (let i = 0; i < lines.length; i++) {
@@ -165,7 +171,7 @@ export function parseDiagram(source: string): DiagramFile {
     const listed = /^items\s+"([^"]+)"\s*$/.exec(text);
     if (listed) { itemTable = { path: listed[1]!, span: line.span }; continue; }
 
-    const section = /^(free|flow|overlay|layout|style|parts)\b([^{]*)\{$/.exec(text);
+    const section = /^(free|flow|swim|overlay|layout|style|parts)\b([^{]*)\{$/.exec(text);
     if (!section) throw new DiagramParseError(dgm('diagram.parse.unreadableLine', { text }), line.number);
 
     const kind = section[1]!;
@@ -181,12 +187,14 @@ export function parseDiagram(source: string): DiagramFile {
     }
     if (depth !== 0) throw new DiagramParseError(dgm('diagram.parse.unclosed', { kind }), lines[start]!.number);
 
-    if (kind === 'free' || kind === 'flow') {
-      mode = kind;
+    if (kind === 'free' || kind === 'flow' || kind === 'swim') {
+      // A swim is a flow with lanes: laid out, routed and edited as one.
+      mode = kind === 'swim' ? 'flow' : kind;
+      swim = kind === 'swim';
       const words = header.split(/\s+/);
       const way = [words[0], words[words.length - 1]].find(word => word !== undefined && DIRECTION.test(word));
       direction = way as FlowDirection | undefined;
-      parseBody(inner, nodes, edges, partOf);
+      parseBody(inner, nodes, edges, partOf, swim);
       body = blockOf(lines, raw, start, i, inner);
     } else if (kind === 'parts') {
       // A file may hold nothing but parts. It is then a library, not a drawing,
@@ -214,7 +222,7 @@ export function parseDiagram(source: string): DiagramFile {
   if (!mode && uses.length > 0) mode = 'parts';
   if (!mode) throw new DiagramParseError(dgm('diagram.parse.noSection'), 1);
   return {
-    mode, direction, comments, nodes, edges, body, layout, bends, containers, layoutBlock, styleBlock,
+    mode, direction, ...(swim ? { swim: true as const } : {}), comments, nodes, edges, body, layout, bends, containers, layoutBlock, styleBlock,
     theme, style, styleSpans, image, callouts, uses, itemTable, itemLinks: undefined,
     parts, partOf, partSizes: new Map(),
     // What the file can reach is known only once the parts are applied, which
@@ -357,7 +365,7 @@ const PART_ITEMS = /^([A-Za-z0-9_-]+):\s*\{\s*(.*)$/;
 const ITEM = /^([-+])\s+(.*)$/;
 
 function parseBody(
-  body: readonly SourceLine[], nodes: Node[], edges: Edge[], partOf: Map<string, string>,
+  body: readonly SourceLine[], nodes: Node[], edges: Edge[], partOf: Map<string, string>, swim = false,
 ): void {
   for (let i = 0; i < body.length; i++) {
     const source = body[i]!;
@@ -377,6 +385,24 @@ function parseBody(
         className: undefined, items: [],
         children: group[4]!.split(';').map(s => s.trim()).filter(s => s !== ''),
         ...(group[3] === undefined ? {} : { direction: group[3] as FlowDirection }),
+        span,
+      });
+      continue;
+    }
+
+    const lane = LANE.exec(text);
+    if (lane) {
+      // Outside a swim there is nothing to lay a lane out against; a group
+      // is the frame a flow has.
+      if (!swim) throw new DiagramParseError(dgm('diagram.parse.laneOutsideSwim', { id: lane[1]! }), line);
+      for (const member of lane[3]!.split(';')) refuseHyphen(member, line);
+      nodes.push({
+        id: lane[1]!,
+        text: lane[2] ?? lane[1]!,
+        shape: 'group',
+        lane: true,
+        className: undefined, items: [],
+        children: lane[3]!.split(';').map(s => s.trim()).filter(s => s !== ''),
         span,
       });
       continue;

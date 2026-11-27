@@ -159,7 +159,7 @@ export function layOutDiagram(diagram: DiagramFile, locale: Locale = DEFAULT_LOC
 
   const auto = diagram.mode === 'flow'
     ? autoPositions(diagram, plain, sizes, diagnostics)
-    : { positions: new Map<string, { x: number; y: number }>(), courses: new Map<Edge, Course>() };
+    : { positions: new Map<string, { x: number; y: number }>(), courses: new Map<Edge, Course>(), swim: undefined };
   // P6: a direction in a drawing that is not laid out is a word nobody acted on.
   if (diagram.mode !== 'flow') {
     if (diagram.direction !== undefined) diagnostics.push(dgm('diagram.layout.directionFree', { id: diagram.mode }));
@@ -222,6 +222,10 @@ export function layOutDiagram(diagram: DiagramFile, locale: Locale = DEFAULT_LOC
     // A group that arranges its own contents already has its box: it decided
     // where they went, so it cannot also be whatever shape they ended up in.
     if (diagram.containers.has(group.id)) continue;
+    // A lane is a band of the swim, not a frame round what it holds — unless
+    // someone pinned it, which wins as a pin always does.
+    const band = group.lane && auto.swim && !diagram.layout.has(group.id) ? laneBox(group, auto.swim) : undefined;
+    if (band) { boxes.set(group.id, band); continue; }
     const box = groupBox(group, diagram, boxes, diagnostics);
     if (box) boxes.set(group.id, box);
   }
@@ -338,7 +342,10 @@ function park(
 function route(
   diagram: DiagramFile, boxes: ReadonlyMap<string, Box>, courses: ReadonlyMap<Edge, Course>,
 ): EdgeRoute[] {
-  const all = [...boxes.values()];
+  // A lane runs the length of the drawing, so it is neither something a line
+  // goes round nor a frame it turns outside of: lines cross lanes freely.
+  const swimLanes = new Set(diagram.nodes.filter(n => n.lane).map(n => n.id));
+  const all = [...boxes].filter(([id]) => !swimLanes.has(id)).map(([, box]) => box);
   const bounds = {
     left: all.length ? Math.min(...all.map(b => b.x)) - CHANNEL_GAP : 0,
     right: all.length ? Math.max(...all.map(b => b.x + b.width)) + CHANNEL_GAP : 0,
@@ -354,7 +361,7 @@ function route(
   // one inside a group runs hard against the group's frame.
   const holder = new Map<string, string>();
   for (const node of diagram.nodes) {
-    if (node.shape !== 'group') continue;
+    if (node.shape !== 'group' || node.lane) continue;
     for (const child of node.children) if (!holder.has(child)) holder.set(child, node.id);
   }
   const frameOf = (id: string, other: string): Box => {
@@ -1714,7 +1721,7 @@ function autoPositions(
   plain: readonly Node[],
   sizes: ReadonlyMap<string, { width: number; height: number }>,
   diagnostics: Phrase[],
-): { positions: Map<string, { x: number; y: number }>; courses: ReadonlyMap<Edge, Course> } {
+): { positions: Map<string, { x: number; y: number }>; courses: ReadonlyMap<Edge, Course>; swim?: Swim } {
   const present = new Set(plain.map(n => n.id));
   const byId = new Map(diagram.nodes.map(n => [n.id, n]));
 
@@ -1861,6 +1868,18 @@ function autoPositions(
   };
   lay(undefined);
 
+  // A swim keeps every rank where the flow put it and moves what is in it
+  // across, into the band of its lane.
+  let swim: Swim | undefined;
+  if (diagram.swim) {
+    const top = placed.get(undefined) ?? new Map<string, Point>();
+    const laid = intoLanes(diagram, top, id => unitSizes.get(id)!, chain, axisOf(diagram.direction).across, diagnostics);
+    if (laid) {
+      placed.set(undefined, laid.positions);
+      swim = laid.swim;
+    }
+  }
+
   // The offsets the frames give, the same `GROUP_PAD` and header the frame is
   // drawn round its members with — so the frame lands where the room was kept.
   const positions = new Map<string, { x: number; y: number }>();
@@ -1871,7 +1890,163 @@ function autoPositions(
     }
   };
   put(undefined, 0, 0);
-  return { positions, courses };
+  return { positions, courses, ...(swim ? { swim } : {}) };
+}
+
+/**
+ * The room between a lane's edge and the shapes in it: more than a detour
+ * stands off from the shapes, so a line going round them stays in the lanes.
+ */
+const LANE_PAD = CHANNEL_GAP + 4;
+
+/** Where a swim's lanes went: each lane's band across the flow, and the length of all of them. */
+interface Swim {
+  /** From where to where each lane runs across the flow, by the lane's id. */
+  readonly bands: ReadonlyMap<string, { readonly start: number; readonly end: number }>;
+  /** From where to where every lane runs along the flow, round what they hold. */
+  readonly along: { readonly start: number; readonly end: number };
+  readonly across: boolean;
+}
+
+/**
+ * Lays out a swim's lanes: one band each, side by side across the flow in the
+ * order the file writes them, every band as long as the drawing.
+ *
+ * The flow is laid out first as if there were no lanes, so how far along a
+ * shape sits — which step comes after which — is what the connections say.
+ * Only the other coordinate is decided here: each rank's shapes in a lane are
+ * centred in that lane, in the order the flow put them, and a lane is as thick
+ * as its fullest rank. A shape in no lane is put in a band after the last
+ * lane, unframed, and said so.
+ */
+function intoLanes(
+  diagram: DiagramFile,
+  top: ReadonlyMap<string, Point>,
+  sizeOf: (id: string) => { width: number; height: number },
+  chain: (id: string) => (string | undefined)[],
+  across: boolean,
+  diagnostics: Phrase[],
+): { positions: Map<string, Point>; swim: Swim } | undefined {
+  const lanes = diagram.nodes.filter(node => node.lane);
+  if (lanes.length === 0) {
+    diagnostics.push(dgm('diagram.layout.noLanes'));
+    return undefined;
+  }
+  const byId = new Map(diagram.nodes.map(n => [n.id, n]));
+
+  // Which lane each shape is in. A plain group listed in a lane brings what
+  // it holds; a shape listed in two lanes stays in the first.
+  const laneOf = new Map<string, string>();
+  for (const lane of lanes) {
+    const seen = new Set<string>();
+    const take = (id: string): void => {
+      if (seen.has(id)) return;
+      seen.add(id);
+      const node = byId.get(id);
+      if (node?.shape === 'group' && node.direction === undefined && !node.lane) {
+        for (const child of node.children) take(child);
+        return;
+      }
+      const other = laneOf.get(id);
+      if (other !== undefined) {
+        if (other !== lane.id) diagnostics.push(dgm('diagram.layout.twoLanes', { id, lane: other, other: lane.id }));
+        return;
+      }
+      laneOf.set(id, lane.id);
+    };
+    for (const child of lane.children) take(child);
+  }
+
+  // What stands for each of them at the top of the flow: the shape itself, or
+  // the directed group it is laid out in. A group goes to the lane it is
+  // listed in, else to the lane of the first thing in it that is.
+  const unitLane = new Map<string, string>();
+  for (const [id, lane] of laneOf) {
+    const steps = chain(id);
+    const unit = steps[steps.length - 2];
+    if (unit !== undefined && top.has(unit) && (unit === id || !unitLane.has(unit))) unitLane.set(unit, lane);
+  }
+  const loose = [...top.keys()].filter(id => !unitLane.has(id));
+  for (const id of loose) diagnostics.push(dgm('diagram.layout.notInLane', { id }));
+
+  const alongOf = (id: string): number => (across ? top.get(id)!.x : top.get(id)!.y);
+  const crossOf = (id: string): number => (across ? top.get(id)!.y : top.get(id)!.x);
+  const alongSize = (id: string): number => (across ? sizeOf(id).width : sizeOf(id).height);
+  const crossSize = (id: string): number => (across ? sizeOf(id).height : sizeOf(id).width);
+
+  // The ranks, told apart by their middles: an engine centres a rank's shapes
+  // on one line along the flow, whatever their sizes.
+  const middles = [...top.keys()].map(id => alongOf(id) + alongSize(id) / 2).sort((a, b) => a - b);
+  const levels: number[] = [];
+  for (const m of middles) if (levels.length === 0 || m - levels[levels.length - 1]! > 1) levels.push(m);
+  const rankOf = (id: string): number => {
+    const m = alongOf(id) + alongSize(id) / 2;
+    let best = 0;
+    for (let i = 1; i < levels.length; i++) if (Math.abs(levels[i]! - m) < Math.abs(levels[best]! - m)) best = i;
+    return best;
+  };
+
+  // Each band's shapes, rank by rank, in the order the flow put them across.
+  const keys: (string | undefined)[] = [...lanes.map(lane => lane.id), ...(loose.length > 0 ? [undefined] : [])];
+  const rows = new Map<string | undefined, string[][]>(keys.map(key => [key, []]));
+  for (const id of top.keys()) {
+    const list = rows.get(unitLane.get(id))!;
+    (list[rankOf(id)] ??= []).push(id);
+  }
+  const rowTotal = (row: readonly string[]): number =>
+    row.reduce((sum, id) => sum + crossSize(id), 0) + NODE_GAP * Math.max(0, row.length - 1);
+
+  const positions = new Map<string, Point>();
+  const bands = new Map<string, { start: number; end: number }>();
+  // A lane's label is written across its top, so a lane running across the
+  // page keeps room for it beside its shapes; one running down keeps it above.
+  const lead = LANE_PAD + (across ? GROUP_HEADER : 0);
+  const least = across ? DEFAULT_SIZE.height : DEFAULT_SIZE.width;
+  let at = 0;
+  for (const key of keys) {
+    // Ranks this lane has nothing in are holes in the list; only the rest count.
+    const list = rows.get(key)!.filter(row => row !== undefined);
+    for (const row of list) row.sort((a, b) => crossOf(a) - crossOf(b));
+    const inner = Math.max(least, ...list.map(rowTotal));
+    for (const row of list) {
+      let from = at + lead + (inner - rowTotal(row)) / 2;
+      for (const id of row) {
+        const c = Math.round(from);
+        positions.set(id, across ? { x: top.get(id)!.x, y: c } : { x: c, y: top.get(id)!.y });
+        from += crossSize(id) + NODE_GAP;
+      }
+    }
+    const end = at + lead + inner + LANE_PAD;
+    if (key !== undefined) bands.set(key, { start: at, end });
+    at = end;
+  }
+
+  const ids = [...top.keys()];
+  const along = ids.length === 0
+    ? { start: 0, end: 0 }
+    : {
+      start: Math.min(...ids.map(alongOf)),
+      end: Math.max(...ids.map(id => alongOf(id) + alongSize(id))),
+    };
+  return { positions, swim: { bands, along, across } };
+}
+
+/**
+ * A lane's frame: its band across the flow, and along it the length of every
+ * lane, with room at the top for its label.
+ */
+function laneBox(lane: Node, swim: Swim): Box | undefined {
+  const band = swim.bands.get(lane.id);
+  if (!band) return undefined;
+  const lines = [parseRuns(lane.text)];
+  const start = swim.along.start - LANE_PAD;
+  const end = swim.along.end + LANE_PAD;
+  return swim.across
+    ? { x: start, y: band.start, width: end - start, height: band.end - band.start, z: -1, lines }
+    : {
+      x: band.start, y: start - GROUP_HEADER,
+      width: band.end - band.start, height: end - start + GROUP_HEADER, z: -1, lines,
+    };
 }
 
 function groupBox(

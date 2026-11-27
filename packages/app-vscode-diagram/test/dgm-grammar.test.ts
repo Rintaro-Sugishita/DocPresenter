@@ -72,6 +72,16 @@ describe('.dgm の色付け', () => {
     expect(scopeOf(file, 2, 'a')).toBe('variable.other.dgm');
   });
 
+  it('swim の見出しと lane の行に色が付く', () => {
+    const file = 'swim 受注 LR {\n  lane cust "顧客" { a; b }\n  a [A]\n  b [B]\n  a --> b\n}';
+    expect(scopeOf(file, 0, 'swim')).toBe('keyword.control.section.dgm');
+    expect(scopeOf(file, 0, 'LR')).toBe('entity.name.section.dgm keyword.other.direction.dgm');
+    expect(scopeOf(file, 1, 'lane')).toBe('keyword.other.lane.dgm');
+    expect(scopeOf(file, 1, 'cust')).toBe('entity.name.tag.dgm');
+    expect(scopeOf(file, 1, 'b')).toBe('variable.other.dgm');
+    expect(scopeOf(file, 4, '-->')).toBe('keyword.operator.connector.dgm');
+  });
+
   it('両端の矢印も接続記号として色が付く', () => {
     const file = 'flow {\n  a [A]\n  b [B]\n  a <-.-> b "x"\n}';
     expect(scopeOf(file, 3, '<-.->')).toBe('keyword.operator.connector.dgm');

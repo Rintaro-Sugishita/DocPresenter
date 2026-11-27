@@ -71,7 +71,7 @@ type StyleEntry =
   | { readonly kind: 'other'; readonly text: string };
 
 const INDENT = '  ';
-const BODY = new Set(['free', 'flow', 'overlay']);
+const BODY = new Set(['free', 'flow', 'swim', 'overlay']);
 const DIRECTION = /^(TB|TD|BT|LR|RL)$/;
 /** Declarations in the order the spec lists them; anything else follows by name. */
 const PROPERTY_ORDER = ['fill', 'line', 'color', 'align', 'icon'];
@@ -193,7 +193,7 @@ function scanTop(lines: readonly Line[]): Top {
       pending = [];
       continue;
     }
-    const section = /^(free|flow|overlay|layout|style|parts)\b([^{]*)\{$/.exec(text)!;
+    const section = /^(free|flow|swim|overlay|layout|style|parts)\b([^{]*)\{$/.exec(text)!;
     let depth = 1;
     const open = i;
     while (++i < lines.length) {
@@ -593,8 +593,9 @@ function named(name: string, header: string): string {
 
 /** `flow Title LR` — the title first, then the direction, as the spec's examples write it. */
 function bodyHead(file: DiagramFile, header: string): string {
-  const mode = file.mode;
-  if (mode !== 'flow') return named(mode, header);
+  // A swim is a flow to everything but its own heading.
+  const mode = file.swim ? 'swim' : file.mode;
+  if (file.mode !== 'flow') return named(mode, header);
   const words = header === '' ? [] : header.split(' ');
   const at = DIRECTION.test(words[0] ?? '') ? 0 : DIRECTION.test(words[words.length - 1] ?? '') ? words.length - 1 : -1;
   if (at < 0) return named(mode, header);
@@ -618,9 +619,13 @@ function writeBody(
   order: ReadonlyMap<string, number>, plan: BodyPlan,
 ): (readonly Written[])[] {
   const shapes = pieces.nodes.filter(one => one.value.shape !== 'group');
-  const groups = pieces.nodes.filter(one => one.value.shape === 'group');
+  const groups = pieces.nodes.filter(one => one.value.shape === 'group' && !one.value.lane);
+  // A swim's lanes come first, in the order written: that order is the order
+  // of the bands, so it is the author's to decide, not the formatter's.
+  const lanes = pieces.nodes.filter(one => one.value.lane);
   const idWidth = widest(shapes.map(one => one.value.id));
   const groupColumns = groupColumnsOf(groups.map(one => one.value));
+  const laneColumns = groupColumnsOf(lanes.map(one => one.value));
   const edgeWidths = {
     from: widest(pieces.edges.map(one => one.value.from)),
     to: widest(pieces.edges.filter(one => one.value.label !== undefined).map(one => one.value.to)),
@@ -628,7 +633,9 @@ function writeBody(
 
   const writeNode = (piece: Piece<Node>): Written => ({
     leading: piece.leading,
-    lines: piece.value.shape === 'group'
+    lines: piece.value.lane
+      ? [INDENT + groupLine(piece.value, laneColumns, order, 'lane')]
+      : piece.value.shape === 'group'
       ? [INDENT + groupLine(piece.value, groupColumns, order)]
       : shapeLines(file, piece, lines, idWidth),
   });
@@ -644,7 +651,7 @@ function writeBody(
   const sortNodes = (list: Piece<Node>[]): Piece<Node>[] =>
     (plan.nodes === 'canonical' ? byRank(list, nodeRank, piece => piece.value.id) : list);
   const edges = plan.edges === 'canonical' ? sortEdges(pieces.edges, order) : pieces.edges;
-  return [sortNodes(shapes).map(writeNode), sortNodes(groups).map(writeNode), edges.map(writeEdge)];
+  return [lanes.map(writeNode), sortNodes(shapes).map(writeNode), sortNodes(groups).map(writeNode), edges.map(writeEdge)];
 }
 
 function sortEdges<T extends { value: Edge }>(edges: readonly T[], order: ReadonlyMap<string, number>): T[] {
@@ -749,12 +756,14 @@ function groupLabel(group: Node): string {
   return group.text === group.id ? '' : `"${group.text}"`;
 }
 
-function groupLine(group: Node, columns: GroupColumns, order: ReadonlyMap<string, number>): string {
+function groupLine(
+  group: Node, columns: GroupColumns, order: ReadonlyMap<string, number>, keyword: 'group' | 'lane' = 'group',
+): string {
   const children = byRank(group.children, id => order.get(id), id => id);
   const fields = [padToWidth(group.id, columns.id)];
   if (columns.label > 0) fields.push(padToWidth(groupLabel(group), columns.label));
   if (columns.direction > 0) fields.push(padToWidth(group.direction ?? '', columns.direction));
-  return `group ${fields.join(' ')} ${children.length === 0 ? '{}' : `{ ${children.join('; ')} }`}`;
+  return `${keyword} ${fields.join(' ')} ${children.length === 0 ? '{}' : `{ ${children.join('; ')} }`}`;
 }
 
 function edgeLine(edge: Edge, widths: { from: number; to: number }): string {
@@ -1009,6 +1018,9 @@ function modelOf(file: DiagramFile): string {
     [...map].sort((a, b) => compareText(a[0], b[0]));
   return JSON.stringify({
     mode: file.mode,
+    swim: file.swim ?? false,
+    // The order of the lanes is the order of the bands.
+    lanes: file.nodes.filter(node => node.lane).map(node => node.id),
     direction: file.direction ?? null,
     image: file.image ?? null,
     theme: file.theme ?? null,

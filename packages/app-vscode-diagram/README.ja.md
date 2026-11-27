@@ -11,7 +11,7 @@
 設計書の拡張機能 [DocPresenter](https://github.com/Rintaro-Sugishita/DocPresenter/blob/HEAD/packages/app-vscode/README.ja.md)
 と一緒に入る。図を文書に取り込み、HTML・PDF・PowerPoint に書き出すのはそちらの役目である。この拡張機能だけでも使える。
 
-## 2 種類の図
+## 図の種類
 
 **flow**：図形とつながりを書けば、配置は自動で決まる。
 
@@ -32,6 +32,25 @@ flow {
 ```
 
 <img src="https://raw.githubusercontent.com/Rintaro-Sugishita/DocPresenter/HEAD/packages/app-vscode/images/ja/dgm-flow.png" alt="上の flow から自動で配置されたフローチャート" width="440">
+
+**swim**：flow と同じ書き方に `lane` の行を足すと、スイムレーン図になる。レーンは書いた順に帯として並び、
+どの図形も自分のレーンの中に置かれる。流れの中での前後は、flow と同じく接続から決まる。
+
+```
+swim 受注処理 LR {
+  lane cust "顧客" { order; recv }
+  lane shop "店舗" { accept; ship }
+
+  order  [注文する]
+  accept [受注]
+  ship   [発送]
+  recv   ([受け取り])
+
+  order  --> accept
+  accept --> ship
+  ship   --> recv
+}
+```
 
 **free**：図形を置いた位置をそのまま保つ。位置は別の `layout` セクションに書かれるので、図形を動かしても変わるのは
 そこの 1 行だけで、図の中身を表す行は変わらない。
@@ -58,7 +77,7 @@ flow {
 
 「DocPresenter Diagram で開く」を使わずに通常のテキストとして `.dgm` を開くと、記述の種類ごとに色分けされ、入力に合わせて候補が表示される。
 
-- **ファイルの最上位**：セクション（`flow` / `free` / `overlay` / `layout` / `style` / `parts`）と `use "…"`。`use` の引用符の中では、
+- **ファイルの最上位**：セクション（`flow` / `swim` / `free` / `overlay` / `layout` / `style` / `parts`）と `use "…"`。`use` の引用符の中では、
   `default`・`icons` と、作業場にある部品ファイル（この図からの相対パス）が候補に出る。
 - **図形の ID の後ろ**：12 種類の括弧（`[ ]`・`([ ])`・`[( )]` など）、読み込んでいる部品ライブラリの部品（`textbox:` など）、接続記号。
   **接続記号の後ろ**：その図形からまだ接続していない図形。

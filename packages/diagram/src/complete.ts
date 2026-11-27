@@ -162,7 +162,7 @@ export function completeDiagram(
   }
 }
 
-const SECTION = /^(free|flow|overlay|layout|style|parts)\b[^{]*\{$/;
+const SECTION = /^(free|flow|swim|overlay|layout|style|parts)\b[^{]*\{$/;
 const CONTAINER_OPEN = new RegExp(`^(stack|grid|tabs)\\s+(${ID}+)\\s*(?:\\([^)]*\\))?\\s*\\{(.*)$`);
 const ROWS_OPEN = new RegExp(`^${ID}+\\s+[A-Za-z0-9_-]+:\\s*\\{\\s*$`);
 
@@ -203,7 +203,7 @@ function read(lines: readonly string[], typing: number): { frames: Frame[]; know
 }
 
 function sectionFrame(name: string): Frame {
-  return name === 'free' || name === 'flow' ? 'semantics' : name as Frame;
+  return name === 'free' || name === 'flow' || name === 'swim' ? 'semantics' : name as Frame;
 }
 
 function count(text: string, char: string): number {
@@ -212,7 +212,7 @@ function count(text: string, char: string): number {
   return n;
 }
 
-const GROUP_LINE = new RegExp(`^group\\s+(${ID}+)`);
+const GROUP_LINE = new RegExp(`^(?:group|lane)\\s+(${ID}+)`);
 const LINE_NODE = new RegExp(`^(${ID}+?)\\s*-{2,}$`);
 const EDGE_LINE = new RegExp(`^(${ID}+?)\\s*(?:<-\\.->|<-->|<->|-\\.->|-->|->|--|~~~)\\s*(${ID}+)`);
 const NODE_LINE = new RegExp(`^(${ID}+)\\s*(.*)$`);
@@ -271,12 +271,12 @@ function atTop({ before, column, known, say, context }: At): Completion[] {
     ].map((one, i) => ({ ...one, kind: 'library', insert: one.label, from, sort: String(i).padStart(4, '0') }));
   }
   // `flow |` — which way it runs, as Mermaid's `flowchart LR` says it.
-  const heading = /^\s*flow\s+([A-Z]*)$/.exec(before);
+  const heading = /^\s*(?:flow|swim)\s+([A-Z]*)$/.exec(before);
   if (heading) return directions(column - heading[1]!.length, say);
   if (!/^\s*[a-z]*$/.test(before)) return [];
 
   const from = column - before.trimStart().length;
-  const drawing = ['free', 'flow', 'overlay'].some(name => known.sections.has(name));
+  const drawing = ['free', 'flow', 'swim', 'overlay'].some(name => known.sections.has(name));
   const found: Completion[] = [];
   const add = (one: Omit<Completion, 'from' | 'sort'>): void => {
     if (one.kind === 'section' && known.sections.has(one.label)) return;
@@ -285,6 +285,10 @@ function atTop({ before, column, known, say, context }: At): Completion[] {
   // A file holds one drawing. Once it has one, the others are not on offer.
   if (!drawing) {
     add({ label: 'flow', kind: 'section', insert: 'flow $1{\n\t$0\n}', detail: say('diagram.complete.flow') });
+    add({
+      label: 'swim', kind: 'section', insert: 'swim ${1:LR} {\n\tlane ${2:id} "$3" { $0 }\n}',
+      detail: say('diagram.complete.swim'),
+    });
     add({ label: 'free', kind: 'section', insert: 'free $1{\n\t$0\n}', detail: say('diagram.complete.free') });
     add({
       label: 'overlay', kind: 'section', insert: 'overlay "${1:image.png}" {\n\t$0\n}',
@@ -298,7 +302,7 @@ function atTop({ before, column, known, say, context }: At): Completion[] {
   add({ label: 'style', kind: 'section', insert: 'style {\n\t$0\n}', detail: say('diagram.complete.style') });
   add({ label: 'use', kind: 'keyword', insert: 'use "$1"', detail: say('diagram.complete.use'), again: true });
   // A screen's item table: a screen is drawn where its shapes are put.
-  if (!known.sections.has('overlay') && !known.sections.has('flow')) {
+  if (!known.sections.has('overlay') && !known.sections.has('flow') && !known.sections.has('swim')) {
     add({ label: 'items', kind: 'keyword', insert: 'items "${1:items.table}"', detail: say('diagram.complete.items') });
   }
   add({ label: 'parts', kind: 'section', insert: 'parts {\n\t$0\n}', detail: say('diagram.complete.parts') });
@@ -312,8 +316,8 @@ function inSemantics(at: At): Completion[] {
   const way = new RegExp(`^\\s*group\\s+${ID}+\\s*(?:"[^"]*")?\\s+([A-Z]*)$`).exec(before);
   if (way) return directions(column - way[1]!.length, say);
 
-  // `group g "…" { a; b; |`
-  const members = new RegExp(`^\\s*group\\s+(${ID}+)\\s*(?:"[^"]*")?\\s*(?:(?:TB|TD|BT|LR|RL)\\s*)?\\{([^}]*?)(${ID}*)$`).exec(before);
+  // `group g "…" { a; b; |`, and a lane's members the same way.
+  const members = new RegExp(`^\\s*(?:group|lane)\\s+(${ID}+)\\s*(?:"[^"]*")?\\s*(?:(?:TB|TD|BT|LR|RL)\\s*)?\\{([^}]*?)(${ID}*)$`).exec(before);
   if (members) {
     const listed = new Set(members[2]!.split(';').map(one => one.trim()));
     return ids(known, column - members[3]!.length, say,
@@ -348,7 +352,7 @@ function inSemantics(at: At): Completion[] {
 
   // `a |` — what the shape is: a pair of brackets, a part, or a connection.
   const named = new RegExp(`^\\s*(${ID}+)\\s+([A-Za-z0-9_-]*)$`).exec(before);
-  if (named && named[1] !== 'group') {
+  if (named && named[1] !== 'group' && named[1] !== 'lane') {
     const from = column - named[2]!.length;
     return [
       ...SHAPES.map(({ open, close, shape }, i): Completion => ({
@@ -370,6 +374,11 @@ function inSemantics(at: At): Completion[] {
         label: 'group', kind: 'keyword', insert: 'group ${1:id} "$2" { $0 }',
         detail: say('diagram.complete.group'), from, again: true,
       },
+      // A lane is only read in a swim, so it is only offered there.
+      ...(known.sections.has('swim') ? [{
+        label: 'lane', kind: 'keyword' as const, insert: 'lane ${1:id} "$2" { $0 }',
+        detail: say('diagram.complete.lane'), from, again: true,
+      }] : []),
     ];
   }
   return [];

@@ -907,7 +907,8 @@ function nodeLine(node: Node, shape: ShapeKind, text: string, gap = ' '): string
 
 function groupLine(group: Node, children: readonly string[]): string {
   const way = group.direction === undefined ? '' : ` ${group.direction}`;
-  return `group ${group.id} "${group.text}"${way} { ${children.join('; ')} }`;
+  // A lane stays a lane when its members or its label change.
+  return `${group.lane ? 'lane' : 'group'} ${group.id} "${group.text}"${way} { ${children.join('; ')} }`;
 }
 
 /**

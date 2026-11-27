@@ -60,6 +60,12 @@ export interface Node {
    * way the drawing around it runs.
    */
   readonly direction?: FlowDirection;
+  /**
+   * A group written `lane` in a `swim`: a band running the length of the
+   * flow, laid side by side with the other lanes in the order they are
+   * written. Absent for every other node.
+   */
+  readonly lane?: true;
   /** The shape's own line, so renaming one shape rewrites one line. */
   readonly span: ByteSpan;
 }
@@ -292,6 +298,12 @@ export interface DiagramFile {
   readonly mode: DiagramMode;
   /** The way a `flow` runs, from its heading. Absent means top to bottom. */
   readonly direction: FlowDirection | undefined;
+  /**
+   * Written as `swim { … }` rather than `flow { … }`: a flow whose shapes are
+   * kept to the lanes the file names. `mode` is still `flow`, because a swim
+   * is laid out, routed and edited as one; only the lanes are added.
+   */
+  readonly swim?: true;
   readonly comments: readonly string[];
   readonly nodes: readonly Node[];
   readonly edges: readonly Edge[];
